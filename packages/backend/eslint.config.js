@@ -1,0 +1,68 @@
+import js from '@eslint/js';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
+import importPlugin from 'eslint-plugin-import';
+import simpleImportSort from 'eslint-plugin-simple-import-sort';
+import prettierPlugin from 'eslint-plugin-prettier';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default tseslint.config(
+  { ignores: ['dist', 'node_modules'] },
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+      parserOptions: {
+        project: true,
+        tsconfigRootDir: __dirname,
+      },
+    },
+    plugins: {
+      import: importPlugin,
+      'simple-import-sort': simpleImportSort,
+      prettier: prettierPlugin,
+    },
+    settings: {
+      'import/resolver': {
+        node: {
+          extensions: ['.ts', '.tsx', '.js', '.jsx'],
+        },
+      },
+    },
+    rules: {
+      'prettier/prettier': 'off',
+      indent: ['error', 2, { SwitchCase: 1, ignoredNodes: ['ConditionalExpression'] }],
+      quotes: ['error', 'single', { avoidEscape: true }],
+      'no-console': 0,
+      'import/extensions': 0,
+      'simple-import-sort/imports': 'warn',
+      'import/no-unresolved': 0,
+      'no-underscore-dangle': 0,
+      'no-plusplus': 0,
+      'no-shadow': 0,
+      'max-len': 'off',
+      'no-alert': 0,
+      'import/prefer-default-export': 0,
+      'no-param-reassign': 0,
+      'no-nested-ternary': 0,
+      semi: ['error', 'always'],
+      'comma-dangle': ['error', 'always-multiline'],
+      'no-trailing-spaces': 'error',
+      'no-multi-spaces': 'error',
+      'space-in-parens': ['error', 'never'],
+      'func-call-spacing': ['error', 'never'],
+      'comma-spacing': ['error', { before: false, after: true }],
+      'spaced-comment': ['error', 'always'],
+      'no-multiple-empty-lines': ['error', { max: 2, maxEOF: 1, maxBOF: 0 }],
+      'eol-last': ['error', 'always'],
+    },
+  }
+);

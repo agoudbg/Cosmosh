@@ -1,0 +1,42 @@
+{
+  "appId": "com.cosmosh.app",
+  "productName": "Cosmosh",
+  "directories": {
+    "buildResources": "resources",
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "node_modules/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "../renderer/dist",
+      "to": "renderer",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "target": [
+      "dmg",
+      "zip"
+    ]
+  },
+  "win": {
+    "target": [
+      "nsis",
+      "portable"
+    ]
+  },
+  "linux": {
+    "target": [
+      "AppImage",
+      "deb"
+    ],
+    "category": "Development"
+  }
+}

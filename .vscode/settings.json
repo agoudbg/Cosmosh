@@ -1,0 +1,27 @@
+{
+  "cSpell.words": [
+    "agoudbg",
+    "cosmosh",
+    "Cosmosh",
+    "Hono",
+    "nsis",
+    "Vite"
+  ],
+  "i18n-ally.indent": 2,
+  "i18n-ally.keystyle": "nested",
+  "i18n-ally.sortKeys": true,
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "css.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore"
+}
