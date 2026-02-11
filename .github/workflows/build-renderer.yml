@@ -1,0 +1,23 @@
+name: Build Renderer
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build renderer
+        run: pnpm --filter @cosmosh/renderer build
