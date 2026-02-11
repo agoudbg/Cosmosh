@@ -11,7 +11,8 @@
     "dev:backend": "pnpm --filter @cosmosh/backend dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "format": "pnpm -r format"
+    "format": "pnpm -r format",
+    "theme:sync": "pnpm --filter @cosmosh/renderer theme:sync"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

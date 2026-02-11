@@ -59,6 +59,7 @@ export default tseslint.config(
       'no-multi-spaces': 'error',
       'space-in-parens': ['error', 'never'],
       'func-call-spacing': ['error', 'never'],
+      'function-call-argument-newline': ['error', 'consistent'],
       'comma-spacing': ['error', { before: false, after: true }],
       'spaced-comment': ['error', 'always'],
       'no-multiple-empty-lines': ['error', { max: 2, maxEOF: 1, maxBOF: 0 }],

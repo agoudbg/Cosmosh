@@ -1,4 +1,25 @@
 const plugin = require('tailwindcss/plugin');
+const { base: themeBase } = require('./theme/tokens.cjs');
+
+const toVar = (prefix, pathParts) => {
+  const normalized = pathParts.filter((part) => part !== 'DEFAULT');
+  return `var(--${[prefix, ...normalized].join('-')})`;
+};
+
+const mapVars = (obj, prefix, pathParts = []) => {
+  return Object.fromEntries(
+    Object.entries(obj).map(([key, value]) => {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return [key, mapVars(value, prefix, [...pathParts, key])];
+      }
+
+      return [key, toVar(prefix, [...pathParts, key])];
+    })
+  );
+};
+
+const themeColors = mapVars(themeBase.colors, 'color');
+const themeRadius = mapVars(themeBase.radius, 'radius');
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -6,39 +27,14 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        bg: {
-          DEFAULT: 'var(--color-bg)',
-          subtle: 'var(--color-bg-subtle)',
-          panel: 'var(--color-bg-panel)',
-        },
-        text: {
-          DEFAULT: 'var(--color-text)',
-          muted: 'var(--color-text-muted)',
-          faint: 'var(--color-text-faint)',
-        },
-        accent: {
-          DEFAULT: 'var(--color-accent)',
-          hover: 'var(--color-accent-hover)',
-          glow: 'var(--color-accent-glow)',
-        },
-        border: {
-          DEFAULT: 'var(--color-border)',
-          strong: 'var(--color-border-strong)',
-        },
-        status: {
-          good: 'var(--color-status-good)',
-          warn: 'var(--color-status-warn)',
-          bad: 'var(--color-status-bad)',
-        },
+        ...themeColors,
       },
       fontFamily: {
         sans: ['var(--font-sans)'],
         mono: ['var(--font-mono)'],
       },
       borderRadius: {
-        sm: 'var(--radius-sm)',
-        md: 'var(--radius-md)',
-        lg: 'var(--radius-lg)',
+        ...themeRadius,
       },
       boxShadow: {
         soft: '0 8px 30px var(--shadow-soft)',

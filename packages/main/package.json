@@ -2,7 +2,6 @@
   "name": "@cosmosh/main",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "Cosmosh Electron Main Process",
   "main": "./dist/index.js",
   "scripts": {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 
 let mainWindow: BrowserWindow | null = null;
@@ -23,6 +23,7 @@ const createWindow = () => {
         trafficLightPosition: { x: 16, y: 16 },
       }
       : {
+        titleBarStyle: 'hidden',
         titleBarOverlay: {
           color: '#00000000',
           symbolColor: '#ffffff',
@@ -52,6 +53,11 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+ipcMain.on('app:close-window', () => {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;
+  targetWindow?.close();
 });
 
 app.on('window-all-closed', () => {

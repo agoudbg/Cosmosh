@@ -16,4 +16,5 @@ contextBridge.exposeInMainWorld('electron', {
   invoke: (channel: string, ...args: unknown[]) => {
     return ipcRenderer.invoke(channel, ...args);
   },
+  platform: process.platform,
 });
