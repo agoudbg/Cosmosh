@@ -59,10 +59,6 @@ importers:
         version: 8.54.0(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3)
 
   packages/main:
-    dependencies:
-      electron:
-        specifier: ^33.3.1
-        version: 33.4.11
     devDependencies:
       '@eslint/js':
         specifier: ^9.17.0
@@ -73,6 +69,9 @@ importers:
       cross-env:
         specifier: ^7.0.3
         version: 7.0.3
+      electron:
+        specifier: ^33.3.1
+        version: 33.4.11
       electron-builder:
         specifier: ^25.1.8
         version: 25.1.8(electron-builder-squirrel-windows@25.1.8)
