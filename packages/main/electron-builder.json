@@ -37,6 +37,7 @@
       "AppImage",
       "deb"
     ],
-    "category": "Development"
+    "category": "Development",
+    "maintainer": "agoudbg <agoudbg+cosmosh@gmail.com>"
   }
 }
