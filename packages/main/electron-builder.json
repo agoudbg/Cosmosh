@@ -38,6 +38,11 @@
       "deb"
     ],
     "category": "Development",
-    "maintainer": "agoudbg <agoudbg+cosmosh@gmail.com>"
+    "maintainer": "agoudbg <agoudbg+cosmosh@gmail.com>",
+    "executableName": "cosmosh",
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
+  },
+  "deb": {
+    "packageName": "cosmosh"
   }
 }
