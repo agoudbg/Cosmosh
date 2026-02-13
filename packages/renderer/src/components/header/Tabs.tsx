@@ -1,7 +1,8 @@
-import { closestCenter, DndContext, KeyboardSensor, MouseSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { closestCenter, DndContext, DragOverlay, KeyboardSensor, MeasuringStrategy, MouseSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import {
   arrayMove,
+  defaultAnimateLayoutChanges,
   horizontalListSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
@@ -31,20 +32,40 @@ const iconMap: Record<TabIconKey, React.ReactNode> = {
   terminal: <Terminal className="h-4 w-4" />,
 };
 
+const DragOverlayTab: React.FC<{ tab: TabItem; width: number }> = ({ tab, width }) => {
+  return (
+    <div
+      className="inline-flex h-[34px] items-center justify-between gap-1.5 overflow-hidden rounded-md bg-header-tab-active px-2 box-border"
+      style={{ width, minWidth: width, maxWidth: width }}
+    >
+      <span aria-hidden>{iconMap[tab.iconKey]}</span>
+      <span className="flex-1 overflow-hidden text-start text-sm text-ellipsis whitespace-nowrap">{tab.title}</span>
+      {tab.closable && <XIcon className="h-4 w-4" />}
+    </div>
+  );
+};
+
 const SortableTab = React.forwardRef<
-  React.ElementRef<typeof RadixTabs.Trigger>,
+  HTMLDivElement,
   {
     tab: TabItem;
     isActive: boolean;
     width: number;
     onClose: (id: string) => void;
-    onContextMenu?: React.MouseEventHandler<HTMLButtonElement>;
+    onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
   }
 >(({ tab, isActive, width, onClose, onContextMenu }, forwardedRef) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.id,
+    animateLayoutChanges: (args) => defaultAnimateLayoutChanges(args),
+    transition: {
+      duration: 140,
+      easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+    },
+  });
 
   const setRefs = React.useCallback(
-    (node: HTMLButtonElement | null) => {
+    (node: HTMLDivElement | null) => {
       setNodeRef(node);
       if (typeof forwardedRef === 'function') {
         forwardedRef(node);
@@ -60,51 +81,55 @@ const SortableTab = React.forwardRef<
     width,
     minWidth: width,
     maxWidth: width,
-    transform: CSS.Translate.toString(transform),
-    // @ts-expect-error React.CSSProperties
-    WebkitAppRegion: 'no-drag',
+    transform: CSS.Transform.toString(transform),
   };
 
   return (
-    <RadixTabs.Trigger
+    <div
       ref={setRefs}
-      value={tab.id}
-      data-role="tab-trigger"
       style={style}
-      className={classNames(
-        'inline-flex h-full items-center justify-between gap-1.5 px-2 flex-none rounded-md box-border overflow-hidden',
-        isActive ? 'bg-header-tab-active' : 'hover:bg-header-tab-hover',
-        isDragging ? 'z-10' : '',
-      )}
       onContextMenu={onContextMenu}
+      className={classNames('flex h-full', isDragging ? 'relative z-20' : '')}
       {...attributes}
       {...listeners}
     >
-      <span aria-hidden>{iconMap[tab.iconKey]}</span>
-      <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-start text-sm">{tab.title}</span>
-      {tab.closable && (
-        <button
-          type="button"
-          aria-label={`Close ${tab.title}`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onClose(tab.id);
-          }}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
+      <RadixTabs.Trigger
+        value={tab.id}
+        data-role="tab-trigger"
+        // @ts-expect-error React.CSSProperties
+        style={{ WebkitAppRegion: 'no-drag', width, minWidth: width, maxWidth: width }}
+        className={classNames(
+          'inline-flex h-full w-full flex-none items-center justify-between gap-1.5 overflow-hidden rounded-md px-2 box-border',
+          isActive ? 'bg-header-tab-active' : 'hover:bg-header-tab-hover',
+          isDragging ? 'opacity-0' : '',
+        )}
+      >
+        <span aria-hidden>{iconMap[tab.iconKey]}</span>
+        <span className="flex-1 overflow-hidden text-start text-sm text-ellipsis whitespace-nowrap">{tab.title}</span>
+        {tab.closable && (
+          <button
+            type="button"
+            aria-label={`Close ${tab.title}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
               onClose(tab.id);
-            }
-          }}
-        >
-          <XIcon className="h-4 w-4" />
-        </button>
-      )}
-    </RadixTabs.Trigger>
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClose(tab.id);
+              }
+            }}
+          >
+            <XIcon className="h-4 w-4" />
+          </button>
+        )}
+      </RadixTabs.Trigger>
+    </div>
   );
 });
 SortableTab.displayName = 'SortableTab';
@@ -136,6 +161,9 @@ export const Tabs: React.FC<TabsProps> = ({
   const [canScrollLeft, setCanScrollLeft] = React.useState<boolean>(false);
   const [canScrollRight, setCanScrollRight] = React.useState<boolean>(false);
   const [contextTabId, setContextTabId] = React.useState<string | null>(null);
+  const [activeDragTabId, setActiveDragTabId] = React.useState<string | null>(null);
+  const [dragPreviewTabs, setDragPreviewTabs] = React.useState<TabItem[] | null>(null);
+  const dragPreviewTabsRef = React.useRef<TabItem[] | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const sensors = useSensors(
@@ -211,12 +239,18 @@ export const Tabs: React.FC<TabsProps> = ({
     el.scrollBy({ left: offset, behavior: 'smooth' });
   };
 
-  const contextTab = React.useMemo(() => tabs.find((tab) => tab.id === contextTabId) ?? null, [contextTabId, tabs]);
+  const orderedTabs = dragPreviewTabs ?? tabs;
+
+  const contextTab = React.useMemo(() => orderedTabs.find((tab) => tab.id === contextTabId) ?? null, [contextTabId, orderedTabs]);
   const contextTabIndex = React.useMemo(
-    () => (contextTab ? tabs.findIndex((tab) => tab.id === contextTab.id) : -1),
-    [contextTab, tabs],
+    () => (contextTab ? orderedTabs.findIndex((tab) => tab.id === contextTab.id) : -1),
+    [contextTab, orderedTabs],
   );
-  const isLastTabActive = tabs.length > 0 && activeTab === tabs[tabs.length - 1]?.id;
+  const isLastTabActive = orderedTabs.length > 0 && activeTab === orderedTabs[orderedTabs.length - 1]?.id;
+  const activeDragTab = React.useMemo(
+    () => orderedTabs.find((tab) => tab.id === activeDragTabId) ?? null,
+    [activeDragTabId, orderedTabs],
+  );
 
   return (
     <RadixTabs.Root
@@ -232,7 +266,7 @@ export const Tabs: React.FC<TabsProps> = ({
             aria-label="Scroll tabs left"
             aria-hidden={!canScrollLeft}
             className={classNames(
-              'hover:bg-header-tab-hover absolute left-0 z-10 h-full bg-bg transition-opacity duration-100 ease-in-out px-1',
+              'hover:bg-header-tab-hover absolute left-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out',
               { 'opacity-0 pointer-events-none': !canScrollLeft, 'opacity-100': canScrollLeft },
             )}
             // @ts-expect-error React.CSSProperties
@@ -247,7 +281,7 @@ export const Tabs: React.FC<TabsProps> = ({
             aria-label="Scroll tabs right"
             aria-hidden={!canScrollRight}
             className={classNames(
-              'hover:bg-header-tab-hover absolute right-0 z-10 h-full bg-bg transition-opacity duration-100 ease-in-out px-1',
+              'hover:bg-header-tab-hover absolute right-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out',
               { 'opacity-0 pointer-events-none': !canScrollRight, 'opacity-100': canScrollRight },
             )}
             // @ts-expect-error React.CSSProperties
@@ -264,34 +298,72 @@ export const Tabs: React.FC<TabsProps> = ({
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
+              measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
               modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
-              onDragEnd={({ active, over }) => {
+              onDragStart={({ active }) => {
+                setActiveDragTabId(String(active.id));
+                setDragPreviewTabs(tabs);
+                dragPreviewTabsRef.current = tabs;
+              }}
+              onDragOver={({ active, over }) => {
                 if (!over || active.id === over.id) {
                   return;
                 }
+
+                setDragPreviewTabs((current) => {
+                  const base = current ?? tabs;
+                  const oldIndex = base.findIndex((tab) => tab.id === active.id);
+                  const newIndex = base.findIndex((tab) => tab.id === over.id);
+                  if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+                    return current;
+                  }
+
+                  const next = arrayMove(base, oldIndex, newIndex);
+                  dragPreviewTabsRef.current = next;
+                  return next;
+                });
+              }}
+              onDragCancel={() => {
+                setActiveDragTabId(null);
+                setDragPreviewTabs(null);
+                dragPreviewTabsRef.current = null;
+              }}
+              onDragEnd={({ active, over }) => {
+                setActiveDragTabId(null);
+                let finalTabs = dragPreviewTabsRef.current ?? dragPreviewTabs ?? tabs;
+                setDragPreviewTabs(null);
+                dragPreviewTabsRef.current = null;
 
                 if (!onReorderTabs) {
                   return;
                 }
 
-                const oldIndex = tabs.findIndex((tab) => tab.id === active.id);
-                const newIndex = tabs.findIndex((tab) => tab.id === over.id);
-                if (oldIndex === -1 || newIndex === -1) {
+                const hasPreviewChanged = finalTabs.some((tab, index) => tab.id !== tabs[index]?.id);
+                if (!hasPreviewChanged && over && active.id !== over.id) {
+                  const oldIndex = tabs.findIndex((tab) => tab.id === active.id);
+                  const newIndex = tabs.findIndex((tab) => tab.id === over.id);
+                  if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+                    finalTabs = arrayMove(tabs, oldIndex, newIndex);
+                  }
+                }
+
+                const hasOrderChanged = finalTabs.some((tab, index) => tab.id !== tabs[index]?.id);
+                if (!hasOrderChanged) {
                   return;
                 }
 
-                onReorderTabs(arrayMove(tabs, oldIndex, newIndex));
+                onReorderTabs(finalTabs);
               }}
             >
               <SortableContext
-                items={tabs.map((tab) => tab.id)}
+                items={orderedTabs.map((tab) => tab.id)}
                 strategy={horizontalListSortingStrategy}
               >
                 <RadixTabs.List
                   data-role="tabs-list"
                   className="flex h-full flex-row flex-nowrap items-center justify-start"
                 >
-                  {tabs.map((tab, index) => (
+                  {orderedTabs.map((tab, index) => (
                     <React.Fragment key={tab.id}>
                       <ContextMenu>
                         <ContextMenuTrigger asChild>
@@ -313,7 +385,7 @@ export const Tabs: React.FC<TabsProps> = ({
                           </ContextMenuItem>
                           <ContextMenuItem
                             icon={ChevronRight}
-                            disabled={contextTabIndex < 0 || contextTabIndex >= tabs.length - 1}
+                            disabled={contextTabIndex < 0 || contextTabIndex >= orderedTabs.length - 1}
                             onSelect={() => contextTab && onCloseRightTabs?.(contextTab.id)}
                           >
                             {t('tabs.closeRight')}
@@ -321,19 +393,19 @@ export const Tabs: React.FC<TabsProps> = ({
                           <ContextMenuSeparator />
                           <ContextMenuItem
                             icon={XIcon}
-                            disabled={!contextTab || tabs.length <= 1}
+                            disabled={!contextTab || orderedTabs.length <= 1}
                             onSelect={() => contextTab && onCloseOtherTabs?.(contextTab.id)}
                           >
                             {t('tabs.closeOthers')}
                           </ContextMenuItem>
                         </ContextMenuContent>
                       </ContextMenu>
-                      {index < tabs.length - 1 && (
+                      {index < orderedTabs.length - 1 && (
                         <span
                           aria-hidden
                           className={classNames(
                             'bg-divider h-[16px] w-[2px] shrink-0',
-                            activeTab === tab.id || activeTab === tabs[index + 1]?.id ? 'opacity-0' : 'opacity-100',
+                            activeTab === tab.id || activeTab === orderedTabs[index + 1]?.id ? 'opacity-0' : 'opacity-100',
                           )}
                         />
                       )}
@@ -341,15 +413,25 @@ export const Tabs: React.FC<TabsProps> = ({
                   ))}
                 </RadixTabs.List>
               </SortableContext>
+              <DragOverlay
+                dropAnimation={{
+                  duration: 140,
+                  easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                }}
+              >
+                {activeDragTab ? (
+                  <DragOverlayTab
+                    tab={activeDragTab}
+                    width={tabWidth}
+                  />
+                ) : null}
+              </DragOverlay>
             </DndContext>
           </div>
         </div>
         <span
           aria-hidden
-          className={classNames(
-            'bg-divider h-[16px] w-[2px] flex-shrink-0',
-            isLastTabActive ? 'opacity-0' : 'opacity-100',
-          )}
+          className={classNames('bg-divider h-[16px] w-[2px] flex-shrink-0', isLastTabActive ? 'opacity-0' : 'opacity-100')}
         />
         <button
           type="button"
