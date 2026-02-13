@@ -17,7 +17,8 @@ cosmosh/
 ├── packages/
 │   ├── main/           # Electron main process
 │   ├── renderer/       # Vite + React frontend
-│   └── backend/        # Hono API server
+│   ├── backend/        # Hono API server
+│   └── i18n/           # Shared i18n core and locale resources
 ├── pnpm-workspace.yaml
 └── package.json
 ```
@@ -60,4 +61,11 @@ pnpm lint
 
 # Run Prettier on all packages
 pnpm format
+```
+
+### i18n Locale Check
+
+```bash
+# Validate locale key consistency in the shared i18n package
+pnpm --filter @cosmosh/i18n check
 ```

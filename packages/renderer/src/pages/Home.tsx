@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { getLocale, setLocale, t } from '../lib/i18n';
 import type { TabIconKey } from '../types/tabs';
 
 type HomeProps = {
@@ -20,14 +21,33 @@ const Home: React.FC<HomeProps> = ({
   activeTabIcon,
 }) => {
   const [draftTitle, setDraftTitle] = React.useState<string>(activeTabTitle);
+  const [locale, setLocaleState] = React.useState<'en' | 'zh-CN'>(getLocale());
 
   React.useEffect(() => {
     setDraftTitle(activeTabTitle);
   }, [activeTabTitle]);
 
+  const handleToggleLocale = React.useCallback(async () => {
+    const nextLocale = locale === 'en' ? 'zh-CN' : 'en';
+    const syncedLocale = await setLocale(nextLocale);
+    setLocaleState(syncedLocale);
+  }, [locale]);
+
+  // Demonstration samples to validate placeholder and plural support in runtime.
+  const formatSamples = React.useMemo(() => {
+    return [
+      t('home.formatNamed', { name: 'agou', profile: 'prod' }),
+      t('home.formatPrintf', [58, 'ok']),
+      t('home.formatIndexed', ['node-a', 3]),
+      t('home.pluralSessions', { count: 0 }),
+      t('home.pluralSessions', { count: 1 }),
+      t('home.pluralSessions', { count: 3 }),
+    ];
+  }, [locale]);
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-lg font-semibold">Home Page</div>
+      <div className="text-lg font-semibold">{t('home.title')}</div>
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -35,15 +55,33 @@ const Home: React.FC<HomeProps> = ({
           className="debug-button"
           onClick={onOpenSSH}
         >
-          Open SSH In Current Tab
+          {t('home.openSshCurrentTab')}
         </button>
         <button
           type="button"
           className="debug-button"
           onClick={onOpenSettings}
         >
-          Open Settings In New Tab
+          {t('home.openSettingsNewTab')}
         </button>
+        <button
+          type="button"
+          className="debug-button"
+          onClick={handleToggleLocale}
+        >
+          {t('home.switchLanguage')}: {locale}
+        </button>
+      </div>
+
+      <div className="debug-panel">
+        <div className="mb-2 text-sm font-semibold">
+          {t('home.currentLanguage')}: {locale}
+        </div>
+        <div className="text-muted flex flex-col gap-1 text-sm">
+          {formatSamples.map((sample, index) => (
+            <div key={`${sample}-${index}`}>{sample}</div>
+          ))}
+        </div>
       </div>
 
       <div className="debug-panel">

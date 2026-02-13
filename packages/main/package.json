@@ -16,7 +16,9 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\""
   },
-  "dependencies": {},
+  "dependencies": {
+    "@cosmosh/i18n": "workspace:*"
+  },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@types/node": "^22.10.2",

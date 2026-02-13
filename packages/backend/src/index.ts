@@ -1,3 +1,4 @@
+import { createI18n, resolveLocale } from '@cosmosh/i18n';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -17,8 +18,12 @@ app.use(
 
 // Routes
 app.get('/', (c) => {
+  // Locale is request-scoped so API responses can match the caller language.
+  const requestLocale = resolveLocale(c.req.header('x-cosmosh-locale') ?? c.req.header('accept-language'), 'en');
+  const i18n = createI18n({ locale: requestLocale, scope: 'backend', fallbackLocale: 'en' });
+
   return c.json({
-    message: 'Cosmosh Backend API',
+    message: i18n.t('api.rootMessage'),
     version: '0.1.0',
     status: 'running',
   });

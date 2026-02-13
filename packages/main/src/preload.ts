@@ -16,5 +16,11 @@ contextBridge.exposeInMainWorld('electron', {
   invoke: (channel: string, ...args: unknown[]) => {
     return ipcRenderer.invoke(channel, ...args);
   },
+  getLocale: () => {
+    return ipcRenderer.invoke('i18n:get-locale');
+  },
+  setLocale: (locale: string) => {
+    return ipcRenderer.invoke('i18n:set-locale', locale);
+  },
   platform: process.platform,
 });

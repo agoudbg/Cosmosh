@@ -6,6 +6,8 @@ interface Window {
     on: (channel: string, func: (...args: unknown[]) => void) => void;
     once: (channel: string, func: (...args: unknown[]) => void) => void;
     invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+    getLocale: () => Promise<string>;
+    setLocale: (locale: string) => Promise<string>;
     platform: NodeJS.Platform;
   };
 }

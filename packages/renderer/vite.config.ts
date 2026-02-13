@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+
 import themeWatcher from './scripts/vite-theme-watcher.js';
 
 // https://vite.dev/config/

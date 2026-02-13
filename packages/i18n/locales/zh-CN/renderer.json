@@ -1,0 +1,19 @@
+{
+  "home": {
+    "currentLanguage": "当前语言",
+    "formatIndexed": "节点 %1s 有 %2d 个会话",
+    "formatNamed": "你好 {name}，当前配置：{profile}",
+    "formatPrintf": "CPU %d%%，状态：%s",
+    "openSettingsNewTab": "在新标签打开设置",
+    "openSshCurrentTab": "在当前标签打开 SSH",
+    "pluralSessions": "{count, plural, =0 {暂无会话} one {# 个会话} other {# 个会话}}",
+    "switchLanguage": "切换语言",
+    "title": "主页"
+  },
+  "settings": {
+    "title": "设置页"
+  },
+  "ssh": {
+    "title": "SSH 页面"
+  }
+}

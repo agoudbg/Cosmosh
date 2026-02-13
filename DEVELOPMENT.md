@@ -7,6 +7,7 @@ The project is organized as a pnpm workspace with three main packages:
 - **packages/main**: Electron main process (Node.js backend for Electron)
 - **packages/renderer**: Frontend UI (Vite + React + TypeScript)
 - **packages/backend**: API server (Hono + Node.js)
+- **packages/i18n**: Shared i18n core and translation resources
 
 ## Initial Setup
 
@@ -105,6 +106,55 @@ If TypeScript can't find modules after installation:
 
 1. Reload VS Code window
 2. Ensure the TypeScript server is using the workspace version (check bottom-right of VS Code)
+
+### i18n Consistency Check
+
+Run the locale consistency checker before commit when translation keys are changed:
+
+```bash
+pnpm --filter @cosmosh/i18n check
+```
+
+Current default locale strategy:
+
+- Main keeps the active locale state (`COSMOSH_LOCALE` as initial fallback)
+- Renderer syncs locale with main via preload bridge (`getLocale`/`setLocale`)
+- Backend resolves locale per request from `x-cosmosh-locale` (fallback: `Accept-Language`)
+
+i18n formatting examples:
+
+- Named placeholders: `Hello {name}, profile: {profile}` with `{ name: 'agou', profile: 'prod' }`
+- Printf-style placeholders: `CPU %d%%, status: %s` with `[58, 'ok']`
+- Indexed placeholders: `Node %1s has %2d sessions` with `['node-a', 3]`
+- Single-key pluralization:
+   `{count, plural, =0 {No sessions} one {# session} other {# sessions}}`
+
+Pluralization quick guide:
+
+- Base structure: `{count, plural, RULE_A {textA} RULE_B {textB} other {textN}}`
+- `count` is the numeric variable passed to `t(...)`
+- `#` is replaced with the actual number value of `count`
+- `one` usually means singular form; `other` is the default fallback form
+- `=0`, `=1` are exact-match rules and have higher priority than category rules
+
+Examples:
+
+```ts
+t('home.pluralSessions', { count: 0 });
+// => "No sessions"
+
+t('home.pluralSessions', { count: 1 });
+// => "1 session"
+
+t('home.pluralSessions', { count: 3 });
+// => "3 sessions"
+```
+
+Chinese example pattern:
+
+```text
+{count, plural, =0 {暂无会话} one {# 个会话} other {# 个会话}}
+```
 
 ### Electron Won't Start
 

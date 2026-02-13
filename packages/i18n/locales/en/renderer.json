@@ -1,0 +1,19 @@
+{
+  "home": {
+    "currentLanguage": "Current Language",
+    "formatIndexed": "Node %1s has %2d sessions",
+    "formatNamed": "Hello {name}, profile: {profile}",
+    "formatPrintf": "CPU %d%%, status: %s",
+    "openSettingsNewTab": "Open Settings In New Tab",
+    "openSshCurrentTab": "Open SSH In Current Tab",
+    "pluralSessions": "{count, plural, =0 {No sessions} one {# session} other {# sessions}}",
+    "switchLanguage": "Switch Language",
+    "title": "Home Page"
+  },
+  "settings": {
+    "title": "Settings Page"
+  },
+  "ssh": {
+    "title": "SSH Page"
+  }
+}

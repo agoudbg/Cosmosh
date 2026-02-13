@@ -1,0 +1,31 @@
+{
+  "name": "@cosmosh/i18n",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared i18n core for Cosmosh main, renderer and backend",
+  "scripts": {
+    "build": "tsup",
+    "check": "node ./scripts/check-locales.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "pnpm check && pnpm typecheck"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "intl-messageformat": "^10.7.16"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  }
+}
