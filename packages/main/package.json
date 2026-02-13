@@ -10,6 +10,7 @@
   "homepage": "https://github.com/agoudbg/cosmosh",
   "main": "./dist/index.js",
   "scripts": {
+    "predev": "pnpm --filter @cosmosh/i18n build",
     "dev": "tsc -p tsconfig.json && electron dist/index.js",
     "prebuild": "pnpm --filter @cosmosh/renderer build",
     "build": "tsc && electron-builder",

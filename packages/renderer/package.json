@@ -5,9 +5,9 @@
   "type": "module",
   "description": "Cosmosh Renderer Process (Vite + React)",
   "scripts": {
-    "predev": "pnpm theme:sync",
+    "predev": "pnpm --filter @cosmosh/i18n build && pnpm theme:sync",
     "dev": "vite",
-    "prebuild": "pnpm theme:sync",
+    "prebuild": "pnpm --filter @cosmosh/i18n build && pnpm theme:sync",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext .ts,.tsx",

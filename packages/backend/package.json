@@ -6,7 +6,9 @@
   "description": "Cosmosh Backend API Server (Hono)",
   "main": "./dist/index.js",
   "scripts": {
+    "predev": "pnpm --filter @cosmosh/i18n build",
     "dev": "tsx watch src/index.ts",
+    "prebuild": "pnpm --filter @cosmosh/i18n build",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
