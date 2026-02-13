@@ -1,15 +1,11 @@
-import js from '@eslint/js';
-import globals from 'globals';
-import tseslint from 'typescript-eslint';
-import importPlugin from 'eslint-plugin-import';
-import simpleImportSort from 'eslint-plugin-simple-import-sort';
-import prettierPlugin from 'eslint-plugin-prettier';
-import path from 'path';
-import { fileURLToPath } from 'url';
+const js = require('@eslint/js');
+const globals = require('globals');
+const tseslint = require('typescript-eslint');
+const importPlugin = require('eslint-plugin-import');
+const simpleImportSort = require('eslint-plugin-simple-import-sort');
+const prettierPlugin = require('eslint-plugin-prettier');
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export default tseslint.config(
+module.exports = tseslint.config(
   { ignores: ['dist', 'node_modules'] },
   {
     files: ['**/*.{ts,tsx}'],
@@ -38,8 +34,8 @@ export default tseslint.config(
       },
     },
     rules: {
-      'prettier/prettier': 'off',
-      indent: ['error', 2, { SwitchCase: 1, ignoredNodes: ['ConditionalExpression'] }],
+      'prettier/prettier': 'error',
+      indent: 'off',
       quotes: ['error', 'single', { avoidEscape: true }],
       'no-console': 0,
       'import/extensions': 0,
@@ -59,7 +55,9 @@ export default tseslint.config(
       'no-multi-spaces': 'error',
       'space-in-parens': ['error', 'never'],
       'func-call-spacing': ['error', 'never'],
-      'function-call-argument-newline': ['error', 'consistent'],
+      'function-call-argument-newline': 'off',
+      'function-paren-newline': 'off',
+      'object-curly-newline': 'off',
       'comma-spacing': ['error', { before: false, after: true }],
       'spaced-comment': ['error', 'always'],
       'no-multiple-empty-lines': ['error', { max: 2, maxEOF: 1, maxBOF: 0 }],

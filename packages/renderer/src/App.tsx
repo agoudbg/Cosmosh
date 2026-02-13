@@ -11,19 +11,12 @@ const App: React.FC = () => {
     window.electron?.send('app:close-window', null);
   }, []);
 
-  const {
-    tabs,
-    activeTabId,
-    addTab,
-    updateTab,
-    openPageInTab,
-    closeTab,
-    reorderTabs,
-    setActiveTabId,
-  } = useTabs({ onLastTabClose: handleLastTabClose });
+  const { tabs, activeTabId, addTab, updateTab, openPageInTab, closeTab, reorderTabs, setActiveTabId } = useTabs({
+    onLastTabClose: handleLastTabClose,
+  });
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-bg text-text">
+    <div className="text-text flex h-screen w-screen flex-col bg-bg">
       {/* Header */}
       <div
         className="flex-shrink-0"
@@ -43,7 +36,10 @@ const App: React.FC = () => {
       {/* Content */}
       <div className="p-2">
         {tabs.map((tab) => (
-          <section key={tab.id} className={tab.id === activeTabId ? 'block' : 'hidden'}>
+          <section
+            key={tab.id}
+            className={tab.id === activeTabId ? 'block' : 'hidden'}
+          >
             {tab.page === 'home' && (
               <Home
                 activeTabTitle={tab.title}

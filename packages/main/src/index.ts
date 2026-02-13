@@ -19,17 +19,17 @@ const createWindow = () => {
     },
     ...(process.platform === 'darwin'
       ? {
-        titleBarStyle: 'hidden',
-        trafficLightPosition: { x: 16, y: 16 },
-      }
+          titleBarStyle: 'hidden',
+          trafficLightPosition: { x: 16, y: 16 },
+        }
       : {
-        titleBarStyle: 'hidden',
-        titleBarOverlay: {
-          color: '#00000000',
-          symbolColor: '#ffffff',
-          height: 30,
-        },
-      }),
+          titleBarStyle: 'hidden',
+          titleBarOverlay: {
+            color: '#00000000',
+            symbolColor: '#ffffff',
+            height: 30,
+          },
+        }),
   });
 
   // Load renderer based on environment

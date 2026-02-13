@@ -13,15 +13,7 @@ const Header: React.FC<{
   onAddTab?: () => void;
   onCloseTab?: (id: string) => void;
   onReorderTabs?: (nextTabs: TabItem[]) => void;
-}> = ({
-  className,
-  tabs,
-  activeTab,
-  onActiveTabChange,
-  onAddTab,
-  onCloseTab,
-  onReorderTabs,
-}) => {
+}> = ({ className, tabs, activeTab, onActiveTabChange, onAddTab, onCloseTab, onReorderTabs }) => {
   // Margin for window controls on macOS/Windows/Linux
   const platform = window.electron?.platform;
 
@@ -34,12 +26,14 @@ const Header: React.FC<{
 
   return (
     <header
-      className={classNames('text-header-text flex w-[-webkit-fill-available] items-center p-2 gap-5', padding, className)}
+      className={classNames(
+        'text-header-text flex w-[-webkit-fill-available] items-center p-2 gap-5',
+        padding,
+        className,
+      )}
     >
       {/* Tabs */}
-      <div
-        className="flex h-full w-1 flex-1 items-center"
-      >
+      <div className="flex h-full w-1 flex-1 items-center">
         <Tabs
           tabs={tabs}
           activeTab={activeTab}
@@ -54,18 +48,25 @@ const Header: React.FC<{
         className="flex-shrink-0 rounded-full"
         // @ts-expect-error React.CSSProperties
         style={{ WebkitAppRegion: 'no-drag' }}
-        onClick={() => { alert(1); }}
+        onClick={() => {
+          alert(1);
+        }}
       >
         <RadixAvatar.Root
           className="relative inline-flex h-[30px] w-[30px] shrink-0 overflow-hidden rounded-full bg-gray-100 align-middle"
-          data-role="user-avatar">
+          data-role="user-avatar"
+        >
           <RadixAvatar.Image
             className="h-full w-full object-cover"
-            src="">
+            src=""
+          >
             <span className="sr-only">User Avatar</span>
           </RadixAvatar.Image>
-          <RadixAvatar.Fallback className="flex h-full w-full items-center justify-center bg-gray-300 text-xs font-medium text-gray-600" delayMs={600}>
-          U
+          <RadixAvatar.Fallback
+            className="flex h-full w-full items-center justify-center bg-gray-300 text-xs font-medium text-gray-600"
+            delayMs={600}
+          >
+            U
           </RadixAvatar.Fallback>
         </RadixAvatar.Root>
       </button>

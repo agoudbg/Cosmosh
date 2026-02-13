@@ -1,11 +1,4 @@
-import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import {
   arrayMove,
@@ -17,17 +10,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import * as RadixTabs from '@radix-ui/react-tabs';
 import classNames from 'classnames';
-import {
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Home,
-  PlusIcon,
-  Server,
-  Settings,
-  Terminal,
-  XIcon,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, Home, PlusIcon, Server, Settings, Terminal, XIcon } from 'lucide-react';
 import React from 'react';
 
 import type { TabIconKey, TabItem } from '../../types/tabs';
@@ -46,14 +29,7 @@ const SortableTab: React.FC<{
   width: number;
   onClose: (id: string) => void;
 }> = ({ tab, isActive, width, onClose }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: tab.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
 
   const style: React.CSSProperties = {
     transition,
@@ -243,7 +219,10 @@ export const Tabs: React.FC<TabsProps> = ({
           >
             <ChevronRight className="h-4 w-4" />
           </button>
-          <div ref={scrollContainerRef} className="no-scrollbar h-full min-w-0 overflow-x-auto">
+          <div
+            ref={scrollContainerRef}
+            className="no-scrollbar h-full min-w-0 overflow-x-auto"
+          >
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -270,7 +249,10 @@ export const Tabs: React.FC<TabsProps> = ({
                 items={tabs.map((tab) => tab.id)}
                 strategy={horizontalListSortingStrategy}
               >
-                <RadixTabs.List data-role="tabs-list" className="flex h-full flex-row flex-nowrap items-center justify-start">
+                <RadixTabs.List
+                  data-role="tabs-list"
+                  className="flex h-full flex-row flex-nowrap items-center justify-start"
+                >
                   {tabs.map((tab, index) => (
                     <React.Fragment key={tab.id}>
                       <SortableTab
@@ -293,8 +275,14 @@ export const Tabs: React.FC<TabsProps> = ({
             </DndContext>
           </div>
         </div>
-        {/* @ts-expect-error React.CSSProperties */}
-        <button type="button" className="hover:bg-header-tab-hover flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md" aria-label="Add tab" style={{ WebkitAppRegion: 'no-drag' }} onClick={onAddTab}>
+        <button
+          type="button"
+          className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md hover:bg-header-tab-hover"
+          aria-label="Add tab"
+          // @ts-expect-error React.CSSProperties
+          style={{ WebkitAppRegion: 'no-drag' }}
+          onClick={onAddTab}
+        >
           <PlusIcon className="h-4 w-4" />
         </button>
       </div>

@@ -60,16 +60,18 @@ export const useTabs = (options?: UseTabsOptions) => {
 
   const openPageInTab = React.useCallback((id: string, page: TabPage) => {
     const defaults = pageDefaults[page];
-    setTabs((current) => current.map((tab) => (
-      tab.id === id
-        ? {
-          ...tab,
-          page,
-          title: defaults.title,
-          iconKey: defaults.iconKey,
-        }
-        : tab
-    )));
+    setTabs((current) =>
+      current.map((tab) =>
+        tab.id === id
+          ? {
+              ...tab,
+              page,
+              title: defaults.title,
+              iconKey: defaults.iconKey,
+            }
+          : tab,
+      ),
+    );
   }, []);
 
   const openPageInActiveTab = React.useCallback(
@@ -77,26 +79,29 @@ export const useTabs = (options?: UseTabsOptions) => {
     [activeTabId, openPageInTab],
   );
 
-  const closeTab = React.useCallback((id: string) => {
-    setTabs((current) => {
-      if (current.length <= 1) {
-        onLastTabClose?.();
-        return current;
-      }
-
-      const closingIndex = current.findIndex((tab) => tab.id === id);
-      const nextTabs = current.filter((tab) => tab.id !== id);
-
-      if (activeTabId === id) {
-        const nextActive = nextTabs[closingIndex] ?? nextTabs[closingIndex - 1] ?? nextTabs[0];
-        if (nextActive) {
-          setActiveTabId(nextActive.id);
+  const closeTab = React.useCallback(
+    (id: string) => {
+      setTabs((current) => {
+        if (current.length <= 1) {
+          onLastTabClose?.();
+          return current;
         }
-      }
 
-      return nextTabs;
-    });
-  }, [activeTabId, onLastTabClose]);
+        const closingIndex = current.findIndex((tab) => tab.id === id);
+        const nextTabs = current.filter((tab) => tab.id !== id);
+
+        if (activeTabId === id) {
+          const nextActive = nextTabs[closingIndex] ?? nextTabs[closingIndex - 1] ?? nextTabs[0];
+          if (nextActive) {
+            setActiveTabId(nextActive.id);
+          }
+        }
+
+        return nextTabs;
+      });
+    },
+    [activeTabId, onLastTabClose],
+  );
 
   const reorderTabs = React.useCallback((nextTabs: TabItem[]) => {
     setTabs(nextTabs);
