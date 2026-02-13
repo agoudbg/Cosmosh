@@ -5,6 +5,7 @@
     "formatNamed": "Hello {name}, profile: {profile}",
     "formatPrintf": "CPU %d%%, status: %s",
     "openSettingsNewTab": "Open Settings In New Tab",
+    "openComponentsPlaygroundNewTab": "Open Components Playground In New Tab",
     "openSshCurrentTab": "Open SSH In Current Tab",
     "pluralSessions": "{count, plural, =0 {No sessions} one {# session} other {# sessions}}",
     "switchLanguage": "Switch Language",
@@ -12,6 +13,24 @@
   },
   "settings": {
     "title": "Settings Page"
+  },
+  "componentsPlayground": {
+    "title": "Components Playground"
+  },
+  "header": {
+    "avatarAlt": "User Avatar",
+    "currentAccountAvatarAlt": "Current Account Avatar",
+    "guestUser": "Guest User",
+    "login": "Login",
+    "guestEmail": "guest@cosmosh.local",
+    "syncSettings": "Sync Settings",
+    "settings": "Settings",
+    "about": "About"
+  },
+  "tabs": {
+    "closeCurrent": "Close Current Tab",
+    "closeRight": "Close Right Tabs",
+    "closeOthers": "Close Other Tabs"
   },
   "ssh": {
     "title": "SSH Page"

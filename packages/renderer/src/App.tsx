@@ -2,6 +2,7 @@ import React from 'react';
 
 import Header from './components/header/Header';
 import { useTabs } from './lib/useTabs';
+import ComponentsField from './pages/ComponentsField';
 import Home from './pages/Home';
 import Settings from './pages/Settings';
 import SSH from './pages/SSH';
@@ -11,7 +12,18 @@ const App: React.FC = () => {
     window.electron?.send('app:close-window', null);
   }, []);
 
-  const { tabs, activeTabId, addTab, updateTab, openPageInTab, closeTab, reorderTabs, setActiveTabId } = useTabs({
+  const {
+    tabs,
+    activeTabId,
+    addTab,
+    updateTab,
+    openPageInTab,
+    closeTab,
+    closeRightTabs,
+    closeOtherTabs,
+    reorderTabs,
+    setActiveTabId,
+  } = useTabs({
     onLastTabClose: handleLastTabClose,
   });
 
@@ -30,7 +42,10 @@ const App: React.FC = () => {
           onActiveTabChange={setActiveTabId}
           onAddTab={() => addTab('home')}
           onCloseTab={closeTab}
+          onCloseRightTabs={closeRightTabs}
+          onCloseOtherTabs={closeOtherTabs}
           onReorderTabs={reorderTabs}
+          onOpenSettingsTab={() => addTab('settings')}
         />
       </div>
       {/* Content */}
@@ -46,12 +61,14 @@ const App: React.FC = () => {
                 activeTabIcon={tab.iconKey}
                 onOpenSSH={() => openPageInTab(tab.id, 'ssh')}
                 onOpenSettings={() => addTab('settings')}
+                onOpenComponentsField={() => addTab('components-field')}
                 onRenameTab={(title) => updateTab(tab.id, { title })}
                 onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
               />
             )}
             {tab.page === 'ssh' && <SSH />}
             {tab.page === 'settings' && <Settings />}
+            {tab.page === 'components-field' && <ComponentsField />}
           </section>
         ))}
       </div>

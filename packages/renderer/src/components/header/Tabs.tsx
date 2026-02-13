@@ -1,4 +1,4 @@
-import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { closestCenter, DndContext, KeyboardSensor, MouseSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import {
   arrayMove,
@@ -13,7 +13,15 @@ import classNames from 'classnames';
 import { ChevronLeft, ChevronRight, FileText, Home, PlusIcon, Server, Settings, Terminal, XIcon } from 'lucide-react';
 import React from 'react';
 
+import { t } from '../../lib/i18n';
 import type { TabIconKey, TabItem } from '../../types/tabs';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '../ui/context-menu';
 
 const iconMap: Record<TabIconKey, React.ReactNode> = {
   home: <Home className="h-4 w-4" />,
@@ -23,13 +31,29 @@ const iconMap: Record<TabIconKey, React.ReactNode> = {
   terminal: <Terminal className="h-4 w-4" />,
 };
 
-const SortableTab: React.FC<{
-  tab: TabItem;
-  isActive: boolean;
-  width: number;
-  onClose: (id: string) => void;
-}> = ({ tab, isActive, width, onClose }) => {
+const SortableTab = React.forwardRef<
+  React.ElementRef<typeof RadixTabs.Trigger>,
+  {
+    tab: TabItem;
+    isActive: boolean;
+    width: number;
+    onClose: (id: string) => void;
+    onContextMenu?: React.MouseEventHandler<HTMLButtonElement>;
+  }
+>(({ tab, isActive, width, onClose, onContextMenu }, forwardedRef) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
+
+  const setRefs = React.useCallback(
+    (node: HTMLButtonElement | null) => {
+      setNodeRef(node);
+      if (typeof forwardedRef === 'function') {
+        forwardedRef(node);
+      } else if (forwardedRef) {
+        forwardedRef.current = node;
+      }
+    },
+    [forwardedRef, setNodeRef],
+  );
 
   const style: React.CSSProperties = {
     transition,
@@ -43,7 +67,7 @@ const SortableTab: React.FC<{
 
   return (
     <RadixTabs.Trigger
-      ref={setNodeRef}
+      ref={setRefs}
       value={tab.id}
       data-role="tab-trigger"
       style={style}
@@ -52,6 +76,7 @@ const SortableTab: React.FC<{
         isActive ? 'bg-header-tab-active' : 'hover:bg-header-tab-hover',
         isDragging ? 'z-10' : '',
       )}
+      onContextMenu={onContextMenu}
       {...attributes}
       {...listeners}
     >
@@ -81,7 +106,8 @@ const SortableTab: React.FC<{
       )}
     </RadixTabs.Trigger>
   );
-};
+});
+SortableTab.displayName = 'SortableTab';
 
 type TabsProps = {
   tabs: TabItem[];
@@ -89,6 +115,8 @@ type TabsProps = {
   onActiveTabChange?: (id: string) => void;
   onAddTab?: () => void;
   onCloseTab?: (id: string) => void;
+  onCloseRightTabs?: (id: string) => void;
+  onCloseOtherTabs?: (id: string) => void;
   onReorderTabs?: (nextTabs: TabItem[]) => void;
 };
 
@@ -98,6 +126,8 @@ export const Tabs: React.FC<TabsProps> = ({
   onActiveTabChange,
   onAddTab,
   onCloseTab,
+  onCloseRightTabs,
+  onCloseOtherTabs,
   onReorderTabs,
 }) => {
   const minTabWidth = 120;
@@ -105,10 +135,11 @@ export const Tabs: React.FC<TabsProps> = ({
   const [tabWidth, setTabWidth] = React.useState<number>(maxTabWidth);
   const [canScrollLeft, setCanScrollLeft] = React.useState<boolean>(false);
   const [canScrollRight, setCanScrollRight] = React.useState<boolean>(false);
+  const [contextTabId, setContextTabId] = React.useState<string | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -179,6 +210,13 @@ export const Tabs: React.FC<TabsProps> = ({
     const offset = direction === 'left' ? -tabWidth : tabWidth;
     el.scrollBy({ left: offset, behavior: 'smooth' });
   };
+
+  const contextTab = React.useMemo(() => tabs.find((tab) => tab.id === contextTabId) ?? null, [contextTabId, tabs]);
+  const contextTabIndex = React.useMemo(
+    () => (contextTab ? tabs.findIndex((tab) => tab.id === contextTab.id) : -1),
+    [contextTab, tabs],
+  );
+  const isLastTabActive = tabs.length > 0 && activeTab === tabs[tabs.length - 1]?.id;
 
   return (
     <RadixTabs.Root
@@ -255,19 +293,50 @@ export const Tabs: React.FC<TabsProps> = ({
                 >
                   {tabs.map((tab, index) => (
                     <React.Fragment key={tab.id}>
-                      <SortableTab
-                        tab={tab}
-                        isActive={activeTab === tab.id}
-                        width={tabWidth}
-                        onClose={onCloseTab ?? (() => {})}
-                      />
-                      <span
-                        aria-hidden
-                        className={classNames(
-                          'bg-divider h-[16px] w-[2px] shrink-0',
-                          activeTab === tab.id || activeTab === tabs[index + 1]?.id ? 'opacity-0' : 'opacity-100',
-                        )}
-                      />
+                      <ContextMenu>
+                        <ContextMenuTrigger asChild>
+                          <SortableTab
+                            tab={tab}
+                            isActive={activeTab === tab.id}
+                            width={tabWidth}
+                            onClose={onCloseTab ?? (() => {})}
+                            onContextMenu={() => setContextTabId(tab.id)}
+                          />
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem
+                            icon={XIcon}
+                            disabled={!contextTab?.closable}
+                            onSelect={() => contextTab && onCloseTab?.(contextTab.id)}
+                          >
+                            {t('tabs.closeCurrent')}
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            icon={ChevronRight}
+                            disabled={contextTabIndex < 0 || contextTabIndex >= tabs.length - 1}
+                            onSelect={() => contextTab && onCloseRightTabs?.(contextTab.id)}
+                          >
+                            {t('tabs.closeRight')}
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            icon={XIcon}
+                            disabled={!contextTab || tabs.length <= 1}
+                            onSelect={() => contextTab && onCloseOtherTabs?.(contextTab.id)}
+                          >
+                            {t('tabs.closeOthers')}
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                      {index < tabs.length - 1 && (
+                        <span
+                          aria-hidden
+                          className={classNames(
+                            'bg-divider h-[16px] w-[2px] shrink-0',
+                            activeTab === tab.id || activeTab === tabs[index + 1]?.id ? 'opacity-0' : 'opacity-100',
+                          )}
+                        />
+                      )}
                     </React.Fragment>
                   ))}
                 </RadixTabs.List>
@@ -275,6 +344,13 @@ export const Tabs: React.FC<TabsProps> = ({
             </DndContext>
           </div>
         </div>
+        <span
+          aria-hidden
+          className={classNames(
+            'bg-divider h-[16px] w-[2px] flex-shrink-0',
+            isLastTabActive ? 'opacity-0' : 'opacity-100',
+          )}
+        />
         <button
           type="button"
           className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md hover:bg-header-tab-hover"

@@ -11,7 +11,7 @@ const base = {
   colors: {
     bg: {
       DEFAULT: '#000000',
-      subtle: '#0f1217',
+      subtle: '#191919d9',
       panel: '#131822',
     },
     header: {
@@ -24,7 +24,13 @@ const base = {
         muted: '#a7b0bd',
       },
     },
-    outline: '##0078d4aa',
+    menu: {
+      control: {
+        DEFAULT: '#191919d9',
+        hover: '#292929cc',
+      },
+    },
+    outline: '#0078d4aa',
     divider: '#333333',
     status: {
       good: '#4ade80',
@@ -57,6 +63,10 @@ const light = {
       DEFAULT: '#0ea5e9',
       hover: '#0284c7',
       glow: 'rgba(14, 165, 233, 0.35)',
+    },
+    menu: {
+      control: '#ffffff',
+      controlHover: '#f1f5f9',
     },
     status: {
       good: '#4ade80',

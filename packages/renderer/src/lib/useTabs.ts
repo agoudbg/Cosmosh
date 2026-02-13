@@ -11,6 +11,7 @@ const pageDefaults: Record<TabPage, { title: string; iconKey: TabIconKey }> = {
   home: { title: 'Home', iconKey: 'home' },
   ssh: { title: 'SSH', iconKey: 'ssh' },
   settings: { title: 'Settings', iconKey: 'settings' },
+  'components-field': { title: 'Components Playground', iconKey: 'file' },
 };
 
 export const useTabs = (options?: UseTabsOptions) => {
@@ -103,6 +104,43 @@ export const useTabs = (options?: UseTabsOptions) => {
     [activeTabId, onLastTabClose],
   );
 
+  const closeRightTabs = React.useCallback(
+    (id: string) => {
+      setTabs((current) => {
+        const index = current.findIndex((tab) => tab.id === id);
+        if (index === -1) {
+          return current;
+        }
+
+        const nextTabs = current.slice(0, index + 1);
+        if (!nextTabs.length) {
+          onLastTabClose?.();
+          return current;
+        }
+
+        const activeStillExists = nextTabs.some((tab) => tab.id === activeTabId);
+        if (!activeStillExists) {
+          setActiveTabId(nextTabs[nextTabs.length - 1].id);
+        }
+
+        return nextTabs;
+      });
+    },
+    [activeTabId, onLastTabClose],
+  );
+
+  const closeOtherTabs = React.useCallback((id: string) => {
+    setTabs((current) => {
+      const target = current.find((tab) => tab.id === id);
+      if (!target) {
+        return current;
+      }
+
+      setActiveTabId(target.id);
+      return [target];
+    });
+  }, []);
+
   const reorderTabs = React.useCallback((nextTabs: TabItem[]) => {
     setTabs(nextTabs);
   }, []);
@@ -118,6 +156,8 @@ export const useTabs = (options?: UseTabsOptions) => {
     openPageInTab,
     openPageInActiveTab,
     closeTab,
+    closeRightTabs,
+    closeOtherTabs,
     reorderTabs,
     setActiveTabId,
   };

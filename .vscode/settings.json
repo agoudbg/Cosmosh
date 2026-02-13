@@ -39,5 +39,15 @@
   "i18n-ally.autoDetection": true,
   "i18n-ally.localesPaths": [
     "packages/i18n/locales",
+  ],
+  "tailwindCSS.experimental.classRegex": [
+    [
+      "classNames\\(([^)]*)\\)",
+      "[\"'`]([^\"'`]*)[\"'`]"
+    ],
+    [
+      "menuStyles\\s*=\\s*\\{([\\s\\S]*?)\\}",
+      "[\"'`]([^\"'`]*)[\"'`]"
+    ]
   ]
 }

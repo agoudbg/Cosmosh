@@ -5,6 +5,7 @@
     "formatNamed": "你好 {name}，当前配置：{profile}",
     "formatPrintf": "CPU %d%%，状态：%s",
     "openSettingsNewTab": "在新标签打开设置",
+    "openComponentsPlaygroundNewTab": "在新标签打开 Components Playground",
     "openSshCurrentTab": "在当前标签打开 SSH",
     "pluralSessions": "{count, plural, =0 {暂无会话} one {# 个会话} other {# 个会话}}",
     "switchLanguage": "切换语言",
@@ -12,6 +13,24 @@
   },
   "settings": {
     "title": "设置页"
+  },
+  "componentsPlayground": {
+    "title": "Components Playground"
+  },
+  "header": {
+    "avatarAlt": "用户头像",
+    "currentAccountAvatarAlt": "当前账号头像",
+    "guestUser": "未登录用户",
+    "login": "登录",
+    "guestEmail": "guest@cosmosh.local",
+    "syncSettings": "同步设置",
+    "settings": "设置",
+    "about": "关于"
+  },
+  "tabs": {
+    "closeCurrent": "关闭当前标签页",
+    "closeRight": "关闭右侧标签页",
+    "closeOthers": "关闭其他标签页"
   },
   "ssh": {
     "title": "SSH 页面"

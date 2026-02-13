@@ -1,4 +1,4 @@
-export type TabPage = 'home' | 'ssh' | 'settings';
+export type TabPage = 'home' | 'ssh' | 'settings' | 'components-field';
 
 export type TabIconKey = 'home' | 'ssh' | 'settings' | 'file' | 'terminal';
 

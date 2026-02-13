@@ -1,11 +1,12 @@
 import React from 'react';
 
-import { getLocale, setLocale, t } from '../lib/i18n';
+import { t } from '../lib/i18n';
 import type { TabIconKey } from '../types/tabs';
 
 type HomeProps = {
   onOpenSSH: () => void;
   onOpenSettings: () => void;
+  onOpenComponentsField: () => void;
   onRenameTab: (title: string) => void;
   onChangeIcon: (iconKey: TabIconKey) => void;
   activeTabTitle: string;
@@ -15,35 +16,17 @@ type HomeProps = {
 const Home: React.FC<HomeProps> = ({
   onOpenSSH,
   onOpenSettings,
+  onOpenComponentsField,
   onRenameTab,
   onChangeIcon,
   activeTabTitle,
   activeTabIcon,
 }) => {
   const [draftTitle, setDraftTitle] = React.useState<string>(activeTabTitle);
-  const [locale, setLocaleState] = React.useState<'en' | 'zh-CN'>(getLocale());
 
   React.useEffect(() => {
     setDraftTitle(activeTabTitle);
   }, [activeTabTitle]);
-
-  const handleToggleLocale = React.useCallback(async () => {
-    const nextLocale = locale === 'en' ? 'zh-CN' : 'en';
-    const syncedLocale = await setLocale(nextLocale);
-    setLocaleState(syncedLocale);
-  }, [locale]);
-
-  // Demonstration samples to validate placeholder and plural support in runtime.
-  const formatSamples = React.useMemo(() => {
-    return [
-      t('home.formatNamed', { name: 'agou', profile: 'prod' }),
-      t('home.formatPrintf', [58, 'ok']),
-      t('home.formatIndexed', ['node-a', 3]),
-      t('home.pluralSessions', { count: 0 }),
-      t('home.pluralSessions', { count: 1 }),
-      t('home.pluralSessions', { count: 3 }),
-    ];
-  }, [locale]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -67,21 +50,10 @@ const Home: React.FC<HomeProps> = ({
         <button
           type="button"
           className="debug-button"
-          onClick={handleToggleLocale}
+          onClick={onOpenComponentsField}
         >
-          {t('home.switchLanguage')}: {locale}
+          {t('home.openComponentsPlaygroundNewTab')}
         </button>
-      </div>
-
-      <div className="debug-panel">
-        <div className="mb-2 text-sm font-semibold">
-          {t('home.currentLanguage')}: {locale}
-        </div>
-        <div className="text-muted flex flex-col gap-1 text-sm">
-          {formatSamples.map((sample, index) => (
-            <div key={`${sample}-${index}`}>{sample}</div>
-          ))}
-        </div>
       </div>
 
       <div className="debug-panel">

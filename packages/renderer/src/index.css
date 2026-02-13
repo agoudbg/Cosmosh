@@ -11,13 +11,15 @@
   --radius-md: 10px;
   --radius-lg: 16px;
   --color-bg: #000000;
-  --color-bg-subtle: #0f1217;
+  --color-bg-subtle: #191919d9;
   --color-bg-panel: #131822;
   --color-header-tab-hover: #222222;
   --color-header-tab-active: #2F2F2F;
   --color-header-text: #ffffff;
   --color-header-text-muted: #a7b0bd;
-  --color-outline: ##0078d4aa;
+  --color-menu-control: #191919d9;
+  --color-menu-control-hover: #292929cc;
+  --color-outline: #0078d4aa;
   --color-divider: #333333;
   --color-status-good: #4ade80;
   --color-status-warn: #facc15;
@@ -37,6 +39,8 @@
   --color-accent: #0ea5e9;
   --color-accent-hover: #0284c7;
   --color-accent-glow: rgba(14, 165, 233, 0.35);
+  --color-menu-control: #ffffff;
+  --color-menu-controlHover: #f1f5f9;
   --color-status-good: #4ade80;
   --color-status-warn: #facc15;
   --color-status-bad: #f87171;
@@ -57,6 +61,8 @@
     --color-accent: #0ea5e9;
     --color-accent-hover: #0284c7;
     --color-accent-glow: rgba(14, 165, 233, 0.35);
+    --color-menu-control: #ffffff;
+    --color-menu-controlHover: #f1f5f9;
     --color-status-good: #4ade80;
     --color-status-warn: #facc15;
     --color-status-bad: #f87171;
