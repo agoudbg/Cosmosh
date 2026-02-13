@@ -42,7 +42,7 @@ const Header: React.FC<{
 
   let padding = '';
   if (platform === 'darwin') {
-    padding = 'ml-[100px] mr-0';
+    padding = 'ml-[75px] mr-0';
   } else if (platform === 'win32') {
     padding = 'ml-0 mr-[140px]';
   }
