@@ -64,16 +64,14 @@ const ComponentsField: React.FC = () => {
     setLocaleState(syncedLocale);
   }, [locale]);
 
-  const formatSamples = React.useMemo(() => {
-    return [
-      t('home.formatNamed', { name: 'agou', profile: 'prod' }),
-      t('home.formatPrintf', [58, 'ok']),
-      t('home.formatIndexed', ['node-a', 3]),
-      t('home.pluralSessions', { count: 0 }),
-      t('home.pluralSessions', { count: 1 }),
-      t('home.pluralSessions', { count: 3 }),
-    ];
-  }, [locale]);
+  const formatSamples = [
+    t('home.formatNamed', { name: 'agou', profile: 'prod' }),
+    t('home.formatPrintf', [58, 'ok']),
+    t('home.formatIndexed', ['node-a', 3]),
+    t('home.pluralSessions', { count: 0 }),
+    t('home.pluralSessions', { count: 1 }),
+    t('home.pluralSessions', { count: 3 }),
+  ];
 
   return (
     <div className="flex flex-col gap-4">

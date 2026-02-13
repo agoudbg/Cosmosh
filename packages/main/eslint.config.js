@@ -55,7 +55,7 @@ module.exports = tseslint.config(
       'no-multi-spaces': 'error',
       'space-in-parens': ['error', 'never'],
       'func-call-spacing': 'off',
-      '@typescript-eslint/func-call-spacing': ['error', 'never'],
+      '@/func-call-spacing': ['error', 'never'],
       'function-call-argument-newline': 'off',
       'function-paren-newline': 'off',
       'object-curly-newline': 'off',

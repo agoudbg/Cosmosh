@@ -1,4 +1,13 @@
-import { closestCenter, DndContext, DragOverlay, KeyboardSensor, MeasuringStrategy, MouseSensor, useSensor, useSensors } from '@dnd-kit/core';
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MeasuringStrategy,
+  MouseSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import {
   arrayMove,
@@ -35,15 +44,17 @@ const iconMap: Record<TabIconKey, React.ReactNode> = {
 const DragOverlayTab: React.FC<{ tab: TabItem; width: number }> = ({ tab, width }) => {
   return (
     <div
-      className="inline-flex h-[34px] items-center justify-between gap-1.5 overflow-hidden rounded-md bg-header-tab-active px-2 box-border"
+      className="box-border inline-flex h-[34px] items-center justify-between gap-1.5 overflow-hidden rounded-md bg-header-tab-active px-2"
       style={{ width, minWidth: width, maxWidth: width }}
     >
       <span aria-hidden>{iconMap[tab.iconKey]}</span>
-      <span className="flex-1 overflow-hidden text-start text-sm text-ellipsis whitespace-nowrap">{tab.title}</span>
+      <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-start text-sm">{tab.title}</span>
       {tab.closable && <XIcon className="h-4 w-4" />}
     </div>
   );
 };
+
+type CloseTabHandler = (id: string) => void;
 
 const SortableTab = React.forwardRef<
   HTMLDivElement,
@@ -51,7 +62,7 @@ const SortableTab = React.forwardRef<
     tab: TabItem;
     isActive: boolean;
     width: number;
-    onClose: (id: string) => void;
+    onClose: CloseTabHandler;
     onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
   }
 >(({ tab, isActive, width, onClose, onContextMenu }, forwardedRef) => {
@@ -88,10 +99,10 @@ const SortableTab = React.forwardRef<
     <div
       ref={setRefs}
       style={style}
-      onContextMenu={onContextMenu}
       className={classNames('flex h-full', isDragging ? 'relative z-20' : '')}
       {...attributes}
       {...listeners}
+      onContextMenu={onContextMenu}
     >
       <RadixTabs.Trigger
         value={tab.id}
@@ -105,7 +116,7 @@ const SortableTab = React.forwardRef<
         )}
       >
         <span aria-hidden>{iconMap[tab.iconKey]}</span>
-        <span className="flex-1 overflow-hidden text-start text-sm text-ellipsis whitespace-nowrap">{tab.title}</span>
+        <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-start text-sm">{tab.title}</span>
         {tab.closable && (
           <button
             type="button"
@@ -241,7 +252,10 @@ export const Tabs: React.FC<TabsProps> = ({
 
   const orderedTabs = dragPreviewTabs ?? tabs;
 
-  const contextTab = React.useMemo(() => orderedTabs.find((tab) => tab.id === contextTabId) ?? null, [contextTabId, orderedTabs]);
+  const contextTab = React.useMemo(
+    () => orderedTabs.find((tab) => tab.id === contextTabId) ?? null,
+    [contextTabId, orderedTabs],
+  );
   const contextTabIndex = React.useMemo(
     () => (contextTab ? orderedTabs.findIndex((tab) => tab.id === contextTab.id) : -1),
     [contextTab, orderedTabs],
@@ -405,7 +419,9 @@ export const Tabs: React.FC<TabsProps> = ({
                           aria-hidden
                           className={classNames(
                             'bg-divider h-[16px] w-[2px] shrink-0',
-                            activeTab === tab.id || activeTab === orderedTabs[index + 1]?.id ? 'opacity-0' : 'opacity-100',
+                            activeTab === tab.id || activeTab === orderedTabs[index + 1]?.id
+                              ? 'opacity-0'
+                              : 'opacity-100',
                           )}
                         />
                       )}
@@ -431,7 +447,10 @@ export const Tabs: React.FC<TabsProps> = ({
         </div>
         <span
           aria-hidden
-          className={classNames('bg-divider h-[16px] w-[2px] flex-shrink-0', isLastTabActive ? 'opacity-0' : 'opacity-100')}
+          className={classNames(
+            'bg-divider h-[16px] w-[2px] flex-shrink-0',
+            isLastTabActive ? 'opacity-0' : 'opacity-100',
+          )}
         />
         <button
           type="button"
