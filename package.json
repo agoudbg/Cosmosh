@@ -10,8 +10,10 @@
     "dev:renderer": "pnpm --filter @cosmosh/renderer dev",
     "dev:backend": "pnpm --filter @cosmosh/backend dev",
     "build": "pnpm -r build",
+    "prepare": "git config core.hooksPath .githooks",
     "lint": "pnpm -r lint",
     "lint:fix": "pnpm -r --if-present lint:fix",
+    "precommit:lint": "pnpm --filter @cosmosh/backend lint && pnpm --filter @cosmosh/main lint && pnpm --filter @cosmosh/renderer lint && pnpm --filter @cosmosh/i18n check && pnpm --filter @cosmosh/api-contract typecheck",
     "format": "pnpm -r format",
     "theme:sync": "pnpm --filter @cosmosh/renderer theme:sync"
   },

@@ -129,8 +129,17 @@ pnpm --filter @cosmosh/main build
 # Run ESLint
 pnpm lint
 
+# Auto-fix lint issues where supported
+pnpm lint:fix
+
 # Format code with Prettier
 pnpm format
+```
+
+After `pnpm install`, Git pre-commit hook is configured automatically and runs:
+
+```bash
+pnpm precommit:lint
 ```
 
 ## TypeScript
