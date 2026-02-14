@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import type { ApiErrorResponse } from './index';
 
 type MetaInput = {
@@ -8,10 +6,20 @@ type MetaInput = {
   timestamp?: string;
 };
 
+const createRequestId = () => {
+  const runtimeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+
+  if (typeof runtimeCrypto?.randomUUID === 'function') {
+    return runtimeCrypto.randomUUID();
+  }
+
+  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+};
+
 const createMeta = ({ message, requestId, timestamp }: MetaInput) => {
   return {
     message,
-    requestId: requestId ?? randomUUID(),
+    requestId: requestId ?? createRequestId(),
     timestamp: timestamp ?? new Date().toISOString(),
   };
 };
