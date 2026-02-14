@@ -1,0 +1,29 @@
+{
+  "name": "@cosmosh/api-contract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAPI contract and generated TypeScript types for Cosmosh APIs",
+  "scripts": {
+    "generate": "pnpm generate:types && pnpm generate:protocol",
+    "generate:types": "openapi-typescript ./openapi/cosmosh.openapi.yaml -o ./src/generated.ts",
+    "generate:protocol": "node ./scripts/generate-protocol.mjs",
+    "build": "pnpm generate && tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "pnpm generate && pnpm typecheck"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.10.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.7.2"
+  }
+}

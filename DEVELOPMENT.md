@@ -61,6 +61,56 @@ pnpm dev:backend
    - Renderer: `http://localhost:5173`
    - Backend API: `http://localhost:3000`
 
+## API Contract and Usage
+
+### Single Source of Truth (SSOT)
+
+- OpenAPI source: `packages/api-contract/openapi/cosmosh.openapi.yaml`
+- Generated types: `packages/api-contract/src/generated.ts`
+- Generated protocol constants: `packages/api-contract/src/protocol.ts`
+- Shared response templates: `packages/api-contract/src/envelope.ts`
+
+Detailed package-level guidance: `packages/api-contract/README.md`
+
+Generate contract artifacts after API spec changes:
+
+```bash
+pnpm --filter @cosmosh/api-contract generate
+```
+
+### Frontend API Layer
+
+Renderer no longer directly depends on `window.electron` for business calls:
+
+- API client: `packages/renderer/src/lib/api/client.ts`
+- Transport selection: `packages/renderer/src/lib/api/transport.ts`
+- Compatibility wrapper: `packages/renderer/src/lib/backend.ts`
+
+Current transport behavior:
+
+- **Electron mode**: uses preload bridge (`backend:test-ping` IPC)
+- **Browser mode**: uses a fallback placeholder prepared for future account-auth flow
+   - reads future token key: `localStorage['cosmosh.accessToken']`
+   - reads future API base URL: `VITE_COSMOSH_API_BASE_URL`
+   - returns explicit error when auth flow is not yet implemented
+
+### End-to-end call chain (detailed)
+
+1. `Home.tsx` calls `testBackendPing()`
+2. `lib/backend.ts` forwards to typed `backendClient`
+3. `lib/api/client.ts` delegates to selected transport
+4. `lib/api/transport.ts` chooses runtime path:
+   - Electron: `window.electron.backendTestPing()` via preload IPC
+   - Browser: prepared HTTP fallback with future bearer token contract
+5. Main process receives `backend:test-ping`, adds internal token header, calls backend endpoint
+6. Backend validates internal token and returns OpenAPI-conformant envelope
+
+### Why this structure
+
+- UI pages stay independent from IPC and runtime checks
+- Runtime swap (Electron/Browser) is isolated in one transport layer
+- Future account-auth implementation can be added in browser transport without touching page code
+
 ## Building for Production
 
 ```bash

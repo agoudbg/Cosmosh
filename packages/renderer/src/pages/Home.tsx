@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { getBackendRuntimeTarget, testBackendPing } from '../lib/backend';
 import { t } from '../lib/i18n';
 import type { TabIconKey } from '../types/tabs';
 
@@ -23,10 +24,24 @@ const Home: React.FC<HomeProps> = ({
   activeTabIcon,
 }) => {
   const [draftTitle, setDraftTitle] = React.useState<string>(activeTabTitle);
+  const [backendPingResult, setBackendPingResult] = React.useState<string>('Not tested');
+  const backendRuntime = React.useMemo(() => getBackendRuntimeTarget(), []);
 
   React.useEffect(() => {
     setDraftTitle(activeTabTitle);
   }, [activeTabTitle]);
+
+  const handleBackendPing = async () => {
+    setBackendPingResult('Testing...');
+
+    try {
+      const result = await testBackendPing();
+      setBackendPingResult(`OK • ${result.code} • ${result.data.capabilities.join(', ')}`);
+    } catch (error) {
+      const nextMessage = error instanceof Error ? error.message : 'Unknown error';
+      setBackendPingResult(`Failed • ${nextMessage}`);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -54,6 +69,17 @@ const Home: React.FC<HomeProps> = ({
         >
           {t('home.openComponentsPlaygroundNewTab')}
         </button>
+        <button
+          type="button"
+          className="debug-button"
+          onClick={handleBackendPing}
+        >
+          Test Backend API
+        </button>
+      </div>
+
+      <div className="text-muted text-sm">
+        Backend ({backendRuntime}): {backendPingResult}
       </div>
 
       <div className="debug-panel">

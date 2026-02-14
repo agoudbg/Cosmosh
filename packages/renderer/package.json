@@ -5,9 +5,9 @@
   "type": "module",
   "description": "Cosmosh Renderer Process (Vite + React)",
   "scripts": {
-    "predev": "pnpm --filter @cosmosh/i18n build && pnpm theme:sync",
+    "predev": "pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && pnpm theme:sync",
     "dev": "vite",
-    "prebuild": "pnpm --filter @cosmosh/i18n build && pnpm theme:sync",
+    "prebuild": "pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && pnpm theme:sync",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext .ts,.tsx",
@@ -15,6 +15,7 @@
     "theme:sync": "node ./scripts/sync-theme.cjs"
   },
   "dependencies": {
+    "@cosmosh/api-contract": "workspace:*",
     "@cosmosh/i18n": "workspace:*",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",

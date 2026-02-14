@@ -22,5 +22,8 @@ contextBridge.exposeInMainWorld('electron', {
   setLocale: (locale: string) => {
     return ipcRenderer.invoke('i18n:set-locale', locale);
   },
+  backendTestPing: () => {
+    return ipcRenderer.invoke('backend:test-ping');
+  },
   platform: process.platform,
 });

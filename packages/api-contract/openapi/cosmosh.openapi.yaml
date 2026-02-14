@@ -1,0 +1,147 @@
+openapi: 3.0.3
+info:
+  title: Cosmosh Local API
+  version: 0.1.0
+  description: |
+    Internal local API used by Cosmosh. In Electron runtime, requests must be proxied by main process.
+servers:
+  - url: http://127.0.0.1:{port}
+    variables:
+      port:
+        default: "3000"
+security:
+  - CosmoshInternalToken: []
+paths:
+  /api/health:
+    get:
+      tags:
+        - system
+      summary: Backend liveness check.
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Backend service is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /api/v1/test/ping:
+    get:
+      tags:
+        - test
+      summary: Connectivity smoke test for renderer -> main -> backend chain.
+      operationId: testPing
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      responses:
+        "200":
+          description: Successful ping response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestPingSuccess"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+components:
+  securitySchemes:
+    CosmoshInternalToken:
+      type: apiKey
+      in: header
+      name: x-cosmosh-internal-token
+  parameters:
+    LocaleHeader:
+      name: x-cosmosh-locale
+      in: header
+      required: false
+      schema:
+        type: string
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: ["ok"]
+        timestamp:
+          type: string
+          format: date-time
+    ApiMeta:
+      type: object
+      required:
+        - code
+        - message
+        - requestId
+        - timestamp
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    ApiError:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["AUTH_INVALID_TOKEN"]
+            success:
+              type: boolean
+              enum: [false]
+    TestPingData:
+      type: object
+      required:
+        - service
+        - mode
+        - authenticated
+        - capabilities
+      properties:
+        service:
+          type: string
+          enum: ["cosmosh-backend"]
+        mode:
+          type: string
+          enum: ["electron-main"]
+        authenticated:
+          type: boolean
+          enum: [true]
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum: ["ssh", "sftp"]
+          minItems: 2
+          maxItems: 2
+    TestPingSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["TEST_PING_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/TestPingData"
