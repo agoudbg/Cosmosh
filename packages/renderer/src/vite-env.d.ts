@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+// / <reference types="vite/client" />
 
 import type { ApiErrorResponse, ApiTestPingResponse } from '@cosmosh/api-contract';
 
