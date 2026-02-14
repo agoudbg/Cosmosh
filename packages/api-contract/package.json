@@ -9,7 +9,8 @@
     "generate:protocol": "node ./scripts/generate-protocol.mjs",
     "build": "pnpm generate && tsup",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "pnpm generate && pnpm typecheck"
+    "lint": "pnpm generate && pnpm typecheck",
+    "lint:fix": "pnpm lint"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

@@ -12,6 +12,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\""
   },
   "dependencies": {

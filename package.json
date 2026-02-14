@@ -11,6 +11,7 @@
     "dev:backend": "pnpm --filter @cosmosh/backend dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r --if-present lint:fix",
     "format": "pnpm -r format",
     "theme:sync": "pnpm --filter @cosmosh/renderer theme:sync"
   },

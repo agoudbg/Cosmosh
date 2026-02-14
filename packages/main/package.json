@@ -15,6 +15,7 @@
     "prebuild": "pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/renderer build",
     "build": "tsc && electron-builder",
     "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\""
   },
   "dependencies": {

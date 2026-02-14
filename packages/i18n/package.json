@@ -8,7 +8,8 @@
     "check": "node ./scripts/check-locales.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "lint": "pnpm check && pnpm typecheck"
+    "lint": "pnpm check && pnpm typecheck",
+    "lint:fix": "pnpm lint"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
