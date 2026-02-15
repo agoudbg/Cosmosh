@@ -99,6 +99,8 @@ const SortableTab = React.forwardRef<
     <div
       ref={setRefs}
       style={style}
+      data-role="sortable-tab"
+      data-tab-id={tab.id}
       className={classNames('flex h-full', isDragging ? 'relative z-20' : '')}
       {...attributes}
       {...listeners}
@@ -168,6 +170,7 @@ export const Tabs: React.FC<TabsProps> = ({
 }) => {
   const minTabWidth = 120;
   const maxTabWidth = 180;
+  const topHitAreaHeight = 8;
   const [tabWidth, setTabWidth] = React.useState<number>(maxTabWidth);
   const [canScrollLeft, setCanScrollLeft] = React.useState<boolean>(false);
   const [canScrollRight, setCanScrollRight] = React.useState<boolean>(false);
@@ -252,6 +255,62 @@ export const Tabs: React.FC<TabsProps> = ({
 
   const orderedTabs = dragPreviewTabs ?? tabs;
 
+  const handleTopHitAreaMouseDown = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const scrollContainer = scrollContainerRef.current;
+      if (!scrollContainer) {
+        return;
+      }
+
+      const tabElements = Array.from(scrollContainer.querySelectorAll<HTMLElement>('[data-role="sortable-tab"]'));
+      if (!tabElements.length) {
+        return;
+      }
+
+      const pointerX = event.clientX;
+      let targetTabElement = tabElements.find((el) => {
+        const rect = el.getBoundingClientRect();
+        return pointerX >= rect.left && pointerX <= rect.right;
+      });
+
+      if (!targetTabElement) {
+        targetTabElement = tabElements.reduce((closest, current) => {
+          const closestRect = closest.getBoundingClientRect();
+          const currentRect = current.getBoundingClientRect();
+          const closestDistance = Math.abs(pointerX - (closestRect.left + closestRect.width / 2));
+          const currentDistance = Math.abs(pointerX - (currentRect.left + currentRect.width / 2));
+          return currentDistance < closestDistance ? current : closest;
+        });
+      }
+
+      const targetTabId = targetTabElement.dataset.tabId;
+      if (!targetTabId) {
+        return;
+      }
+
+      setActiveAndNotify(targetTabId);
+
+      const rect = targetTabElement.getBoundingClientRect();
+      const forwardedEvent = new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+        button: event.button,
+        buttons: event.buttons,
+        clientX: Math.max(rect.left + 1, Math.min(pointerX, rect.right - 1)),
+        clientY: rect.top + rect.height / 2,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+      });
+
+      targetTabElement.dispatchEvent(forwardedEvent);
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [setActiveAndNotify],
+  );
+
   const contextTab = React.useMemo(
     () => orderedTabs.find((tab) => tab.id === contextTabId) ?? null,
     [contextTabId, orderedTabs],
@@ -274,175 +333,188 @@ export const Tabs: React.FC<TabsProps> = ({
       onValueChange={setActiveAndNotify}
     >
       <div className="flex w-full min-w-0 items-center">
-        <div className="relative h-[34px] min-w-0 flex-shrink flex-grow-0 overflow-hidden rounded-md">
-          <button
-            type="button"
-            aria-label="Scroll tabs left"
-            aria-hidden={!canScrollLeft}
-            className={classNames(
-              'hover:bg-header-tab-hover absolute left-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out',
-              { 'opacity-0 pointer-events-none': !canScrollLeft, 'opacity-100': canScrollLeft },
-            )}
-            // @ts-expect-error React.CSSProperties
-            style={{ WebkitAppRegion: 'no-drag' }}
-            disabled={!canScrollLeft}
-            onClick={() => scrollByOffset('left')}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            aria-label="Scroll tabs right"
-            aria-hidden={!canScrollRight}
-            className={classNames(
-              'hover:bg-header-tab-hover absolute right-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out',
-              { 'opacity-0 pointer-events-none': !canScrollRight, 'opacity-100': canScrollRight },
-            )}
-            // @ts-expect-error React.CSSProperties
-            style={{ WebkitAppRegion: 'no-drag' }}
-            disabled={!canScrollRight}
-            onClick={() => scrollByOffset('right')}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+        <div className="relative h-[34px] min-w-0 flex-shrink flex-grow-0 overflow-visible">
           <div
-            ref={scrollContainerRef}
-            className="no-scrollbar h-full min-w-0 overflow-x-auto"
-          >
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-              modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
-              onDragStart={({ active }) => {
-                setActiveDragTabId(String(active.id));
-                setDragPreviewTabs(tabs);
-                dragPreviewTabsRef.current = tabs;
-              }}
-              onDragOver={({ active, over }) => {
-                if (!over || active.id === over.id) {
-                  return;
-                }
-
-                setDragPreviewTabs((current) => {
-                  const base = current ?? tabs;
-                  const oldIndex = base.findIndex((tab) => tab.id === active.id);
-                  const newIndex = base.findIndex((tab) => tab.id === over.id);
-                  if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
-                    return current;
-                  }
-
-                  const next = arrayMove(base, oldIndex, newIndex);
-                  dragPreviewTabsRef.current = next;
-                  return next;
-                });
-              }}
-              onDragCancel={() => {
-                setActiveDragTabId(null);
-                setDragPreviewTabs(null);
-                dragPreviewTabsRef.current = null;
-              }}
-              onDragEnd={({ active, over }) => {
-                setActiveDragTabId(null);
-                let finalTabs = dragPreviewTabsRef.current ?? dragPreviewTabs ?? tabs;
-                setDragPreviewTabs(null);
-                dragPreviewTabsRef.current = null;
-
-                if (!onReorderTabs) {
-                  return;
-                }
-
-                const hasPreviewChanged = finalTabs.some((tab, index) => tab.id !== tabs[index]?.id);
-                if (!hasPreviewChanged && over && active.id !== over.id) {
-                  const oldIndex = tabs.findIndex((tab) => tab.id === active.id);
-                  const newIndex = tabs.findIndex((tab) => tab.id === over.id);
-                  if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-                    finalTabs = arrayMove(tabs, oldIndex, newIndex);
-                  }
-                }
-
-                const hasOrderChanged = finalTabs.some((tab, index) => tab.id !== tabs[index]?.id);
-                if (!hasOrderChanged) {
-                  return;
-                }
-
-                onReorderTabs(finalTabs);
-              }}
+            aria-hidden
+            className="absolute inset-x-0 z-20"
+            // @ts-expect-error React.CSSProperties
+            style={{
+              top: -topHitAreaHeight,
+              height: topHitAreaHeight,
+              WebkitAppRegion: 'no-drag',
+            }}
+            onMouseDown={handleTopHitAreaMouseDown}
+          />
+          <div className="relative h-full overflow-hidden rounded-md">
+            <button
+              type="button"
+              aria-label="Scroll tabs left"
+              aria-hidden={!canScrollLeft}
+              className={classNames(
+                'hover:bg-header-tab-hover absolute left-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out',
+                { 'opacity-0 pointer-events-none': !canScrollLeft, 'opacity-100': canScrollLeft },
+              )}
+              // @ts-expect-error React.CSSProperties
+              style={{ WebkitAppRegion: 'no-drag' }}
+              disabled={!canScrollLeft}
+              onClick={() => scrollByOffset('left')}
             >
-              <SortableContext
-                items={orderedTabs.map((tab) => tab.id)}
-                strategy={horizontalListSortingStrategy}
-              >
-                <RadixTabs.List
-                  data-role="tabs-list"
-                  className="flex h-full flex-row flex-nowrap items-center justify-start"
-                >
-                  {orderedTabs.map((tab, index) => (
-                    <React.Fragment key={tab.id}>
-                      <ContextMenu>
-                        <ContextMenuTrigger asChild>
-                          <SortableTab
-                            tab={tab}
-                            isActive={activeTab === tab.id}
-                            width={tabWidth}
-                            onClose={onCloseTab ?? (() => {})}
-                            onContextMenu={() => setContextTabId(tab.id)}
-                          />
-                        </ContextMenuTrigger>
-                        <ContextMenuContent>
-                          <ContextMenuItem
-                            icon={XIcon}
-                            disabled={!contextTab?.closable}
-                            onSelect={() => contextTab && onCloseTab?.(contextTab.id)}
-                          >
-                            {t('tabs.closeCurrent')}
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            icon={ChevronRight}
-                            disabled={contextTabIndex < 0 || contextTabIndex >= orderedTabs.length - 1}
-                            onSelect={() => contextTab && onCloseRightTabs?.(contextTab.id)}
-                          >
-                            {t('tabs.closeRight')}
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            icon={XIcon}
-                            disabled={!contextTab || orderedTabs.length <= 1}
-                            onSelect={() => contextTab && onCloseOtherTabs?.(contextTab.id)}
-                          >
-                            {t('tabs.closeOthers')}
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                      {index < orderedTabs.length - 1 && (
-                        <span
-                          aria-hidden
-                          className={classNames(
-                            'bg-divider h-[16px] w-[2px] shrink-0',
-                            activeTab === tab.id || activeTab === orderedTabs[index + 1]?.id
-                              ? 'opacity-0'
-                              : 'opacity-100',
-                          )}
-                        />
-                      )}
-                    </React.Fragment>
-                  ))}
-                </RadixTabs.List>
-              </SortableContext>
-              <DragOverlay
-                dropAnimation={{
-                  duration: 140,
-                  easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Scroll tabs right"
+              aria-hidden={!canScrollRight}
+              className={classNames(
+                'hover:bg-header-tab-hover absolute right-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out',
+                { 'opacity-0 pointer-events-none': !canScrollRight, 'opacity-100': canScrollRight },
+              )}
+              // @ts-expect-error React.CSSProperties
+              style={{ WebkitAppRegion: 'no-drag' }}
+              disabled={!canScrollRight}
+              onClick={() => scrollByOffset('right')}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <div
+              ref={scrollContainerRef}
+              className="no-scrollbar h-full min-w-0 overflow-x-auto"
+            >
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+                modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+                onDragStart={({ active }) => {
+                  setActiveDragTabId(String(active.id));
+                  setDragPreviewTabs(tabs);
+                  dragPreviewTabsRef.current = tabs;
+                }}
+                onDragOver={({ active, over }) => {
+                  if (!over || active.id === over.id) {
+                    return;
+                  }
+
+                  setDragPreviewTabs((current) => {
+                    const base = current ?? tabs;
+                    const oldIndex = base.findIndex((tab) => tab.id === active.id);
+                    const newIndex = base.findIndex((tab) => tab.id === over.id);
+                    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+                      return current;
+                    }
+
+                    const next = arrayMove(base, oldIndex, newIndex);
+                    dragPreviewTabsRef.current = next;
+                    return next;
+                  });
+                }}
+                onDragCancel={() => {
+                  setActiveDragTabId(null);
+                  setDragPreviewTabs(null);
+                  dragPreviewTabsRef.current = null;
+                }}
+                onDragEnd={({ active, over }) => {
+                  setActiveDragTabId(null);
+                  let finalTabs = dragPreviewTabsRef.current ?? dragPreviewTabs ?? tabs;
+                  setDragPreviewTabs(null);
+                  dragPreviewTabsRef.current = null;
+
+                  if (!onReorderTabs) {
+                    return;
+                  }
+
+                  const hasPreviewChanged = finalTabs.some((tab, index) => tab.id !== tabs[index]?.id);
+                  if (!hasPreviewChanged && over && active.id !== over.id) {
+                    const oldIndex = tabs.findIndex((tab) => tab.id === active.id);
+                    const newIndex = tabs.findIndex((tab) => tab.id === over.id);
+                    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+                      finalTabs = arrayMove(tabs, oldIndex, newIndex);
+                    }
+                  }
+
+                  const hasOrderChanged = finalTabs.some((tab, index) => tab.id !== tabs[index]?.id);
+                  if (!hasOrderChanged) {
+                    return;
+                  }
+
+                  onReorderTabs(finalTabs);
                 }}
               >
-                {activeDragTab ? (
-                  <DragOverlayTab
-                    tab={activeDragTab}
-                    width={tabWidth}
-                  />
-                ) : null}
-              </DragOverlay>
-            </DndContext>
+                <SortableContext
+                  items={orderedTabs.map((tab) => tab.id)}
+                  strategy={horizontalListSortingStrategy}
+                >
+                  <RadixTabs.List
+                    data-role="tabs-list"
+                    className="flex h-full flex-row flex-nowrap items-center justify-start"
+                  >
+                    {orderedTabs.map((tab, index) => (
+                      <React.Fragment key={tab.id}>
+                        <ContextMenu>
+                          <ContextMenuTrigger asChild>
+                            <SortableTab
+                              tab={tab}
+                              isActive={activeTab === tab.id}
+                              width={tabWidth}
+                              onClose={onCloseTab ?? (() => {})}
+                              onContextMenu={() => setContextTabId(tab.id)}
+                            />
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem
+                              icon={XIcon}
+                              disabled={!contextTab?.closable}
+                              onSelect={() => contextTab && onCloseTab?.(contextTab.id)}
+                            >
+                              {t('tabs.closeCurrent')}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              icon={ChevronRight}
+                              disabled={contextTabIndex < 0 || contextTabIndex >= orderedTabs.length - 1}
+                              onSelect={() => contextTab && onCloseRightTabs?.(contextTab.id)}
+                            >
+                              {t('tabs.closeRight')}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              icon={XIcon}
+                              disabled={!contextTab || orderedTabs.length <= 1}
+                              onSelect={() => contextTab && onCloseOtherTabs?.(contextTab.id)}
+                            >
+                              {t('tabs.closeOthers')}
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                        {index < orderedTabs.length - 1 && (
+                          <span
+                            aria-hidden
+                            className={classNames(
+                              'bg-divider h-[16px] w-[2px] shrink-0',
+                              activeTab === tab.id || activeTab === orderedTabs[index + 1]?.id
+                                ? 'opacity-0'
+                                : 'opacity-100',
+                            )}
+                          />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </RadixTabs.List>
+                </SortableContext>
+                <DragOverlay
+                  dropAnimation={{
+                    duration: 140,
+                    easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                  }}
+                >
+                  {activeDragTab ? (
+                    <DragOverlayTab
+                      tab={activeDragTab}
+                      width={tabWidth}
+                    />
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
+            </div>
           </div>
         </div>
         <span
