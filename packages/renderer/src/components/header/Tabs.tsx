@@ -337,10 +337,10 @@ export const Tabs: React.FC<TabsProps> = ({
           <div
             aria-hidden
             className="absolute inset-x-0 z-20"
-            // @ts-expect-error React.CSSProperties
             style={{
               top: -topHitAreaHeight,
               height: topHitAreaHeight,
+              // @ts-expect-error React.CSSProperties
               WebkitAppRegion: 'no-drag',
             }}
             onMouseDown={handleTopHitAreaMouseDown}
