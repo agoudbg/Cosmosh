@@ -1,6 +1,18 @@
 // / <reference types="vite/client" />
 
-import type { ApiErrorResponse, ApiTestPingResponse } from '@cosmosh/api-contract';
+import type {
+  ApiErrorResponse,
+  ApiSshCreateFolderRequest,
+  ApiSshCreateFolderResponse,
+  ApiSshCreateServerRequest,
+  ApiSshCreateServerResponse,
+  ApiSshCreateTagRequest,
+  ApiSshCreateTagResponse,
+  ApiSshListFoldersResponse,
+  ApiSshListServersResponse,
+  ApiSshListTagsResponse,
+  ApiTestPingResponse,
+} from '@cosmosh/api-contract';
 
 declare global {
   interface Window {
@@ -12,6 +24,16 @@ declare global {
       getLocale: () => Promise<string>;
       setLocale: (locale: string) => Promise<string>;
       backendTestPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
+      backendSshListServers: () => Promise<ApiSshListServersResponse | ApiErrorResponse>;
+      backendSshCreateServer: (
+        payload: ApiSshCreateServerRequest,
+      ) => Promise<ApiSshCreateServerResponse | ApiErrorResponse>;
+      backendSshListFolders: () => Promise<ApiSshListFoldersResponse | ApiErrorResponse>;
+      backendSshCreateFolder: (
+        payload: ApiSshCreateFolderRequest,
+      ) => Promise<ApiSshCreateFolderResponse | ApiErrorResponse>;
+      backendSshListTags: () => Promise<ApiSshListTagsResponse | ApiErrorResponse>;
+      backendSshCreateTag: (payload: ApiSshCreateTagRequest) => Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
       platform: NodeJS.Platform;
     };
   }

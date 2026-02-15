@@ -1,12 +1,39 @@
-import type { ApiErrorResponse, ApiTestPingResponse } from '@cosmosh/api-contract';
+import type {
+  ApiErrorResponse,
+  ApiSshCreateFolderRequest,
+  ApiSshCreateFolderResponse,
+  ApiSshCreateServerRequest,
+  ApiSshCreateServerResponse,
+  ApiSshCreateTagRequest,
+  ApiSshCreateTagResponse,
+  ApiSshListFoldersResponse,
+  ApiSshListServersResponse,
+  ApiSshListTagsResponse,
+  ApiTestPingResponse,
+} from '@cosmosh/api-contract';
 import { API_HEADERS, API_PATHS } from '@cosmosh/api-contract';
 
-type ApiResponse = ApiTestPingResponse | ApiErrorResponse;
 type RuntimeTarget = 'electron' | 'browser';
+
+type ApiResponse =
+  | ApiErrorResponse
+  | ApiTestPingResponse
+  | ApiSshListServersResponse
+  | ApiSshCreateServerResponse
+  | ApiSshListFoldersResponse
+  | ApiSshCreateFolderResponse
+  | ApiSshListTagsResponse
+  | ApiSshCreateTagResponse;
 
 export type ApiTransport = {
   target: RuntimeTarget;
-  testPing: () => Promise<ApiResponse>;
+  testPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
+  listSshServers: () => Promise<ApiSshListServersResponse | ApiErrorResponse>;
+  createSshServer: (payload: ApiSshCreateServerRequest) => Promise<ApiSshCreateServerResponse | ApiErrorResponse>;
+  listSshFolders: () => Promise<ApiSshListFoldersResponse | ApiErrorResponse>;
+  createSshFolder: (payload: ApiSshCreateFolderRequest) => Promise<ApiSshCreateFolderResponse | ApiErrorResponse>;
+  listSshTags: () => Promise<ApiSshListTagsResponse | ApiErrorResponse>;
+  createSshTag: (payload: ApiSshCreateTagRequest) => Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
 };
 
 // Browser fallback uses build-time URL configuration to prepare for future web runtime.
@@ -42,35 +69,83 @@ const createElectronTransport = (): ApiTransport => {
   return {
     target: 'electron',
     testPing: async () => {
-      return (await window.electron!.backendTestPing()) as ApiResponse;
+      return (await window.electron!.backendTestPing()) as ApiTestPingResponse | ApiErrorResponse;
+    },
+    listSshServers: async () => {
+      return (await window.electron!.backendSshListServers()) as ApiSshListServersResponse | ApiErrorResponse;
+    },
+    createSshServer: async (payload) => {
+      return (await window.electron!.backendSshCreateServer(payload)) as ApiSshCreateServerResponse | ApiErrorResponse;
+    },
+    listSshFolders: async () => {
+      return (await window.electron!.backendSshListFolders()) as ApiSshListFoldersResponse | ApiErrorResponse;
+    },
+    createSshFolder: async (payload) => {
+      return (await window.electron!.backendSshCreateFolder(payload)) as ApiSshCreateFolderResponse | ApiErrorResponse;
+    },
+    listSshTags: async () => {
+      return (await window.electron!.backendSshListTags()) as ApiSshListTagsResponse | ApiErrorResponse;
+    },
+    createSshTag: async (payload) => {
+      return (await window.electron!.backendSshCreateTag(payload)) as ApiSshCreateTagResponse | ApiErrorResponse;
     },
   };
 };
 
 const createBrowserTransport = (): ApiTransport => {
+  const callBrowserApi = async (path: string, method: 'GET' | 'POST', body?: unknown): Promise<ApiResponse> => {
+    const token = resolveBrowserAuthToken();
+    const baseUrl = resolveBrowserBaseUrl();
+
+    if (!token) {
+      return createBrowserFallbackError('Browser auth flow is not implemented yet. Please sign in first.');
+    }
+
+    if (!baseUrl) {
+      return createBrowserFallbackError('Browser API base URL is not configured. Set VITE_COSMOSH_API_BASE_URL.');
+    }
+
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        [API_HEADERS.locale]: navigator.language,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+
+    return (await response.json()) as ApiResponse;
+  };
+
   return {
     target: 'browser',
     testPing: async () => {
-      const token = resolveBrowserAuthToken();
-      const baseUrl = resolveBrowserBaseUrl();
-
-      if (!token) {
-        return createBrowserFallbackError('Browser auth flow is not implemented yet. Please sign in first.');
-      }
-
-      if (!baseUrl) {
-        return createBrowserFallbackError('Browser API base URL is not configured. Set VITE_COSMOSH_API_BASE_URL.');
-      }
-
-      const response = await fetch(`${baseUrl}${API_PATHS.testPing}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          [API_HEADERS.locale]: navigator.language,
-        },
-      });
-
-      return (await response.json()) as ApiResponse;
+      return (await callBrowserApi(API_PATHS.testPing, 'GET')) as ApiTestPingResponse | ApiErrorResponse;
+    },
+    listSshServers: async () => {
+      return (await callBrowserApi(API_PATHS.sshListServers, 'GET')) as ApiSshListServersResponse | ApiErrorResponse;
+    },
+    createSshServer: async (payload) => {
+      return (await callBrowserApi(API_PATHS.sshCreateServer, 'POST', payload)) as
+        | ApiSshCreateServerResponse
+        | ApiErrorResponse;
+    },
+    listSshFolders: async () => {
+      return (await callBrowserApi(API_PATHS.sshListFolders, 'GET')) as ApiSshListFoldersResponse | ApiErrorResponse;
+    },
+    createSshFolder: async (payload) => {
+      return (await callBrowserApi(API_PATHS.sshCreateFolder, 'POST', payload)) as
+        | ApiSshCreateFolderResponse
+        | ApiErrorResponse;
+    },
+    listSshTags: async () => {
+      return (await callBrowserApi(API_PATHS.sshListTags, 'GET')) as ApiSshListTagsResponse | ApiErrorResponse;
+    },
+    createSshTag: async (payload) => {
+      return (await callBrowserApi(API_PATHS.sshCreateTag, 'POST', payload)) as
+        | ApiSshCreateTagResponse
+        | ApiErrorResponse;
     },
   };
 };

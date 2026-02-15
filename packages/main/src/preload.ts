@@ -1,3 +1,16 @@
+import type {
+  ApiErrorResponse,
+  ApiSshCreateFolderRequest,
+  ApiSshCreateFolderResponse,
+  ApiSshCreateServerRequest,
+  ApiSshCreateServerResponse,
+  ApiSshCreateTagRequest,
+  ApiSshCreateTagResponse,
+  ApiSshListFoldersResponse,
+  ApiSshListServersResponse,
+  ApiSshListTagsResponse,
+  ApiTestPingResponse,
+} from '@cosmosh/api-contract';
 import { contextBridge, ipcRenderer } from 'electron';
 
 // Expose protected methods that allow the renderer process to use
@@ -23,7 +36,29 @@ contextBridge.exposeInMainWorld('electron', {
     return ipcRenderer.invoke('i18n:set-locale', locale);
   },
   backendTestPing: () => {
-    return ipcRenderer.invoke('backend:test-ping');
+    return ipcRenderer.invoke('backend:test-ping') as Promise<ApiTestPingResponse | ApiErrorResponse>;
+  },
+  backendSshListServers: () => {
+    return ipcRenderer.invoke('backend:ssh-list-servers') as Promise<ApiSshListServersResponse | ApiErrorResponse>;
+  },
+  backendSshCreateServer: (payload: ApiSshCreateServerRequest) => {
+    return ipcRenderer.invoke('backend:ssh-create-server', payload) as Promise<
+      ApiSshCreateServerResponse | ApiErrorResponse
+    >;
+  },
+  backendSshListFolders: () => {
+    return ipcRenderer.invoke('backend:ssh-list-folders') as Promise<ApiSshListFoldersResponse | ApiErrorResponse>;
+  },
+  backendSshCreateFolder: (payload: ApiSshCreateFolderRequest) => {
+    return ipcRenderer.invoke('backend:ssh-create-folder', payload) as Promise<
+      ApiSshCreateFolderResponse | ApiErrorResponse
+    >;
+  },
+  backendSshListTags: () => {
+    return ipcRenderer.invoke('backend:ssh-list-tags') as Promise<ApiSshListTagsResponse | ApiErrorResponse>;
+  },
+  backendSshCreateTag: (payload: ApiSshCreateTagRequest) => {
+    return ipcRenderer.invoke('backend:ssh-create-tag', payload) as Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
   },
   platform: process.platform,
 });

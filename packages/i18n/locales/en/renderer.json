@@ -33,6 +33,35 @@
     "closeOthers": "Close Other Tabs"
   },
   "ssh": {
-    "title": "SSH Page"
+    "title": "SSH",
+    "loading": "Loading SSH resources...",
+    "creating": "Creating...",
+    "createFolderTitle": "Create Folder",
+    "createTagTitle": "Create Tag",
+    "createServerTitle": "Create Server",
+    "createFolderButton": "Create Folder",
+    "createTagButton": "Create Tag",
+    "createServerButton": "Create Server",
+    "folderNamePlaceholder": "Folder name",
+    "tagNamePlaceholder": "Tag name",
+    "serverNamePlaceholder": "Server name",
+    "hostPlaceholder": "Host or IP",
+    "portPlaceholder": "Port",
+    "usernamePlaceholder": "Username",
+    "passwordPlaceholder": "Password",
+    "privateKeyPlaceholder": "Private key content",
+    "privateKeyPassphrasePlaceholder": "Private key passphrase",
+    "notePlaceholder": "Note",
+    "tagsLegend": "Tags",
+    "noFolder": "No folder",
+    "serverListTitle": "Server List",
+    "columnName": "Name",
+    "columnHost": "Host",
+    "columnUser": "Username",
+    "columnAuth": "Auth",
+    "columnFolder": "Folder",
+    "columnTags": "Tags",
+    "columnLastLogin": "Last Login",
+    "emptyServers": "No SSH servers yet."
   }
 }

@@ -6,3 +6,86 @@ datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
+
+enum SshAuthType {
+  password
+  key
+  both
+}
+
+enum SshLoginResult {
+  success
+  failed
+}
+
+model SshFolder {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  note      String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  servers   SshServer[]
+}
+
+model SshTag {
+  id        String         @id @default(cuid())
+  name      String         @unique
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  servers   SshServerTag[]
+}
+
+model SshServer {
+  id                            String          @id @default(cuid())
+  name                          String
+  host                          String
+  port                          Int             @default(22)
+  username                      String
+  authType                      SshAuthType
+  passwordEncrypted             String?
+  privateKeyEncrypted           String?
+  privateKeyPassphraseEncrypted String?
+  note                          String?
+  folderId                      String?
+  systemHostname                String?
+  systemOs                      String?
+  systemArch                    String?
+  systemKernel                  String?
+  lastSystemSyncAt              DateTime?
+  createdAt                     DateTime        @default(now())
+  updatedAt                     DateTime        @updatedAt
+  folder                        SshFolder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  tags                          SshServerTag[]
+  loginAudits                   SshLoginAudit[]
+
+  @@unique([host, port, username])
+  @@index([folderId])
+}
+
+model SshServerTag {
+  serverId String
+  tagId    String
+  server   SshServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  tag      SshTag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([serverId, tagId])
+  @@index([tagId])
+}
+
+model SshLoginAudit {
+  id               String         @id @default(cuid())
+  serverId         String
+  attemptedAt      DateTime       @default(now())
+  result           SshLoginResult
+  failureReason    String?
+  clientIp         String?
+  sessionId        String?
+  sessionStartedAt DateTime?
+  sessionEndedAt   DateTime?
+  commandCount     Int            @default(0)
+  metadataJson     String?
+  createdAt        DateTime       @default(now())
+  server           SshServer      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, attemptedAt])
+}

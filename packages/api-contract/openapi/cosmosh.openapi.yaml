@@ -47,6 +47,183 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/servers:
+    get:
+      tags:
+        - ssh
+      summary: List SSH servers.
+      operationId: sshListServers
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      responses:
+        "200":
+          description: SSH servers listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshServerListSuccess"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      tags:
+        - ssh
+      summary: Create SSH server configuration.
+      operationId: sshCreateServer
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SshServerCreateRequest"
+      responses:
+        "200":
+          description: SSH server created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshServerCreateSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Conflict with existing server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/folders:
+    get:
+      tags:
+        - ssh
+      summary: List SSH folders.
+      operationId: sshListFolders
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      responses:
+        "200":
+          description: SSH folders listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshFolderListSuccess"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      tags:
+        - ssh
+      summary: Create SSH folder.
+      operationId: sshCreateFolder
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SshFolderCreateRequest"
+      responses:
+        "200":
+          description: SSH folder created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshFolderCreateSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Folder already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/tags:
+    get:
+      tags:
+        - ssh
+      summary: List SSH tags.
+      operationId: sshListTags
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      responses:
+        "200":
+          description: SSH tags listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshTagListSuccess"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      tags:
+        - ssh
+      summary: Create SSH tag.
+      operationId: sshCreateTag
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SshTagCreateRequest"
+      responses:
+        "200":
+          description: SSH tag created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshTagCreateSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Tag already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   securitySchemes:
     CosmoshInternalToken:
@@ -100,10 +277,21 @@ components:
           properties:
             code:
               type: string
-              enum: ["AUTH_INVALID_TOKEN"]
+              enum:
+                [
+                  "AUTH_INVALID_TOKEN",
+                  "SSH_VALIDATION_FAILED",
+                  "SSH_SERVER_CONFLICT",
+                  "SSH_FOLDER_CONFLICT",
+                  "SSH_TAG_CONFLICT",
+                  "SSH_NOT_FOUND",
+                ]
             success:
               type: boolean
               enum: [false]
+    SshAuthType:
+      type: string
+      enum: ["password", "key", "both"]
     TestPingData:
       type: object
       required:
@@ -145,3 +333,347 @@ components:
               enum: [true]
             data:
               $ref: "#/components/schemas/TestPingData"
+    SshFolder:
+      type: object
+      required:
+        - id
+        - name
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SshTag:
+      type: object
+      required:
+        - id
+        - name
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SshLoginAudit:
+      type: object
+      required:
+        - id
+        - attemptedAt
+        - result
+        - commandCount
+      properties:
+        id:
+          type: string
+        attemptedAt:
+          type: string
+          format: date-time
+        result:
+          type: string
+          enum: ["success", "failed"]
+        failureReason:
+          type: string
+        clientIp:
+          type: string
+        sessionId:
+          type: string
+        sessionStartedAt:
+          type: string
+          format: date-time
+        sessionEndedAt:
+          type: string
+          format: date-time
+        commandCount:
+          type: integer
+          minimum: 0
+    SshServerListItem:
+      type: object
+      required:
+        - id
+        - name
+        - host
+        - port
+        - username
+        - authType
+        - hasPassword
+        - hasPrivateKey
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        username:
+          type: string
+        authType:
+          $ref: "#/components/schemas/SshAuthType"
+        hasPassword:
+          type: boolean
+        hasPrivateKey:
+          type: boolean
+        note:
+          type: string
+        folder:
+          $ref: "#/components/schemas/SshFolder"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/SshTag"
+        systemHostname:
+          type: string
+        systemOs:
+          type: string
+        systemArch:
+          type: string
+        systemKernel:
+          type: string
+        lastSystemSyncAt:
+          type: string
+          format: date-time
+        lastLoginAudit:
+          $ref: "#/components/schemas/SshLoginAudit"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SshServerCreateRequest:
+      type: object
+      required:
+        - name
+        - host
+        - port
+        - username
+        - authType
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        host:
+          type: string
+          minLength: 1
+          maxLength: 255
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        username:
+          type: string
+          minLength: 1
+          maxLength: 120
+        authType:
+          $ref: "#/components/schemas/SshAuthType"
+        password:
+          type: string
+          minLength: 1
+        privateKey:
+          type: string
+          minLength: 1
+        privateKeyPassphrase:
+          type: string
+          minLength: 1
+        folderId:
+          type: string
+        tagIds:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+          maxLength: 3000
+    SshFolderCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        note:
+          type: string
+          maxLength: 1000
+    SshTagCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+    SshServerListData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SshServerListItem"
+    SshFolderListData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SshFolder"
+    SshTagListData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SshTag"
+    SshServerCreateData:
+      type: object
+      required:
+        - item
+      properties:
+        item:
+          $ref: "#/components/schemas/SshServerListItem"
+    SshFolderCreateData:
+      type: object
+      required:
+        - item
+      properties:
+        item:
+          $ref: "#/components/schemas/SshFolder"
+    SshTagCreateData:
+      type: object
+      required:
+        - item
+      properties:
+        item:
+          $ref: "#/components/schemas/SshTag"
+    SshServerListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_SERVER_LIST_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshServerListData"
+    SshServerCreateSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_SERVER_CREATE_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshServerCreateData"
+    SshFolderListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_FOLDER_LIST_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshFolderListData"
+    SshFolderCreateSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_FOLDER_CREATE_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshFolderCreateData"
+    SshTagListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_TAG_LIST_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshTagListData"
+    SshTagCreateSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_TAG_CREATE_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshTagCreateData"

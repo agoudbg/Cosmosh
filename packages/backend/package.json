@@ -8,6 +8,7 @@
   "scripts": {
     "predev": "pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && prisma generate",
     "db:generate": "prisma generate",
+    "db:push": "prisma db push --skip-generate",
     "db:init": "tsx src/scripts/init-db.ts",
     "dev": "tsx watch src/index.ts",
     "prebuild": "pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && prisma generate",

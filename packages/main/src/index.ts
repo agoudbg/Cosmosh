@@ -1,9 +1,22 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import net from 'node:net';
+import os from 'node:os';
 
-import type { ApiErrorResponse, ApiTestPingResponse } from '@cosmosh/api-contract';
-import { API_HEADERS, API_PATHS } from '@cosmosh/api-contract';
+import type {
+  ApiErrorResponse,
+  ApiSshCreateFolderRequest,
+  ApiSshCreateFolderResponse,
+  ApiSshCreateServerRequest,
+  ApiSshCreateServerResponse,
+  ApiSshCreateTagRequest,
+  ApiSshCreateTagResponse,
+  ApiSshListFoldersResponse,
+  ApiSshListServersResponse,
+  ApiSshListTagsResponse,
+  ApiTestPingResponse,
+} from '@cosmosh/api-contract';
+import { API_CODES, API_HEADERS, API_PATHS, createApiError } from '@cosmosh/api-contract';
 import { createI18n, resolveLocale } from '@cosmosh/i18n';
 import { spawn } from 'child_process';
 import { app, BrowserWindow, ipcMain } from 'electron';
@@ -28,6 +41,24 @@ const wait = (ms: number): Promise<void> => {
 
 const resolveWorkspaceRoot = (): string => {
   return path.resolve(__dirname, '../../..');
+};
+
+const resolveDataRootDir = (): string => {
+  if (process.env.LOCALAPPDATA) {
+    return process.env.LOCALAPPDATA;
+  }
+
+  if (process.env.XDG_DATA_HOME) {
+    return process.env.XDG_DATA_HOME;
+  }
+
+  return path.join(os.homedir(), '.local', 'share');
+};
+
+const resolveBackendDatabaseUrl = (): string => {
+  const databaseFilePath = path.join(resolveDataRootDir(), 'Cosmosh', 'backend', 'storage', 'cosmosh.sqlite');
+  const normalizedPath = databaseFilePath.split(path.sep).join('/');
+  return `file:${encodeURI(normalizedPath)}`;
 };
 
 const findAvailablePort = async (): Promise<number> => {
@@ -87,6 +118,7 @@ const startBackendService = async (): Promise<void> => {
 
   const port = await findAvailablePort();
   const token = randomBytes(32).toString('hex');
+  const databaseUrl = resolveBackendDatabaseUrl();
   const isDev = !app.isPackaged;
   const workspaceRoot = resolveWorkspaceRoot();
 
@@ -95,7 +127,7 @@ const startBackendService = async (): Promise<void> => {
   let shell = false;
 
   if (isDev) {
-    command = 'pnpm --filter @cosmosh/backend exec tsx src/index.ts';
+    command = 'pnpm --filter @cosmosh/backend run db:push && pnpm --filter @cosmosh/backend exec tsx src/index.ts';
     args = [];
     shell = true;
   } else {
@@ -111,6 +143,7 @@ const startBackendService = async (): Promise<void> => {
       COSMOSH_RUNTIME_MODE: 'electron-main',
       COSMOSH_API_PORT: String(port),
       COSMOSH_INTERNAL_TOKEN: token,
+      DATABASE_URL: databaseUrl,
     },
     shell,
     windowsHide: true,
@@ -159,6 +192,55 @@ const requireBackendConfig = (): { port: number; token: string } => {
     port: backendPort,
     token: backendToken,
   };
+};
+
+const requestBackend = async <TSuccess>(
+  path: string,
+  options: {
+    method: 'GET' | 'POST';
+    body?: unknown;
+  },
+): Promise<TSuccess | ApiErrorResponse> => {
+  const { port, token } = requireBackendConfig();
+  const headers: Record<string, string> = {
+    [API_HEADERS.internalToken]: token,
+    [API_HEADERS.locale]: appLocale,
+  };
+
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: options.method,
+    headers,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  });
+
+  const responseText = await response.text();
+
+  if (!responseText) {
+    if (response.ok) {
+      return createApiError({
+        code: API_CODES.authInvalidToken,
+        message: `Backend returned empty response for ${options.method} ${path}.`,
+      });
+    }
+
+    return createApiError({
+      code: API_CODES.authInvalidToken,
+      message: `Backend request failed (${response.status}) for ${options.method} ${path}.`,
+    });
+  }
+
+  try {
+    return JSON.parse(responseText) as TSuccess | ApiErrorResponse;
+  } catch {
+    return createApiError({
+      code: API_CODES.authInvalidToken,
+      message: `Backend returned non-JSON response (${response.status}): ${responseText.slice(0, 180)}`,
+    });
+  }
 };
 
 const createWindow = () => {
@@ -257,6 +339,48 @@ ipcMain.handle('backend:test-ping', async (): Promise<ApiTestPingResponse | ApiE
 
   return payload;
 });
+
+ipcMain.handle('backend:ssh-list-servers', async (): Promise<ApiSshListServersResponse | ApiErrorResponse> => {
+  return requestBackend<ApiSshListServersResponse>(API_PATHS.sshListServers, { method: 'GET' });
+});
+
+ipcMain.handle(
+  'backend:ssh-create-server',
+  async (_event, payload: ApiSshCreateServerRequest): Promise<ApiSshCreateServerResponse | ApiErrorResponse> => {
+    return requestBackend<ApiSshCreateServerResponse>(API_PATHS.sshCreateServer, {
+      method: 'POST',
+      body: payload,
+    });
+  },
+);
+
+ipcMain.handle('backend:ssh-list-folders', async (): Promise<ApiSshListFoldersResponse | ApiErrorResponse> => {
+  return requestBackend<ApiSshListFoldersResponse>(API_PATHS.sshListFolders, { method: 'GET' });
+});
+
+ipcMain.handle(
+  'backend:ssh-create-folder',
+  async (_event, payload: ApiSshCreateFolderRequest): Promise<ApiSshCreateFolderResponse | ApiErrorResponse> => {
+    return requestBackend<ApiSshCreateFolderResponse>(API_PATHS.sshCreateFolder, {
+      method: 'POST',
+      body: payload,
+    });
+  },
+);
+
+ipcMain.handle('backend:ssh-list-tags', async (): Promise<ApiSshListTagsResponse | ApiErrorResponse> => {
+  return requestBackend<ApiSshListTagsResponse>(API_PATHS.sshListTags, { method: 'GET' });
+});
+
+ipcMain.handle(
+  'backend:ssh-create-tag',
+  async (_event, payload: ApiSshCreateTagRequest): Promise<ApiSshCreateTagResponse | ApiErrorResponse> => {
+    return requestBackend<ApiSshCreateTagResponse>(API_PATHS.sshCreateTag, {
+      method: 'POST',
+      body: payload,
+    });
+  },
+);
 
 app.on('before-quit', () => {
   stopBackendService();

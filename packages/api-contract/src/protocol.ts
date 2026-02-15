@@ -6,6 +6,12 @@
 export const API_PATHS = {
   health: '/api/health',
   testPing: '/api/v1/test/ping',
+  sshListServers: '/api/v1/ssh/servers',
+  sshCreateServer: '/api/v1/ssh/servers',
+  sshListFolders: '/api/v1/ssh/folders',
+  sshCreateFolder: '/api/v1/ssh/folders',
+  sshListTags: '/api/v1/ssh/tags',
+  sshCreateTag: '/api/v1/ssh/tags',
 } as const;
 
 export const API_HEADERS = {
@@ -15,7 +21,18 @@ export const API_HEADERS = {
 
 export const API_CODES = {
   authInvalidToken: 'AUTH_INVALID_TOKEN',
+  sshValidationFailed: 'SSH_VALIDATION_FAILED',
+  sshServerConflict: 'SSH_SERVER_CONFLICT',
+  sshFolderConflict: 'SSH_FOLDER_CONFLICT',
+  sshTagConflict: 'SSH_TAG_CONFLICT',
+  sshNotFound: 'SSH_NOT_FOUND',
   testPingOk: 'TEST_PING_OK',
+  sshServerListOk: 'SSH_SERVER_LIST_OK',
+  sshServerCreateOk: 'SSH_SERVER_CREATE_OK',
+  sshFolderListOk: 'SSH_FOLDER_LIST_OK',
+  sshFolderCreateOk: 'SSH_FOLDER_CREATE_OK',
+  sshTagListOk: 'SSH_TAG_LIST_OK',
+  sshTagCreateOk: 'SSH_TAG_CREATE_OK',
 } as const;
 
 export const API_CAPABILITIES = ['ssh', 'sftp'] as const;

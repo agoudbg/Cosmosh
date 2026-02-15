@@ -33,6 +33,35 @@
     "closeOthers": "关闭其他标签页"
   },
   "ssh": {
-    "title": "SSH 页面"
+    "title": "SSH",
+    "loading": "正在加载 SSH 资源...",
+    "creating": "创建中...",
+    "createFolderTitle": "新建文件夹",
+    "createTagTitle": "新建标签",
+    "createServerTitle": "新建服务器",
+    "createFolderButton": "创建文件夹",
+    "createTagButton": "创建标签",
+    "createServerButton": "创建服务器",
+    "folderNamePlaceholder": "文件夹名称",
+    "tagNamePlaceholder": "标签名称",
+    "serverNamePlaceholder": "服务器名称",
+    "hostPlaceholder": "主机或 IP",
+    "portPlaceholder": "端口",
+    "usernamePlaceholder": "用户名",
+    "passwordPlaceholder": "密码",
+    "privateKeyPlaceholder": "私钥内容",
+    "privateKeyPassphrasePlaceholder": "私钥口令",
+    "notePlaceholder": "备注",
+    "tagsLegend": "标签",
+    "noFolder": "无文件夹",
+    "serverListTitle": "服务器列表",
+    "columnName": "名称",
+    "columnHost": "主机",
+    "columnUser": "用户名",
+    "columnAuth": "认证",
+    "columnFolder": "文件夹",
+    "columnTags": "标签",
+    "columnLastLogin": "最近登录",
+    "emptyServers": "暂无 SSH 服务器。"
   }
 }

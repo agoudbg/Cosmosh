@@ -1,23 +1,11 @@
-import {
-  API_CAPABILITIES,
-  API_CODES,
-  API_HEADERS,
-  API_PATHS,
-  type ApiErrorResponse,
-  type ApiTestPingResponse,
-  createApiError,
-  createApiSuccess,
-} from '@cosmosh/api-contract';
-import { createI18n, resolveLocale } from '@cosmosh/i18n';
+import { createHash } from 'node:crypto';
+
 import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
+import type { PrismaClient } from '@prisma/client';
 
 import { DatabaseInitError, initializeDatabase, shutdownDatabase } from './db/prisma.js';
+import { createBackendApp } from './http/create-app.js';
 import { resolveRuntimeMode } from './runtime.js';
-
-const app = new Hono();
 
 /**
  * Parse backend port from environment and validate safe numeric bounds.
@@ -39,71 +27,27 @@ const runtimeMode = resolveRuntimeMode(process.env.COSMOSH_RUNTIME_MODE);
 const port = resolvePort(process.env.COSMOSH_API_PORT);
 const internalToken = process.env.COSMOSH_INTERNAL_TOKEN;
 const isSecureLocalMode = runtimeMode === 'electron-main';
+const credentialEncryptionKeySource = process.env.COSMOSH_SECRET_KEY ?? internalToken;
 
 if (isSecureLocalMode && !internalToken) {
   throw new Error('COSMOSH_INTERNAL_TOKEN is required when COSMOSH_RUNTIME_MODE is electron-main.');
 }
 
-const buildErrorPayload = (code: ApiErrorResponse['code'], message: string): ApiErrorResponse => {
-  return createApiError({ code, message });
+if (!credentialEncryptionKeySource) {
+  throw new Error('COSMOSH_SECRET_KEY is required when storing SSH credentials.');
+}
+
+const credentialEncryptionKey = createHash('sha256').update(credentialEncryptionKeySource).digest();
+
+let dbClient: PrismaClient | null = null;
+
+const getDbClient = (): PrismaClient => {
+  if (!dbClient) {
+    throw new Error('Database service is not initialized.');
+  }
+
+  return dbClient;
 };
-
-// Middleware
-app.use('*', logger());
-app.use(
-  '*',
-  cors({
-    origin: ['http://localhost:5173', 'file://'],
-    credentials: true,
-  }),
-);
-
-app.use('/api/v1/*', async (c, next) => {
-  // Internal token check is only required when backend is launched via Electron main process.
-  if (!isSecureLocalMode) {
-    await next();
-    return;
-  }
-
-  const providedToken = c.req.header(API_HEADERS.internalToken);
-  if (providedToken !== internalToken) {
-    return c.json(buildErrorPayload(API_CODES.authInvalidToken, 'Invalid internal authentication token.'), 401);
-  }
-
-  await next();
-});
-
-// Routes
-app.get('/', (c) => {
-  // Locale is request-scoped so API responses can match the caller language.
-  const requestLocale = resolveLocale(c.req.header(API_HEADERS.locale) ?? c.req.header('accept-language'), 'en');
-  const i18n = createI18n({ locale: requestLocale, scope: 'backend', fallbackLocale: 'en' });
-
-  return c.json({
-    message: i18n.t('api.rootMessage'),
-    version: '0.1.0',
-    status: 'running',
-  });
-});
-
-app.get(API_PATHS.health, (c) => {
-  return c.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-app.get(API_PATHS.testPing, (c) => {
-  const payload: ApiTestPingResponse = createApiSuccess({
-    code: API_CODES.testPingOk,
-    message: 'Backend connection is healthy.',
-    data: {
-      service: 'cosmosh-backend',
-      mode: 'electron-main',
-      authenticated: true,
-      capabilities: [...API_CAPABILITIES],
-    },
-  });
-
-  return c.json(payload);
-});
 
 const registerShutdownHooks = (): void => {
   // Handle process termination so DB handles are released cleanly.
@@ -146,7 +90,15 @@ const registerShutdownHooks = (): void => {
 const bootstrap = async (): Promise<void> => {
   // Database initialization is intentionally done before starting the HTTP server,
   // so runtime fails fast when persistence is not ready.
-  await initializeDatabase({ runtimeMode });
+  dbClient = await initializeDatabase({ runtimeMode });
+
+  const app = createBackendApp({
+    runtimeMode,
+    isSecureLocalMode,
+    internalToken,
+    credentialEncryptionKey,
+    getDbClient,
+  });
 
   console.log(`🚀 Cosmosh Backend starting on http://127.0.0.1:${port} (${runtimeMode})`);
   registerShutdownHooks();

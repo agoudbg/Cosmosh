@@ -38,6 +38,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ssh/servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List SSH servers. */
+        get: operations["sshListServers"];
+        put?: never;
+        /** Create SSH server configuration. */
+        post: operations["sshCreateServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ssh/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List SSH folders. */
+        get: operations["sshListFolders"];
+        put?: never;
+        /** Create SSH folder. */
+        post: operations["sshCreateFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ssh/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List SSH tags. */
+        get: operations["sshListTags"];
+        put?: never;
+        /** Create SSH tag. */
+        post: operations["sshCreateTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -57,10 +111,12 @@ export interface components {
         };
         ApiError: components["schemas"]["ApiMeta"] & {
             /** @enum {string} */
-            code: "AUTH_INVALID_TOKEN";
+            code: "AUTH_INVALID_TOKEN" | "SSH_VALIDATION_FAILED" | "SSH_SERVER_CONFLICT" | "SSH_FOLDER_CONFLICT" | "SSH_TAG_CONFLICT" | "SSH_NOT_FOUND";
             /** @enum {boolean} */
             success: false;
         };
+        /** @enum {string} */
+        SshAuthType: "password" | "key" | "both";
         TestPingData: {
             /** @enum {string} */
             service: "cosmosh-backend";
@@ -76,6 +132,142 @@ export interface components {
             /** @enum {boolean} */
             success: true;
             data: components["schemas"]["TestPingData"];
+        };
+        SshFolder: {
+            id: string;
+            name: string;
+            note?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        SshTag: {
+            id: string;
+            name: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        SshLoginAudit: {
+            id: string;
+            /** Format: date-time */
+            attemptedAt: string;
+            /** @enum {string} */
+            result: "success" | "failed";
+            failureReason?: string;
+            clientIp?: string;
+            sessionId?: string;
+            /** Format: date-time */
+            sessionStartedAt?: string;
+            /** Format: date-time */
+            sessionEndedAt?: string;
+            commandCount: number;
+        };
+        SshServerListItem: {
+            id: string;
+            name: string;
+            host: string;
+            port: number;
+            username: string;
+            authType: components["schemas"]["SshAuthType"];
+            hasPassword: boolean;
+            hasPrivateKey: boolean;
+            note?: string;
+            folder?: components["schemas"]["SshFolder"];
+            tags?: components["schemas"]["SshTag"][];
+            systemHostname?: string;
+            systemOs?: string;
+            systemArch?: string;
+            systemKernel?: string;
+            /** Format: date-time */
+            lastSystemSyncAt?: string;
+            lastLoginAudit?: components["schemas"]["SshLoginAudit"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        SshServerCreateRequest: {
+            name: string;
+            host: string;
+            port: number;
+            username: string;
+            authType: components["schemas"]["SshAuthType"];
+            password?: string;
+            privateKey?: string;
+            privateKeyPassphrase?: string;
+            folderId?: string;
+            tagIds?: string[];
+            note?: string;
+        };
+        SshFolderCreateRequest: {
+            name: string;
+            note?: string;
+        };
+        SshTagCreateRequest: {
+            name: string;
+        };
+        SshServerListData: {
+            items: components["schemas"]["SshServerListItem"][];
+        };
+        SshFolderListData: {
+            items: components["schemas"]["SshFolder"][];
+        };
+        SshTagListData: {
+            items: components["schemas"]["SshTag"][];
+        };
+        SshServerCreateData: {
+            item: components["schemas"]["SshServerListItem"];
+        };
+        SshFolderCreateData: {
+            item: components["schemas"]["SshFolder"];
+        };
+        SshTagCreateData: {
+            item: components["schemas"]["SshTag"];
+        };
+        SshServerListSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_SERVER_LIST_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshServerListData"];
+        };
+        SshServerCreateSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_SERVER_CREATE_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshServerCreateData"];
+        };
+        SshFolderListSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_FOLDER_LIST_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshFolderListData"];
+        };
+        SshFolderCreateSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_FOLDER_CREATE_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshFolderCreateData"];
+        };
+        SshTagListSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_TAG_LIST_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshTagListData"];
+        };
+        SshTagCreateSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_TAG_CREATE_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshTagCreateData"];
         };
     };
     responses: never;
@@ -130,6 +322,258 @@ export interface operations {
             };
             /** @description Authentication failed. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshListServers: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH servers listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshServerListSuccess"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshCreateServer: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshServerCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description SSH server created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshServerCreateSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict with existing server. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshListFolders: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH folders listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshFolderListSuccess"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshCreateFolder: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshFolderCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description SSH folder created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshFolderCreateSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Folder already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshListTags: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH tags listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshTagListSuccess"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshCreateTag: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshTagCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description SSH tag created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshTagCreateSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tag already exists. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
