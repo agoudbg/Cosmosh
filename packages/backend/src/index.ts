@@ -1,9 +1,10 @@
-import type { ApiErrorResponse, ApiTestPingResponse } from '@cosmosh/api-contract';
 import {
   API_CAPABILITIES,
   API_CODES,
   API_HEADERS,
   API_PATHS,
+  type ApiErrorResponse,
+  type ApiTestPingResponse,
   createApiError,
   createApiSuccess,
 } from '@cosmosh/api-contract';
@@ -13,17 +14,14 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 
+import { DatabaseInitError, initializeDatabase, shutdownDatabase } from './db/prisma.js';
+import { resolveRuntimeMode } from './runtime.js';
+
 const app = new Hono();
-type RuntimeMode = 'standalone' | 'electron-main';
 
-const resolveRuntimeMode = (input: string | undefined): RuntimeMode => {
-  if (input === 'electron-main') {
-    return 'electron-main';
-  }
-
-  return 'standalone';
-};
-
+/**
+ * Parse backend port from environment and validate safe numeric bounds.
+ */
 const resolvePort = (input: string | undefined): number => {
   if (!input) {
     return 3000;
@@ -61,6 +59,7 @@ app.use(
 );
 
 app.use('/api/v1/*', async (c, next) => {
+  // Internal token check is only required when backend is launched via Electron main process.
   if (!isSecureLocalMode) {
     await next();
     return;
@@ -106,10 +105,68 @@ app.get(API_PATHS.testPing, (c) => {
   return c.json(payload);
 });
 
-// Start server
-console.log(`🚀 Cosmosh Backend starting on http://127.0.0.1:${port} (${runtimeMode})`);
+const registerShutdownHooks = (): void => {
+  // Handle process termination so DB handles are released cleanly.
+  const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+    console.log(`\n[shutdown] Received ${signal}. Shutting down backend...`);
 
-serve({
-  fetch: app.fetch,
-  port,
+    try {
+      await shutdownDatabase();
+      process.exit(0);
+    } catch (error: unknown) {
+      if (error instanceof DatabaseInitError) {
+        console.error(`[shutdown][${error.code}] ${error.message}`, {
+          signal,
+          context: error.context,
+          cause: error.cause,
+        });
+      } else {
+        console.error('[shutdown][UNKNOWN] Failed to disconnect database during shutdown.', { signal, error });
+      }
+
+      process.exit(1);
+    }
+  };
+
+  process.once('SIGINT', () => {
+    void shutdown('SIGINT');
+  });
+
+  process.once('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
+};
+
+/**
+ * Backend bootstrap order:
+ * 1) Initialize persistence
+ * 2) Register shutdown hooks
+ * 3) Start HTTP listener
+ */
+const bootstrap = async (): Promise<void> => {
+  // Database initialization is intentionally done before starting the HTTP server,
+  // so runtime fails fast when persistence is not ready.
+  await initializeDatabase({ runtimeMode });
+
+  console.log(`🚀 Cosmosh Backend starting on http://127.0.0.1:${port} (${runtimeMode})`);
+  registerShutdownHooks();
+
+  serve({
+    fetch: app.fetch,
+    port,
+  });
+};
+
+void bootstrap().catch(async (error: unknown) => {
+  if (error instanceof DatabaseInitError) {
+    console.error(`[bootstrap][${error.code}] ${error.message}`, {
+      context: error.context,
+      cause: error.cause,
+    });
+  } else {
+    console.error('[bootstrap][UNKNOWN] Failed to bootstrap backend service.', error);
+  }
+
+  await shutdownDatabase();
+  process.exit(1);
 });

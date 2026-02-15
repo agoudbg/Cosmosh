@@ -48,6 +48,84 @@ pnpm dev:renderer
 pnpm dev:backend
 ```
 
+## Backend Database (Prisma + SQLite)
+
+Current status: framework only, no tables/models yet.
+
+### Files
+
+- Prisma schema: `packages/backend/prisma/schema.prisma`
+- DB bootstrap service: `packages/backend/src/db/prisma.ts`
+- Manual init command: `packages/backend/src/scripts/init-db.ts`
+
+### Initialization Modes
+
+- **Automatic**: backend startup calls `initializeDatabase(...)` before opening the HTTP port.
+- **Manual**: run `pnpm --filter @cosmosh/backend db:init` to initialize and validate DB setup only.
+
+### Command Examples
+
+```bash
+# Generate Prisma client only
+pnpm --filter @cosmosh/backend db:generate
+
+# Run one-shot DB initialization check (without starting API server)
+pnpm --filter @cosmosh/backend db:init
+
+# Start backend in standalone mode (DB path: packages/backend/.cosmosh/...)
+pnpm --filter @cosmosh/backend dev
+
+# Start backend in electron-main mode (PowerShell)
+$env:COSMOSH_RUNTIME_MODE='electron-main'; pnpm --filter @cosmosh/backend dev
+```
+
+### Runtime Flow (Text Diagram)
+
+```text
+Backend Start
+   └─ bootstrap()
+         ├─ initializeDatabase(runtimeMode)
+         │   ├─ resolveDatabaseFilePath(runtimeMode)
+         │   ├─ ensureSecureDirectory(...)
+         │   ├─ ensureSecureFile(...)
+         │   ├─ PrismaClient.$connect()
+         │   └─ applyPragmas(...)
+         ├─ registerShutdownHooks()
+         └─ serve(Hono app)
+
+Process Exit (SIGINT/SIGTERM)
+   └─ shutdownDatabase()
+```
+
+### Security Strategy (Current)
+
+- Use app-local/private storage path by runtime mode:
+   - `electron-main`: user local app data directory
+   - `standalone`: `packages/backend/.cosmosh/`
+- Create DB directory with restricted permission intent (`0700` where supported).
+- Create DB file with restricted permission intent (`0600` where supported).
+- On Windows, enforce ACL hardening via `icacls`:
+   - remove inherited permissions (`/inheritance:r`)
+   - re-grant only current user + `SYSTEM`
+- Apply SQLite pragmas at connect time:
+   - `foreign_keys = ON`
+   - `journal_mode = WAL`
+   - `synchronous = NORMAL`
+   - `busy_timeout = 5000`
+   - `locking_mode = EXCLUSIVE` (electron-main only)
+
+`locking_mode = EXCLUSIVE` improves single-owner safety semantics, but it can reduce
+concurrency with external DB tools or secondary processes. If you see "database is locked"
+symptoms during debugging, verify no extra process is trying to attach to the same DB file.
+
+### Error Handling and Observability
+
+- Structured DB errors are wrapped as `DatabaseInitError` with:
+   - error code (for quick triage)
+   - context object (runtime mode, file path, etc.)
+   - original cause
+- Startup/shutdown logs print DB error code and context for easier debugging.
+
 ## Important Notes
 
 1. **For Electron development**: You MUST start the renderer dev server first (port 5173), then start the main process.
