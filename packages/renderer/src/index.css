@@ -34,6 +34,10 @@
   --color-status-good: #4ade80;
   --color-status-warn: #facc15;
   --color-status-bad: #f87171;
+  --color-scrollbar-width: 8px;
+  --color-scrollbar-track: #00000000;
+  --color-scrollbar-thumb: #2f2f2f;
+  --color-scrollbar-thumb-hover: #3a3a3a;
   --shadow-soft: rgba(4, 8, 16, 0.6);
 }
 
@@ -160,3 +164,21 @@ body {
   scrollbar-width: none;
 }
 
+::-webkit-scrollbar {
+  width: var(--color-scrollbar-width);
+  height: var(--color-scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-scrollbar-track);
+  border-radius: var(--color-scrollbar-width);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb);
+  border-radius: var(--color-scrollbar-width);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-thumb-hover);
+}
