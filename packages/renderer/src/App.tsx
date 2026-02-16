@@ -1,3 +1,4 @@
+import classNames from 'classnames';
 import React from 'react';
 
 import Header from './components/header/Header';
@@ -49,11 +50,11 @@ const App: React.FC = () => {
         />
       </div>
       {/* Content */}
-      <div className="p-2">
+      <div className="flex min-h-0 w-full flex-1 p-2">
         {tabs.map((tab) => (
           <section
             key={tab.id}
-            className={tab.id === activeTabId ? 'block' : 'hidden'}
+            className={classNames('h-full min-h-0 w-full overflow-auto', tab.id === activeTabId ? 'block' : 'hidden')}
           >
             {tab.page === 'home' && (
               <Home
