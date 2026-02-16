@@ -2,6 +2,8 @@ import classNames from 'classnames';
 import { Folder, FolderOpen, HardDrive, PlugZap, Server, Terminal } from 'lucide-react';
 import React from 'react';
 
+import { Button } from '../components/ui/button';
+import { Checkbox } from '../components/ui/checkbox';
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -32,6 +34,10 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
+import { Form, FormControl, FormField, FormLabel, FormMessage } from '../components/ui/form';
+import { formStyles } from '../components/ui/form-styles';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { menuStyles } from '../components/ui/menu-styles';
 import {
   Menubar,
@@ -47,7 +53,11 @@ import {
   MenubarSubTrigger,
   MenubarTrigger,
 } from '../components/ui/menubar';
+import { PasswordField } from '../components/ui/password-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Slider } from '../components/ui/slider';
+import { Switch } from '../components/ui/switch';
+import { Textarea } from '../components/ui/textarea';
 import { getLocale, setLocale, t } from '../lib/i18n';
 
 const ComponentsField: React.FC = () => {
@@ -57,12 +67,24 @@ const ComponentsField: React.FC = () => {
   const [profile, setProfile] = React.useState<string>('prod');
   const [sshMode, setSshMode] = React.useState<string>('shell');
   const [locale, setLocaleState] = React.useState<'en' | 'zh-CN'>(getLocale());
+  const [host, setHost] = React.useState<string>('node-a.prod');
+  const [port, setPort] = React.useState<string>('22');
+  const [username, setUsername] = React.useState<string>('root');
+  const [password, setPassword] = React.useState<string>('');
+  const [privateKey, setPrivateKey] = React.useState<string>('');
+  const [strictHostKey, setStrictHostKey] = React.useState<boolean>(true);
+  const [enableCompression, setEnableCompression] = React.useState<boolean>(false);
+  const [connectionTimeout, setConnectionTimeout] = React.useState<number[]>([45]);
 
   const handleToggleLocale = React.useCallback(async () => {
     const nextLocale = locale === 'en' ? 'zh-CN' : 'en';
     const syncedLocale = await setLocale(nextLocale);
     setLocaleState(syncedLocale);
   }, [locale]);
+
+  const handleSshFormSubmit = React.useCallback((event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+  }, []);
 
   const formatSamples = [
     t('home.formatNamed', { name: 'agou', profile: 'prod' }),
@@ -76,6 +98,130 @@ const ComponentsField: React.FC = () => {
   return (
     <div className="flex flex-col gap-4">
       <div className="text-lg font-semibold">{t('componentsPlayground.title')}</div>
+
+      <Form
+        className="grid gap-3"
+        onSubmit={handleSshFormSubmit}
+      >
+        <FormField>
+          <FormLabel htmlFor="ssh-host">Host</FormLabel>
+          <FormControl>
+            <Input
+              id="ssh-host"
+              value={host}
+              placeholder="server.example.com"
+              onChange={(event) => setHost(event.target.value)}
+            />
+          </FormControl>
+        </FormField>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <FormField>
+            <FormLabel htmlFor="ssh-port">Port</FormLabel>
+            <FormControl>
+              <Input
+                id="ssh-port"
+                value={port}
+                inputMode="numeric"
+                onChange={(event) => setPort(event.target.value)}
+              />
+            </FormControl>
+          </FormField>
+
+          <FormField>
+            <FormLabel htmlFor="ssh-username">Username</FormLabel>
+            <FormControl>
+              <Input
+                id="ssh-username"
+                value={username}
+                placeholder="root"
+                onChange={(event) => setUsername(event.target.value)}
+              />
+            </FormControl>
+          </FormField>
+        </div>
+
+        <FormField>
+          <FormLabel htmlFor="ssh-password">Password</FormLabel>
+          <FormControl>
+            <PasswordField
+              id="ssh-password"
+              value={password}
+              placeholder="Optional"
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </FormControl>
+        </FormField>
+
+        <FormField>
+          <FormLabel htmlFor="ssh-private-key">Private Key</FormLabel>
+          <FormControl>
+            <Textarea
+              id="ssh-private-key"
+              value={privateKey}
+              placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+              onChange={(event) => setPrivateKey(event.target.value)}
+            />
+          </FormControl>
+          <FormMessage>{privateKey.length > 0 && privateKey.length < 32 ? 'Key seems too short.' : ''}</FormMessage>
+        </FormField>
+
+        <div className="grid grid-cols-1 gap-3 px-2.5 sm:grid-cols-2">
+          <div className="flex items-center gap-0.5">
+            <Switch
+              id="ssh-strict-host-key"
+              checked={strictHostKey}
+              onCheckedChange={setStrictHostKey}
+            />
+            <Label
+              htmlFor="ssh-strict-host-key"
+              className={formStyles.inlineLabel}
+            >
+              Strict Host Key Checking
+            </Label>
+          </div>
+
+          <div className="flex items-center gap-0.5">
+            <Checkbox
+              id="ssh-compression"
+              checked={enableCompression}
+              onCheckedChange={(checkedState) => setEnableCompression(checkedState === true)}
+            />
+            <Label
+              htmlFor="ssh-compression"
+              className={formStyles.inlineLabel}
+            >
+              Enable Compression
+            </Label>
+          </div>
+        </div>
+
+        <FormField>
+          <div className="mb-1 flex items-center justify-between">
+            <FormLabel
+              htmlFor="ssh-timeout"
+              className={formStyles.inlineLabel}
+            >
+              Connection Timeout
+            </FormLabel>
+            <span className={formStyles.helperText}>{connectionTimeout[0]}s</span>
+          </div>
+          <Slider
+            className="px-2.5"
+            id="ssh-timeout"
+            min={5}
+            max={180}
+            step={5}
+            value={connectionTimeout}
+            onValueChange={setConnectionTimeout}
+          />
+        </FormField>
+
+        <div className="flex items-center gap-2.5">
+          <Button type="submit">Save SSH Profile</Button>
+          <Button variant="ghost">Test Connection</Button>
+        </div>
+      </Form>
 
       <div className="flex flex-wrap items-center gap-3">
         <button

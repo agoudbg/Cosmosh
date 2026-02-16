@@ -30,6 +30,30 @@ const base = {
         hover: '#292929cc',
       },
     },
+    form: {
+      control: {
+        DEFAULT: '#191919d9',
+        hover: '#292929cc',
+      },
+      text: {
+        DEFAULT: '#ffffff',
+        muted: '#a7b0bd',
+      },
+      switch: {
+        track: {
+          off: '#303030',
+          on: '#1e90ff',
+        },
+      },
+      thumb: {
+        off: '#afafaf',
+        on: '#ffffff',
+      },
+      message: {
+        error: '#f87171',
+      },
+      active: '#1e90ff',
+    },
     outline: '#0078d4aa',
     divider: '#333333',
     status: {
@@ -67,6 +91,30 @@ const light = {
     menu: {
       control: '#ffffff',
       controlHover: '#f1f5f9',
+    },
+    form: {
+      control: {
+        DEFAULT: '#ffffff',
+        hover: '#f1f5f9',
+      },
+      text: {
+        DEFAULT: '#111827',
+        muted: '#475569',
+      },
+      switch: {
+        track: {
+          off: '#d5deea',
+          on: '#0a84ff',
+        },
+      },
+      thumb: {
+        off: '#acb9cb',
+        on: '#ffffff',
+      },
+      message: {
+        error: '#dc2626',
+      },
+      active: '#0a84ff',
     },
     status: {
       good: '#4ade80',
