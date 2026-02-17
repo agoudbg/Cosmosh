@@ -68,9 +68,16 @@ const App: React.FC = () => {
               <Debug
                 activeTabTitle={tab.title}
                 activeTabIcon={tab.iconKey}
-                onOpenSSH={() => openPageInTab(tab.id, 'ssh')}
-                onOpenSettings={() => addTab('settings')}
-                onOpenComponentsField={() => addTab('components-field')}
+                onOpenSSH={(openInNewTab) => (openInNewTab ? addTab('ssh') : openPageInTab(tab.id, 'ssh'))}
+                onOpenSettings={(openInNewTab) =>
+                  openInNewTab ? addTab('settings') : openPageInTab(tab.id, 'settings')
+                }
+                onOpenComponentsField={(openInNewTab) =>
+                  openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')
+                }
+                onOpenSshEditorMock={(openInNewTab) =>
+                  openInNewTab ? addTab('ssh-editor-mock') : openPageInTab(tab.id, 'ssh-editor-mock')
+                }
                 onRenameTab={(title) => updateTab(tab.id, { title })}
                 onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
               />

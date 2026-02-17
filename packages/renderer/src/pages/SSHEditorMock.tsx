@@ -1,6 +1,13 @@
 import type { ApiSshCreateServerRequest, components } from '@cosmosh/api-contract';
 import React from 'react';
 
+import { Button } from '../components/ui/button';
+import { Checkbox } from '../components/ui/checkbox';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { PasswordField } from '../components/ui/password-field';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Textarea } from '../components/ui/textarea';
 import {
   createSshFolder,
   createSshServer,
@@ -15,6 +22,8 @@ type SshServerListItem = components['schemas']['SshServerListItem'];
 type SshFolder = components['schemas']['SshFolder'];
 type SshTag = components['schemas']['SshTag'];
 type SshAuthType = components['schemas']['SshAuthType'];
+
+const NO_FOLDER_SELECT_VALUE = '__none__';
 
 type CreateServerFormState = {
   name: string;
@@ -193,40 +202,36 @@ const SSHEditorMock: React.FC = () => {
       <section className="space-y-2">
         <h2>{t('ssh.createFolderTitle')}</h2>
         <div className="flex gap-2">
-          <input
+          <Input
             value={newFolderName}
             placeholder={t('ssh.folderNamePlaceholder')}
-            className="border px-2 py-1"
             onChange={(event) => setNewFolderName(event.target.value)}
           />
-          <button
+          <Button
             type="button"
             disabled={isSubmittingFolder}
-            className="border px-2 py-1"
             onClick={() => void onCreateFolder()}
           >
             {isSubmittingFolder ? t('ssh.creating') : t('ssh.createFolderButton')}
-          </button>
+          </Button>
         </div>
       </section>
 
       <section className="space-y-2">
         <h2>{t('ssh.createTagTitle')}</h2>
         <div className="flex gap-2">
-          <input
+          <Input
             value={newTagName}
             placeholder={t('ssh.tagNamePlaceholder')}
-            className="border px-2 py-1"
             onChange={(event) => setNewTagName(event.target.value)}
           />
-          <button
+          <Button
             type="button"
             disabled={isSubmittingTag}
-            className="border px-2 py-1"
             onClick={() => void onCreateTag()}
           >
             {isSubmittingTag ? t('ssh.creating') : t('ssh.createTagButton')}
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -237,90 +242,88 @@ const SSHEditorMock: React.FC = () => {
           onSubmit={(event) => void onSubmitServer(event)}
         >
           <div className="grid grid-cols-2 gap-2">
-            <input
+            <Input
               value={formState.name}
               placeholder={t('ssh.serverNamePlaceholder')}
-              className="border px-2 py-1"
               onChange={(event) => onFormChange('name', event.target.value)}
             />
-            <input
+            <Input
               value={formState.host}
               placeholder={t('ssh.hostPlaceholder')}
-              className="border px-2 py-1"
               onChange={(event) => onFormChange('host', event.target.value)}
             />
-            <input
+            <Input
               value={formState.port}
               placeholder={t('ssh.portPlaceholder')}
-              className="border px-2 py-1"
               onChange={(event) => onFormChange('port', event.target.value)}
             />
-            <input
+            <Input
               value={formState.username}
               placeholder={t('ssh.usernamePlaceholder')}
-              className="border px-2 py-1"
               onChange={(event) => onFormChange('username', event.target.value)}
             />
-            <select
+            <Select
               value={formState.authType}
-              className="border px-2 py-1"
-              onChange={(event) => onFormChange('authType', event.target.value as SshAuthType)}
+              onValueChange={(value) => onFormChange('authType', value as SshAuthType)}
             >
-              <option value="password">password</option>
-              <option value="key">key</option>
-              <option value="both">both</option>
-            </select>
-            <select
-              value={formState.folderId}
-              className="border px-2 py-1"
-              onChange={(event) => onFormChange('folderId', event.target.value)}
+              <SelectTrigger>
+                <SelectValue placeholder="Select auth type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="password">password</SelectItem>
+                <SelectItem value="key">key</SelectItem>
+                <SelectItem value="both">both</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={formState.folderId || NO_FOLDER_SELECT_VALUE}
+              onValueChange={(value) => onFormChange('folderId', value === NO_FOLDER_SELECT_VALUE ? '' : value)}
             >
-              <option value="">{t('ssh.noFolder')}</option>
-              {folders.map((folder) => (
-                <option
-                  key={folder.id}
-                  value={folder.id}
-                >
-                  {folder.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder={t('ssh.noFolder')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_FOLDER_SELECT_VALUE}>{t('ssh.noFolder')}</SelectItem>
+                {folders.map((folder) => (
+                  <SelectItem
+                    key={folder.id}
+                    value={folder.id}
+                  >
+                    {folder.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {(formState.authType === 'password' || formState.authType === 'both') && (
-            <input
+            <PasswordField
               value={formState.password}
               placeholder={t('ssh.passwordPlaceholder')}
-              className="border px-2 py-1"
-              type="password"
               onChange={(event) => onFormChange('password', event.target.value)}
             />
           )}
 
           {(formState.authType === 'key' || formState.authType === 'both') && (
-            <textarea
+            <Textarea
               value={formState.privateKey}
               placeholder={t('ssh.privateKeyPlaceholder')}
-              className="border px-2 py-1"
               rows={4}
               onChange={(event) => onFormChange('privateKey', event.target.value)}
             />
           )}
 
           {(formState.authType === 'key' || formState.authType === 'both') && (
-            <input
+            <PasswordField
               value={formState.privateKeyPassphrase}
               placeholder={t('ssh.privateKeyPassphrasePlaceholder')}
-              className="border px-2 py-1"
-              type="password"
               onChange={(event) => onFormChange('privateKeyPassphrase', event.target.value)}
             />
           )}
 
-          <textarea
+          <Textarea
             value={formState.note}
             placeholder={t('ssh.notePlaceholder')}
-            className="border px-2 py-1"
             rows={3}
             onChange={(event) => onFormChange('note', event.target.value)}
           />
@@ -328,27 +331,26 @@ const SSHEditorMock: React.FC = () => {
           <fieldset className="space-y-1">
             <legend>{t('ssh.tagsLegend')}</legend>
             {tags.map((tag) => (
-              <label
+              <div
                 key={tag.id}
-                className="mr-3 inline-flex items-center gap-1"
+                className="mr-3 inline-flex items-center gap-2"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
+                  id={`ssh-tag-${tag.id}`}
                   checked={selectedTagIds.includes(tag.id)}
-                  onChange={() => onToggleTag(tag.id)}
+                  onCheckedChange={() => onToggleTag(tag.id)}
                 />
-                {tag.name}
-              </label>
+                <Label htmlFor={`ssh-tag-${tag.id}`}>{tag.name}</Label>
+              </div>
             ))}
           </fieldset>
 
-          <button
+          <Button
             type="submit"
             disabled={isSubmittingServer}
-            className="border px-2 py-1"
           >
             {isSubmittingServer ? t('ssh.creating') : t('ssh.createServerButton')}
-          </button>
+          </Button>
         </form>
       </section>
 

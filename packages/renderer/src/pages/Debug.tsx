@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { Checkbox } from '../components/ui/checkbox';
+import { Label } from '../components/ui/label';
 import { getBackendRuntimeTarget, testBackendPing } from '../lib/backend';
 import type { TabIconKey } from '../types/tabs';
 
@@ -10,9 +12,10 @@ type BackendPingState =
   | { status: 'error'; message: string };
 
 type DebugProps = {
-  onOpenSSH: () => void;
-  onOpenSettings: () => void;
-  onOpenComponentsField: () => void;
+  onOpenSSH: (openInNewTab: boolean) => void;
+  onOpenSettings: (openInNewTab: boolean) => void;
+  onOpenComponentsField: (openInNewTab: boolean) => void;
+  onOpenSshEditorMock: (openInNewTab: boolean) => void;
   onRenameTab: (title: string) => void;
   onChangeIcon: (iconKey: TabIconKey) => void;
   activeTabTitle: string;
@@ -30,20 +33,21 @@ const TAB_ICON_OPTIONS: Array<{ value: TabIconKey; label: string }> = [
 type NavigationEntry = {
   id: string;
   pageName: string;
-  target: string;
-  onClick: () => void;
+  onClick: (openInNewTab: boolean) => void;
 };
 
 const Debug: React.FC<DebugProps> = ({
   onOpenSSH,
   onOpenSettings,
   onOpenComponentsField,
+  onOpenSshEditorMock,
   onRenameTab,
   onChangeIcon,
   activeTabTitle,
   activeTabIcon,
 }) => {
   const [draftTitle, setDraftTitle] = React.useState<string>(activeTabTitle);
+  const [openInNewTab, setOpenInNewTab] = React.useState<boolean>(true);
   const [backendPingState, setBackendPingState] = React.useState<BackendPingState>({
     status: 'idle',
     message: 'Not tested',
@@ -51,12 +55,12 @@ const Debug: React.FC<DebugProps> = ({
   const backendRuntime = React.useMemo(() => getBackendRuntimeTarget(), []);
 
   const navigationEntries: NavigationEntry[] = [
-    { id: 'ssh', pageName: 'SSH', target: 'Current tab', onClick: onOpenSSH },
-    { id: 'settings', pageName: 'Settings', target: 'New tab', onClick: onOpenSettings },
+    { id: 'ssh', pageName: 'SSH', onClick: onOpenSSH },
+    { id: 'ssh-editor-mock', pageName: 'SSH Editor Mock', onClick: onOpenSshEditorMock },
+    { id: 'settings', pageName: 'Settings', onClick: onOpenSettings },
     {
       id: 'components-playground',
       pageName: 'Components Playground',
-      target: 'New tab',
       onClick: onOpenComponentsField,
     },
   ];
@@ -90,6 +94,14 @@ const Debug: React.FC<DebugProps> = ({
 
       <div className="debug-panel">
         <div className="mb-2 text-sm font-semibold">Open Pages</div>
+        <div className="mb-2 flex items-center gap-2">
+          <Checkbox
+            id="debug-open-in-new-tab"
+            checked={openInNewTab}
+            onCheckedChange={(value) => setOpenInNewTab(value === true)}
+          />
+          <Label htmlFor="debug-open-in-new-tab">Open in new tab</Label>
+        </div>
         <div className="flex flex-col gap-1">
           {navigationEntries.map((entry) => (
             <button
@@ -98,10 +110,10 @@ const Debug: React.FC<DebugProps> = ({
               className="flex w-full items-center justify-between rounded-md bg-bg-subtle px-3 py-2 text-left text-sm transition-colors hover:bg-menu-control-hover"
               aria-label={`Open ${entry.pageName}`}
               data-testid={`debug-open-${entry.id}`}
-              onClick={entry.onClick}
+              onClick={() => entry.onClick(openInNewTab)}
             >
               <span className="font-medium">{entry.pageName}</span>
-              <span className="text-xs text-header-text-muted">{entry.target}</span>
+              <span className="text-xs text-header-text-muted">{openInNewTab ? 'New tab' : 'Current tab'}</span>
             </button>
           ))}
         </div>
