@@ -4,6 +4,12 @@ import classNames from 'classnames';
 import { Check, ChevronRight, Dot } from 'lucide-react';
 import React from 'react';
 
+import {
+  MenuIconSlotContext,
+  resolveMenuHasLeadingVisual,
+  useMenuIconSlot,
+  useMenuSeparatorInset,
+} from './menu-icon-slot';
 import { normalizeCollisionPadding, resolveViewportMenuBounds } from './menu-position';
 import { menuStyles } from './menu-styles';
 
@@ -40,20 +46,30 @@ MenubarTrigger.displayName = MenubarPrimitive.Trigger.displayName;
 
 const MenubarSubTrigger = React.forwardRef<
   React.ElementRef<typeof MenubarPrimitive.SubTrigger>,
-  React.ComponentPropsWithoutRef<typeof MenubarPrimitive.SubTrigger> & { inset?: boolean; icon?: MenuIconComponent }
->(({ className, inset, children, icon: Icon, ...props }, ref) => (
-  <MenubarPrimitive.SubTrigger
-    ref={ref}
-    className={classNames(menuStyles.item, menuStyles.subTrigger, inset && menuStyles.inset, className)}
-    {...props}
-  >
-    <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
-      {Icon && <Icon className="h-4 w-4" />}
-    </span>
-    {children}
-    <ChevronRight className="ml-auto h-4 w-4" />
-  </MenubarPrimitive.SubTrigger>
-));
+  React.ComponentPropsWithoutRef<typeof MenubarPrimitive.SubTrigger> & {
+    inset?: boolean;
+    icon?: MenuIconComponent;
+    withIconSlot?: boolean;
+  }
+>(({ className, inset, children, icon: Icon, withIconSlot, ...props }, ref) => {
+  const shouldShowIconSlot = useMenuIconSlot(withIconSlot, Icon);
+
+  return (
+    <MenubarPrimitive.SubTrigger
+      ref={ref}
+      className={classNames(menuStyles.item, menuStyles.subTrigger, inset && menuStyles.inset, className)}
+      {...props}
+    >
+      {shouldShowIconSlot && (
+        <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
+          {Icon && <Icon className="h-4 w-4" />}
+        </span>
+      )}
+      {children}
+      <ChevronRight className="ml-auto h-4 w-4" />
+    </MenubarPrimitive.SubTrigger>
+  );
+});
 MenubarSubTrigger.displayName = MenubarPrimitive.SubTrigger.displayName;
 
 const MenubarSub = MenubarPrimitive.Sub;
@@ -63,6 +79,7 @@ const MenubarSubContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof MenubarPrimitive.SubContent>
 >(({ className, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
   const viewportBoundsStyle = resolveViewportMenuBounds();
+  const hasLeadingVisual = resolveMenuHasLeadingVisual(props.children);
 
   return (
     <MenubarPrimitive.Portal>
@@ -78,7 +95,9 @@ const MenubarSubContent = React.forwardRef<
         }}
         className={classNames(menuStyles.content, className)}
         {...props}
-      />
+      >
+        <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
+      </MenubarPrimitive.SubContent>
     </MenubarPrimitive.Portal>
   );
 });
@@ -89,6 +108,7 @@ const MenubarContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Content>
 >(({ className, align = 'start', alignOffset = -4, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
   const viewportBoundsStyle = resolveViewportMenuBounds();
+  const hasLeadingVisual = resolveMenuHasLeadingVisual(props.children);
 
   return (
     <MenubarPrimitive.Portal>
@@ -106,7 +126,9 @@ const MenubarContent = React.forwardRef<
         }}
         className={classNames(menuStyles.content, className)}
         {...props}
-      />
+      >
+        <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
+      </MenubarPrimitive.Content>
     </MenubarPrimitive.Portal>
   );
 });
@@ -119,20 +141,24 @@ const MenubarItem = React.forwardRef<
     icon?: MenuIconComponent;
     withIconSlot?: boolean;
   }
->(({ className, inset, icon: Icon, withIconSlot = true, children, ...props }, ref) => (
-  <MenubarPrimitive.Item
-    ref={ref}
-    className={classNames(menuStyles.item, inset && menuStyles.inset, className)}
-    {...props}
-  >
-    {withIconSlot && (
-      <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
-        {Icon && <Icon className="h-4 w-4" />}
-      </span>
-    )}
-    {children}
-  </MenubarPrimitive.Item>
-));
+>(({ className, inset, icon: Icon, withIconSlot, children, ...props }, ref) => {
+  const shouldShowIconSlot = useMenuIconSlot(withIconSlot, Icon);
+
+  return (
+    <MenubarPrimitive.Item
+      ref={ref}
+      className={classNames(menuStyles.item, inset && menuStyles.inset, className)}
+      {...props}
+    >
+      {shouldShowIconSlot && (
+        <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
+          {Icon && <Icon className="h-4 w-4" />}
+        </span>
+      )}
+      {children}
+    </MenubarPrimitive.Item>
+  );
+});
 MenubarItem.displayName = MenubarPrimitive.Item.displayName;
 
 const MenubarCheckboxItem = React.forwardRef<
@@ -190,14 +216,21 @@ MenubarLabel.displayName = MenubarPrimitive.Label.displayName;
 
 const MenubarSeparator = React.forwardRef<
   React.ElementRef<typeof MenubarPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Separator> & { vertical?: boolean }
->(({ className, vertical = false, ...props }, ref) => (
-  <MenubarPrimitive.Separator
-    ref={ref}
-    className={classNames(vertical ? menuStyles.menubarSeparator : menuStyles.separator, className)}
-    {...props}
-  />
-));
+  React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Separator> & { vertical?: boolean; inset?: boolean }
+>(({ className, vertical = false, inset, ...props }, ref) => {
+  const shouldInset = useMenuSeparatorInset(inset);
+
+  return (
+    <MenubarPrimitive.Separator
+      ref={ref}
+      className={classNames(
+        vertical ? menuStyles.menubarSeparator : shouldInset ? menuStyles.separatorInset : menuStyles.separator,
+        className,
+      )}
+      {...props}
+    />
+  );
+});
 MenubarSeparator.displayName = MenubarPrimitive.Separator.displayName;
 
 const MenubarShortcut: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({ className, ...props }) => (

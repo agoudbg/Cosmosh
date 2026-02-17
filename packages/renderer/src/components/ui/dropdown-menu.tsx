@@ -3,6 +3,12 @@ import classNames from 'classnames';
 import { Check, ChevronRight, Dot } from 'lucide-react';
 import React from 'react';
 
+import {
+  MenuIconSlotContext,
+  resolveMenuHasLeadingVisual,
+  useMenuIconSlot,
+  useMenuSeparatorInset,
+} from './menu-icon-slot';
 import { normalizeCollisionPadding, resolveViewportMenuBounds } from './menu-position';
 import { menuStyles } from './menu-styles';
 
@@ -20,20 +26,27 @@ const DropdownMenuSubTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
     inset?: boolean;
     icon?: MenuIconComponent;
+    withIconSlot?: boolean;
   }
->(({ className, inset, children, icon: Icon, ...props }, ref) => (
-  <DropdownMenuPrimitive.SubTrigger
-    ref={ref}
-    className={classNames(menuStyles.item, menuStyles.subTrigger, inset && menuStyles.inset, className)}
-    {...props}
-  >
-    <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
-      {Icon && <Icon className="h-4 w-4" />}
-    </span>
-    {children}
-    <ChevronRight className="ml-auto h-4 w-4" />
-  </DropdownMenuPrimitive.SubTrigger>
-));
+>(({ className, inset, children, icon: Icon, withIconSlot, ...props }, ref) => {
+  const shouldShowIconSlot = useMenuIconSlot(withIconSlot, Icon);
+
+  return (
+    <DropdownMenuPrimitive.SubTrigger
+      ref={ref}
+      className={classNames(menuStyles.item, menuStyles.subTrigger, inset && menuStyles.inset, className)}
+      {...props}
+    >
+      {shouldShowIconSlot && (
+        <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
+          {Icon && <Icon className="h-4 w-4" />}
+        </span>
+      )}
+      {children}
+      <ChevronRight className="ml-auto h-4 w-4" />
+    </DropdownMenuPrimitive.SubTrigger>
+  );
+});
 DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName;
 
 const DropdownMenuSubContent = React.forwardRef<
@@ -41,6 +54,7 @@ const DropdownMenuSubContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
 >(({ className, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
   const viewportBoundsStyle = resolveViewportMenuBounds();
+  const hasLeadingVisual = resolveMenuHasLeadingVisual(props.children);
 
   return (
     <DropdownMenuPrimitive.Portal>
@@ -56,7 +70,9 @@ const DropdownMenuSubContent = React.forwardRef<
         }}
         className={classNames(menuStyles.content, className)}
         {...props}
-      />
+      >
+        <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
+      </DropdownMenuPrimitive.SubContent>
     </DropdownMenuPrimitive.Portal>
   );
 });
@@ -67,6 +83,7 @@ const DropdownMenuContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(({ className, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
   const viewportBoundsStyle = resolveViewportMenuBounds();
+  const hasLeadingVisual = resolveMenuHasLeadingVisual(props.children);
 
   return (
     <DropdownMenuPrimitive.Portal>
@@ -82,7 +99,9 @@ const DropdownMenuContent = React.forwardRef<
         }}
         className={classNames(menuStyles.content, className)}
         {...props}
-      />
+      >
+        <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
+      </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   );
 });
@@ -95,20 +114,24 @@ const DropdownMenuItem = React.forwardRef<
     icon?: MenuIconComponent;
     withIconSlot?: boolean;
   }
->(({ className, inset, icon: Icon, withIconSlot = true, children, ...props }, ref) => (
-  <DropdownMenuPrimitive.Item
-    ref={ref}
-    className={classNames(menuStyles.item, inset && menuStyles.inset, className)}
-    {...props}
-  >
-    {withIconSlot && (
-      <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
-        {Icon && <Icon className="h-4 w-4" />}
-      </span>
-    )}
-    {children}
-  </DropdownMenuPrimitive.Item>
-));
+>(({ className, inset, icon: Icon, withIconSlot, children, ...props }, ref) => {
+  const shouldShowIconSlot = useMenuIconSlot(withIconSlot, Icon);
+
+  return (
+    <DropdownMenuPrimitive.Item
+      ref={ref}
+      className={classNames(menuStyles.item, inset && menuStyles.inset, className)}
+      {...props}
+    >
+      {shouldShowIconSlot && (
+        <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
+          {Icon && <Icon className="h-4 w-4" />}
+        </span>
+      )}
+      {children}
+    </DropdownMenuPrimitive.Item>
+  );
+});
 DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName;
 
 const DropdownMenuCheckboxItem = React.forwardRef<
@@ -166,14 +189,18 @@ DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName;
 
 const DropdownMenuSeparator = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <DropdownMenuPrimitive.Separator
-    ref={ref}
-    className={classNames(menuStyles.separator, className)}
-    {...props}
-  />
-));
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator> & { inset?: boolean }
+>(({ className, inset, ...props }, ref) => {
+  const shouldInset = useMenuSeparatorInset(inset);
+
+  return (
+    <DropdownMenuPrimitive.Separator
+      ref={ref}
+      className={classNames(shouldInset ? menuStyles.separatorInset : menuStyles.separator, className)}
+      {...props}
+    />
+  );
+});
 DropdownMenuSeparator.displayName = DropdownMenuPrimitive.Separator.displayName;
 
 const DropdownMenuShortcut: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({ className, ...props }) => (

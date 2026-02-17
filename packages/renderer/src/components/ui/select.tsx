@@ -4,6 +4,12 @@ import classNames from 'classnames';
 import { Check } from 'lucide-react';
 import React from 'react';
 
+import {
+  MenuIconSlotContext,
+  resolveMenuHasLeadingVisual,
+  useMenuIconSlot,
+  useMenuSeparatorInset,
+} from './menu-icon-slot';
 import { normalizeCollisionPadding, resolveViewportMenuBounds } from './menu-position';
 import { menuStyles } from './menu-styles';
 
@@ -35,6 +41,7 @@ const SelectContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = 'popper', sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
   const viewportBoundsStyle = resolveViewportMenuBounds();
+  const hasLeadingVisual = resolveMenuHasLeadingVisual(children);
 
   return (
     <SelectPrimitive.Portal>
@@ -55,7 +62,9 @@ const SelectContent = React.forwardRef<
         <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-header-text-muted">
           <ChevronUpIcon className={menuStyles.iconSlot} />
         </SelectPrimitive.ScrollUpButton>
-        <SelectPrimitive.Viewport>{children}</SelectPrimitive.Viewport>
+        <SelectPrimitive.Viewport>
+          <MenuIconSlotContext.Provider value={hasLeadingVisual}>{children}</MenuIconSlotContext.Provider>
+        </SelectPrimitive.Viewport>
         <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-header-text-muted">
           <ChevronDownIcon className={menuStyles.iconSlot} />
         </SelectPrimitive.ScrollDownButton>
@@ -79,36 +88,46 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & { icon?: MenuIconComponent }
->(({ className, children, icon: Icon, ...props }, ref) => (
-  <SelectPrimitive.Item
-    ref={ref}
-    className={classNames(menuStyles.item, className)}
-    {...props}
-  >
-    <span className={menuStyles.itemIndicator}>
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
-    <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
-      {Icon && <Icon className="h-4 w-4" />}
-    </span>
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-  </SelectPrimitive.Item>
-));
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & { icon?: MenuIconComponent; withIconSlot?: boolean }
+>(({ className, children, icon: Icon, withIconSlot, ...props }, ref) => {
+  const shouldShowIconSlot = useMenuIconSlot(withIconSlot, Icon);
+
+  return (
+    <SelectPrimitive.Item
+      ref={ref}
+      className={classNames(menuStyles.item, className)}
+      {...props}
+    >
+      <span className={menuStyles.itemIndicator}>
+        <SelectPrimitive.ItemIndicator>
+          <Check className="h-4 w-4" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
+      {shouldShowIconSlot && (
+        <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
+          {Icon && <Icon className="h-4 w-4" />}
+        </span>
+      )}
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    </SelectPrimitive.Item>
+  );
+});
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
 const SelectSeparator = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Separator
-    ref={ref}
-    className={classNames(menuStyles.separator, className)}
-    {...props}
-  />
-));
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator> & { inset?: boolean }
+>(({ className, inset, ...props }, ref) => {
+  const shouldInset = useMenuSeparatorInset(inset);
+
+  return (
+    <SelectPrimitive.Separator
+      ref={ref}
+      className={classNames(shouldInset ? menuStyles.separatorInset : menuStyles.separator, className)}
+      {...props}
+    />
+  );
+});
 SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
 
 export { Select, SelectGroup, SelectValue, SelectTrigger, SelectContent, SelectLabel, SelectItem, SelectSeparator };

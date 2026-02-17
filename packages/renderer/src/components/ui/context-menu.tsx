@@ -3,6 +3,12 @@ import classNames from 'classnames';
 import { Check, ChevronRight, Dot } from 'lucide-react';
 import React from 'react';
 
+import {
+  MenuIconSlotContext,
+  resolveMenuHasLeadingVisual,
+  useMenuIconSlot,
+  useMenuSeparatorInset,
+} from './menu-icon-slot';
 import { normalizeCollisionPadding, resolveViewportMenuBounds } from './menu-position';
 import { menuStyles } from './menu-styles';
 
@@ -17,42 +23,63 @@ const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup;
 
 const ContextMenuSubTrigger = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.SubTrigger>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger> & { inset?: boolean; icon?: MenuIconComponent }
->(({ className, inset, children, icon: Icon, ...props }, ref) => (
-  <ContextMenuPrimitive.SubTrigger
-    ref={ref}
-    className={classNames(menuStyles.item, menuStyles.subTrigger, inset && menuStyles.inset, className)}
-    {...props}
-  >
-    <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
-      {Icon && <Icon className="h-4 w-4" />}
-    </span>
-    {children}
-    <ChevronRight className="ml-auto h-4 w-4" />
-  </ContextMenuPrimitive.SubTrigger>
-));
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger> & {
+    inset?: boolean;
+    icon?: MenuIconComponent;
+    withIconSlot?: boolean;
+  }
+>(({ className, inset, children, icon: Icon, withIconSlot, ...props }, ref) => {
+  const shouldShowIconSlot = useMenuIconSlot(withIconSlot, Icon);
+
+  return (
+    <ContextMenuPrimitive.SubTrigger
+      ref={ref}
+      className={classNames(menuStyles.item, menuStyles.subTrigger, inset && menuStyles.inset, className)}
+      {...props}
+    >
+      {shouldShowIconSlot && (
+        <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
+          {Icon && <Icon className="h-4 w-4" />}
+        </span>
+      )}
+      {children}
+      <ChevronRight className="ml-auto h-4 w-4" />
+    </ContextMenuPrimitive.SubTrigger>
+  );
+});
 ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName;
 
 const ContextMenuSubContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
->(({ className, sideOffset = 6, collisionPadding = 8, ...props }, ref) => (
-  <ContextMenuPrimitive.Portal>
-    <ContextMenuPrimitive.SubContent
-      ref={ref}
-      avoidCollisions
-      sideOffset={sideOffset}
-      sticky="always"
-      collisionPadding={normalizeCollisionPadding(collisionPadding)}
-      className={classNames(
-        menuStyles.content,
-        'max-h-[min(560px,var(--radix-context-menu-content-available-height))] max-w-[min(420px,var(--radix-context-menu-content-available-width))]',
-        className,
-      )}
-      {...props}
-    />
-  </ContextMenuPrimitive.Portal>
-));
+>(({ className, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
+  const viewportBoundsStyle = resolveViewportMenuBounds();
+  const hasLeadingVisual = resolveMenuHasLeadingVisual(props.children);
+
+  return (
+    <ContextMenuPrimitive.Portal>
+      <ContextMenuPrimitive.SubContent
+        ref={ref}
+        avoidCollisions
+        sideOffset={sideOffset}
+        sticky="always"
+        collisionPadding={normalizeCollisionPadding(collisionPadding)}
+        style={{
+          ...viewportBoundsStyle,
+          ...style,
+        }}
+        className={classNames(
+          menuStyles.content,
+          'max-h-[min(560px,var(--radix-context-menu-content-available-height))] max-w-[min(420px,var(--radix-context-menu-content-available-width))]',
+          className,
+        )}
+        {...props}
+      >
+        <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
+      </ContextMenuPrimitive.SubContent>
+    </ContextMenuPrimitive.Portal>
+  );
+});
 ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName;
 
 const ContextMenuContent = React.forwardRef<
@@ -60,6 +87,7 @@ const ContextMenuContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
 >(({ className, collisionPadding = 8, style, ...props }, ref) => {
   const viewportBoundsStyle = resolveViewportMenuBounds();
+  const hasLeadingVisual = resolveMenuHasLeadingVisual(props.children);
 
   return (
     <ContextMenuPrimitive.Portal>
@@ -78,7 +106,9 @@ const ContextMenuContent = React.forwardRef<
           className,
         )}
         {...props}
-      />
+      >
+        <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
+      </ContextMenuPrimitive.Content>
     </ContextMenuPrimitive.Portal>
   );
 });
@@ -91,20 +121,24 @@ const ContextMenuItem = React.forwardRef<
     icon?: MenuIconComponent;
     withIconSlot?: boolean;
   }
->(({ className, inset, icon: Icon, withIconSlot = true, children, ...props }, ref) => (
-  <ContextMenuPrimitive.Item
-    ref={ref}
-    className={classNames(menuStyles.item, inset && menuStyles.inset, className)}
-    {...props}
-  >
-    {withIconSlot && (
-      <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
-        {Icon && <Icon className="h-4 w-4" />}
-      </span>
-    )}
-    {children}
-  </ContextMenuPrimitive.Item>
-));
+>(({ className, inset, icon: Icon, withIconSlot, children, ...props }, ref) => {
+  const shouldShowIconSlot = useMenuIconSlot(withIconSlot, Icon);
+
+  return (
+    <ContextMenuPrimitive.Item
+      ref={ref}
+      className={classNames(menuStyles.item, inset && menuStyles.inset, className)}
+      {...props}
+    >
+      {shouldShowIconSlot && (
+        <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
+          {Icon && <Icon className="h-4 w-4" />}
+        </span>
+      )}
+      {children}
+    </ContextMenuPrimitive.Item>
+  );
+});
 ContextMenuItem.displayName = ContextMenuPrimitive.Item.displayName;
 
 const ContextMenuCheckboxItem = React.forwardRef<
@@ -162,14 +196,18 @@ ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName;
 
 const ContextMenuSeparator = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.Separator
-    ref={ref}
-    className={classNames(menuStyles.separator, className)}
-    {...props}
-  />
-));
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Separator> & { inset?: boolean }
+>(({ className, inset, ...props }, ref) => {
+  const shouldInset = useMenuSeparatorInset(inset);
+
+  return (
+    <ContextMenuPrimitive.Separator
+      ref={ref}
+      className={classNames(shouldInset ? menuStyles.separatorInset : menuStyles.separator, className)}
+      {...props}
+    />
+  );
+});
 ContextMenuSeparator.displayName = ContextMenuPrimitive.Separator.displayName;
 
 const ContextMenuShortcut: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({ className, ...props }) => (
