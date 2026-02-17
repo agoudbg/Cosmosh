@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { serve } from '@hono/node-server';
+import { enableI18nDevHotReload } from '@cosmosh/i18n';
 import type { PrismaClient } from '@prisma/client';
 
 import { DatabaseInitError, initializeDatabase, shutdownDatabase } from './db/prisma.js';
@@ -28,6 +31,11 @@ const port = resolvePort(process.env.COSMOSH_API_PORT);
 const internalToken = process.env.COSMOSH_INTERNAL_TOKEN;
 const isSecureLocalMode = runtimeMode === 'electron-main';
 const credentialEncryptionKeySource = process.env.COSMOSH_SECRET_KEY ?? internalToken;
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDirPath = path.dirname(currentFilePath);
+const workspaceRoot = path.resolve(currentDirPath, '../../..');
+const i18nLocaleRootDir = path.join(workspaceRoot, 'packages', 'i18n', 'locales');
+let disableI18nHotReload: (() => void) | null = null;
 
 if (isSecureLocalMode && !internalToken) {
   throw new Error('COSMOSH_INTERNAL_TOKEN is required when COSMOSH_RUNTIME_MODE is electron-main.');
@@ -53,6 +61,8 @@ const registerShutdownHooks = (): void => {
   // Handle process termination so DB handles are released cleanly.
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     console.log(`\n[shutdown] Received ${signal}. Shutting down backend...`);
+    disableI18nHotReload?.();
+    disableI18nHotReload = null;
 
     try {
       await shutdownDatabase();
@@ -88,6 +98,8 @@ const registerShutdownHooks = (): void => {
  * 3) Start HTTP listener
  */
 const bootstrap = async (): Promise<void> => {
+  disableI18nHotReload = await enableI18nDevHotReload({ localeRootDir: i18nLocaleRootDir });
+
   // Database initialization is intentionally done before starting the HTTP server,
   // so runtime fails fast when persistence is not ready.
   dbClient = await initializeDatabase({ runtimeMode });
@@ -110,6 +122,9 @@ const bootstrap = async (): Promise<void> => {
 };
 
 void bootstrap().catch(async (error: unknown) => {
+  disableI18nHotReload?.();
+  disableI18nHotReload = null;
+
   if (error instanceof DatabaseInitError) {
     console.error(`[bootstrap][${error.code}] ${error.message}`, {
       context: error.context,

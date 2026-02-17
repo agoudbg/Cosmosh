@@ -132,10 +132,19 @@ symptoms during debugging, verify no extra process is trying to attach to the sa
 
 2. **Hot Reload**:
    - Renderer changes will hot-reload automatically via Vite
+   - i18n locale changes also hot-reload in renderer dev mode
+   - i18n locale changes auto-refresh in backend/main development runtime
    - Main process changes require restarting the Electron app
    - Backend changes will auto-reload via tsx watch
 
-3. **Ports**:
+3. **i18n Watch Mode (Optional but Recommended while editing locales)**:
+
+```bash
+# Keep @cosmosh/i18n rebuilding in watch mode for non-renderer consumers
+pnpm --filter @cosmosh/i18n dev
+```
+
+4. **Ports**:
    - Renderer: `http://localhost:5173`
    - Backend API: `http://localhost:3000`
 

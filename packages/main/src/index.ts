@@ -17,7 +17,7 @@ import type {
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 import { API_CODES, API_HEADERS, API_PATHS, createApiError } from '@cosmosh/api-contract';
-import { createI18n, resolveLocale } from '@cosmosh/i18n';
+import { createI18n, enableI18nDevHotReload, resolveLocale } from '@cosmosh/i18n';
 import { spawn } from 'child_process';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
@@ -26,6 +26,7 @@ let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number | null = null;
 let backendToken: string | null = null;
+let disableI18nHotReload: (() => void) | null = null;
 
 let appLocale = resolveLocale(process.env.COSMOSH_LOCALE, 'en');
 
@@ -351,6 +352,12 @@ const createWindow = () => {
 
 app.whenReady().then(async () => {
   try {
+    if (!app.isPackaged) {
+      disableI18nHotReload = await enableI18nDevHotReload({
+        localeRootDir: path.join(resolveWorkspaceRoot(), 'packages', 'i18n', 'locales'),
+      });
+    }
+
     await startBackendService();
   } catch (error) {
     console.error('Failed to start backend service.', error);
@@ -446,6 +453,8 @@ ipcMain.handle(
 );
 
 app.on('before-quit', () => {
+  disableI18nHotReload?.();
+  disableI18nHotReload = null;
   stopBackendService();
 });
 

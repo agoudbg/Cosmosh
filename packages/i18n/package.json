@@ -5,6 +5,7 @@
   "description": "Shared i18n core for Cosmosh main, renderer and backend",
   "scripts": {
     "build": "tsup",
+    "dev": "tsup --watch",
     "check": "node ./scripts/check-locales.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",

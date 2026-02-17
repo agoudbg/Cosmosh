@@ -38,3 +38,8 @@ export type CreateI18nOptions = {
   onMissingKey?: (payload: MissingKeyPayload) => void;
   resources?: Messages;
 };
+
+export type EnableI18nDevHotReloadOptions = {
+  localeRootDir: string;
+  debounceMs?: number;
+};

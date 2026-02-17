@@ -3,8 +3,10 @@ import { IntlMessageFormat } from 'intl-messageformat';
 
 import type {
   CreateI18nOptions,
+  EnableI18nDevHotReloadOptions,
   I18nInstance,
   Locale,
+  Messages,
   Scope,
   TranslationPrimitive,
   TranslationParams,
@@ -13,6 +15,119 @@ import type {
 
 const supportedLocales: Locale[] = ['en', 'zh-CN'];
 const formatterCache = new Map<string, IntlMessageFormat>();
+const supportedScopes: Scope[] = ['main', 'renderer', 'backend'];
+
+type NodeFsModule = typeof import('node:fs');
+type NodePathModule = typeof import('node:path');
+
+const loadNodeRuntimeModules = async (): Promise<{ fs: NodeFsModule; path: NodePathModule } | null> => {
+  try {
+    const [fs, path] = await Promise.all([import('node:fs'), import('node:path')]);
+    return {
+      fs,
+      path,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const tryReloadMessagesFromDisk = (localeRootDir: string, fs: NodeFsModule, path: NodePathModule): boolean => {
+  if (!fs || !path) {
+    return false;
+  }
+
+  const nextMessages: Messages = {
+    en: {
+      main: messages.en.main,
+      renderer: messages.en.renderer,
+      backend: messages.en.backend,
+    },
+    'zh-CN': {
+      main: messages['zh-CN'].main,
+      renderer: messages['zh-CN'].renderer,
+      backend: messages['zh-CN'].backend,
+    },
+  };
+
+  try {
+    for (const locale of supportedLocales) {
+      for (const scope of supportedScopes) {
+        const filePath = path.resolve(localeRootDir, locale, `${scope}.json`);
+
+        if (!fs.existsSync(filePath)) {
+          throw new Error(`Missing locale file: ${filePath}`);
+        }
+
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(raw) as TranslationTree;
+        nextMessages[locale][scope] = parsed;
+      }
+    }
+  } catch (error) {
+    console.warn('[i18n] Failed to reload locales from disk.', error);
+    return false;
+  }
+
+  for (const locale of supportedLocales) {
+    for (const scope of supportedScopes) {
+      messages[locale][scope] = nextMessages[locale][scope];
+    }
+  }
+
+  formatterCache.clear();
+  return true;
+};
+
+export const enableI18nDevHotReload = async ({
+  localeRootDir,
+  debounceMs = 60,
+}: EnableI18nDevHotReloadOptions): Promise<() => void> => {
+  if (process.env.NODE_ENV === 'production') {
+    return () => undefined;
+  }
+
+  const runtimeModules = await loadNodeRuntimeModules();
+  if (!runtimeModules) {
+    return () => undefined;
+  }
+
+  const { fs, path } = runtimeModules;
+  const resolvedLocaleRootDir = path.resolve(localeRootDir);
+
+  if (!fs.existsSync(resolvedLocaleRootDir)) {
+    console.warn(`[i18n] Locale directory not found: ${resolvedLocaleRootDir}`);
+    return () => undefined;
+  }
+
+  tryReloadMessagesFromDisk(resolvedLocaleRootDir, fs, path);
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const watcher = fs.watch(resolvedLocaleRootDir, { recursive: true }, (_event, filename) => {
+    if (typeof filename !== 'string' || !filename.toLowerCase().endsWith('.json')) {
+      return;
+    }
+
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    debounceTimer = setTimeout(() => {
+      tryReloadMessagesFromDisk(resolvedLocaleRootDir, fs, path);
+    }, debounceMs);
+  });
+
+  console.log(`[i18n] Dev hot reload enabled. Watching ${resolvedLocaleRootDir}`);
+
+  return () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+
+    watcher.close();
+  };
+};
 
 const resolveValue = (target: TranslationTree | undefined, key: string): string | undefined => {
   const result = key.split('.').reduce<unknown>((current, segment) => {
@@ -144,6 +259,7 @@ export const createI18n = ({
 
 export type {
   CreateI18nOptions,
+  EnableI18nDevHotReloadOptions,
   I18nInstance,
   Locale,
   Messages,
