@@ -3,6 +3,7 @@ import classNames from 'classnames';
 import { Check, ChevronRight, Dot } from 'lucide-react';
 import React from 'react';
 
+import { normalizeCollisionPadding, resolveViewportMenuBounds } from './menu-position';
 import { menuStyles } from './menu-styles';
 
 type MenuIconComponent = React.ComponentType<{ className?: string }>;
@@ -35,12 +36,19 @@ ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName;
 const ContextMenuSubContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
->(({ className, sideOffset = 6, ...props }, ref) => (
+>(({ className, sideOffset = 6, collisionPadding = 8, ...props }, ref) => (
   <ContextMenuPrimitive.Portal>
     <ContextMenuPrimitive.SubContent
       ref={ref}
+      avoidCollisions
       sideOffset={sideOffset}
-      className={classNames(menuStyles.content, className)}
+      sticky="always"
+      collisionPadding={normalizeCollisionPadding(collisionPadding)}
+      className={classNames(
+        menuStyles.content,
+        'max-h-[min(560px,var(--radix-context-menu-content-available-height))] max-w-[min(420px,var(--radix-context-menu-content-available-width))]',
+        className,
+      )}
       {...props}
     />
   </ContextMenuPrimitive.Portal>
@@ -50,15 +58,30 @@ ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName;
 const ContextMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.Portal>
-    <ContextMenuPrimitive.Content
-      ref={ref}
-      className={classNames(menuStyles.content, className)}
-      {...props}
-    />
-  </ContextMenuPrimitive.Portal>
-));
+>(({ className, collisionPadding = 8, style, ...props }, ref) => {
+  const viewportBoundsStyle = resolveViewportMenuBounds();
+
+  return (
+    <ContextMenuPrimitive.Portal>
+      <ContextMenuPrimitive.Content
+        ref={ref}
+        avoidCollisions
+        sticky="always"
+        collisionPadding={normalizeCollisionPadding(collisionPadding)}
+        style={{
+          ...viewportBoundsStyle,
+          ...style,
+        }}
+        className={classNames(
+          menuStyles.content,
+          'max-h-[min(560px,var(--radix-context-menu-content-available-height))] max-w-[min(420px,var(--radix-context-menu-content-available-width))]',
+          className,
+        )}
+        {...props}
+      />
+    </ContextMenuPrimitive.Portal>
+  );
+});
 ContextMenuContent.displayName = ContextMenuPrimitive.Content.displayName;
 
 const ContextMenuItem = React.forwardRef<

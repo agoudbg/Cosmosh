@@ -12,6 +12,7 @@ const pageDefaults: Record<TabPage, { title: string; iconKey: TabIconKey }> = {
   ssh: { title: 'SSH', iconKey: 'ssh' },
   settings: { title: 'Settings', iconKey: 'settings' },
   'components-field': { title: 'Components Playground', iconKey: 'file' },
+  debug: { title: 'Debug', iconKey: 'debug' },
 };
 
 export const useTabs = (options?: UseTabsOptions) => {

@@ -4,6 +4,7 @@ import classNames from 'classnames';
 import { Check } from 'lucide-react';
 import React from 'react';
 
+import { normalizeCollisionPadding, resolveViewportMenuBounds } from './menu-position';
 import { menuStyles } from './menu-styles';
 
 type MenuIconComponent = React.ComponentType<{ className?: string }>;
@@ -32,25 +33,36 @@ SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = 'popper', sideOffset = 6, ...props }, ref) => (
-  <SelectPrimitive.Portal>
-    <SelectPrimitive.Content
-      ref={ref}
-      className={classNames(menuStyles.content, className)}
-      position={position}
-      sideOffset={sideOffset}
-      {...props}
-    >
-      <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-header-text-muted">
-        <ChevronUpIcon className={menuStyles.iconSlot} />
-      </SelectPrimitive.ScrollUpButton>
-      <SelectPrimitive.Viewport>{children}</SelectPrimitive.Viewport>
-      <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-header-text-muted">
-        <ChevronDownIcon className={menuStyles.iconSlot} />
-      </SelectPrimitive.ScrollDownButton>
-    </SelectPrimitive.Content>
-  </SelectPrimitive.Portal>
-));
+>(({ className, children, position = 'popper', sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
+  const viewportBoundsStyle = resolveViewportMenuBounds();
+
+  return (
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Content
+        ref={ref}
+        avoidCollisions
+        className={classNames(menuStyles.content, className)}
+        position={position}
+        sideOffset={sideOffset}
+        sticky="always"
+        collisionPadding={normalizeCollisionPadding(collisionPadding)}
+        style={{
+          ...viewportBoundsStyle,
+          ...style,
+        }}
+        {...props}
+      >
+        <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-header-text-muted">
+          <ChevronUpIcon className={menuStyles.iconSlot} />
+        </SelectPrimitive.ScrollUpButton>
+        <SelectPrimitive.Viewport>{children}</SelectPrimitive.Viewport>
+        <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-header-text-muted">
+          <ChevronDownIcon className={menuStyles.iconSlot} />
+        </SelectPrimitive.ScrollDownButton>
+      </SelectPrimitive.Content>
+    </SelectPrimitive.Portal>
+  );
+});
 SelectContent.displayName = SelectPrimitive.Content.displayName;
 
 const SelectLabel = React.forwardRef<

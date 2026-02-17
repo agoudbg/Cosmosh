@@ -1,0 +1,123 @@
+import React from 'react';
+
+import { getBackendRuntimeTarget, testBackendPing } from '../lib/backend';
+import type { TabIconKey } from '../types/tabs';
+
+type DebugProps = {
+  onOpenSSH: () => void;
+  onOpenSettings: () => void;
+  onOpenComponentsField: () => void;
+  onRenameTab: (title: string) => void;
+  onChangeIcon: (iconKey: TabIconKey) => void;
+  activeTabTitle: string;
+  activeTabIcon: TabIconKey;
+};
+
+const Debug: React.FC<DebugProps> = ({
+  onOpenSSH,
+  onOpenSettings,
+  onOpenComponentsField,
+  onRenameTab,
+  onChangeIcon,
+  activeTabTitle,
+  activeTabIcon,
+}) => {
+  const [draftTitle, setDraftTitle] = React.useState<string>(activeTabTitle);
+  const [backendPingResult, setBackendPingResult] = React.useState<string>('Not tested');
+  const backendRuntime = React.useMemo(() => getBackendRuntimeTarget(), []);
+
+  React.useEffect(() => {
+    setDraftTitle(activeTabTitle);
+  }, [activeTabTitle]);
+
+  const handleBackendPing = async () => {
+    setBackendPingResult('Testing...');
+
+    try {
+      const result = await testBackendPing();
+      setBackendPingResult(`OK • ${result.code} • ${result.data.capabilities.join(', ')}`);
+    } catch (error) {
+      const nextMessage = error instanceof Error ? error.message : 'Unknown error';
+      setBackendPingResult(`Failed • ${nextMessage}`);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4 p-2">
+      <div className="text-lg font-semibold">Debug</div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="debug-button"
+          onClick={onOpenSSH}
+        >
+          Open SSH In Current Tab
+        </button>
+        <button
+          type="button"
+          className="debug-button"
+          onClick={onOpenSettings}
+        >
+          Open Settings In New Tab
+        </button>
+        <button
+          type="button"
+          className="debug-button"
+          onClick={onOpenComponentsField}
+        >
+          Open Components Playground In New Tab
+        </button>
+        <button
+          type="button"
+          className="debug-button"
+          onClick={handleBackendPing}
+        >
+          Test Backend API
+        </button>
+      </div>
+
+      <div className="text-muted text-sm">
+        Backend ({backendRuntime}): {backendPingResult}
+      </div>
+
+      <div className="debug-panel">
+        <div className="mb-2 text-sm font-semibold">Tab Debug Tools</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">Name</span>
+            <input
+              className="debug-input"
+              value={draftTitle}
+              placeholder="Tab name"
+              onChange={(event) => setDraftTitle(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="debug-button"
+            onClick={() => onRenameTab(draftTitle.trim() || 'Untitled')}
+          >
+            Apply Name
+          </button>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">Icon</span>
+            <select
+              className="debug-select"
+              value={activeTabIcon}
+              onChange={(event) => onChangeIcon(event.target.value as TabIconKey)}
+            >
+              <option value="home">Home</option>
+              <option value="ssh">SSH</option>
+              <option value="settings">Settings</option>
+              <option value="file">File</option>
+              <option value="terminal">Terminal</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Debug;

@@ -281,6 +281,104 @@ const ComponentsField: React.FC = () => {
               </MenubarRadioGroup>
             </MenubarContent>
           </MenubarMenu>
+          <Select
+            value={profile}
+            onValueChange={setProfile}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select profile" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                value="dev"
+                icon={Terminal}
+              >
+                dev
+              </SelectItem>
+              <SelectItem
+                value="staging"
+                icon={Terminal}
+              >
+                staging
+              </SelectItem>
+              <SelectItem
+                value="prod"
+                icon={Server}
+              >
+                prod
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <MenubarSeparator vertical />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={menuStyles.control}
+              >
+                Dropdown
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem icon={PlugZap}>Open Session</DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger icon={FolderOpen}>Profiles</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem icon={Terminal}>dev</DropdownMenuItem>
+                  <DropdownMenuItem icon={Terminal}>staging</DropdownMenuItem>
+                  <DropdownMenuItem icon={Terminal}>prod</DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuItem>
+                Split Terminal and Try to Keep the Menu Open And Caption is Long Long Long Long Long Long Long Long Long
+                Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long
+                <DropdownMenuShortcut>Alt+S</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuItem disabled>Disabled Item</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={checked}
+                onCheckedChange={(value) => setChecked(value === true)}
+              >
+                Keep Alive
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuRadioGroup
+                value={density}
+                onValueChange={setDensity}
+              >
+                <DropdownMenuRadioItem value="compact">Density: Compact</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="comfortable">Density: Comfortable</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Input
+            id="ssh-username"
+            value={username}
+            placeholder="root"
+            onChange={(event) => setUsername(event.target.value)}
+          />
         </Menubar>
 
         <DropdownMenu>

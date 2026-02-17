@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('electron', {
   setLocale: (locale: string) => {
     return ipcRenderer.invoke('i18n:set-locale', locale);
   },
+  getRuntimeUserName: () => {
+    return ipcRenderer.invoke('app:get-runtime-user-name');
+  },
   backendTestPing: () => {
     return ipcRenderer.invoke('backend:test-ping') as Promise<ApiTestPingResponse | ApiErrorResponse>;
   },

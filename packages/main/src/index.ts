@@ -391,6 +391,14 @@ ipcMain.handle('i18n:set-locale', (_event, nextLocale: string) => {
   return appLocale;
 });
 
+ipcMain.handle('app:get-runtime-user-name', () => {
+  try {
+    return os.userInfo().username;
+  } catch {
+    return process.env.USERNAME ?? process.env.USER ?? 'user';
+  }
+});
+
 ipcMain.handle('backend:test-ping', async (): Promise<ApiTestPingResponse | ApiErrorResponse> => {
   const { port, token } = requireBackendConfig();
   const response = await fetch(`http://127.0.0.1:${port}${API_PATHS.testPing}`, {

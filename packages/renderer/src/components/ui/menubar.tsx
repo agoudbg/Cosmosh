@@ -1,8 +1,10 @@
 import * as MenubarPrimitive from '@radix-ui/react-menubar';
+import * as ToggleGroupPrimitive from '@radix-ui/react-toggle-group';
 import classNames from 'classnames';
 import { Check, ChevronRight, Dot } from 'lucide-react';
 import React from 'react';
 
+import { normalizeCollisionPadding, resolveViewportMenuBounds } from './menu-position';
 import { menuStyles } from './menu-styles';
 
 type MenuIconComponent = React.ComponentType<{ className?: string }>;
@@ -59,33 +61,55 @@ const MenubarSub = MenubarPrimitive.Sub;
 const MenubarSubContent = React.forwardRef<
   React.ElementRef<typeof MenubarPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof MenubarPrimitive.SubContent>
->(({ className, sideOffset = 6, ...props }, ref) => (
-  <MenubarPrimitive.Portal>
-    <MenubarPrimitive.SubContent
-      ref={ref}
-      sideOffset={sideOffset}
-      className={classNames(menuStyles.content, className)}
-      {...props}
-    />
-  </MenubarPrimitive.Portal>
-));
+>(({ className, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
+  const viewportBoundsStyle = resolveViewportMenuBounds();
+
+  return (
+    <MenubarPrimitive.Portal>
+      <MenubarPrimitive.SubContent
+        ref={ref}
+        sideOffset={sideOffset}
+        avoidCollisions={true}
+        sticky="always"
+        collisionPadding={normalizeCollisionPadding(collisionPadding)}
+        style={{
+          ...viewportBoundsStyle,
+          ...style,
+        }}
+        className={classNames(menuStyles.content, className)}
+        {...props}
+      />
+    </MenubarPrimitive.Portal>
+  );
+});
 MenubarSubContent.displayName = MenubarPrimitive.SubContent.displayName;
 
 const MenubarContent = React.forwardRef<
   React.ElementRef<typeof MenubarPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Content>
->(({ className, align = 'start', alignOffset = -4, sideOffset = 6, ...props }, ref) => (
-  <MenubarPrimitive.Portal>
-    <MenubarPrimitive.Content
-      ref={ref}
-      align={align}
-      alignOffset={alignOffset}
-      sideOffset={sideOffset}
-      className={classNames(menuStyles.content, className)}
-      {...props}
-    />
-  </MenubarPrimitive.Portal>
-));
+>(({ className, align = 'start', alignOffset = -4, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
+  const viewportBoundsStyle = resolveViewportMenuBounds();
+
+  return (
+    <MenubarPrimitive.Portal>
+      <MenubarPrimitive.Content
+        ref={ref}
+        align={align}
+        alignOffset={alignOffset}
+        sideOffset={sideOffset}
+        avoidCollisions={true}
+        sticky="always"
+        collisionPadding={normalizeCollisionPadding(collisionPadding)}
+        style={{
+          ...viewportBoundsStyle,
+          ...style,
+        }}
+        className={classNames(menuStyles.content, className)}
+        {...props}
+      />
+    </MenubarPrimitive.Portal>
+  );
+});
 MenubarContent.displayName = MenubarPrimitive.Content.displayName;
 
 const MenubarItem = React.forwardRef<
@@ -166,11 +190,11 @@ MenubarLabel.displayName = MenubarPrimitive.Label.displayName;
 
 const MenubarSeparator = React.forwardRef<
   React.ElementRef<typeof MenubarPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Separator>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Separator> & { vertical?: boolean }
+>(({ className, vertical = false, ...props }, ref) => (
   <MenubarPrimitive.Separator
     ref={ref}
-    className={classNames(menuStyles.separator, className)}
+    className={classNames(vertical ? menuStyles.menubarSeparator : menuStyles.separator, className)}
     {...props}
   />
 ));
@@ -183,6 +207,30 @@ const MenubarShortcut: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({ clas
   />
 );
 MenubarShortcut.displayName = 'MenubarShortcut';
+
+const MenuToggleGroup = React.forwardRef<
+  React.ElementRef<typeof ToggleGroupPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof ToggleGroupPrimitive.Root>
+>(({ className, ...props }, ref) => (
+  <ToggleGroupPrimitive.Root
+    ref={ref}
+    className={classNames(menuStyles.toggleGroupRoot, className)}
+    {...props}
+  />
+));
+MenuToggleGroup.displayName = 'MenuToggleGroup';
+
+const MenuToggleGroupItem = React.forwardRef<
+  React.ElementRef<typeof ToggleGroupPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof ToggleGroupPrimitive.Item>
+>(({ className, ...props }, ref) => (
+  <ToggleGroupPrimitive.Item
+    ref={ref}
+    className={classNames(menuStyles.toggleGroupItem, className)}
+    {...props}
+  />
+));
+MenuToggleGroupItem.displayName = 'MenuToggleGroupItem';
 
 export {
   Menubar,
@@ -201,4 +249,6 @@ export {
   MenubarSubTrigger,
   MenubarGroup,
   MenubarShortcut,
+  MenuToggleGroup,
+  MenuToggleGroupItem,
 };

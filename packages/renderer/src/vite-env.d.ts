@@ -1,5 +1,3 @@
-// / <reference types="vite/client" />
-
 import type {
   ApiErrorResponse,
   ApiSshCreateFolderRequest,
@@ -15,6 +13,14 @@ import type {
 } from '@cosmosh/api-contract';
 
 declare global {
+  interface ImportMetaEnv {
+    readonly DEV: boolean;
+  }
+
+  interface ImportMeta {
+    readonly env: ImportMetaEnv;
+  }
+
   interface Window {
     electron?: {
       send: (channel: string, data: unknown) => void;
@@ -23,6 +29,7 @@ declare global {
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
       getLocale: () => Promise<string>;
       setLocale: (locale: string) => Promise<string>;
+      getRuntimeUserName: () => Promise<string>;
       backendTestPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
       backendSshListServers: () => Promise<ApiSshListServersResponse | ApiErrorResponse>;
       backendSshCreateServer: (

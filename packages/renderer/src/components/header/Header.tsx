@@ -1,6 +1,6 @@
 import * as RadixAvatar from '@radix-ui/react-avatar';
 import classNames from 'classnames';
-import { Info, RefreshCcw, Settings } from 'lucide-react';
+import { Bug, Info, RefreshCcw, Settings } from 'lucide-react';
 import React from 'react';
 
 import { t } from '../../lib/i18n';
@@ -25,6 +25,7 @@ const Header: React.FC<{
   onCloseOtherTabs?: (id: string) => void;
   onReorderTabs?: (nextTabs: TabItem[]) => void;
   onOpenSettingsTab?: () => void;
+  onOpenDebugTab?: () => void;
 }> = ({
   className,
   tabs,
@@ -36,6 +37,7 @@ const Header: React.FC<{
   onCloseOtherTabs,
   onReorderTabs,
   onOpenSettingsTab,
+  onOpenDebugTab,
 }) => {
   // Margin for window controls on macOS/Windows/Linux
   const platform = window.electron?.platform;
@@ -46,6 +48,8 @@ const Header: React.FC<{
   } else if (platform === 'win32') {
     padding = 'ml-0 mr-[140px]';
   }
+
+  const isDev = import.meta.env.DEV;
 
   return (
     <header
@@ -135,6 +139,14 @@ const Header: React.FC<{
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem icon={RefreshCcw}>{t('header.syncSettings')}</DropdownMenuItem>
+          {isDev ? (
+            <DropdownMenuItem
+              icon={Bug}
+              onSelect={() => onOpenDebugTab?.()}
+            >
+              {t('header.debug')}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             icon={Settings}
             onSelect={() => onOpenSettingsTab?.()}

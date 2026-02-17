@@ -20,7 +20,18 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import * as RadixTabs from '@radix-ui/react-tabs';
 import classNames from 'classnames';
-import { ChevronLeft, ChevronRight, FileText, Home, PlusIcon, Server, Settings, Terminal, XIcon } from 'lucide-react';
+import {
+  Bug,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Home,
+  PlusIcon,
+  Server,
+  Settings,
+  Terminal,
+  XIcon,
+} from 'lucide-react';
 import React from 'react';
 
 import { t } from '../../lib/i18n';
@@ -39,6 +50,7 @@ const iconMap: Record<TabIconKey, React.ReactNode> = {
   settings: <Settings className="h-4 w-4" />,
   file: <FileText className="h-4 w-4" />,
   terminal: <Terminal className="h-4 w-4" />,
+  debug: <Bug className="h-4 w-4" />,
 };
 
 const DragOverlayTab: React.FC<{ tab: TabItem; width: number }> = ({ tab, width }) => {
@@ -489,7 +501,7 @@ export const Tabs: React.FC<TabsProps> = ({
                           <span
                             aria-hidden
                             className={classNames(
-                              'bg-divider h-[16px] w-[2px] shrink-0',
+                              'bg-header-divider h-[16px] w-[2px] shrink-0',
                               activeTab === tab.id || activeTab === orderedTabs[index + 1]?.id
                                 ? 'opacity-0'
                                 : 'opacity-100',
@@ -520,7 +532,7 @@ export const Tabs: React.FC<TabsProps> = ({
         <span
           aria-hidden
           className={classNames(
-            'bg-divider h-[16px] w-[2px] flex-shrink-0',
+            'bg-header-divider h-[16px] w-[2px] flex-shrink-0',
             isLastTabActive ? 'opacity-0' : 'opacity-100',
           )}
         />

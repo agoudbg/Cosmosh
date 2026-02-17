@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { serve } from '@hono/node-server';
 import { enableI18nDevHotReload } from '@cosmosh/i18n';
+import { serve } from '@hono/node-server';
 import type { PrismaClient } from '@prisma/client';
 
 import { DatabaseInitError, initializeDatabase, shutdownDatabase } from './db/prisma.js';

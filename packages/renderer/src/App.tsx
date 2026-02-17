@@ -4,6 +4,7 @@ import React from 'react';
 import Header from './components/header/Header';
 import { useTabs } from './lib/useTabs';
 import ComponentsField from './pages/ComponentsField';
+import Debug from './pages/Debug';
 import Home from './pages/Home';
 import Settings from './pages/Settings';
 import SSH from './pages/SSH';
@@ -47,6 +48,7 @@ const App: React.FC = () => {
           onCloseOtherTabs={closeOtherTabs}
           onReorderTabs={reorderTabs}
           onOpenSettingsTab={() => addTab('settings')}
+          onOpenDebugTab={() => addTab('debug')}
         />
       </div>
       {/* Content */}
@@ -56,8 +58,12 @@ const App: React.FC = () => {
             key={tab.id}
             className={classNames('h-full min-h-0 w-full overflow-auto', tab.id === activeTabId ? 'block' : 'hidden')}
           >
-            {tab.page === 'home' && (
-              <Home
+            {tab.page === 'home' && <Home onOpenSSH={() => openPageInTab(tab.id, 'ssh')} />}
+            {tab.page === 'ssh' && <SSH />}
+            {tab.page === 'settings' && <Settings />}
+            {tab.page === 'components-field' && <ComponentsField />}
+            {tab.page === 'debug' && (
+              <Debug
                 activeTabTitle={tab.title}
                 activeTabIcon={tab.iconKey}
                 onOpenSSH={() => openPageInTab(tab.id, 'ssh')}
@@ -67,9 +73,6 @@ const App: React.FC = () => {
                 onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
               />
             )}
-            {tab.page === 'ssh' && <SSH />}
-            {tab.page === 'settings' && <Settings />}
-            {tab.page === 'components-field' && <ComponentsField />}
           </section>
         ))}
       </div>
