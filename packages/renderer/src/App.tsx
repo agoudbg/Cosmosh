@@ -8,6 +8,7 @@ import Debug from './pages/Debug';
 import Home from './pages/Home';
 import Settings from './pages/Settings';
 import SSH from './pages/SSH';
+import SSHEditorMock from './pages/SSHEditorMock';
 
 const App: React.FC = () => {
   const handleLastTabClose = React.useCallback(() => {
@@ -60,6 +61,7 @@ const App: React.FC = () => {
           >
             {tab.page === 'home' && <Home onOpenSSH={() => openPageInTab(tab.id, 'ssh')} />}
             {tab.page === 'ssh' && <SSH />}
+            {tab.page === 'ssh-editor-mock' && <SSHEditorMock />}
             {tab.page === 'settings' && <Settings />}
             {tab.page === 'components-field' && <ComponentsField />}
             {tab.page === 'debug' && (

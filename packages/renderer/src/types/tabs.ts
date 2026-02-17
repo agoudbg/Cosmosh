@@ -1,6 +1,6 @@
-export type TabPage = 'home' | 'ssh' | 'settings' | 'components-field' | 'debug';
+export type TabPage = string;
 
-export type TabIconKey = 'home' | 'ssh' | 'settings' | 'file' | 'terminal' | 'debug';
+export type TabIconKey = string;
 
 export type TabItem = {
   id: string;

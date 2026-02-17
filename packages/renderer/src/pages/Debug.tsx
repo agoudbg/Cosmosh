@@ -3,6 +3,12 @@ import React from 'react';
 import { getBackendRuntimeTarget, testBackendPing } from '../lib/backend';
 import type { TabIconKey } from '../types/tabs';
 
+type BackendPingState =
+  | { status: 'idle'; message: string }
+  | { status: 'loading'; message: string }
+  | { status: 'success'; message: string }
+  | { status: 'error'; message: string };
+
 type DebugProps = {
   onOpenSSH: () => void;
   onOpenSettings: () => void;
@@ -11,6 +17,21 @@ type DebugProps = {
   onChangeIcon: (iconKey: TabIconKey) => void;
   activeTabTitle: string;
   activeTabIcon: TabIconKey;
+};
+
+const TAB_ICON_OPTIONS: Array<{ value: TabIconKey; label: string }> = [
+  { value: 'home', label: 'Home' },
+  { value: 'ssh', label: 'SSH' },
+  { value: 'settings', label: 'Settings' },
+  { value: 'file', label: 'File' },
+  { value: 'terminal', label: 'Terminal' },
+];
+
+type NavigationEntry = {
+  id: string;
+  pageName: string;
+  target: string;
+  onClick: () => void;
 };
 
 const Debug: React.FC<DebugProps> = ({
@@ -23,62 +44,82 @@ const Debug: React.FC<DebugProps> = ({
   activeTabIcon,
 }) => {
   const [draftTitle, setDraftTitle] = React.useState<string>(activeTabTitle);
-  const [backendPingResult, setBackendPingResult] = React.useState<string>('Not tested');
+  const [backendPingState, setBackendPingState] = React.useState<BackendPingState>({
+    status: 'idle',
+    message: 'Not tested',
+  });
   const backendRuntime = React.useMemo(() => getBackendRuntimeTarget(), []);
+
+  const navigationEntries: NavigationEntry[] = [
+    { id: 'ssh', pageName: 'SSH', target: 'Current tab', onClick: onOpenSSH },
+    { id: 'settings', pageName: 'Settings', target: 'New tab', onClick: onOpenSettings },
+    {
+      id: 'components-playground',
+      pageName: 'Components Playground',
+      target: 'New tab',
+      onClick: onOpenComponentsField,
+    },
+  ];
 
   React.useEffect(() => {
     setDraftTitle(activeTabTitle);
   }, [activeTabTitle]);
 
   const handleBackendPing = async () => {
-    setBackendPingResult('Testing...');
+    setBackendPingState({ status: 'loading', message: 'Testing...' });
 
     try {
       const result = await testBackendPing();
-      setBackendPingResult(`OK • ${result.code} • ${result.data.capabilities.join(', ')}`);
+      setBackendPingState({
+        status: 'success',
+        message: `OK • ${result.code} • ${result.data.capabilities.join(', ')}`,
+      });
     } catch (error) {
       const nextMessage = error instanceof Error ? error.message : 'Unknown error';
-      setBackendPingResult(`Failed • ${nextMessage}`);
+      setBackendPingState({ status: 'error', message: `Failed • ${nextMessage}` });
     }
+  };
+
+  const applyTabTitle = () => {
+    onRenameTab(draftTitle.trim() || 'Untitled');
   };
 
   return (
     <div className="flex flex-col gap-4 p-2">
       <div className="text-lg font-semibold">Debug</div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="debug-panel">
+        <div className="mb-2 text-sm font-semibold">Open Pages</div>
+        <div className="flex flex-col gap-1">
+          {navigationEntries.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className="flex w-full items-center justify-between rounded-md bg-bg-subtle px-3 py-2 text-left text-sm transition-colors hover:bg-menu-control-hover"
+              aria-label={`Open ${entry.pageName}`}
+              data-testid={`debug-open-${entry.id}`}
+              onClick={entry.onClick}
+            >
+              <span className="font-medium">{entry.pageName}</span>
+              <span className="text-xs text-header-text-muted">{entry.target}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="debug-panel">
+        <div className="mb-2 text-sm font-semibold">Backend Diagnostics</div>
         <button
           type="button"
           className="debug-button"
-          onClick={onOpenSSH}
-        >
-          Open SSH In Current Tab
-        </button>
-        <button
-          type="button"
-          className="debug-button"
-          onClick={onOpenSettings}
-        >
-          Open Settings In New Tab
-        </button>
-        <button
-          type="button"
-          className="debug-button"
-          onClick={onOpenComponentsField}
-        >
-          Open Components Playground In New Tab
-        </button>
-        <button
-          type="button"
-          className="debug-button"
+          disabled={backendPingState.status === 'loading'}
           onClick={handleBackendPing}
         >
           Test Backend API
         </button>
-      </div>
-
-      <div className="text-muted text-sm">
-        Backend ({backendRuntime}): {backendPingResult}
+        <div className="text-muted mt-2 text-sm">
+          Backend ({backendRuntime}): {backendPingState.message}
+        </div>
       </div>
 
       <div className="debug-panel">
@@ -96,7 +137,7 @@ const Debug: React.FC<DebugProps> = ({
           <button
             type="button"
             className="debug-button"
-            onClick={() => onRenameTab(draftTitle.trim() || 'Untitled')}
+            onClick={applyTabTitle}
           >
             Apply Name
           </button>
@@ -107,11 +148,14 @@ const Debug: React.FC<DebugProps> = ({
               value={activeTabIcon}
               onChange={(event) => onChangeIcon(event.target.value as TabIconKey)}
             >
-              <option value="home">Home</option>
-              <option value="ssh">SSH</option>
-              <option value="settings">Settings</option>
-              <option value="file">File</option>
-              <option value="terminal">Terminal</option>
+              {TAB_ICON_OPTIONS.map((iconOption) => (
+                <option
+                  key={iconOption.value}
+                  value={iconOption.value}
+                >
+                  {iconOption.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>
