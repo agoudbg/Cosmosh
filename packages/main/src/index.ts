@@ -39,6 +39,50 @@ const wait = (ms: number): Promise<void> => {
   });
 };
 
+const runCommand = async (
+  command: string,
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    logPrefix: string;
+    shell: boolean;
+  },
+): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    console.log(`${options.logPrefix} Starting command: ${command}`);
+
+    const child = spawn(command, {
+      cwd: options.cwd,
+      env: options.env,
+      shell: options.shell,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      console.log(`${options.logPrefix} ${chunk.toString().trim()}`);
+    });
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      console.error(`${options.logPrefix} ${chunk.toString().trim()}`);
+    });
+
+    child.once('error', (error) => {
+      reject(error);
+    });
+
+    child.once('exit', (code, signal) => {
+      if (code === 0) {
+        console.log(`${options.logPrefix} Command completed successfully.`);
+        resolve();
+        return;
+      }
+
+      reject(new Error(`Command exited abnormally (code=${code ?? 'null'}, signal=${signal ?? 'null'})`));
+    });
+  });
+};
+
 const resolveWorkspaceRoot = (): string => {
   return path.resolve(__dirname, '../../..');
 };
@@ -92,10 +136,14 @@ const findAvailablePort = async (): Promise<number> => {
   });
 };
 
-const waitForBackendReady = async (port: number, timeoutMs = 12000): Promise<void> => {
+const waitForBackendReady = async (port: number, isProcessAlive: () => boolean, timeoutMs = 30000): Promise<void> => {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
+    if (!isProcessAlive()) {
+      throw new Error('Backend process exited before health check became ready.');
+    }
+
     try {
       const response = await fetch(`http://127.0.0.1:${port}${API_PATHS.health}`);
       if (response.ok) {
@@ -108,7 +156,7 @@ const waitForBackendReady = async (port: number, timeoutMs = 12000): Promise<voi
     await wait(200);
   }
 
-  throw new Error('Backend service startup timeout.');
+  throw new Error(`Backend service startup timeout after ${timeoutMs}ms (port=${port}).`);
 };
 
 const startBackendService = async (): Promise<void> => {
@@ -121,13 +169,29 @@ const startBackendService = async (): Promise<void> => {
   const databaseUrl = resolveBackendDatabaseUrl();
   const isDev = !app.isPackaged;
   const workspaceRoot = resolveWorkspaceRoot();
+  const backendEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    COSMOSH_RUNTIME_MODE: 'electron-main',
+    COSMOSH_API_PORT: String(port),
+    COSMOSH_INTERNAL_TOKEN: token,
+    DATABASE_URL: databaseUrl,
+  };
 
   let command: string;
   let args: string[];
   let shell = false;
 
   if (isDev) {
-    command = 'pnpm --filter @cosmosh/backend run db:push && pnpm --filter @cosmosh/backend exec tsx src/index.ts';
+    console.log('[backend:init] Preparing development database schema...');
+    await runCommand('pnpm --filter @cosmosh/backend run db:push', {
+      cwd: workspaceRoot,
+      env: backendEnv,
+      logPrefix: '[backend:init]',
+      shell: true,
+    });
+    console.log('[backend:init] Development database schema is ready.');
+
+    command = 'pnpm --filter @cosmosh/backend exec tsx src/index.ts';
     args = [];
     shell = true;
   } else {
@@ -138,18 +202,15 @@ const startBackendService = async (): Promise<void> => {
   const spawnedBackendProcess = spawn(command, args, {
     cwd: workspaceRoot,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      COSMOSH_RUNTIME_MODE: 'electron-main',
-      COSMOSH_API_PORT: String(port),
-      COSMOSH_INTERNAL_TOKEN: token,
-      DATABASE_URL: databaseUrl,
-    },
+    env: backendEnv,
     shell,
     windowsHide: true,
   });
 
   backendProcess = spawnedBackendProcess;
+  console.log(
+    `[backend] Backend process started. Awaiting health check on http://127.0.0.1:${port}${API_PATHS.health}`,
+  );
 
   spawnedBackendProcess.stdout.on('data', (chunk: Buffer) => {
     console.log(`[backend] ${chunk.toString().trim()}`);
@@ -166,7 +227,9 @@ const startBackendService = async (): Promise<void> => {
     backendToken = null;
   });
 
-  await waitForBackendReady(port);
+  const healthCheckStartedAt = Date.now();
+  await waitForBackendReady(port, () => spawnedBackendProcess.exitCode === null && !spawnedBackendProcess.killed);
+  console.log(`[backend] Health check passed in ${Date.now() - healthCheckStartedAt}ms.`);
   backendPort = port;
   backendToken = token;
   console.log(`Backend service is ready on http://127.0.0.1:${port}`);
