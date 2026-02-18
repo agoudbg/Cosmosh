@@ -56,7 +56,7 @@ const App: React.FC = () => {
           />
         </div>
         {/* Content */}
-        <div className="flex min-h-0 w-full flex-1 p-2">
+        <div className="flex min-h-0 w-full flex-1 p-2 pt-0">
           {tabs.map((tab) => (
             <section
               key={tab.id}
