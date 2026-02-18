@@ -3,9 +3,13 @@ import '@xterm/xterm/css/xterm.css';
 import type { components } from '@cosmosh/api-contract';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
+import { RefreshCw } from 'lucide-react';
 import React from 'react';
 
+import { Button } from '../components/ui/button';
+import { Menubar } from '../components/ui/menubar';
 import { closeSshSession, createSshSession, listSshServers, trustSshFingerprint } from '../lib/backend';
+import { t } from '../lib/i18n';
 import { getActiveSshServerId } from '../lib/ssh-target';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
@@ -77,6 +81,17 @@ const resolveTargetServer = async (): Promise<SshServerListItem> => {
 const SSH: React.FC = () => {
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const terminalContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const connectSessionRef = React.useRef<(() => void) | null>(null);
+  const [connectionState, setConnectionState] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
+  const [connectionError, setConnectionError] = React.useState<string>('');
+
+  const handleRetry = React.useCallback(() => {
+    if (connectionState === 'connecting' || connectionState === 'connected') {
+      return;
+    }
+
+    connectSessionRef.current?.();
+  }, [connectionState]);
 
   React.useEffect(() => {
     const terminal = new Terminal({
@@ -179,11 +194,14 @@ const SSH: React.FC = () => {
         }
 
         if (payload.type === 'error') {
-          terminal.writeln(`\r\n[error] ${payload.message}`);
+          setConnectionState('failed');
+          setConnectionError(payload.message);
           return;
         }
 
         if (payload.type === 'exit') {
+          setConnectionState('failed');
+          setConnectionError(payload.reason);
           return;
         }
 
@@ -191,12 +209,16 @@ const SSH: React.FC = () => {
           return;
         }
       } catch {
-        terminal.writeln('\r\n[error] Received malformed websocket message.');
+        setConnectionState('failed');
+        setConnectionError(t('ssh.websocketMalformedMessage'));
       }
     };
 
     const connectSession = async (): Promise<void> => {
       try {
+        setConnectionState('connecting');
+        setConnectionError('');
+
         const targetServer = await resolveTargetServer();
         if (disposed) {
           return;
@@ -223,6 +245,8 @@ const SSH: React.FC = () => {
           );
 
           if (!confirmed) {
+            setConnectionState('failed');
+            setConnectionError(t('ssh.hostFingerprintNotTrusted'));
             return;
           }
 
@@ -268,10 +292,19 @@ const SSH: React.FC = () => {
             return;
           }
 
+          setConnectionState('connected');
+          setConnectionError('');
+
           sendClientMessage(socket!, { type: 'resize', cols: terminal.cols, rows: terminal.rows });
         });
 
         socket.addEventListener('close', () => {
+          if (disposed) {
+            return;
+          }
+
+          setConnectionState('failed');
+          setConnectionError(t('ssh.websocketClosed'));
           return;
         });
 
@@ -280,11 +313,13 @@ const SSH: React.FC = () => {
             return;
           }
 
-          terminal.writeln('\r\n[error] WebSocket transport failed.');
+          setConnectionState('failed');
+          setConnectionError(t('ssh.websocketTransportFailed'));
         });
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Failed to initialize SSH session.';
-        terminal.writeln(`\r\n[error] ${message}`);
+        const message = error instanceof Error ? error.message : t('ssh.sessionInitFailed');
+        setConnectionState('failed');
+        setConnectionError(message);
       }
     };
 
@@ -302,6 +337,7 @@ const SSH: React.FC = () => {
       }
     });
 
+    connectSessionRef.current = connectSession;
     void connectSession();
 
     return () => {
@@ -320,6 +356,7 @@ const SSH: React.FC = () => {
         void closeSshSession(sessionId).catch(() => undefined);
       }
 
+      connectSessionRef.current = null;
       disposeTerminalInput.dispose();
       disposeResize();
       terminal.dispose();
@@ -329,12 +366,29 @@ const SSH: React.FC = () => {
   return (
     <div
       ref={wrapperRef}
-      className="h-full w-full p-2"
+      className="relative h-full w-full p-2"
     >
       <div
         ref={terminalContainerRef}
         className="h-full w-full p-2"
       />
+
+      {connectionState !== 'connected' ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-between px-4 py-12">
+          <div></div>
+          <div className="text-sm text-header-text">
+            {connectionState === 'connecting' ? t('ssh.connecting') : connectionError}
+          </div>
+          <div className="flex items-center justify-center">
+            <Menubar>
+              <Button onClick={handleRetry}>
+                <RefreshCw size={16} />
+                {t('ssh.retry')}
+              </Button>
+            </Menubar>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
