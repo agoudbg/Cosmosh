@@ -110,6 +110,7 @@ type SshLiveSession = {
   websocketToken: string;
   client: Client;
   stream: ClientChannel;
+  pendingOutput: string[];
   attachTimeout: NodeJS.Timeout;
   socket: WebSocket | null;
   disposed: boolean;
@@ -200,6 +201,7 @@ export class SshSessionService {
       session.socket = socket;
       clearTimeout(session.attachTimeout);
       this.sendServerMessage(session, { type: 'ready' });
+      this.flushPendingOutput(session);
 
       socket.on('message', (payload) => {
         this.handleClientMessage(session, payload);
@@ -252,11 +254,24 @@ export class SshSessionService {
     });
 
     const trustedFingerprintSet = new Set(trustedKeys.map((item) => item.fingerprint));
+    const pendingOutput: string[] = [];
+    let liveSession: SshLiveSession | null = null;
     const shellResult = await this.openShell(server, {
       cols: input.cols,
       rows: input.rows,
       term: input.term,
       trustedFingerprintSet,
+      onOutput: (data) => {
+        if (liveSession) {
+          this.sendServerMessage(liveSession, {
+            type: 'output',
+            data,
+          });
+          return;
+        }
+
+        pendingOutput.push(data);
+      },
     });
 
     if (shellResult.type === 'host-untrusted') {
@@ -284,24 +299,17 @@ export class SshSessionService {
       this.disposeSession(sessionId, 'WebSocket connection timeout.');
     }, 30_000);
 
-    const liveSession: SshLiveSession = {
+    liveSession = {
       sessionId,
       serverId: server.id,
       websocketToken,
       client: shellResult.client,
       stream: shellResult.stream,
+      pendingOutput,
       attachTimeout,
       socket: null,
       disposed: false,
     };
-
-    shellResult.stream.on('data', (chunk: Buffer | string) => {
-      const data = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      this.sendServerMessage(liveSession, {
-        type: 'output',
-        data,
-      });
-    });
 
     shellResult.stream.on('close', () => {
       this.disposeSession(sessionId, 'SSH stream closed.');
@@ -414,10 +422,27 @@ export class SshSessionService {
 
   private sendServerMessage(session: SshLiveSession, payload: ServerOutboundMessage): void {
     if (!session.socket || session.socket.readyState !== session.socket.OPEN) {
+      if (payload.type === 'output') {
+        session.pendingOutput.push(payload.data);
+      }
       return;
     }
 
     session.socket.send(JSON.stringify(payload));
+  }
+
+  private flushPendingOutput(session: SshLiveSession): void {
+    while (session.pendingOutput.length > 0) {
+      const data = session.pendingOutput.shift();
+      if (!data) {
+        continue;
+      }
+
+      this.sendServerMessage(session, {
+        type: 'output',
+        data,
+      });
+    }
   }
 
   private handleClientMessage(session: SshLiveSession, rawPayload: RawData): void {
@@ -492,6 +517,7 @@ export class SshSessionService {
       rows: number;
       term: string;
       trustedFingerprintSet: Set<string>;
+      onOutput: (data: string) => void;
     },
   ): Promise<OpenShellResult> {
     const client = new Client();
@@ -565,8 +591,9 @@ export class SshSessionService {
       client.once('ready', () => {
         const cols = toShellSize(options.cols, 120, 20, 400);
         const rows = toShellSize(options.rows, 32, 10, 200);
+        const term = options.term.trim() || 'xterm-256color';
 
-        client.shell({ term: options.term, cols, rows }, (error, stream) => {
+        client.shell({ term, cols, rows }, (error, stream) => {
           if (error) {
             client.end();
             settle({
@@ -575,6 +602,16 @@ export class SshSessionService {
             });
             return;
           }
+
+          stream.on('data', (chunk: Buffer | string) => {
+            const data = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+            options.onOutput(data);
+          });
+
+          stream.stderr.on('data', (chunk: Buffer | string) => {
+            const data = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+            options.onOutput(data);
+          });
 
           settle({
             type: 'ready',

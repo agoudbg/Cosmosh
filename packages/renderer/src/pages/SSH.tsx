@@ -184,12 +184,11 @@ const SSH: React.FC = () => {
         }
 
         if (payload.type === 'exit') {
-          terminal.writeln(`\r\n[disconnected] ${payload.reason}`);
           return;
         }
 
         if (payload.type === 'ready') {
-          terminal.writeln('\r\n[connected] SSH session is ready.');
+          return;
         }
       } catch {
         terminal.writeln('\r\n[error] Received malformed websocket message.');
@@ -202,8 +201,6 @@ const SSH: React.FC = () => {
         if (disposed) {
           return;
         }
-
-        terminal.writeln(`[connecting] ${targetServer.username}@${targetServer.host}:${targetServer.port}`);
 
         const createPayload = await createSshSession({
           serverId: targetServer.id,
@@ -226,7 +223,6 @@ const SSH: React.FC = () => {
           );
 
           if (!confirmed) {
-            terminal.writeln('\r\n[cancelled] Host fingerprint is not trusted.');
             return;
           }
 
@@ -264,7 +260,6 @@ const SSH: React.FC = () => {
           return;
         }
 
-        terminal.writeln(`\r\n[session] ${targetServer.username}@${targetServer.host}:${targetServer.port}`);
         socket = new WebSocket(websocketUrl.toString());
         socket.addEventListener('message', handleSocketMessage);
 
@@ -277,11 +272,7 @@ const SSH: React.FC = () => {
         });
 
         socket.addEventListener('close', () => {
-          if (disposed) {
-            return;
-          }
-
-          terminal.writeln('\r\n[disconnected] WebSocket closed.');
+          return;
         });
 
         socket.addEventListener('error', () => {
