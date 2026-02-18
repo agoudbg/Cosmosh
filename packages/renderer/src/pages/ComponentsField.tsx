@@ -37,6 +37,7 @@ import {
 import { Form, FormControl, FormField, FormLabel, FormMessage } from '../components/ui/form';
 import { formStyles } from '../components/ui/form-styles';
 import { Input } from '../components/ui/input';
+import { InputContextMenuItem } from '../components/ui/input-context-menu';
 import { Label } from '../components/ui/label';
 import { menuStyles } from '../components/ui/menu-styles';
 import {
@@ -72,6 +73,7 @@ const ComponentsField: React.FC = () => {
   const [username, setUsername] = React.useState<string>('root');
   const [password, setPassword] = React.useState<string>('');
   const [privateKey, setPrivateKey] = React.useState<string>('');
+  const [alias, setAlias] = React.useState<string>('prod-main');
   const [strictHostKey, setStrictHostKey] = React.useState<boolean>(true);
   const [enableCompression, setEnableCompression] = React.useState<boolean>(false);
   const [connectionTimeout, setConnectionTimeout] = React.useState<number[]>([45]);
@@ -85,6 +87,47 @@ const ComponentsField: React.FC = () => {
   const handleSshFormSubmit = React.useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
   }, []);
+
+  const hostContextMenuItems = React.useMemo<InputContextMenuItem[]>(
+    () => [
+      {
+        key: 'insert-host-template',
+        label: 'Insert Host Template',
+        onSelect: (target) => {
+          target.focus({ preventScroll: true });
+          target.setRangeText('node-{env}.prod', target.selectionStart ?? 0, target.selectionEnd ?? 0, 'end');
+        },
+      },
+      {
+        key: 'normalize-host-lowercase',
+        label: 'Normalize to Lowercase',
+        onSelect: (target) => {
+          target.value = target.value.toLowerCase();
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+        },
+      },
+    ],
+    [],
+  );
+
+  const keyContextMenuItems = React.useMemo<InputContextMenuItem[]>(
+    () => [
+      {
+        key: 'insert-fake-key-header',
+        label: 'Insert Key Header',
+        onSelect: (target) => {
+          target.focus({ preventScroll: true });
+          target.setRangeText(
+            '-----BEGIN OPENSSH PRIVATE KEY-----\n',
+            target.selectionStart ?? 0,
+            target.selectionEnd ?? 0,
+            'end',
+          );
+        },
+      },
+    ],
+    [],
+  );
 
   const formatSamples = [
     t('home.formatNamed', { name: 'agou', profile: 'prod' }),
@@ -110,7 +153,21 @@ const ComponentsField: React.FC = () => {
               id="ssh-host"
               value={host}
               placeholder="server.example.com"
+              contextMenuItems={hostContextMenuItems}
               onChange={(event) => setHost(event.target.value)}
+            />
+          </FormControl>
+        </FormField>
+
+        <FormField>
+          <FormLabel htmlFor="ssh-alias">Alias</FormLabel>
+          <FormControl>
+            <Input
+              id="ssh-alias"
+              value={alias}
+              placeholder="production-main"
+              contextMenuItems={hostContextMenuItems}
+              onChange={(event) => setAlias(event.target.value)}
             />
           </FormControl>
         </FormField>
@@ -160,6 +217,7 @@ const ComponentsField: React.FC = () => {
               id="ssh-private-key"
               value={privateKey}
               placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+              contextMenuItems={keyContextMenuItems}
               onChange={(event) => setPrivateKey(event.target.value)}
             />
           </FormControl>

@@ -60,6 +60,14 @@
   "componentsPlayground": {
     "title": "Components Playground"
   },
+  "inputContextMenu": {
+    "undo": "Undo",
+    "redo": "Redo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All"
+  },
   "header": {
     "avatarAlt": "User Avatar",
     "currentAccountAvatarAlt": "Current Account Avatar",

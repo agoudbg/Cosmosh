@@ -2,6 +2,15 @@ import type { Locale, TranslationParams } from '@cosmosh/i18n';
 import { createI18n, createLocaleHeaders, resolveLocale } from '@cosmosh/i18n';
 
 let currentLocale: Locale = 'en';
+export const LOCALE_CHANGE_EVENT = 'cosmosh:locale-change';
+
+const emitLocaleChange = (): void => {
+  window.dispatchEvent(
+    new CustomEvent<{ locale: Locale }>(LOCALE_CHANGE_EVENT, {
+      detail: { locale: currentLocale },
+    }),
+  );
+};
 
 const resolveRendererLocale = (): Locale => {
   if (typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('zh')) {
@@ -21,6 +30,7 @@ export const initializeLocale = async (): Promise<Locale> => {
   const localeFromMain = await window.electron?.getLocale?.();
   currentLocale = resolveLocale(localeFromMain ?? resolveRendererLocale(), 'en');
   i18n.setLocale(currentLocale);
+  emitLocaleChange();
   return currentLocale;
 };
 
@@ -33,6 +43,7 @@ export const setLocale = async (locale: string): Promise<Locale> => {
   const syncedLocale = await window.electron?.setLocale?.(nextLocale);
   currentLocale = resolveLocale(syncedLocale ?? nextLocale, 'en');
   i18n.setLocale(currentLocale);
+  emitLocaleChange();
   return currentLocale;
 };
 
@@ -42,4 +53,17 @@ export const getLocale = (): Locale => {
 
 export const getLocaleHeaders = (): Record<string, string> => {
   return createLocaleHeaders(currentLocale);
+};
+
+export const onLocaleChange = (listener: (locale: Locale) => void): (() => void) => {
+  const handler = (event: Event): void => {
+    const customEvent = event as CustomEvent<{ locale: Locale }>;
+    listener(customEvent.detail?.locale ?? currentLocale);
+  };
+
+  window.addEventListener(LOCALE_CHANGE_EVENT, handler);
+
+  return () => {
+    window.removeEventListener(LOCALE_CHANGE_EVENT, handler);
+  };
 };
