@@ -37,7 +37,7 @@ import {
 import { Form, FormControl, FormField, FormLabel, FormMessage } from '../components/ui/form';
 import { formStyles } from '../components/ui/form-styles';
 import { Input } from '../components/ui/input';
-import { InputContextMenuItem } from '../components/ui/input-context-menu';
+import { InputContextMenuItem, InputMenuTarget } from '../components/ui/input-context-menu-registry';
 import { Label } from '../components/ui/label';
 import { menuStyles } from '../components/ui/menu-styles';
 import {
@@ -93,7 +93,7 @@ const ComponentsField: React.FC = () => {
       {
         key: 'insert-host-template',
         label: 'Insert Host Template',
-        onSelect: (target) => {
+        onSelect: (target: InputMenuTarget) => {
           target.focus({ preventScroll: true });
           target.setRangeText('node-{env}.prod', target.selectionStart ?? 0, target.selectionEnd ?? 0, 'end');
         },
@@ -101,7 +101,7 @@ const ComponentsField: React.FC = () => {
       {
         key: 'normalize-host-lowercase',
         label: 'Normalize to Lowercase',
-        onSelect: (target) => {
+        onSelect: (target: InputMenuTarget) => {
           target.value = target.value.toLowerCase();
           target.dispatchEvent(new Event('input', { bubbles: true }));
         },
@@ -115,7 +115,7 @@ const ComponentsField: React.FC = () => {
       {
         key: 'insert-fake-key-header',
         label: 'Insert Key Header',
-        onSelect: (target) => {
+        onSelect: (target: InputMenuTarget) => {
           target.focus({ preventScroll: true });
           target.setRangeText(
             '-----BEGIN OPENSSH PRIVATE KEY-----\n',
