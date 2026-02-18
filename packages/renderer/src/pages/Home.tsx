@@ -52,7 +52,7 @@ import { colorKeyToClassName, type HomeIconKey, resolveHomeVisual } from '../lib
 import { getLocale, t } from '../lib/i18n';
 
 type HomeProps = {
-  onOpenSSH: () => void;
+  onOpenSSH: (serverId: string) => void;
 };
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
@@ -753,7 +753,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH }) => {
                                   <File className="h-4 w-4 flex-shrink-0" />
                                 </Button>
                               }
-                              onClick={onOpenSSH}
+                              onClick={() => onOpenSSH(server.id)}
                             />
                           </ContextMenuTrigger>
                           <ContextMenuContent>

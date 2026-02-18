@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import fs from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 
@@ -9,11 +10,16 @@ import type {
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
   ApiSshCreateServerResponse,
+  ApiSshCreateSessionHostVerificationRequiredResponse,
+  ApiSshCreateSessionRequest,
+  ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
+  ApiSshTrustFingerprintRequest,
+  ApiSshTrustFingerprintResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 import { API_CODES, API_HEADERS, API_PATHS, createApiError } from '@cosmosh/api-contract';
@@ -106,6 +112,25 @@ const resolveBackendDatabaseUrl = (): string => {
   return `file:${encodeURI(normalizedPath)}`;
 };
 
+const resolveBackendSecretKey = async (): Promise<string> => {
+  const storageDirPath = path.join(resolveDataRootDir(), 'Cosmosh', 'backend', 'storage');
+  const secretFilePath = path.join(storageDirPath, 'secret.key');
+
+  try {
+    const existing = (await fs.readFile(secretFilePath, 'utf8')).trim();
+    if (existing.length >= 32) {
+      return existing;
+    }
+  } catch {
+    // Generate a new secret when file does not exist or is unreadable.
+  }
+
+  const generated = randomBytes(32).toString('hex');
+  await fs.mkdir(storageDirPath, { recursive: true });
+  await fs.writeFile(secretFilePath, generated, 'utf8');
+  return generated;
+};
+
 const findAvailablePort = async (): Promise<number> => {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -168,6 +193,7 @@ const startBackendService = async (): Promise<void> => {
   const port = await findAvailablePort();
   const token = randomBytes(32).toString('hex');
   const databaseUrl = resolveBackendDatabaseUrl();
+  const secretKey = await resolveBackendSecretKey();
   const isDev = !app.isPackaged;
   const workspaceRoot = resolveWorkspaceRoot();
   const backendEnv: NodeJS.ProcessEnv = {
@@ -175,6 +201,7 @@ const startBackendService = async (): Promise<void> => {
     COSMOSH_RUNTIME_MODE: 'electron-main',
     COSMOSH_API_PORT: String(port),
     COSMOSH_INTERNAL_TOKEN: token,
+    COSMOSH_SECRET_KEY: secretKey,
     DATABASE_URL: databaseUrl,
   };
 
@@ -459,6 +486,51 @@ ipcMain.handle(
     });
   },
 );
+
+ipcMain.handle(
+  'backend:ssh-create-session',
+  async (
+    _event,
+    payload: ApiSshCreateSessionRequest,
+  ): Promise<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse | ApiErrorResponse> => {
+    return requestBackend<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse>(
+      API_PATHS.sshCreateSession,
+      {
+        method: 'POST',
+        body: payload,
+      },
+    );
+  },
+);
+
+ipcMain.handle(
+  'backend:ssh-trust-fingerprint',
+  async (
+    _event,
+    payload: ApiSshTrustFingerprintRequest,
+  ): Promise<ApiSshTrustFingerprintResponse | ApiErrorResponse> => {
+    return requestBackend<ApiSshTrustFingerprintResponse>(API_PATHS.sshTrustFingerprint, {
+      method: 'POST',
+      body: payload,
+    });
+  },
+);
+
+ipcMain.handle('backend:ssh-close-session', async (_event, sessionId: string): Promise<{ success: boolean }> => {
+  const path = API_PATHS.sshCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));
+  const { port, token } = requireBackendConfig();
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: 'DELETE',
+    headers: {
+      [API_HEADERS.internalToken]: token,
+      [API_HEADERS.locale]: appLocale,
+    },
+  });
+
+  return {
+    success: response.status === 204,
+  };
+});
 
 app.on('before-quit', () => {
   disableI18nHotReload?.();

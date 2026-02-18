@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +10,7 @@ import type { PrismaClient } from '@prisma/client';
 import { DatabaseInitError, initializeDatabase, shutdownDatabase } from './db/prisma.js';
 import { createBackendApp } from './http/create-app.js';
 import { resolveRuntimeMode } from './runtime.js';
+import { SshSessionService } from './ssh/session-service.js';
 
 /**
  * Parse backend port from environment and validate safe numeric bounds.
@@ -26,6 +28,36 @@ const resolvePort = (input: string | undefined): number => {
   return parsed;
 };
 
+const findAvailablePort = async (): Promise<number> => {
+  return await new Promise((resolve, reject) => {
+    const server = net.createServer();
+
+    server.once('error', (error) => {
+      reject(error);
+    });
+
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Unable to resolve an available local port.'));
+        return;
+      }
+
+      const { port: availablePort } = address;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(availablePort);
+      });
+    });
+  });
+};
+
 const runtimeMode = resolveRuntimeMode(process.env.COSMOSH_RUNTIME_MODE);
 const port = resolvePort(process.env.COSMOSH_API_PORT);
 const internalToken = process.env.COSMOSH_INTERNAL_TOKEN;
@@ -36,6 +68,7 @@ const currentDirPath = path.dirname(currentFilePath);
 const workspaceRoot = path.resolve(currentDirPath, '../../..');
 const i18nLocaleRootDir = path.join(workspaceRoot, 'packages', 'i18n', 'locales');
 let disableI18nHotReload: (() => void) | null = null;
+let sshSessionService: SshSessionService | null = null;
 
 if (isSecureLocalMode && !internalToken) {
   throw new Error('COSMOSH_INTERNAL_TOKEN is required when COSMOSH_RUNTIME_MODE is electron-main.');
@@ -65,6 +98,11 @@ const registerShutdownHooks = (): void => {
     disableI18nHotReload = null;
 
     try {
+      if (sshSessionService) {
+        await sshSessionService.stop();
+        sshSessionService = null;
+      }
+
       await shutdownDatabase();
       process.exit(0);
     } catch (error: unknown) {
@@ -103,6 +141,14 @@ const bootstrap = async (): Promise<void> => {
   // Database initialization is intentionally done before starting the HTTP server,
   // so runtime fails fast when persistence is not ready.
   dbClient = await initializeDatabase({ runtimeMode });
+  const sshWebSocketPort = await findAvailablePort();
+
+  sshSessionService = new SshSessionService({
+    host: '127.0.0.1',
+    port: sshWebSocketPort,
+    getDbClient,
+    credentialEncryptionKey,
+  });
 
   const app = createBackendApp({
     runtimeMode,
@@ -110,6 +156,7 @@ const bootstrap = async (): Promise<void> => {
     internalToken,
     credentialEncryptionKey,
     getDbClient,
+    sshSessionService,
   });
 
   console.log(`🚀 Cosmosh Backend starting on http://127.0.0.1:${port} (${runtimeMode})`);
@@ -132,6 +179,13 @@ void bootstrap().catch(async (error: unknown) => {
     });
   } else {
     console.error('[bootstrap][UNKNOWN] Failed to bootstrap backend service.', error);
+  }
+
+  if (sshSessionService) {
+    await sshSessionService.stop().catch((serviceError: unknown) => {
+      console.error('[bootstrap][SSH_SESSION] Failed to stop SSH session service.', serviceError);
+    });
+    sshSessionService = null;
   }
 
   await shutdownDatabase();

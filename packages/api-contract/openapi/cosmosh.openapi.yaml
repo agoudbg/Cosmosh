@@ -224,6 +224,118 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/sessions:
+    post:
+      tags:
+        - ssh
+      summary: Create a live SSH terminal session.
+      operationId: sshCreateSession
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SshSessionCreateRequest"
+      responses:
+        "200":
+          description: SSH session is ready for websocket streaming.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshSessionCreateSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Server not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Host fingerprint is not trusted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshHostVerificationRequired"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/sessions/{sessionId}:
+    delete:
+      tags:
+        - ssh
+      summary: Close a live SSH terminal session.
+      operationId: sshCloseSession
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Session closed.
+        "404":
+          description: Session not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/trusted-host-keys:
+    post:
+      tags:
+        - ssh
+      summary: Trust a host fingerprint for a server.
+      operationId: sshTrustFingerprint
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SshTrustFingerprintRequest"
+      responses:
+        "200":
+          description: Host fingerprint has been trusted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshTrustFingerprintSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Server not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   securitySchemes:
     CosmoshInternalToken:
@@ -285,6 +397,8 @@ components:
                   "SSH_FOLDER_CONFLICT",
                   "SSH_TAG_CONFLICT",
                   "SSH_NOT_FOUND",
+                  "SSH_HOST_UNTRUSTED",
+                  "SSH_SESSION_NOT_FOUND",
                 ]
             success:
               type: boolean
@@ -527,6 +641,81 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+    SshSessionCreateRequest:
+      type: object
+      required:
+        - serverId
+      properties:
+        serverId:
+          type: string
+        cols:
+          type: integer
+          minimum: 20
+          maximum: 400
+          default: 120
+        rows:
+          type: integer
+          minimum: 10
+          maximum: 200
+          default: 32
+        term:
+          type: string
+          minLength: 2
+          maxLength: 64
+          default: xterm-256color
+    SshTrustFingerprintRequest:
+      type: object
+      required:
+        - serverId
+        - fingerprintSha256
+      properties:
+        serverId:
+          type: string
+        fingerprintSha256:
+          type: string
+          minLength: 1
+          maxLength: 255
+        algorithm:
+          type: string
+          enum: ["sha256"]
+          default: sha256
+    SshHostVerificationRequiredData:
+      type: object
+      required:
+        - serverId
+        - host
+        - port
+        - algorithm
+        - fingerprint
+      properties:
+        serverId:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        algorithm:
+          type: string
+          enum: ["sha256"]
+        fingerprint:
+          type: string
+    SshHostVerificationRequired:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - code
+            - data
+          properties:
+            code:
+              type: string
+              enum: ["SSH_HOST_UNTRUSTED"]
+            success:
+              type: boolean
+              enum: [false]
+            data:
+              $ref: "#/components/schemas/SshHostVerificationRequiredData"
     SshServerListData:
       type: object
       required:
@@ -575,6 +764,30 @@ components:
       properties:
         item:
           $ref: "#/components/schemas/SshTag"
+    SshSessionCreateData:
+      type: object
+      required:
+        - sessionId
+        - serverId
+        - websocketUrl
+        - websocketToken
+      properties:
+        sessionId:
+          type: string
+        serverId:
+          type: string
+        websocketUrl:
+          type: string
+        websocketToken:
+          type: string
+    SshTrustFingerprintData:
+      type: object
+      required:
+        - trusted
+      properties:
+        trusted:
+          type: boolean
+          enum: [true]
     SshServerListSuccess:
       allOf:
         - $ref: "#/components/schemas/ApiMeta"
@@ -677,3 +890,37 @@ components:
               enum: [true]
             data:
               $ref: "#/components/schemas/SshTagCreateData"
+    SshSessionCreateSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_SESSION_CREATE_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshSessionCreateData"
+    SshTrustFingerprintSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_TRUST_FINGERPRINT_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshTrustFingerprintData"

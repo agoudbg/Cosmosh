@@ -1,7 +1,9 @@
 import type {
   ApiSshCreateFolderRequest,
   ApiSshCreateServerRequest,
+  ApiSshCreateSessionRequest,
   ApiSshCreateTagRequest,
+  ApiSshTrustFingerprintRequest,
 } from '@cosmosh/api-contract';
 import type { SshAuthType } from '@prisma/client';
 
@@ -133,6 +135,78 @@ export const parseCreateServerRequest = (payload: unknown): { value?: ApiSshCrea
       folderId,
       tagIds: toUniqueIds(payload.tagIds),
       note,
+    },
+  };
+};
+
+export const parseCreateSessionRequest = (payload: unknown): { value?: ApiSshCreateSessionRequest; error?: string } => {
+  if (!isRecord(payload)) {
+    return { error: 'Request body must be a JSON object.' };
+  }
+
+  const serverId = normalizeOptionalString(payload.serverId);
+  if (!serverId) {
+    return { error: 'serverId is required.' };
+  }
+
+  const cols = typeof payload.cols === 'number' ? payload.cols : Number(payload.cols ?? 120);
+  const rows = typeof payload.rows === 'number' ? payload.rows : Number(payload.rows ?? 32);
+  const term = normalizeOptionalString(payload.term) ?? 'xterm-256color';
+
+  if (!Number.isInteger(cols) || cols < 20 || cols > 400) {
+    return { error: 'cols must be an integer between 20 and 400.' };
+  }
+
+  if (!Number.isInteger(rows) || rows < 10 || rows > 200) {
+    return { error: 'rows must be an integer between 10 and 200.' };
+  }
+
+  if (term.length < 2 || term.length > 64) {
+    return { error: 'term must be a string between 2 and 64 characters.' };
+  }
+
+  return {
+    value: {
+      serverId,
+      cols,
+      rows,
+      term,
+    },
+  };
+};
+
+export const parseTrustFingerprintRequest = (
+  payload: unknown,
+): { value?: ApiSshTrustFingerprintRequest; error?: string } => {
+  if (!isRecord(payload)) {
+    return { error: 'Request body must be a JSON object.' };
+  }
+
+  const serverId = normalizeOptionalString(payload.serverId);
+  const fingerprintSha256 = normalizeOptionalString(payload.fingerprintSha256);
+  const algorithm = normalizeOptionalString(payload.algorithm) ?? 'sha256';
+
+  if (!serverId) {
+    return { error: 'serverId is required.' };
+  }
+
+  if (!fingerprintSha256 || fingerprintSha256.length > 255) {
+    return { error: 'fingerprintSha256 is required and must be 1-255 characters.' };
+  }
+
+  if (algorithm.length < 1 || algorithm.length > 64) {
+    return { error: 'algorithm must be 1-64 characters.' };
+  }
+
+  if (algorithm !== 'sha256') {
+    return { error: 'Only sha256 host fingerprint algorithm is supported.' };
+  }
+
+  return {
+    value: {
+      serverId,
+      fingerprintSha256,
+      algorithm,
     },
   };
 };

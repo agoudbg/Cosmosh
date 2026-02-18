@@ -62,6 +62,19 @@ model SshServer {
   @@index([folderId])
 }
 
+model SshKnownHost {
+  id          String   @id
+  host        String
+  port        Int      @default(22)
+  keyType     String
+  fingerprint String
+  trusted     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([host, port])
+}
+
 model SshServerTag {
   serverId String
   tagId    String

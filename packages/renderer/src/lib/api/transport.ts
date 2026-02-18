@@ -4,11 +4,16 @@ import type {
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
   ApiSshCreateServerResponse,
+  ApiSshCreateSessionHostVerificationRequiredResponse,
+  ApiSshCreateSessionRequest,
+  ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
+  ApiSshTrustFingerprintRequest,
+  ApiSshTrustFingerprintResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 import { API_HEADERS, API_PATHS } from '@cosmosh/api-contract';
@@ -23,7 +28,10 @@ type ApiResponse =
   | ApiSshListFoldersResponse
   | ApiSshCreateFolderResponse
   | ApiSshListTagsResponse
-  | ApiSshCreateTagResponse;
+  | ApiSshCreateTagResponse
+  | ApiSshCreateSessionResponse
+  | ApiSshCreateSessionHostVerificationRequiredResponse
+  | ApiSshTrustFingerprintResponse;
 
 export type ApiTransport = {
   target: RuntimeTarget;
@@ -34,6 +42,13 @@ export type ApiTransport = {
   createSshFolder: (payload: ApiSshCreateFolderRequest) => Promise<ApiSshCreateFolderResponse | ApiErrorResponse>;
   listSshTags: () => Promise<ApiSshListTagsResponse | ApiErrorResponse>;
   createSshTag: (payload: ApiSshCreateTagRequest) => Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
+  createSshSession: (
+    payload: ApiSshCreateSessionRequest,
+  ) => Promise<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse | ApiErrorResponse>;
+  trustSshFingerprint: (
+    payload: ApiSshTrustFingerprintRequest,
+  ) => Promise<ApiSshTrustFingerprintResponse | ApiErrorResponse>;
+  closeSshSession: (sessionId: string) => Promise<{ success: boolean }>;
 };
 
 // Browser fallback uses build-time URL configuration to prepare for future web runtime.
@@ -89,11 +104,29 @@ const createElectronTransport = (): ApiTransport => {
     createSshTag: async (payload) => {
       return (await window.electron!.backendSshCreateTag(payload)) as ApiSshCreateTagResponse | ApiErrorResponse;
     },
+    createSshSession: async (payload) => {
+      return (await window.electron!.backendSshCreateSession(payload)) as
+        | ApiSshCreateSessionResponse
+        | ApiSshCreateSessionHostVerificationRequiredResponse
+        | ApiErrorResponse;
+    },
+    trustSshFingerprint: async (payload) => {
+      return (await window.electron!.backendSshTrustFingerprint(payload)) as
+        | ApiSshTrustFingerprintResponse
+        | ApiErrorResponse;
+    },
+    closeSshSession: async (sessionId) => {
+      return await window.electron!.backendSshCloseSession(sessionId);
+    },
   };
 };
 
 const createBrowserTransport = (): ApiTransport => {
-  const callBrowserApi = async (path: string, method: 'GET' | 'POST', body?: unknown): Promise<ApiResponse> => {
+  const callBrowserApi = async (
+    path: string,
+    method: 'GET' | 'POST' | 'DELETE',
+    body?: unknown,
+  ): Promise<ApiResponse> => {
     const token = resolveBrowserAuthToken();
     const baseUrl = resolveBrowserBaseUrl();
 
@@ -146,6 +179,29 @@ const createBrowserTransport = (): ApiTransport => {
       return (await callBrowserApi(API_PATHS.sshCreateTag, 'POST', payload)) as
         | ApiSshCreateTagResponse
         | ApiErrorResponse;
+    },
+    createSshSession: async (payload) => {
+      return (await callBrowserApi(API_PATHS.sshCreateSession, 'POST', payload)) as
+        | ApiSshCreateSessionResponse
+        | ApiSshCreateSessionHostVerificationRequiredResponse
+        | ApiErrorResponse;
+    },
+    trustSshFingerprint: async (payload) => {
+      return (await callBrowserApi(API_PATHS.sshTrustFingerprint, 'POST', payload)) as
+        | ApiSshTrustFingerprintResponse
+        | ApiErrorResponse;
+    },
+    closeSshSession: async (sessionId) => {
+      const path = API_PATHS.sshCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+
+      return { success: response.status === 204 };
     },
   };
 };

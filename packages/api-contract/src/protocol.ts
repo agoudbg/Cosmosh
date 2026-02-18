@@ -12,6 +12,9 @@ export const API_PATHS = {
   sshCreateFolder: '/api/v1/ssh/folders',
   sshListTags: '/api/v1/ssh/tags',
   sshCreateTag: '/api/v1/ssh/tags',
+  sshCreateSession: '/api/v1/ssh/sessions',
+  sshCloseSession: '/api/v1/ssh/sessions/{sessionId}',
+  sshTrustFingerprint: '/api/v1/ssh/trusted-host-keys',
 } as const;
 
 export const API_HEADERS = {
@@ -26,6 +29,8 @@ export const API_CODES = {
   sshFolderConflict: 'SSH_FOLDER_CONFLICT',
   sshTagConflict: 'SSH_TAG_CONFLICT',
   sshNotFound: 'SSH_NOT_FOUND',
+  sshHostUntrusted: 'SSH_HOST_UNTRUSTED',
+  sshSessionNotFound: 'SSH_SESSION_NOT_FOUND',
   testPingOk: 'TEST_PING_OK',
   sshServerListOk: 'SSH_SERVER_LIST_OK',
   sshServerCreateOk: 'SSH_SERVER_CREATE_OK',
@@ -33,6 +38,8 @@ export const API_CODES = {
   sshFolderCreateOk: 'SSH_FOLDER_CREATE_OK',
   sshTagListOk: 'SSH_TAG_LIST_OK',
   sshTagCreateOk: 'SSH_TAG_CREATE_OK',
+  sshSessionCreateOk: 'SSH_SESSION_CREATE_OK',
+  sshTrustFingerprintOk: 'SSH_TRUST_FINGERPRINT_OK',
 } as const;
 
 export const API_CAPABILITIES = ['ssh', 'sftp'] as const;

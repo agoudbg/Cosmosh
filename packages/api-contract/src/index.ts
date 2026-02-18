@@ -22,3 +22,14 @@ export type ApiSshListTagsResponse = paths['/api/v1/ssh/tags']['get']['responses
 export type ApiSshCreateTagRequest = paths['/api/v1/ssh/tags']['post']['requestBody']['content']['application/json'];
 export type ApiSshCreateTagResponse =
 	paths['/api/v1/ssh/tags']['post']['responses']['200']['content']['application/json'];
+export type ApiSshCreateSessionRequest =
+	paths['/api/v1/ssh/sessions']['post']['requestBody']['content']['application/json'];
+export type ApiSshCreateSessionResponse =
+	paths['/api/v1/ssh/sessions']['post']['responses']['200']['content']['application/json'];
+export type ApiSshCreateSessionHostVerificationRequiredResponse =
+	paths['/api/v1/ssh/sessions']['post']['responses']['409']['content']['application/json'];
+export type ApiSshTrustFingerprintRequest =
+	paths['/api/v1/ssh/trusted-host-keys']['post']['requestBody']['content']['application/json'];
+export type ApiSshTrustFingerprintResponse =
+	paths['/api/v1/ssh/trusted-host-keys']['post']['responses']['200']['content']['application/json'];
+export type ApiSshCloseSessionRequest = paths['/api/v1/ssh/sessions/{sessionId}']['delete']['parameters']['path'];

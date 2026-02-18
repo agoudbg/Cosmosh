@@ -4,11 +4,16 @@ import type {
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
   ApiSshCreateServerResponse,
+  ApiSshCreateSessionHostVerificationRequiredResponse,
+  ApiSshCreateSessionRequest,
+  ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
+  ApiSshTrustFingerprintRequest,
+  ApiSshTrustFingerprintResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 
@@ -41,6 +46,15 @@ declare global {
       ) => Promise<ApiSshCreateFolderResponse | ApiErrorResponse>;
       backendSshListTags: () => Promise<ApiSshListTagsResponse | ApiErrorResponse>;
       backendSshCreateTag: (payload: ApiSshCreateTagRequest) => Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
+      backendSshCreateSession: (
+        payload: ApiSshCreateSessionRequest,
+      ) => Promise<
+        ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse | ApiErrorResponse
+      >;
+      backendSshTrustFingerprint: (
+        payload: ApiSshTrustFingerprintRequest,
+      ) => Promise<ApiSshTrustFingerprintResponse | ApiErrorResponse>;
+      backendSshCloseSession: (sessionId: string) => Promise<{ success: boolean }>;
       platform: NodeJS.Platform;
     };
   }

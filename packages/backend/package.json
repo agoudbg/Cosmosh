@@ -23,11 +23,15 @@
     "@cosmosh/api-contract": "workspace:*",
     "@cosmosh/i18n": "workspace:*",
     "hono": "^4.6.14",
-    "@hono/node-server": "^1.13.7"
+    "@hono/node-server": "^1.13.7",
+    "ssh2": "^1.17.0",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@types/node": "^22.10.2",
+    "@types/ssh2": "^1.15.5",
+    "@types/ws": "^8.18.1",
     "eslint": "^9.17.0",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.2.1",

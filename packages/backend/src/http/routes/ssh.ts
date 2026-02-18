@@ -1,12 +1,17 @@
+import crypto from 'node:crypto';
+
 import {
   API_CODES,
   API_PATHS,
   type ApiSshCreateFolderResponse,
   type ApiSshCreateServerResponse,
+  type ApiSshCreateSessionHostVerificationRequiredResponse,
+  type ApiSshCreateSessionResponse,
   type ApiSshCreateTagResponse,
   type ApiSshListFoldersResponse,
   type ApiSshListServersResponse,
   type ApiSshListTagsResponse,
+  type ApiSshTrustFingerprintResponse,
   createApiSuccess,
 } from '@cosmosh/api-contract';
 import { Prisma } from '@prisma/client';
@@ -14,7 +19,13 @@ import type { Hono } from 'hono';
 
 import { encryptSensitiveValue } from '../../ssh/crypto.js';
 import { mapServerToListItem, serverQueryInclude } from '../../ssh/mappers.js';
-import { parseCreateFolderRequest, parseCreateServerRequest, parseCreateTagRequest } from '../../ssh/validation.js';
+import {
+  parseCreateFolderRequest,
+  parseCreateServerRequest,
+  parseCreateSessionRequest,
+  parseCreateTagRequest,
+  parseTrustFingerprintRequest,
+} from '../../ssh/validation.js';
 import { buildErrorPayload } from '../errors.js';
 import type { BackendAppContext } from '../types.js';
 
@@ -255,5 +266,86 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
       throw error;
     }
+  });
+
+  app.post(API_PATHS.sshCreateSession, async (c) => {
+    const parsed = parseCreateSessionRequest(await c.req.json().catch(() => undefined));
+    if (!parsed.value) {
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+    }
+
+    const result = await context.sshSessionService.createSession(parsed.value);
+
+    if (result.type === 'not-found') {
+      return c.json(buildErrorPayload(API_CODES.sshNotFound, 'SSH server was not found.'), 404);
+    }
+
+    if (result.type === 'host-untrusted') {
+      const payload: ApiSshCreateSessionHostVerificationRequiredResponse = {
+        success: false,
+        code: API_CODES.sshHostUntrusted,
+        message: 'Host fingerprint is not trusted yet.',
+        requestId: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        data: {
+          serverId: result.serverId,
+          host: result.host,
+          port: result.port,
+          algorithm: result.algorithm,
+          fingerprint: result.fingerprint,
+        },
+      };
+
+      return c.json(payload, 409);
+    }
+
+    if (result.type === 'failed') {
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, result.message), 400);
+    }
+
+    const payload: ApiSshCreateSessionResponse = createApiSuccess({
+      code: API_CODES.sshSessionCreateOk,
+      message: 'SSH session created successfully.',
+      data: {
+        sessionId: result.sessionId,
+        serverId: result.serverId,
+        websocketUrl: result.websocketUrl,
+        websocketToken: result.websocketToken,
+      },
+    });
+
+    return c.json(payload);
+  });
+
+  app.post(API_PATHS.sshTrustFingerprint, async (c) => {
+    const parsed = parseTrustFingerprintRequest(await c.req.json().catch(() => undefined));
+    if (!parsed.value) {
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+    }
+
+    const result = await context.sshSessionService.trustFingerprint(parsed.value);
+
+    if (result.type === 'not-found') {
+      return c.json(buildErrorPayload(API_CODES.sshNotFound, 'SSH server was not found.'), 404);
+    }
+
+    const payload: ApiSshTrustFingerprintResponse = createApiSuccess({
+      code: API_CODES.sshTrustFingerprintOk,
+      message: 'Host fingerprint trusted successfully.',
+      data: {
+        trusted: true,
+      },
+    });
+
+    return c.json(payload);
+  });
+
+  app.delete(API_PATHS.sshCloseSession.replace('{sessionId}', ':sessionId'), async (c) => {
+    const sessionId = c.req.param('sessionId');
+    if (!sessionId || !context.sshSessionService.closeSession(sessionId)) {
+      return c.json(buildErrorPayload(API_CODES.sshSessionNotFound, 'SSH session was not found.'), 404);
+    }
+
+    return c.body(null, 204);
   });
 };

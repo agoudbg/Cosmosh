@@ -3,11 +3,16 @@ import type {
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
   ApiSshCreateServerResponse,
+  ApiSshCreateSessionHostVerificationRequiredResponse,
+  ApiSshCreateSessionRequest,
+  ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
+  ApiSshTrustFingerprintRequest,
+  ApiSshTrustFingerprintResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 
@@ -22,6 +27,11 @@ export type BackendClient = {
   createSshFolder: (payload: ApiSshCreateFolderRequest) => Promise<ApiSshCreateFolderResponse>;
   listSshTags: () => Promise<ApiSshListTagsResponse>;
   createSshTag: (payload: ApiSshCreateTagRequest) => Promise<ApiSshCreateTagResponse>;
+  createSshSession: (
+    payload: ApiSshCreateSessionRequest,
+  ) => Promise<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse>;
+  trustSshFingerprint: (payload: ApiSshTrustFingerprintRequest) => Promise<ApiSshTrustFingerprintResponse>;
+  closeSshSession: (sessionId: string) => Promise<{ success: boolean }>;
 };
 
 export const createBackendClient = (): BackendClient => {
@@ -91,6 +101,35 @@ export const createBackendClient = (): BackendClient => {
       }
 
       return payload;
+    },
+    createSshSession: async (requestPayload) => {
+      const payload = await transport.createSshSession(requestPayload);
+
+      if (payload.success) {
+        return payload;
+      }
+
+      if (payload.code === 'SSH_HOST_UNTRUSTED' && 'data' in payload) {
+        return payload;
+      }
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      throw new Error('Unexpected SSH session response.');
+    },
+    trustSshFingerprint: async (requestPayload) => {
+      const payload = await transport.trustSshFingerprint(requestPayload);
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    closeSshSession: async (sessionId) => {
+      return transport.closeSshSession(sessionId);
     },
   };
 };

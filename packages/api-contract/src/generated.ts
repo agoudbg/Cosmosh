@@ -92,6 +92,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ssh/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a live SSH terminal session. */
+        post: operations["sshCreateSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ssh/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Close a live SSH terminal session. */
+        delete: operations["sshCloseSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ssh/trusted-host-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trust a host fingerprint for a server. */
+        post: operations["sshTrustFingerprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -111,7 +162,7 @@ export interface components {
         };
         ApiError: components["schemas"]["ApiMeta"] & {
             /** @enum {string} */
-            code: "AUTH_INVALID_TOKEN" | "SSH_VALIDATION_FAILED" | "SSH_SERVER_CONFLICT" | "SSH_FOLDER_CONFLICT" | "SSH_TAG_CONFLICT" | "SSH_NOT_FOUND";
+            code: "AUTH_INVALID_TOKEN" | "SSH_VALIDATION_FAILED" | "SSH_SERVER_CONFLICT" | "SSH_FOLDER_CONFLICT" | "SSH_TAG_CONFLICT" | "SSH_NOT_FOUND" | "SSH_HOST_UNTRUSTED" | "SSH_SESSION_NOT_FOUND";
             /** @enum {boolean} */
             success: false;
         };
@@ -209,6 +260,39 @@ export interface components {
         SshTagCreateRequest: {
             name: string;
         };
+        SshSessionCreateRequest: {
+            serverId: string;
+            /** @default 120 */
+            cols: number;
+            /** @default 32 */
+            rows: number;
+            /** @default xterm-256color */
+            term: string;
+        };
+        SshTrustFingerprintRequest: {
+            serverId: string;
+            fingerprintSha256: string;
+            /**
+             * @default sha256
+             * @enum {string}
+             */
+            algorithm: "sha256";
+        };
+        SshHostVerificationRequiredData: {
+            serverId: string;
+            host: string;
+            port: number;
+            /** @enum {string} */
+            algorithm: "sha256";
+            fingerprint: string;
+        };
+        SshHostVerificationRequired: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_HOST_UNTRUSTED";
+            /** @enum {boolean} */
+            success: false;
+            data: components["schemas"]["SshHostVerificationRequiredData"];
+        };
         SshServerListData: {
             items: components["schemas"]["SshServerListItem"][];
         };
@@ -226,6 +310,16 @@ export interface components {
         };
         SshTagCreateData: {
             item: components["schemas"]["SshTag"];
+        };
+        SshSessionCreateData: {
+            sessionId: string;
+            serverId: string;
+            websocketUrl: string;
+            websocketToken: string;
+        };
+        SshTrustFingerprintData: {
+            /** @enum {boolean} */
+            trusted: true;
         };
         SshServerListSuccess: components["schemas"]["ApiMeta"] & {
             /** @enum {string} */
@@ -268,6 +362,20 @@ export interface components {
             /** @enum {boolean} */
             success: true;
             data: components["schemas"]["SshTagCreateData"];
+        };
+        SshSessionCreateSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_SESSION_CREATE_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshSessionCreateData"];
+        };
+        SshTrustFingerprintSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_TRUST_FINGERPRINT_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshTrustFingerprintData"];
         };
     };
     responses: never;
@@ -574,6 +682,161 @@ export interface operations {
             };
             /** @description Tag already exists. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshCreateSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshSessionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description SSH session is ready for websocket streaming. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshSessionCreateSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Host fingerprint is not trusted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshHostVerificationRequired"];
+                };
+            };
+        };
+    };
+    sshCloseSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session closed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Session not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshTrustFingerprint: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshTrustFingerprintRequest"];
+            };
+        };
+        responses: {
+            /** @description Host fingerprint has been trusted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshTrustFingerprintSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

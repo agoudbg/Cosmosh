@@ -4,11 +4,16 @@ import type {
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
   ApiSshCreateServerResponse,
+  ApiSshCreateSessionHostVerificationRequiredResponse,
+  ApiSshCreateSessionRequest,
+  ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
+  ApiSshTrustFingerprintRequest,
+  ApiSshTrustFingerprintResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 import { contextBridge, ipcRenderer } from 'electron';
@@ -62,6 +67,19 @@ contextBridge.exposeInMainWorld('electron', {
   },
   backendSshCreateTag: (payload: ApiSshCreateTagRequest) => {
     return ipcRenderer.invoke('backend:ssh-create-tag', payload) as Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
+  },
+  backendSshCreateSession: (payload: ApiSshCreateSessionRequest) => {
+    return ipcRenderer.invoke('backend:ssh-create-session', payload) as Promise<
+      ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse | ApiErrorResponse
+    >;
+  },
+  backendSshTrustFingerprint: (payload: ApiSshTrustFingerprintRequest) => {
+    return ipcRenderer.invoke('backend:ssh-trust-fingerprint', payload) as Promise<
+      ApiSshTrustFingerprintResponse | ApiErrorResponse
+    >;
+  },
+  backendSshCloseSession: (sessionId: string) => {
+    return ipcRenderer.invoke('backend:ssh-close-session', sessionId) as Promise<{ success: boolean }>;
   },
   platform: process.platform,
 });

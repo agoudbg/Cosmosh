@@ -3,11 +3,16 @@ import type {
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
   ApiSshCreateServerResponse,
+  ApiSshCreateSessionHostVerificationRequiredResponse,
+  ApiSshCreateSessionRequest,
+  ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
+  ApiSshTrustFingerprintRequest,
+  ApiSshTrustFingerprintResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 
@@ -43,4 +48,20 @@ export const listSshTags = async (): Promise<ApiSshListTagsResponse> => {
 
 export const createSshTag = async (payload: ApiSshCreateTagRequest): Promise<ApiSshCreateTagResponse> => {
   return backendClient.createSshTag(payload);
+};
+
+export const createSshSession = async (
+  payload: ApiSshCreateSessionRequest,
+): Promise<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse> => {
+  return backendClient.createSshSession(payload);
+};
+
+export const trustSshFingerprint = async (
+  payload: ApiSshTrustFingerprintRequest,
+): Promise<ApiSshTrustFingerprintResponse> => {
+  return backendClient.trustSshFingerprint(payload);
+};
+
+export const closeSshSession = async (sessionId: string): Promise<{ success: boolean }> => {
+  return backendClient.closeSshSession(sessionId);
 };

@@ -2,6 +2,7 @@ import classNames from 'classnames';
 import React from 'react';
 
 import Header from './components/header/Header';
+import { setActiveSshServerId } from './lib/ssh-target';
 import { useTabs } from './lib/useTabs';
 import ComponentsField from './pages/ComponentsField';
 import Debug from './pages/Debug';
@@ -59,7 +60,14 @@ const App: React.FC = () => {
             key={tab.id}
             className={classNames('h-full min-h-0 w-full overflow-auto', tab.id === activeTabId ? 'block' : 'hidden')}
           >
-            {tab.page === 'home' && <Home onOpenSSH={() => openPageInTab(tab.id, 'ssh')} />}
+            {tab.page === 'home' && (
+              <Home
+                onOpenSSH={(serverId) => {
+                  setActiveSshServerId(serverId);
+                  openPageInTab(tab.id, 'ssh');
+                }}
+              />
+            )}
             {tab.page === 'ssh' && <SSH />}
             {tab.page === 'ssh-editor-mock' && <SSHEditorMock />}
             {tab.page === 'settings' && <Settings />}
