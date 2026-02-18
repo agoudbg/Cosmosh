@@ -65,6 +65,13 @@ const base = {
         'cyan-ink': '#b8f0ff',
       },
     },
+    ssh: {
+      card: {
+        bg: {
+          DEFAULT: '#191919',
+        }
+      }
+    },
     menu: {
       control: {
         DEFAULT: '#191919d9',
@@ -109,6 +116,7 @@ const base = {
     },
   },
   shadow: {
+    lg: '0 0px 10px #00000088',
     soft: 'rgba(4, 8, 16, 0.6)',
   },
 };

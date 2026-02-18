@@ -44,6 +44,7 @@
   --color-home-icon-rose-ink: #ffc2d4;
   --color-home-icon-cyan: #183b45;
   --color-home-icon-cyan-ink: #b8f0ff;
+  --color-ssh-card-bg: #191919;
   --color-menu-control: #191919d9;
   --color-menu-control-hover: #292929cc;
   --color-menu-divider: #333333;
@@ -65,6 +66,7 @@
   --color-scrollbar-track: #00000000;
   --color-scrollbar-thumb: #2f2f2f;
   --color-scrollbar-thumb-hover: #3a3a3a;
+  --shadow-lg: 0 0px 10px #00000088;
   --shadow-soft: rgba(4, 8, 16, 0.6);
 }
 

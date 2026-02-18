@@ -3,10 +3,12 @@ import '@xterm/xterm/css/xterm.css';
 import type { components } from '@cosmosh/api-contract';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { RefreshCw } from 'lucide-react';
+import classNames from 'classnames';
+import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles } from 'lucide-react';
 import React from 'react';
 
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { Menubar } from '../components/ui/menubar';
 import { closeSshSession, createSshSession, listSshServers, trustSshFingerprint } from '../lib/backend';
 import { t } from '../lib/i18n';
@@ -49,7 +51,77 @@ type ServerInboundMessage =
     }
   | {
       type: 'pong';
+    }
+  | {
+      type: 'telemetry';
+      cpuUsagePercent: number | null;
+      memoryUsedBytes: number | null;
+      memoryTotalBytes: number | null;
+      networkRxBytesPerSec: number | null;
+      networkTxBytesPerSec: number | null;
+      recentCommands: string[];
     };
+
+type SshTelemetryState = {
+  cpuUsagePercent: number | null;
+  memoryUsedBytes: number | null;
+  memoryTotalBytes: number | null;
+  networkRxBytesPerSec: number | null;
+  networkTxBytesPerSec: number | null;
+  recentCommands: string[];
+};
+
+const DEFAULT_TELEMETRY_STATE: SshTelemetryState = {
+  cpuUsagePercent: null,
+  memoryUsedBytes: null,
+  memoryTotalBytes: null,
+  networkRxBytesPerSec: null,
+  networkTxBytesPerSec: null,
+  recentCommands: [],
+};
+
+const formatCompactBytes = (value: number): string => {
+  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+  const units = ['B', 'K', 'M', 'G', 'T'];
+  let scaled = safeValue;
+  let unitIndex = 0;
+
+  while (scaled >= 1024 && unitIndex < units.length - 1) {
+    scaled /= 1024;
+    unitIndex += 1;
+  }
+
+  if (unitIndex === 0) {
+    return `${Math.round(scaled)}${units[unitIndex]}`;
+  }
+
+  return `${scaled.toFixed(scaled >= 10 ? 0 : 1)}${units[unitIndex]}`;
+};
+
+const formatCpuPercent = (value: number | null): string => {
+  if (value === null) {
+    return 'N/A';
+  }
+
+  const safeValue = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+  return `${safeValue.toFixed(1)}%`;
+};
+
+const formatMemoryUsage = (usedBytes: number | null, totalBytes: number | null): string => {
+  if (usedBytes === null || totalBytes === null) {
+    return 'N/A';
+  }
+
+  return `${formatCompactBytes(usedBytes)}/${formatCompactBytes(totalBytes)}`;
+};
+
+const formatTrafficRate = (bytesPerSecond: number | null): string => {
+  if (bytesPerSecond === null) {
+    return 'N/A';
+  }
+
+  return formatCompactBytes(bytesPerSecond);
+};
 
 const sendClientMessage = (socket: WebSocket, payload: ClientOutboundMessage): void => {
   if (socket.readyState !== WebSocket.OPEN) {
@@ -84,6 +156,7 @@ const SSH: React.FC = () => {
   const connectSessionRef = React.useRef<(() => void) | null>(null);
   const [connectionState, setConnectionState] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [connectionError, setConnectionError] = React.useState<string>('');
+  const [telemetryState, setTelemetryState] = React.useState<SshTelemetryState>(DEFAULT_TELEMETRY_STATE);
 
   const handleRetry = React.useCallback(() => {
     if (connectionState === 'connecting' || connectionState === 'connected') {
@@ -98,10 +171,13 @@ const SSH: React.FC = () => {
       convertEol: true,
       cursorBlink: true,
       scrollback: 10000,
-      fontSize: 14,
+      fontSize: 15,
       fontFamily: '"JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace',
       letterSpacing: 0,
       lineHeight: 1,
+      theme: {
+        background: getComputedStyle(document.documentElement).getPropertyValue('--color-ssh-card-bg') || '#000000',
+      },
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -208,6 +284,19 @@ const SSH: React.FC = () => {
         if (payload.type === 'ready') {
           return;
         }
+
+        if (payload.type === 'telemetry') {
+          setTelemetryState({
+            cpuUsagePercent: payload.cpuUsagePercent,
+            memoryUsedBytes: payload.memoryUsedBytes,
+            memoryTotalBytes: payload.memoryTotalBytes,
+            networkRxBytesPerSec: payload.networkRxBytesPerSec,
+            networkTxBytesPerSec: payload.networkTxBytesPerSec,
+            // Backend already caps and de-duplicates commands; keep latest at top in the view layer.
+            recentCommands: payload.recentCommands,
+          });
+          return;
+        }
       } catch {
         setConnectionState('failed');
         setConnectionError(t('ssh.websocketMalformedMessage'));
@@ -218,6 +307,7 @@ const SSH: React.FC = () => {
       try {
         setConnectionState('connecting');
         setConnectionError('');
+        setTelemetryState(DEFAULT_TELEMETRY_STATE);
 
         const targetServer = await resolveTargetServer();
         if (disposed) {
@@ -363,18 +453,122 @@ const SSH: React.FC = () => {
     };
   }, []);
 
+  // Card style
+  const cardStyle = 'bg-ssh-card-bg h-full w-full flex-1 rounded-[18px] p-1';
+  const cardHiddenArea =
+    'overflow-hidden hof:my-[-38px] hof:py-[42px] hof:z-20 hof:shadow-lg transition-all duration-300 ease-in-out';
+  const hiddenHeaderStyle = 'h-[34px] mt-[-38px]';
+
+  const commandButtonStyle =
+    '!justify-start overflow-hidden text-ellipsis text-start w-full whitespace-nowrap flex-shrink-0';
+
   return (
     <div
       ref={wrapperRef}
-      className="relative h-full w-full p-2"
+      className="relative flex h-full w-full gap-2.5"
     >
-      <div
-        ref={terminalContainerRef}
-        className="h-full w-full p-2"
-      />
+      {/* SSH */}
+      <div className={cardStyle}>
+        <div
+          ref={terminalContainerRef}
+          className="h-full w-full p-2"
+        />
+      </div>
+
+      {/* Sidebar */}
+      <div className="flex w-[300px] flex-col items-center justify-between gap-2.5 overflow-auto">
+        {/* Usage */}
+        <div
+          className={classNames(
+            cardStyle,
+            'px-3 py-2 flex items-center justify-between gap-2 flex-grow-0 flex-shrink-0',
+          )}
+        >
+          {/* CPU */}
+          <div className="flex flex-grow items-center gap-1">
+            <Cpu size={14} />
+            <span className="text-sm">{formatCpuPercent(telemetryState.cpuUsagePercent)}</span>
+          </div>
+
+          {/* Memory */}
+          <div className="flex flex-grow items-center gap-1">
+            <MemoryStick size={14} />
+            <span className="text-sm">
+              {formatMemoryUsage(telemetryState.memoryUsedBytes, telemetryState.memoryTotalBytes)}
+            </span>
+          </div>
+
+          {/* Transit */}
+          <div className="flex flex-grow items-center gap-1">
+            <ArrowUpDown size={14} />
+            <span className="text-sm">
+              {formatTrafficRate(telemetryState.networkTxBytesPerSec)}/
+              {formatTrafficRate(telemetryState.networkRxBytesPerSec)}
+            </span>
+          </div>
+        </div>
+
+        {/* Recent commands */}
+        <div className={classNames(cardStyle, cardHiddenArea)}>
+          <div className={classNames(hiddenHeaderStyle, 'flex items-center justify-between flex-shrink-0')}>
+            <Button>Commands</Button>
+            <div className="flex">
+              <Button
+                aria-label="Search"
+                variant="icon"
+              >
+                <Search size={16} />
+              </Button>
+            </div>
+          </div>
+          <div className="flex h-[178px] flex-col overflow-auto">
+            {telemetryState.recentCommands.length === 0 ? (
+              <div className="text-muted-text flex h-full items-center justify-center text-xs">No recent commands</div>
+            ) : (
+              [...telemetryState.recentCommands].reverse().map((command, index) => (
+                <Button
+                  key={`${command}-${index}`}
+                  className={commandButtonStyle}
+                >
+                  {command}
+                </Button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Files */}
+        <div className={cardStyle}>
+          <span>1</span>
+        </div>
+
+        {/* Shortcuts */}
+        <div className={cardStyle}>
+          <span>1</span>
+        </div>
+
+        {/* Ask AI */}
+        <div className={classNames(cardStyle, 'flex-grow-0')}>
+          <div className="flex h-full w-full items-center justify-center">
+            <Button
+              variant="icon"
+              aria-label="Ask AI"
+            >
+              <Sparkles size={16} />
+            </Button>
+            <Input placeholder="Ask AI Anything..." />
+            <Button
+              variant="icon"
+              aria-label="Send"
+            >
+              <Send size={16} />
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {connectionState !== 'connected' ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-between px-4 py-12">
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-between bg-bg px-4 py-12">
           <div></div>
           <div className="text-sm text-header-text">
             {connectionState === 'connecting' ? t('ssh.connecting') : connectionError}

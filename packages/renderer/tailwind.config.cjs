@@ -70,6 +70,8 @@ module.exports = {
       sides.forEach((side) => addVariant(`radix-side-${side}`, `&[data-side="${side}"]`));
 
       addVariant('radix-disabled', '&[data-disabled]');
+
+      addVariant('hof', ['&:hover', '&:focus']);
     }),
   ],
 };

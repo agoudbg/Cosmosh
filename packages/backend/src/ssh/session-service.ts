@@ -102,6 +102,15 @@ type ServerOutboundMessage =
     }
   | {
       type: 'pong';
+    }
+  | {
+      type: 'telemetry';
+      cpuUsagePercent: number | null;
+      memoryUsedBytes: number | null;
+      memoryTotalBytes: number | null;
+      networkRxBytesPerSec: number | null;
+      networkTxBytesPerSec: number | null;
+      recentCommands: string[];
     };
 
 type SshLiveSession = {
@@ -112,9 +121,30 @@ type SshLiveSession = {
   stream: ClientChannel;
   pendingOutput: string[];
   attachTimeout: NodeJS.Timeout;
+  telemetryInterval: NodeJS.Timeout | null;
+  lastNetworkSample: {
+    rxBytesTotal: number;
+    txBytesTotal: number;
+    timestampMs: number;
+  } | null;
+  commandBuffer: string;
+  recentCommands: string[];
   socket: WebSocket | null;
   disposed: boolean;
 };
+
+type ParsedRemoteTelemetry = {
+  cpuUsagePercent: number;
+  memoryUsedBytes: number;
+  memoryTotalBytes: number;
+  networkRxBytesTotal: number;
+  networkTxBytesTotal: number;
+};
+
+const TELEMETRY_INTERVAL_MS = 5_000;
+// Leading whitespace intentionally avoids writing this command into shell history on most shells.
+const TELEMETRY_COMMAND =
+  ' sh -lc \'cpu=$(top -bn1 | awk -F"[, ]+" "/Cpu\\(s\\)|%Cpu\\(s\\)/ {for(i=1;i<=NF;i++){if($i==\\"id\\"){print 100-$(i-1); exit}}}"); if [ -z "$cpu" ]; then cpu=$(awk "/^cpu /{idle=$5;total=0;for(i=2;i<=NF;i++){total+=$i} if(total>0){print (total-idle)*100/total}else{print 0}}" /proc/stat); fi; mem=$(free -b | awk "/^Mem:/ {print \\$3 \\" \\" \\$2}"); net=$(awk "NR>2 {rx+=\\$2;tx+=\\$10} END {print rx \\" \\" tx}" /proc/net/dev); printf "%s\\n%s\\n%s\\n" "${cpu:-0}" "${mem:-0 0}" "${net:-0 0}"\'';
 
 const normalizeMessage = (payload: RawData): ClientInboundMessage | null => {
   try {
@@ -307,6 +337,10 @@ export class SshSessionService {
       stream: shellResult.stream,
       pendingOutput,
       attachTimeout,
+      telemetryInterval: null,
+      lastNetworkSample: null,
+      commandBuffer: '',
+      recentCommands: [],
       socket: null,
       disposed: false,
     };
@@ -328,6 +362,7 @@ export class SshSessionService {
     });
 
     this.sessions.set(sessionId, liveSession);
+    this.startSessionTelemetry(sessionId);
 
     return {
       type: 'success',
@@ -457,6 +492,7 @@ export class SshSessionService {
     }
 
     if (message.type === 'input') {
+      this.captureCommandInput(session, message.data);
       session.stream.write(message.data);
       return;
     }
@@ -486,6 +522,11 @@ export class SshSessionService {
     this.sessions.delete(sessionId);
     clearTimeout(session.attachTimeout);
 
+    if (session.telemetryInterval) {
+      clearInterval(session.telemetryInterval);
+      session.telemetryInterval = null;
+    }
+
     this.sendServerMessage(session, {
       type: 'exit',
       reason,
@@ -508,6 +549,182 @@ export class SshSessionService {
     }
 
     session.socket = null;
+  }
+
+  private startSessionTelemetry(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.disposed) {
+      return;
+    }
+
+    session.telemetryInterval = setInterval(() => {
+      void this.collectAndSendTelemetry(sessionId);
+    }, TELEMETRY_INTERVAL_MS);
+
+    // Kick off once immediately so the UI gets values without waiting for the first interval.
+    void this.collectAndSendTelemetry(sessionId);
+  }
+
+  private async collectAndSendTelemetry(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.disposed) {
+      return;
+    }
+
+    const parsed = await this.readRemoteTelemetry(session);
+    if (!parsed) {
+      // Frontend renders explicit N/A placeholders when metrics are unavailable on the remote host.
+      this.sendServerMessage(session, {
+        type: 'telemetry',
+        cpuUsagePercent: null,
+        memoryUsedBytes: null,
+        memoryTotalBytes: null,
+        networkRxBytesPerSec: null,
+        networkTxBytesPerSec: null,
+        recentCommands: [...session.recentCommands],
+      });
+      return;
+    }
+
+    const now = Date.now();
+    const networkRates = this.computeNetworkRates(session, parsed.networkRxBytesTotal, parsed.networkTxBytesTotal, now);
+
+    this.sendServerMessage(session, {
+      type: 'telemetry',
+      cpuUsagePercent: parsed.cpuUsagePercent,
+      memoryUsedBytes: parsed.memoryUsedBytes,
+      memoryTotalBytes: parsed.memoryTotalBytes,
+      networkRxBytesPerSec: networkRates.rxBytesPerSec,
+      networkTxBytesPerSec: networkRates.txBytesPerSec,
+      recentCommands: [...session.recentCommands],
+    });
+  }
+
+  private computeNetworkRates(
+    session: SshLiveSession,
+    currentRxBytesTotal: number,
+    currentTxBytesTotal: number,
+    timestampMs: number,
+  ): { rxBytesPerSec: number; txBytesPerSec: number } {
+    const previous = session.lastNetworkSample;
+    session.lastNetworkSample = {
+      rxBytesTotal: currentRxBytesTotal,
+      txBytesTotal: currentTxBytesTotal,
+      timestampMs,
+    };
+
+    if (!previous) {
+      return {
+        rxBytesPerSec: 0,
+        txBytesPerSec: 0,
+      };
+    }
+
+    const deltaMs = Math.max(1, timestampMs - previous.timestampMs);
+    const deltaSeconds = deltaMs / 1000;
+
+    return {
+      rxBytesPerSec: Math.max(0, (currentRxBytesTotal - previous.rxBytesTotal) / deltaSeconds),
+      txBytesPerSec: Math.max(0, (currentTxBytesTotal - previous.txBytesTotal) / deltaSeconds),
+    };
+  }
+
+  private async readRemoteTelemetry(session: SshLiveSession): Promise<ParsedRemoteTelemetry | null> {
+    return await new Promise<ParsedRemoteTelemetry | null>((resolve) => {
+      let stdout = '';
+
+      session.client.exec(TELEMETRY_COMMAND, (error, channel) => {
+        if (error) {
+          resolve(null);
+          return;
+        }
+
+        channel.on('data', (chunk: Buffer | string) => {
+          stdout += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+        });
+
+        channel.on('close', () => {
+          resolve(this.parseTelemetryOutput(stdout));
+        });
+      });
+    });
+  }
+
+  private parseTelemetryOutput(output: string): ParsedRemoteTelemetry | null {
+    const lines = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length < 3) {
+      return null;
+    }
+
+    const cpuUsagePercent = Number.parseFloat(lines[0] ?? '0');
+    const [memoryUsedRaw, memoryTotalRaw] = (lines[1] ?? '').split(/\s+/);
+    const [networkRxRaw, networkTxRaw] = (lines[2] ?? '').split(/\s+/);
+
+    const memoryUsedBytes = Number.parseInt(memoryUsedRaw ?? '0', 10);
+    const memoryTotalBytes = Number.parseInt(memoryTotalRaw ?? '0', 10);
+    const networkRxBytesTotal = Number.parseInt(networkRxRaw ?? '0', 10);
+    const networkTxBytesTotal = Number.parseInt(networkTxRaw ?? '0', 10);
+
+    if (
+      !Number.isFinite(cpuUsagePercent) ||
+      !Number.isFinite(memoryUsedBytes) ||
+      !Number.isFinite(memoryTotalBytes) ||
+      !Number.isFinite(networkRxBytesTotal) ||
+      !Number.isFinite(networkTxBytesTotal)
+    ) {
+      return null;
+    }
+
+    return {
+      cpuUsagePercent: Math.max(0, Math.min(100, cpuUsagePercent)),
+      memoryUsedBytes: Math.max(0, memoryUsedBytes),
+      memoryTotalBytes: Math.max(0, memoryTotalBytes),
+      networkRxBytesTotal: Math.max(0, networkRxBytesTotal),
+      networkTxBytesTotal: Math.max(0, networkTxBytesTotal),
+    };
+  }
+
+  private captureCommandInput(session: SshLiveSession, inputData: string): void {
+    for (const character of inputData) {
+      if (character === '\r' || character === '\n') {
+        const submitted = session.commandBuffer;
+        session.commandBuffer = '';
+
+        const command = submitted.trim();
+        if (command.length > 0) {
+          this.pushRecentCommand(session, command);
+        }
+        continue;
+      }
+
+      if (character === '\u007f') {
+        session.commandBuffer = session.commandBuffer.slice(0, -1);
+        continue;
+      }
+
+      if (character === '\u0015') {
+        session.commandBuffer = '';
+        continue;
+      }
+
+      // Ignore control keys (arrow keys, ctrl combinations, etc.) and only keep printable text.
+      if (character >= ' ' && character !== '\u007f') {
+        session.commandBuffer += character;
+
+        if (session.commandBuffer.length > 512) {
+          session.commandBuffer = session.commandBuffer.slice(-512);
+        }
+      }
+    }
+  }
+
+  private pushRecentCommand(session: SshLiveSession, command: string): void {
+    // Keep all submitted commands for this session to match full-history UX expectations.
+    session.recentCommands.push(command);
   }
 
   private async openShell(
