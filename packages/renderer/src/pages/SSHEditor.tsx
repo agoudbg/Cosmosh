@@ -52,7 +52,7 @@ import {
 import { createFolder, normalizeFolderName } from '../lib/folder-actions';
 import { colorKeyToClassName, resolveHomeVisual } from '../lib/home-visuals';
 import { t } from '../lib/i18n';
-import { consumeSshEditorCreateMode, getActiveSshServerId } from '../lib/ssh-target';
+import { consumeSshEditorCreateMode, getActiveSshServerId, setActiveSshServerId } from '../lib/ssh-target';
 import { useToast } from '../lib/toast-context';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
@@ -406,6 +406,7 @@ const SSHEditor: React.FC = () => {
       }
 
       preferCreateModeRef.current = false;
+      setActiveSshServerId(serverId);
       setActiveServerId(serverId);
       setFormState({
         ...mapServerToFormState(targetServer),
@@ -427,6 +428,7 @@ const SSHEditor: React.FC = () => {
 
   const onAddServer = React.useCallback(() => {
     preferCreateModeRef.current = true;
+    setActiveSshServerId('');
     setActiveServerId(null);
     setFormState(createInitialFormState());
   }, []);
@@ -473,6 +475,8 @@ const SSHEditor: React.FC = () => {
 
       setIsSubmitting(true);
       try {
+        let successMessage = t('ssh.serverCreatedSuccessfully');
+
         if (activeServerId) {
           const targetServer = servers.find((server) => server.id === activeServerId);
           if (!targetServer) {
@@ -502,8 +506,10 @@ const SSHEditor: React.FC = () => {
             folderId: formState.folderId || undefined,
             note: formState.note.trim() || undefined,
           });
+          setActiveSshServerId(activeServerId);
+          successMessage = t('ssh.serverUpdatedSuccessfully');
         } else {
-          await createSshServer({
+          const created = await createSshServer({
             name: formState.name.trim(),
             host: formState.host.trim(),
             port,
@@ -515,11 +521,14 @@ const SSHEditor: React.FC = () => {
             folderId: formState.folderId || undefined,
             note: formState.note.trim() || undefined,
           });
+
+          const createdServerId = created.data.item.id;
+          setActiveSshServerId(createdServerId);
           preferCreateModeRef.current = false;
         }
 
-        notifySuccess(activeServerId ? t('ssh.serverUpdatedSuccessfully') : t('ssh.serverCreatedSuccessfully'));
         await reloadData();
+        notifySuccess(successMessage);
       } catch (error: unknown) {
         notifyError(error instanceof Error ? error.message : t('ssh.saveServerFailed'));
       } finally {
@@ -819,7 +828,7 @@ const SSHEditor: React.FC = () => {
                         id="ssh-editor-password"
                         value={formState.password}
                         placeholder={
-                          activeServer?.hasPassword ? t('ssh.passwordSavedPlaceholder') : t('ssh.optionalPlaceholder')
+                          activeServer?.hasPassword ? t('ssh.passwordSavedPlaceholder') : t('ssh.passwordPlaceholder')
                         }
                         onChange={(event) => onChangeForm('password', event.target.value)}
                       />

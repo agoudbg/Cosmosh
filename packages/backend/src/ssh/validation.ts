@@ -142,6 +142,17 @@ export const parseCreateServerRequest = (payload: unknown): { value?: ApiSshCrea
   const privateKey = normalizeOptionalString(payload.privateKey);
   const privateKeyPassphrase = normalizeOptionalString(payload.privateKeyPassphrase);
 
+  const shouldUsePassword = authType === 'password' || authType === 'both';
+  const shouldUsePrivateKey = authType === 'key' || authType === 'both';
+
+  if (shouldUsePassword && !password) {
+    return { error: 'Password is required for selected authentication type.' };
+  }
+
+  if (shouldUsePrivateKey && !privateKey) {
+    return { error: 'Private key is required for selected authentication type.' };
+  }
+
   const folderId = normalizeOptionalString(payload.folderId);
   const note = normalizeOptionalString(payload.note);
   if (note && note.length > 3000) {
