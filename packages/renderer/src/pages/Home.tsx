@@ -62,6 +62,7 @@ import { getLocale, t } from '../lib/i18n';
 type HomeProps = {
   onOpenSSH: (serverId: string) => void;
   onOpenSshEditor: (serverId: string) => void;
+  isActive: boolean;
 };
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
@@ -122,7 +123,7 @@ const hashString = (value: string): number => {
   return hash >>> 0;
 };
 
-const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor }) => {
+const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => {
   const [servers, setServers] = React.useState<SshServerListItem[]>([]);
   const [folders, setFolders] = React.useState<SshFolder[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
@@ -134,25 +135,35 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor }) => {
   const [groupMode, setGroupMode] = React.useState<GroupMode>('lastUsed');
   const [sortMode, setSortMode] = React.useState<SortMode>('lastUsed');
   const [runtimeUserName, setRuntimeUserName] = React.useState<string>('user');
+  const previousIsActiveRef = React.useRef<boolean>(isActive);
+
+  const reloadHomeData = React.useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage('');
+
+    try {
+      const [foldersResponse, serversResponse] = await Promise.all([listSshFolders(), listSshServers()]);
+      setFolders(foldersResponse.data.items);
+      setServers(serversResponse.data.items);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to load home data.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   React.useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      setErrorMessage('');
+    void reloadHomeData();
+  }, [reloadHomeData]);
 
-      try {
-        const [foldersResponse, serversResponse] = await Promise.all([listSshFolders(), listSshServers()]);
-        setFolders(foldersResponse.data.items);
-        setServers(serversResponse.data.items);
-      } catch (error: unknown) {
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to load home data.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  React.useEffect(() => {
+    const becameActive = !previousIsActiveRef.current && isActive;
+    previousIsActiveRef.current = isActive;
 
-    void load();
-  }, []);
+    if (becameActive) {
+      void reloadHomeData();
+    }
+  }, [isActive, reloadHomeData]);
 
   React.useEffect(() => {
     const loadUserName = async () => {

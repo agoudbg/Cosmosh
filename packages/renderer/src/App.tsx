@@ -64,6 +64,7 @@ const App: React.FC = () => {
             >
               {tab.page === 'home' && (
                 <Home
+                  isActive={tab.id === activeTabId}
                   onOpenSSH={(serverId) => {
                     setActiveSshServerId(serverId);
                     openPageInTab(tab.id, 'ssh');
