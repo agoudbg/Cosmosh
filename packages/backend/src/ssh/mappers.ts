@@ -1,5 +1,5 @@
 import type { ApiSshListServersResponse } from '@cosmosh/api-contract';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 export const serverQueryInclude = {
   folder: true,

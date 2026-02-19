@@ -199,6 +199,8 @@ const startBackendService = async (): Promise<void> => {
   const secretKey = await resolveBackendSecretKey();
   const isDev = !app.isPackaged;
   const workspaceRoot = resolveWorkspaceRoot();
+  const appPath = app.getAppPath();
+  const packagedBackendEntryPath = path.join(appPath, 'node_modules', '@cosmosh', 'backend', 'dist', 'index.js');
   const backendEnv: NodeJS.ProcessEnv = {
     ...process.env,
     COSMOSH_RUNTIME_MODE: 'electron-main',
@@ -211,6 +213,7 @@ const startBackendService = async (): Promise<void> => {
   let command: string;
   let args: string[];
   let shell = false;
+  let backendProcessCwd = workspaceRoot;
 
   if (isDev) {
     console.log('[backend:init] Preparing development database schema...');
@@ -226,12 +229,16 @@ const startBackendService = async (): Promise<void> => {
     args = [];
     shell = true;
   } else {
+    await fs.access(packagedBackendEntryPath);
     command = process.execPath;
-    args = [path.resolve(__dirname, '../../backend/dist/index.js')];
+    args = [packagedBackendEntryPath];
+    backendProcessCwd = process.resourcesPath;
+    backendEnv.ELECTRON_RUN_AS_NODE = '1';
+    backendEnv.NODE_ENV = 'production';
   }
 
   const spawnedBackendProcess = spawn(command, args, {
-    cwd: workspaceRoot,
+    cwd: backendProcessCwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: backendEnv,
     shell,
@@ -372,7 +379,7 @@ const createWindow = () => {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/dist/index.html'));
+    mainWindow.loadFile(path.join(process.resourcesPath, 'renderer', 'index.html'));
   }
 
   mainWindow.on('closed', () => {
@@ -380,30 +387,48 @@ const createWindow = () => {
   });
 };
 
-app.whenReady().then(async () => {
-  try {
-    if (!app.isPackaged) {
-      disableI18nHotReload = await enableI18nDevHotReload({
-        localeRootDir: path.join(resolveWorkspaceRoot(), 'packages', 'i18n', 'locales'),
-      });
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) {
+      return;
     }
 
-    await startBackendService();
-  } catch (error) {
-    console.error('Failed to start backend service.', error);
-    app.quit();
-    return;
-  }
-
-  createWindow();
-  console.log('Main window is ready');
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
     }
+
+    mainWindow.focus();
   });
-});
+
+  app.whenReady().then(async () => {
+    try {
+      if (!app.isPackaged) {
+        disableI18nHotReload = await enableI18nDevHotReload({
+          localeRootDir: path.join(resolveWorkspaceRoot(), 'packages', 'i18n', 'locales'),
+        });
+      }
+
+      await startBackendService();
+    } catch (error) {
+      console.error('Failed to start backend service.', error);
+      app.quit();
+      return;
+    }
+
+    createWindow();
+    console.log('Main window is ready');
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
+}
 
 ipcMain.on('app:close-window', () => {
   const targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;

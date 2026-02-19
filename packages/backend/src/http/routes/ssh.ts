@@ -16,8 +16,10 @@ import {
   type ApiSshUpdateServerResponse,
   createApiSuccess,
 } from '@cosmosh/api-contract';
-import { Prisma } from '@prisma/client';
+import prismaClientPackage from '@prisma/client';
 import type { Hono } from 'hono';
+
+const { Prisma } = prismaClientPackage;
 
 import { decryptSensitiveValue, encryptSensitiveValue } from '../../ssh/crypto.js';
 import { mapServerToListItem, serverQueryInclude } from '../../ssh/mappers.js';

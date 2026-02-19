@@ -6,7 +6,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient as PrismaClientType } from '@prisma/client';
+import prismaClientPackage from '@prisma/client';
+
+const { PrismaClient } = prismaClientPackage;
 
 export type RuntimeMode = 'standalone' | 'electron-main';
 
@@ -45,8 +48,8 @@ const currentDirPath = path.dirname(currentFilePath);
 const backendRootDir = path.resolve(currentDirPath, '../..');
 
 // Keep a single Prisma instance in-process to avoid multiple SQLite handles.
-let prismaClient: PrismaClient | null = null;
-let initializingClientPromise: Promise<PrismaClient> | null = null;
+let prismaClient: PrismaClientType | null = null;
+let initializingClientPromise: Promise<PrismaClientType> | null = null;
 
 /**
  * Resolve a per-user data root directory for local persistence.
@@ -189,7 +192,7 @@ const toPrismaSqliteUrl = (filePath: string): string => {
 /**
  * Apply runtime safety/performance pragmas immediately after connect.
  */
-const applyPragmas = async (client: PrismaClient, runtimeMode: RuntimeMode): Promise<void> => {
+const applyPragmas = async (client: PrismaClientType, runtimeMode: RuntimeMode): Promise<void> => {
   // These pragmas are applied at startup to enforce baseline SQLite safety and runtime behavior.
   await client.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
   await client.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
@@ -212,7 +215,7 @@ const applyPragmas = async (client: PrismaClient, runtimeMode: RuntimeMode): Pro
  * 4) Connect Prisma client
  * 5) Apply pragmas
  */
-export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOptions): Promise<PrismaClient> => {
+export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOptions): Promise<PrismaClientType> => {
   // Initialization is idempotent for repeated bootstrap calls in the same process.
   if (prismaClient) {
     return prismaClient;

@@ -115,6 +115,9 @@ importers:
       '@cosmosh/api-contract':
         specifier: workspace:*
         version: link:../api-contract
+      '@cosmosh/backend':
+        specifier: workspace:*
+        version: link:../backend
       '@cosmosh/i18n':
         specifier: workspace:*
         version: link:../i18n

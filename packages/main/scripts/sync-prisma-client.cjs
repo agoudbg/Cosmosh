@@ -1,0 +1,46 @@
+const fs = require('node:fs/promises');
+const path = require('node:path');
+
+const workspaceRoot = path.resolve(__dirname, '../../..');
+const pnpmStoreDir = path.join(workspaceRoot, 'node_modules', '.pnpm');
+const runtimeResourcesRoot = path.join(workspaceRoot, 'packages', 'main', 'resources-runtime', 'node_modules');
+const targetDir = path.join(runtimeResourcesRoot, '.prisma');
+const targetPrismaClientDir = path.join(runtimeResourcesRoot, '@prisma', 'client');
+
+const findPrismaSourceDirs = async () => {
+  const entries = await fs.readdir(pnpmStoreDir, { withFileTypes: true });
+  const prismaClientPackageDir = entries.find(
+    (entry) =>
+      entry.isDirectory() &&
+      (entry.name.startsWith('@prisma+client@') || entry.name.startsWith('%40prisma%2Bclient%40')),
+  );
+
+  if (!prismaClientPackageDir) {
+    throw new Error('Unable to locate @prisma/client in node_modules/.pnpm.');
+  }
+
+  const sourceRoot = path.join(pnpmStoreDir, prismaClientPackageDir.name, 'node_modules');
+  return {
+    prismaRuntimeDir: path.join(sourceRoot, '.prisma'),
+    prismaClientDir: path.join(sourceRoot, '@prisma', 'client'),
+  };
+};
+
+const syncPrismaClient = async () => {
+  const { prismaRuntimeDir, prismaClientDir } = await findPrismaSourceDirs();
+
+  await fs.rm(targetDir, { recursive: true, force: true });
+  await fs.rm(targetPrismaClientDir, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(targetDir), { recursive: true });
+  await fs.mkdir(path.dirname(targetPrismaClientDir), { recursive: true });
+  await fs.cp(prismaRuntimeDir, targetDir, { recursive: true });
+  await fs.cp(prismaClientDir, targetPrismaClientDir, { recursive: true });
+
+  console.log(`[main:prebuild] Synced Prisma runtime: ${prismaRuntimeDir} -> ${targetDir}`);
+  console.log(`[main:prebuild] Synced Prisma package: ${prismaClientDir} -> ${targetPrismaClientDir}`);
+};
+
+syncPrismaClient().catch((error) => {
+  console.error('[main:prebuild] Failed to sync Prisma runtime files.', error);
+  process.exitCode = 1;
+});

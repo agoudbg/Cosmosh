@@ -5,12 +5,28 @@
     "buildResources": "resources",
     "output": "release"
   },
+  "npmRebuild": false,
   "files": [
     "dist/**/*",
     "node_modules/**/*",
+    "node_modules/.prisma/**/*",
     "package.json"
   ],
   "extraResources": [
+    {
+      "from": "resources-runtime/node_modules/@prisma/client",
+      "to": "node_modules/@prisma/client",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "resources-runtime/node_modules/.prisma",
+      "to": "node_modules/.prisma",
+      "filter": [
+        "**/*"
+      ]
+    },
     {
       "from": "../renderer/dist",
       "to": "renderer",
