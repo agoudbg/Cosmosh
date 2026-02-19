@@ -7,9 +7,11 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "check": "node ./scripts/check-locales.mjs",
+    "sort": "node ./scripts/sort-locales.mjs --write",
+    "check:sort": "node ./scripts/sort-locales.mjs --check",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "lint": "pnpm check && pnpm typecheck",
+    "lint": "pnpm check && pnpm check:sort && pnpm typecheck",
     "lint:fix": "pnpm lint"
   },
   "main": "./dist/index.js",
