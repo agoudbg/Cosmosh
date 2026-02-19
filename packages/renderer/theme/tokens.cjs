@@ -79,6 +79,18 @@ const base = {
       },
       divider: '#333333',
     },
+    dialog: {
+      overlay: '#000000aa',
+      surface: '#0e0e0ee6',
+      border: '#33333333',
+      text: {
+        DEFAULT: '#ffffff',
+        muted: '#a7b0bd',
+      },
+      action: {
+        danger: '#f87171',
+      },
+    },
     form: {
       control: {
         DEFAULT: '#191919d9',
@@ -185,6 +197,18 @@ const light = {
     menu: {
       control: '#ffffff',
       controlHover: '#f1f5f9',
+    },
+    dialog: {
+      overlay: '#0f172a4d',
+      surface: '#ffffff',
+      border: '#d6deea10',
+      text: {
+        DEFAULT: '#111827',
+        muted: '#475569',
+      },
+      action: {
+        danger: '#dc2626',
+      },
     },
     form: {
       control: {

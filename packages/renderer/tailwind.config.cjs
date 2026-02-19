@@ -49,14 +49,24 @@ module.exports = {
           from: { opacity: 0 },
           to: { opacity: 1 },
         },
+        'overlay-hide': {
+          from: { opacity: 1 },
+          to: { opacity: 0 },
+        },
         'content-show': {
-          from: { opacity: 0, transform: 'translateY(6px) scale(0.98)' },
-          to: { opacity: 1, transform: 'translateY(0) scale(1)' },
+          from: { opacity: 0, transform: 'translate(-50%, calc(-50% + 6px)) scale(0.98)' },
+          to: { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
+        },
+        'content-hide': {
+          from: { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
+          to: { opacity: 0, transform: 'translate(-50%, calc(-50% + 4px)) scale(0.98)' },
         },
       },
       animation: {
         'overlay-show': 'overlay-show 120ms ease-out',
+        'overlay-hide': 'overlay-hide 120ms ease-in',
         'content-show': 'content-show 180ms ease-out',
+        'content-hide': 'content-hide 140ms ease-in',
       },
     },
   },

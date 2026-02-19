@@ -48,6 +48,12 @@
   --color-menu-control: #191919d9;
   --color-menu-control-hover: #292929cc;
   --color-menu-divider: #333333;
+  --color-dialog-overlay: #000000aa;
+  --color-dialog-surface: #0e0e0ee6;
+  --color-dialog-border: #33333333;
+  --color-dialog-text: #ffffff;
+  --color-dialog-text-muted: #a7b0bd;
+  --color-dialog-action-danger: #f87171;
   --color-form-control: #191919d9;
   --color-form-control-hover: #292929cc;
   --color-form-text: #ffffff;
@@ -110,6 +116,12 @@
   --color-accent-glow: rgba(14, 165, 233, 0.35);
   --color-menu-control: #ffffff;
   --color-menu-controlHover: #f1f5f9;
+  --color-dialog-overlay: #0f172a4d;
+  --color-dialog-surface: #ffffff;
+  --color-dialog-border: #d6deea10;
+  --color-dialog-text: #111827;
+  --color-dialog-text-muted: #475569;
+  --color-dialog-action-danger: #dc2626;
   --color-form-control: #ffffff;
   --color-form-control-hover: #f1f5f9;
   --color-form-text: #111827;
@@ -168,6 +180,12 @@
     --color-accent-glow: rgba(14, 165, 233, 0.35);
     --color-menu-control: #ffffff;
     --color-menu-controlHover: #f1f5f9;
+    --color-dialog-overlay: #0f172a4d;
+    --color-dialog-surface: #ffffff;
+    --color-dialog-border: #d6deea10;
+    --color-dialog-text: #111827;
+    --color-dialog-text-muted: #475569;
+    --color-dialog-action-danger: #dc2626;
     --color-form-control: #ffffff;
     --color-form-control-hover: #f1f5f9;
     --color-form-text: #111827;

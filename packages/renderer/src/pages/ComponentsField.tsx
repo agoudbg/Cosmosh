@@ -2,6 +2,17 @@ import classNames from 'classnames';
 import { Folder, FolderOpen, HardDrive, PlugZap, Server, Terminal } from 'lucide-react';
 import React from 'react';
 
+import {
+  AlertDialog,
+  AlertDialogActionButton,
+  AlertDialogCancelButton,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog';
 import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
 import {
@@ -19,6 +30,16 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '../components/ui/context-menu';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -296,6 +317,68 @@ const ComponentsField: React.FC = () => {
           <Server className="h-4 w-4" />
           <span>Icon + Text</span>
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button>Open Dialog</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>SSH Profile Template</DialogTitle>
+              <DialogDescription>
+                This dialog shares the same semantic tokens as AlertDialog and follows current form/button visuals.
+              </DialogDescription>
+            </DialogHeader>
+            <Form className="grid gap-2">
+              <FormField>
+                <FormLabel htmlFor="dialog-host">Host</FormLabel>
+                <FormControl>
+                  <Input
+                    id="dialog-host"
+                    placeholder="node-a.prod"
+                  />
+                </FormControl>
+              </FormField>
+              <FormField>
+                <FormLabel htmlFor="dialog-user">Username</FormLabel>
+                <FormControl>
+                  <Input
+                    id="dialog-user"
+                    placeholder="root"
+                  />
+                </FormControl>
+              </FormField>
+            </Form>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="ghost">Cancel</Button>
+              </DialogClose>
+              <DialogClose asChild>
+                <Button>Save Template</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="ghost">Open Alert Dialog</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove SSH Profile?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. The server entry will be removed from your local workspace.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancelButton>Cancel</AlertDialogCancelButton>
+              <AlertDialogActionButton>Delete</AlertDialogActionButton>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
