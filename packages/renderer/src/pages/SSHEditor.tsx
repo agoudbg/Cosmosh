@@ -217,7 +217,7 @@ const SSHEditor: React.FC = () => {
         ...(cachedCredentials ?? {}),
       });
     } catch (error: unknown) {
-      window.alert(error instanceof Error ? error.message : 'Failed to load server editor resources.');
+      window.alert(error instanceof Error ? error.message : t('ssh.editorLoadFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -255,7 +255,7 @@ const SSHEditor: React.FC = () => {
         }));
       } catch {
         if (!cancelled) {
-          window.alert('Failed to load saved credentials.');
+          window.alert(t('ssh.credentialsLoadFailed'));
         }
       }
     };
@@ -342,10 +342,10 @@ const SSHEditor: React.FC = () => {
       });
 
       return [
-        { key: 'time:day', title: '1日内', items: dayItems },
-        { key: 'time:week', title: '1周内', items: weekItems },
-        { key: 'time:month', title: '1月内', items: monthItems },
-        { key: 'time:older', title: '更早', items: olderItems },
+        { key: 'time:day', title: t('ssh.groupDay'), items: dayItems },
+        { key: 'time:week', title: t('ssh.groupWeek'), items: weekItems },
+        { key: 'time:month', title: t('ssh.groupMonth'), items: monthItems },
+        { key: 'time:older', title: t('ssh.groupOlder'), items: olderItems },
       ].filter((group) => group.items.length > 0);
     }
 
@@ -365,7 +365,7 @@ const SSHEditor: React.FC = () => {
     if (uncategorized.length > 0) {
       groups.push({
         key: 'folder:uncategorized',
-        title: '无文件夹',
+        title: t('ssh.noFolder'),
         items: uncategorized,
       });
     }
@@ -451,12 +451,12 @@ const SSHEditor: React.FC = () => {
 
       const port = parsePort(formState.port);
       if (!formState.name.trim() || !formState.host.trim() || !formState.username.trim()) {
-        window.alert('Name, host and username are required.');
+        window.alert(t('ssh.validationRequiredFields'));
         return;
       }
 
       if (port === null) {
-        window.alert('Port must be an integer between 1 and 65535.');
+        window.alert(t('ssh.validationInvalidPort'));
         return;
       }
 
@@ -465,17 +465,17 @@ const SSHEditor: React.FC = () => {
         if (activeServerId) {
           const targetServer = servers.find((server) => server.id === activeServerId);
           if (!targetServer) {
-            window.alert('Selected server was not found.');
+            window.alert(t('ssh.validationServerNotFound'));
             return;
           }
 
           if (requiresPassword && !formState.password.trim() && !targetServer.hasPassword) {
-            window.alert('Password is required for selected authentication type.');
+            window.alert(t('ssh.validationPasswordRequired'));
             return;
           }
 
           if (requiresPrivateKey && !formState.privateKey.trim() && !targetServer.hasPrivateKey) {
-            window.alert('Private key is required for selected authentication type.');
+            window.alert(t('ssh.validationPrivateKeyRequired'));
             return;
           }
 
@@ -506,10 +506,10 @@ const SSHEditor: React.FC = () => {
           });
         }
 
-        window.alert(activeServerId ? 'Server updated successfully.' : 'Server created successfully.');
+        window.alert(activeServerId ? t('ssh.serverUpdatedSuccessfully') : t('ssh.serverCreatedSuccessfully'));
         await reloadData();
       } catch (error: unknown) {
-        window.alert(error instanceof Error ? error.message : 'Failed to save server.');
+        window.alert(error instanceof Error ? error.message : t('ssh.saveServerFailed'));
       } finally {
         setIsSubmitting(false);
       }
@@ -551,7 +551,7 @@ const SSHEditor: React.FC = () => {
                     checked={sortMode === 'default'}
                     onSelect={() => setSortMode('default')}
                   >
-                    默认
+                    {t('ssh.sortDefault')}
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={sortMode === 'nameAsc'}
@@ -619,12 +619,14 @@ const SSHEditor: React.FC = () => {
               <div className="space-y-4">
                 {activeServerId === null ? (
                   <section>
-                    <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">Draft</div>
+                    <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">
+                      {t('ssh.draftSectionTitle')}
+                    </div>
                     <EntityCard
                       selected
-                      title="新服务器"
-                      subtitle="未保存"
-                      icon={createIconNode(colorKeyToClassName('blue'), '新服务器')}
+                      title={t('ssh.draftServerTitle')}
+                      subtitle={t('ssh.draftServerSubtitle')}
+                      icon={createIconNode(colorKeyToClassName('blue'), t('ssh.draftServerTitle'))}
                       onClick={onAddServer}
                     />
                   </section>
@@ -666,7 +668,7 @@ const SSHEditor: React.FC = () => {
               <Menubar>
                 <Input
                   value={formState.name}
-                  placeholder="Server name"
+                  placeholder={t('ssh.serverNamePlaceholder')}
                   className="w-[280px]"
                   onChange={(event) => onChangeForm('name', event.target.value)}
                 />
@@ -678,7 +680,7 @@ const SSHEditor: React.FC = () => {
                   form="ssh-editor-form"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? 'Saving...' : activeServerId ? 'Save Changes' : 'Create Server'}
+                  {isSubmitting ? t('ssh.saving') : activeServerId ? t('ssh.saveChanges') : t('ssh.createServerButton')}
                 </Button>
               </Menubar>
             </div>
@@ -691,15 +693,17 @@ const SSHEditor: React.FC = () => {
               onSubmit={(event) => void onSubmit(event)}
             >
               <section className="grid gap-3">
-                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">Basic Connection</div>
+                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">
+                  {t('ssh.sectionBasicConnection')}
+                </div>
 
                 <FormField>
-                  <FormLabel htmlFor="ssh-editor-host">Host</FormLabel>
+                  <FormLabel htmlFor="ssh-editor-host">{t('ssh.columnHost')}</FormLabel>
                   <FormControl>
                     <Input
                       id="ssh-editor-host"
                       value={formState.host}
-                      placeholder="node-a.prod"
+                      placeholder={t('ssh.hostPlaceholder')}
                       onChange={(event) => onChangeForm('host', event.target.value)}
                     />
                   </FormControl>
@@ -707,11 +711,12 @@ const SSHEditor: React.FC = () => {
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <FormField>
-                    <FormLabel htmlFor="ssh-editor-port">Port</FormLabel>
+                    <FormLabel htmlFor="ssh-editor-port">{t('ssh.columnPort')}</FormLabel>
                     <FormControl>
                       <Input
                         id="ssh-editor-port"
                         value={formState.port}
+                        placeholder={t('ssh.portPlaceholder')}
                         inputMode="numeric"
                         onChange={(event) => onChangeForm('port', event.target.value)}
                       />
@@ -719,19 +724,19 @@ const SSHEditor: React.FC = () => {
                   </FormField>
 
                   <FormField>
-                    <FormLabel htmlFor="ssh-editor-username">Username</FormLabel>
+                    <FormLabel htmlFor="ssh-editor-username">{t('ssh.columnUser')}</FormLabel>
                     <FormControl>
                       <Input
                         id="ssh-editor-username"
                         value={formState.username}
-                        placeholder="root"
+                        placeholder={t('ssh.usernamePlaceholder')}
                         onChange={(event) => onChangeForm('username', event.target.value)}
                       />
                     </FormControl>
                   </FormField>
 
                   <FormField>
-                    <FormLabel htmlFor="ssh-editor-folder">Folder</FormLabel>
+                    <FormLabel htmlFor="ssh-editor-folder">{t('ssh.columnFolder')}</FormLabel>
                     <FormControl>
                       <Select
                         value={formState.folderId || NO_FOLDER_SELECT_VALUE}
@@ -761,22 +766,24 @@ const SSHEditor: React.FC = () => {
               </section>
 
               <section className="grid gap-3">
-                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">Authentication</div>
+                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">
+                  {t('ssh.sectionAuthentication')}
+                </div>
 
                 <FormField>
-                  <FormLabel htmlFor="ssh-editor-auth-type">Auth Type</FormLabel>
+                  <FormLabel htmlFor="ssh-editor-auth-type">{t('ssh.columnAuth')}</FormLabel>
                   <FormControl>
                     <Select
                       value={formState.authType}
                       onValueChange={(value) => onChangeForm('authType', value as SshAuthType)}
                     >
                       <SelectTrigger id="ssh-editor-auth-type">
-                        <SelectValue placeholder="Select auth type" />
+                        <SelectValue placeholder={t('ssh.authTypePlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="password">password</SelectItem>
-                        <SelectItem value="key">key</SelectItem>
-                        <SelectItem value="both">both</SelectItem>
+                        <SelectItem value="password">{t('ssh.authTypePassword')}</SelectItem>
+                        <SelectItem value="key">{t('ssh.authTypeKey')}</SelectItem>
+                        <SelectItem value="both">{t('ssh.authTypeBoth')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </FormControl>
@@ -784,19 +791,19 @@ const SSHEditor: React.FC = () => {
 
                 {requiresPassword ? (
                   <FormField>
-                    <FormLabel htmlFor="ssh-editor-password">Password</FormLabel>
+                    <FormLabel htmlFor="ssh-editor-password">{t('ssh.passwordLabel')}</FormLabel>
                     <FormControl>
                       <PasswordField
                         id="ssh-editor-password"
                         value={formState.password}
                         placeholder={
-                          activeServer?.hasPassword ? 'Saved password (leave blank to keep unchanged)' : 'Optional'
+                          activeServer?.hasPassword ? t('ssh.passwordSavedPlaceholder') : t('ssh.optionalPlaceholder')
                         }
                         onChange={(event) => onChangeForm('password', event.target.value)}
                       />
                     </FormControl>
                     {activeServer?.hasPassword && !formState.password.trim() ? (
-                      <FormMessage>Password is already saved. Leave this empty to keep it unchanged.</FormMessage>
+                      <FormMessage>{t('ssh.passwordSavedHint')}</FormMessage>
                     ) : null}
                   </FormField>
                 ) : null}
@@ -804,15 +811,15 @@ const SSHEditor: React.FC = () => {
                 {requiresPrivateKey ? (
                   <>
                     <FormField>
-                      <FormLabel htmlFor="ssh-editor-private-key">Private Key</FormLabel>
+                      <FormLabel htmlFor="ssh-editor-private-key">{t('ssh.privateKeyLabel')}</FormLabel>
                       <FormControl>
                         <Textarea
                           id="ssh-editor-private-key"
                           value={formState.privateKey}
                           placeholder={
                             activeServer?.hasPrivateKey
-                              ? 'Saved private key (paste a new one only if you want to replace it)'
-                              : '-----BEGIN OPENSSH PRIVATE KEY-----'
+                              ? t('ssh.privateKeySavedPlaceholder')
+                              : t('ssh.privateKeyPlaceholder')
                           }
                           rows={5}
                           onChange={(event) => onChangeForm('privateKey', event.target.value)}
@@ -820,18 +827,20 @@ const SSHEditor: React.FC = () => {
                       </FormControl>
                       <FormMessage>
                         {formState.privateKey.length > 0 && formState.privateKey.length < 32
-                          ? 'Key seems too short.'
+                          ? t('ssh.privateKeyTooShort')
                           : ''}
                       </FormMessage>
                     </FormField>
 
                     <FormField>
-                      <FormLabel htmlFor="ssh-editor-private-key-passphrase">Private Key Passphrase</FormLabel>
+                      <FormLabel htmlFor="ssh-editor-private-key-passphrase">
+                        {t('ssh.privateKeyPassphraseLabel')}
+                      </FormLabel>
                       <FormControl>
                         <PasswordField
                           id="ssh-editor-private-key-passphrase"
                           value={formState.privateKeyPassphrase}
-                          placeholder="Optional"
+                          placeholder={t('ssh.optionalPlaceholder')}
                           onChange={(event) => onChangeForm('privateKeyPassphrase', event.target.value)}
                         />
                       </FormControl>
@@ -841,7 +850,9 @@ const SSHEditor: React.FC = () => {
               </section>
 
               <section className="grid gap-3">
-                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">Security</div>
+                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">
+                  {t('ssh.sectionSecurity')}
+                </div>
                 <div className="flex items-center gap-2.5 px-2.5">
                   <Switch
                     id="ssh-editor-strict-host-key"
@@ -852,13 +863,15 @@ const SSHEditor: React.FC = () => {
                     htmlFor="ssh-editor-strict-host-key"
                     className={formStyles.inlineLabel}
                   >
-                    Strict Host Key Checking
+                    {t('ssh.strictHostKeyChecking')}
                   </Label>
                 </div>
               </section>
 
               <section className="grid gap-3">
-                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">Performance</div>
+                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">
+                  {t('ssh.sectionPerformance')}
+                </div>
 
                 <FormField>
                   <div className="mb-1 flex items-center justify-between px-2.5">
@@ -866,7 +879,7 @@ const SSHEditor: React.FC = () => {
                       htmlFor="ssh-editor-timeout"
                       className={formStyles.inlineLabel}
                     >
-                      Connection Timeout
+                      {t('ssh.connectionTimeout')}
                     </FormLabel>
                     <span className={formStyles.helperText}>{formState.connectionTimeout[0]}s</span>
                   </div>
@@ -883,15 +896,17 @@ const SSHEditor: React.FC = () => {
               </section>
 
               <section className="grid gap-3">
-                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">Settings</div>
+                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">
+                  {t('ssh.sectionSettings')}
+                </div>
 
                 <FormField>
-                  <FormLabel htmlFor="ssh-editor-note">Note</FormLabel>
+                  <FormLabel htmlFor="ssh-editor-note">{t('ssh.noteLabel')}</FormLabel>
                   <FormControl>
                     <Textarea
                       id="ssh-editor-note"
                       value={formState.note}
-                      placeholder="e.g. prod-main bastion, weekly patch window on Sunday"
+                      placeholder={t('ssh.notePlaceholder')}
                       rows={4}
                       onChange={(event) => onChangeForm('note', event.target.value)}
                     />
