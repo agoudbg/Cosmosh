@@ -3,7 +3,7 @@ import React from 'react';
 
 import Header from './components/header/Header';
 import { InputContextMenuProvider } from './components/ui/input-context-menu';
-import { setActiveSshServerId } from './lib/ssh-target';
+import { requestSshEditorCreateMode, setActiveSshServerId } from './lib/ssh-target';
 import { useTabs } from './lib/useTabs';
 import ComponentsField from './pages/ComponentsField';
 import Debug from './pages/Debug';
@@ -69,7 +69,11 @@ const App: React.FC = () => {
                     openPageInTab(tab.id, 'ssh');
                   }}
                   onOpenSshEditor={(serverId) => {
-                    setActiveSshServerId(serverId);
+                    const trimmedServerId = serverId.trim();
+                    if (trimmedServerId.length === 0) {
+                      requestSshEditorCreateMode();
+                    }
+                    setActiveSshServerId(trimmedServerId);
                     openPageInTab(tab.id, 'ssh-editor');
                   }}
                 />

@@ -7,18 +7,26 @@ import {
   CalendarPlus,
   Clock3,
   Cloud,
+  Copy,
   Database,
   File,
   Folder,
+  FolderOpen,
+  FolderPlus,
   Folders,
   HardDrive,
+  Hash,
+  Link,
   Network,
   Package2,
   PackageOpen,
+  Pencil,
   Plus,
   Search,
   Server,
   Tags,
+  Terminal,
+  Trash2,
 } from 'lucide-react';
 import React from 'react';
 
@@ -499,6 +507,14 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor }) => {
     );
   }, []);
 
+  const handleCopyToClipboard = React.useCallback(async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch (error: unknown) {
+      window.alert(error instanceof Error ? error.message : 'Failed to copy content to clipboard.');
+    }
+  }, []);
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-2">
       <h1 className="px-2 pb-2 text-[28px] font-semibold text-header-text">
@@ -556,9 +572,26 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor }) => {
                       />
                     </ContextMenuTrigger>
                     <ContextMenuContent>
-                      <ContextMenuItem>{t('home.contextOpenFolder')}</ContextMenuItem>
-                      <ContextMenuItem>{t('home.contextEditFolder')}</ContextMenuItem>
-                      <ContextMenuItem>{t('home.contextDeleteFolder')}</ContextMenuItem>
+                      <ContextMenuItem
+                        icon={FolderOpen}
+                        onSelect={item.onClick}
+                      >
+                        {t('home.contextOpenFolder')}
+                      </ContextMenuItem>
+                      {/* TODO(home): Folder edit flow is not wired from Home yet. Keep disabled until editor and API are connected. */}
+                      <ContextMenuItem
+                        disabled
+                        icon={Pencil}
+                      >
+                        {t('home.contextEditFolder')}
+                      </ContextMenuItem>
+                      {/* TODO(home): Folder delete flow is not implemented in Home yet. Keep disabled until confirmation + backend call exist. */}
+                      <ContextMenuItem
+                        disabled
+                        icon={Trash2}
+                      >
+                        {t('home.contextDeleteFolder')}
+                      </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>
                 ))}
@@ -690,8 +723,19 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor }) => {
                         <TooltipContent side="bottom">{t('home.addAction')}</TooltipContent>
                       </Tooltip>
                       <DropdownMenuContent>
-                        <DropdownMenuItem>{t('home.quickAddServer')}</DropdownMenuItem>
-                        <DropdownMenuItem>{t('home.quickAddFolder')}</DropdownMenuItem>
+                        <DropdownMenuItem
+                          icon={Server}
+                          onSelect={() => onOpenSshEditor('')}
+                        >
+                          {t('home.quickAddServer')}
+                        </DropdownMenuItem>
+                        {/* TODO(home): Quick create folder action is not implemented in Home yet. Keep disabled for now. */}
+                        <DropdownMenuItem
+                          disabled
+                          icon={FolderPlus}
+                        >
+                          {t('home.quickAddFolder')}
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </Menubar>
@@ -744,6 +788,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor }) => {
                               imageUrl={visual.imageUrl}
                               action={
                                 <Button
+                                  disabled
                                   variant="ghost"
                                   className="h-[32px] w-[32px] rounded-[8px] px-0 opacity-0 transition-opacity focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
                                   aria-label={t('home.contextConnectSftp')}
@@ -758,23 +803,73 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor }) => {
                             />
                           </ContextMenuTrigger>
                           <ContextMenuContent>
-                            <ContextMenuItem>{t('home.contextConnect')}</ContextMenuItem>
-                            <ContextMenuItem>{t('home.contextConnectSftp')}</ContextMenuItem>
+                            <ContextMenuItem
+                              icon={Terminal}
+                              onSelect={() => onOpenSSH(server.id)}
+                            >
+                              {t('home.contextConnect')}
+                            </ContextMenuItem>
+                            {/* TODO(home): SFTP connect entry is pending dedicated SFTP page/session wiring. */}
+                            <ContextMenuItem
+                              disabled
+                              icon={File}
+                            >
+                              {t('home.contextConnectSftp')}
+                            </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuSub>
-                              <ContextMenuSubTrigger>{t('home.contextCopy')}</ContextMenuSubTrigger>
+                              <ContextMenuSubTrigger icon={Copy}>{t('home.contextCopy')}</ContextMenuSubTrigger>
                               <ContextMenuSubContent>
-                                <ContextMenuItem>{t('home.contextCopyIp')}</ContextMenuItem>
-                                <ContextMenuItem>{t('home.contextCopyName')}</ContextMenuItem>
-                                <ContextMenuItem>{t('home.contextCopyPort')}</ContextMenuItem>
-                                <ContextMenuItem>{t('home.contextCopySchema')}</ContextMenuItem>
+                                <ContextMenuItem
+                                  icon={Network}
+                                  onSelect={() => {
+                                    void handleCopyToClipboard(server.host);
+                                  }}
+                                >
+                                  {t('home.contextCopyIp')}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  icon={Server}
+                                  onSelect={() => {
+                                    void handleCopyToClipboard(server.name);
+                                  }}
+                                >
+                                  {t('home.contextCopyName')}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  icon={Hash}
+                                  onSelect={() => {
+                                    void handleCopyToClipboard(String(server.port));
+                                  }}
+                                >
+                                  {t('home.contextCopyPort')}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  icon={Link}
+                                  onSelect={() => {
+                                    void handleCopyToClipboard(
+                                      `ssh://${server.username}@${server.host}:${server.port}`,
+                                    );
+                                  }}
+                                >
+                                  {t('home.contextCopySchema')}
+                                </ContextMenuItem>
                               </ContextMenuSubContent>
                             </ContextMenuSub>
                             <ContextMenuSeparator />
-                            <ContextMenuItem onSelect={() => onOpenSshEditor(server.id)}>
+                            <ContextMenuItem
+                              icon={Pencil}
+                              onSelect={() => onOpenSshEditor(server.id)}
+                            >
                               {t('home.contextEdit')}
                             </ContextMenuItem>
-                            <ContextMenuItem>{t('home.contextDelete')}</ContextMenuItem>
+                            {/* TODO(home): Server delete flow (confirm + API + local refresh) is not implemented yet. */}
+                            <ContextMenuItem
+                              disabled
+                              icon={Trash2}
+                            >
+                              {t('home.contextDelete')}
+                            </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
                       );

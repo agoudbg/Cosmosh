@@ -34,7 +34,7 @@ import {
 } from '../lib/backend';
 import { colorKeyToClassName, resolveHomeVisual } from '../lib/home-visuals';
 import { t } from '../lib/i18n';
-import { getActiveSshServerId } from '../lib/ssh-target';
+import { consumeSshEditorCreateMode, getActiveSshServerId } from '../lib/ssh-target';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
 type SshFolder = components['schemas']['SshFolder'];
@@ -166,6 +166,12 @@ const SSHEditor: React.FC = () => {
 
       setFolders(nextFolders);
       setServers(nextServers);
+
+      if (consumeSshEditorCreateMode()) {
+        setActiveServerId(null);
+        setFormState(createInitialFormState());
+        return;
+      }
 
       if (nextServers.length === 0) {
         setActiveServerId(null);
