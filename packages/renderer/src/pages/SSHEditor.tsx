@@ -163,6 +163,7 @@ const SSHEditor: React.FC = () => {
   const [isFolderSubmitting, setIsFolderSubmitting] = React.useState<boolean>(false);
   const activeServerIdRef = React.useRef<string | null>(null);
   const credentialsCacheRef = React.useRef<Record<string, ServerCredentialCache>>({});
+  const preferCreateModeRef = React.useRef<boolean>(false);
 
   const requiresPassword = formState.authType === 'password' || formState.authType === 'both';
   const requiresPrivateKey = formState.authType === 'key' || formState.authType === 'both';
@@ -191,12 +192,17 @@ const SSHEditor: React.FC = () => {
       setServers(nextServers);
 
       if (consumeSshEditorCreateMode()) {
+        preferCreateModeRef.current = true;
+      }
+
+      if (preferCreateModeRef.current) {
         setActiveServerId(null);
         setFormState(createInitialFormState());
         return;
       }
 
       if (nextServers.length === 0) {
+        preferCreateModeRef.current = true;
         setActiveServerId(null);
         setFormState(createInitialFormState());
         return;
@@ -213,6 +219,7 @@ const SSHEditor: React.FC = () => {
       const targetServer = nextServers.find((server) => server.id === currentId) ?? nextServers[0];
       const cachedCredentials = credentialsCacheRef.current[targetServer.id];
 
+      preferCreateModeRef.current = false;
       setActiveServerId(targetServer.id);
       setFormState({
         ...mapServerToFormState(targetServer),
@@ -398,6 +405,7 @@ const SSHEditor: React.FC = () => {
         return;
       }
 
+      preferCreateModeRef.current = false;
       setActiveServerId(serverId);
       setFormState({
         ...mapServerToFormState(targetServer),
@@ -418,6 +426,7 @@ const SSHEditor: React.FC = () => {
   );
 
   const onAddServer = React.useCallback(() => {
+    preferCreateModeRef.current = true;
     setActiveServerId(null);
     setFormState(createInitialFormState());
   }, []);
@@ -506,6 +515,7 @@ const SSHEditor: React.FC = () => {
             folderId: formState.folderId || undefined,
             note: formState.note.trim() || undefined,
           });
+          preferCreateModeRef.current = false;
         }
 
         notifySuccess(activeServerId ? t('ssh.serverUpdatedSuccessfully') : t('ssh.serverCreatedSuccessfully'));
