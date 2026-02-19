@@ -119,40 +119,44 @@ const SortableTab = React.forwardRef<
       onContextMenu={onContextMenu}
     >
       <RadixTabs.Trigger
+        asChild
         value={tab.id}
-        data-role="tab-trigger"
-        // @ts-expect-error React.CSSProperties
-        style={{ WebkitAppRegion: 'no-drag', width, minWidth: width, maxWidth: width }}
-        className={classNames(
-          'inline-flex h-full w-full flex-none items-center justify-between gap-1.5 overflow-hidden rounded-md px-2 box-border',
-          isActive ? 'bg-header-tab-active' : 'hover:bg-header-tab-hover',
-          isDragging ? 'opacity-0' : '',
-        )}
       >
-        <span aria-hidden>{iconMap[tab.iconKey]}</span>
-        <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-start text-sm">{tab.title}</span>
-        {tab.closable && (
-          <button
-            type="button"
-            aria-label={`Close ${tab.title}`}
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onClose(tab.id);
-            }}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
+        <div
+          data-role="tab-trigger"
+          // @ts-expect-error React.CSSProperties
+          style={{ WebkitAppRegion: 'no-drag', width, minWidth: width, maxWidth: width }}
+          className={classNames(
+            'box-border inline-flex h-full w-full flex-none items-center justify-between gap-1.5 overflow-hidden rounded-md px-2',
+            isActive ? 'bg-header-tab-active' : 'hover:bg-header-tab-hover',
+            isDragging ? 'opacity-0' : '',
+          )}
+        >
+          <span aria-hidden>{iconMap[tab.iconKey]}</span>
+          <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-start text-sm">{tab.title}</span>
+          {tab.closable && (
+            <button
+              type="button"
+              aria-label={`Close ${tab.title}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
                 onClose(tab.id);
-              }
-            }}
-          >
-            <XIcon className="h-4 w-4" />
-          </button>
-        )}
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onClose(tab.id);
+                }
+              }}
+            >
+              <XIcon className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </RadixTabs.Trigger>
     </div>
   );
