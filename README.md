@@ -77,7 +77,12 @@ pnpm dev:backend      # Start Hono backend (port 3000)
 ```bash
 # Build all packages
 pnpm build
+
+# Build Electron distributable (Windows output in packages/main/release)
+pnpm --filter @cosmosh/main build
 ```
+
+Windows packaging generates `Cosmosh Setup <version>.exe` (NSIS installer) in `packages/main/release`.
 
 ### Linting & Formatting
 

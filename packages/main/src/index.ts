@@ -30,7 +30,7 @@ import type {
 import { API_CODES, API_HEADERS, API_PATHS, createApiError } from '@cosmosh/api-contract';
 import { createI18n, enableI18nDevHotReload, resolveLocale } from '@cosmosh/i18n';
 import { spawn } from 'child_process';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 
 let mainWindow: BrowserWindow | null = null;
@@ -50,6 +50,47 @@ const wait = (ms: number): Promise<void> => {
     setTimeout(resolve, ms);
   });
 };
+
+const formatStartupError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return 'Unknown startup error.';
+  }
+};
+
+const showStartupFailureDialog = (error: unknown): void => {
+  const summary = formatStartupError(error);
+  const message = [
+    'Cosmosh failed to start backend services and will now quit.',
+    '',
+    `Reason: ${summary}`,
+    '',
+    'Please run a freshly built package and check startup logs for details.',
+  ].join('\n');
+
+  dialog.showErrorBox('Cosmosh Startup Failed', message);
+};
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception in main process.', error);
+  showStartupFailureDialog(error);
+  app.quit();
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection in main process.', reason);
+  showStartupFailureDialog(reason);
+  app.quit();
+});
 
 const runCommand = async (
   command: string,
@@ -201,8 +242,14 @@ const startBackendService = async (): Promise<void> => {
   const secretKey = await resolveBackendSecretKey();
   const isDev = !app.isPackaged;
   const workspaceRoot = resolveWorkspaceRoot();
-  const appPath = app.getAppPath();
-  const packagedBackendEntryPath = path.join(appPath, 'node_modules', '@cosmosh', 'backend', 'dist', 'index.js');
+  const packagedBackendEntryPath = path.join(
+    process.resourcesPath,
+    'node_modules',
+    '@cosmosh',
+    'backend',
+    'dist',
+    'index.js',
+  );
   const backendEnv: NodeJS.ProcessEnv = {
     ...process.env,
     COSMOSH_RUNTIME_MODE: 'electron-main',
@@ -346,7 +393,7 @@ const requestBackend = async <TSuccess>(
   }
 };
 
-const createWindow = () => {
+const createWindow = async (): Promise<void> => {
   const isDev = !app.isPackaged;
   const preloadPath = path.join(__dirname, 'preload.js');
 
@@ -378,10 +425,12 @@ const createWindow = () => {
 
   // Load renderer based on environment
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    await mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(process.resourcesPath, 'renderer', 'index.html'));
+    const rendererEntryPath = path.join(process.resourcesPath, 'renderer', 'index.html');
+    await fs.access(rendererEntryPath);
+    await mainWindow.loadFile(rendererEntryPath);
   }
 
   mainWindow.on('closed', () => {
@@ -415,18 +464,23 @@ if (!hasSingleInstanceLock) {
       }
 
       await startBackendService();
+      await createWindow();
     } catch (error) {
-      console.error('Failed to start backend service.', error);
+      console.error('Failed to start Cosmosh application.', error);
+      showStartupFailureDialog(error);
       app.quit();
       return;
     }
 
-    createWindow();
     console.log('Main window is ready');
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
+        void createWindow().catch((error) => {
+          console.error('Failed to recreate main window.', error);
+          showStartupFailureDialog(error);
+          app.quit();
+        });
       }
     });
   });

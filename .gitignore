@@ -138,6 +138,9 @@ dist
 # Electron
 app/
 release/
+packages/main/release-fix/
+packages/main/release-fix2/
+packages/main/release-fix*/
 .pnpm-store/
 **/.cosmosh/
 

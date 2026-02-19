@@ -210,6 +210,11 @@ pnpm --filter @cosmosh/backend build
 pnpm --filter @cosmosh/main build
 ```
 
+`@cosmosh/main` on Windows now produces only the NSIS installer:
+
+- Output: `packages/main/release/Cosmosh Setup <version>.exe`
+- Prebuild behavior: `packages/main/release` is recreated each run to avoid stale artifacts.
+
 ## Code Quality
 
 ```bash

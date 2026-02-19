@@ -14,15 +14,8 @@
   ],
   "extraResources": [
     {
-      "from": "resources-runtime/node_modules/@prisma/client",
-      "to": "node_modules/@prisma/client",
-      "filter": [
-        "**/*"
-      ]
-    },
-    {
-      "from": "resources-runtime/node_modules/.prisma",
-      "to": "node_modules/.prisma",
+      "from": "resources-runtime/node_modules",
+      "to": "node_modules",
       "filter": [
         "**/*"
       ]
@@ -44,8 +37,7 @@
   },
   "win": {
     "target": [
-      "nsis",
-      "portable"
+      "nsis"
     ]
   },
   "linux": {
