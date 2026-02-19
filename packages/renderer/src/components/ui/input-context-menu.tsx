@@ -142,6 +142,7 @@ const resolveDisabled = (item: InputContextMenuItem, target: InputMenuTarget): b
 
 const InputContextMenuProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const triggerRef = React.useRef<HTMLSpanElement | null>(null);
+  const clearTargetTimerRef = React.useRef<number | null>(null);
   const [, setLocaleState] = React.useState(getLocale());
   const [target, setTarget] = React.useState<InputMenuTarget | null>(null);
   const [position, setPosition] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -151,6 +152,14 @@ const InputContextMenuProvider: React.FC<React.PropsWithChildren> = ({ children 
     return onLocaleChange((nextLocale) => {
       setLocaleState(nextLocale);
     });
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (clearTargetTimerRef.current) {
+        window.clearTimeout(clearTargetTimerRef.current);
+      }
+    };
   }, []);
 
   React.useEffect(() => {
@@ -260,10 +269,25 @@ const InputContextMenuProvider: React.FC<React.PropsWithChildren> = ({ children 
     return nodes;
   })();
 
+  const handleOpenChange = React.useCallback((open: boolean) => {
+    if (open) {
+      if (clearTargetTimerRef.current) {
+        window.clearTimeout(clearTargetTimerRef.current);
+        clearTargetTimerRef.current = null;
+      }
+      return;
+    }
+
+    clearTargetTimerRef.current = window.setTimeout(() => {
+      setTarget(null);
+      clearTargetTimerRef.current = null;
+    }, 140);
+  }, []);
+
   return (
     <>
       {children}
-      <ContextMenu onOpenChange={(open) => !open && setTarget(null)}>
+      <ContextMenu onOpenChange={handleOpenChange}>
         <ContextMenuTrigger asChild>
           <span
             ref={triggerRef}

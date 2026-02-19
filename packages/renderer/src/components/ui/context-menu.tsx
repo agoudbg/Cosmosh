@@ -60,6 +60,7 @@ const ContextMenuSubContent = React.forwardRef<
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.SubContent
         ref={ref}
+        forceMount
         avoidCollisions
         sideOffset={sideOffset}
         sticky="always"
@@ -70,6 +71,7 @@ const ContextMenuSubContent = React.forwardRef<
         }}
         className={classNames(
           menuStyles.content,
+          menuStyles.contentCloseMotion,
           'max-h-[min(560px,var(--radix-context-menu-content-available-height))] max-w-[min(420px,var(--radix-context-menu-content-available-width))]',
           className,
         )}
@@ -93,6 +95,7 @@ const ContextMenuContent = React.forwardRef<
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
         ref={ref}
+        forceMount
         avoidCollisions
         sticky="always"
         collisionPadding={normalizeCollisionPadding(collisionPadding)}
@@ -102,6 +105,7 @@ const ContextMenuContent = React.forwardRef<
         }}
         className={classNames(
           menuStyles.content,
+          menuStyles.contentCloseMotion,
           'max-h-[min(560px,var(--radix-context-menu-content-available-height))] max-w-[min(420px,var(--radix-context-menu-content-available-width))]',
           className,
         )}

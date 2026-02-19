@@ -60,6 +60,7 @@ const DropdownMenuSubContent = React.forwardRef<
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.SubContent
         ref={ref}
+        forceMount
         avoidCollisions
         sideOffset={sideOffset}
         sticky="always"
@@ -68,7 +69,7 @@ const DropdownMenuSubContent = React.forwardRef<
           ...viewportBoundsStyle,
           ...style,
         }}
-        className={classNames(menuStyles.content, className)}
+        className={classNames(menuStyles.content, menuStyles.contentCloseMotion, className)}
         {...props}
       >
         <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
@@ -89,6 +90,7 @@ const DropdownMenuContent = React.forwardRef<
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         ref={ref}
+        forceMount
         avoidCollisions
         sideOffset={sideOffset}
         sticky="always"
@@ -97,7 +99,7 @@ const DropdownMenuContent = React.forwardRef<
           ...viewportBoundsStyle,
           ...style,
         }}
-        className={classNames(menuStyles.content, className)}
+        className={classNames(menuStyles.content, menuStyles.contentCloseMotion, className)}
         {...props}
       >
         <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>

@@ -1,6 +1,8 @@
 export const menuStyles = {
   content:
     'z-50 min-w-[180px] max-h-[min(560px,calc(100vh-16px))] max-w-[calc(100vw-16px)] overflow-x-hidden overflow-y-auto rounded-[14px] bg-bg-subtle p-[4px] text-sm text-header-text shadow-soft backdrop-blur-[4px] [-webkit-app-region:no-drag]',
+  contentCloseMotion:
+    'data-[state=closed]:animate-out data-[state=closed]:fade-out-10 data-[state=closed]:zoom-out-95 data-[state=closed]:duration-150 data-[state=closed]:ease-in',
   item: 'relative flex cursor-default select-none items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 outline-none hover:bg-menu-control-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-menu-control-hover [-webkit-app-region:no-drag]',
   inset: 'pl-8',
   subTrigger: 'hover:bg-menu-control-hover data-[state=open]:bg-menu-control-hover',

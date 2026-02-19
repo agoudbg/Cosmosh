@@ -85,6 +85,7 @@ const MenubarSubContent = React.forwardRef<
     <MenubarPrimitive.Portal>
       <MenubarPrimitive.SubContent
         ref={ref}
+        forceMount
         sideOffset={sideOffset}
         avoidCollisions={true}
         sticky="always"
@@ -93,7 +94,7 @@ const MenubarSubContent = React.forwardRef<
           ...viewportBoundsStyle,
           ...style,
         }}
-        className={classNames(menuStyles.content, className)}
+        className={classNames(menuStyles.content, menuStyles.contentCloseMotion, className)}
         {...props}
       >
         <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
@@ -114,6 +115,7 @@ const MenubarContent = React.forwardRef<
     <MenubarPrimitive.Portal>
       <MenubarPrimitive.Content
         ref={ref}
+        forceMount
         align={align}
         alignOffset={alignOffset}
         sideOffset={sideOffset}
@@ -124,7 +126,7 @@ const MenubarContent = React.forwardRef<
           ...viewportBoundsStyle,
           ...style,
         }}
-        className={classNames(menuStyles.content, className)}
+        className={classNames(menuStyles.content, menuStyles.contentCloseMotion, className)}
         {...props}
       >
         <MenuIconSlotContext.Provider value={hasLeadingVisual}>{props.children}</MenuIconSlotContext.Provider>
