@@ -15,11 +15,14 @@ import type {
   ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
+  ApiSshGetServerCredentialsResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateServerRequest,
+  ApiSshUpdateServerResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 import { API_CODES, API_HEADERS, API_PATHS, createApiError } from '@cosmosh/api-contract';
@@ -288,7 +291,7 @@ const requireBackendConfig = (): { port: number; token: string } => {
 const requestBackend = async <TSuccess>(
   path: string,
   options: {
-    method: 'GET' | 'POST';
+    method: 'GET' | 'POST' | 'PUT';
     body?: unknown;
   },
 ): Promise<TSuccess | ApiErrorResponse> => {
@@ -459,6 +462,31 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  'backend:ssh-update-server',
+  async (
+    _event,
+    serverId: string,
+    payload: ApiSshUpdateServerRequest,
+  ): Promise<ApiSshUpdateServerResponse | ApiErrorResponse> => {
+    const path = API_PATHS.sshUpdateServer.replace('{serverId}', encodeURIComponent(serverId));
+    return requestBackend<ApiSshUpdateServerResponse>(path, {
+      method: 'PUT',
+      body: payload,
+    });
+  },
+);
+
+ipcMain.handle(
+  'backend:ssh-get-server-credentials',
+  async (_event, serverId: string): Promise<ApiSshGetServerCredentialsResponse | ApiErrorResponse> => {
+    const path = API_PATHS.sshGetServerCredentials.replace('{serverId}', encodeURIComponent(serverId));
+    return requestBackend<ApiSshGetServerCredentialsResponse>(path, {
+      method: 'GET',
+    });
+  },
+);
+
 ipcMain.handle('backend:ssh-list-folders', async (): Promise<ApiSshListFoldersResponse | ApiErrorResponse> => {
   return requestBackend<ApiSshListFoldersResponse>(API_PATHS.sshListFolders, { method: 'GET' });
 });
@@ -518,6 +546,38 @@ ipcMain.handle(
 
 ipcMain.handle('backend:ssh-close-session', async (_event, sessionId: string): Promise<{ success: boolean }> => {
   const path = API_PATHS.sshCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));
+  const { port, token } = requireBackendConfig();
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: 'DELETE',
+    headers: {
+      [API_HEADERS.internalToken]: token,
+      [API_HEADERS.locale]: appLocale,
+    },
+  });
+
+  return {
+    success: response.status === 204,
+  };
+});
+
+ipcMain.handle('backend:ssh-delete-server', async (_event, serverId: string): Promise<{ success: boolean }> => {
+  const path = API_PATHS.sshDeleteServer.replace('{serverId}', encodeURIComponent(serverId));
+  const { port, token } = requireBackendConfig();
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: 'DELETE',
+    headers: {
+      [API_HEADERS.internalToken]: token,
+      [API_HEADERS.locale]: appLocale,
+    },
+  });
+
+  return {
+    success: response.status === 204,
+  };
+});
+
+ipcMain.handle('backend:ssh-delete-folder', async (_event, folderId: string): Promise<{ success: boolean }> => {
+  const path = API_PATHS.sshDeleteFolder.replace('{folderId}', encodeURIComponent(folderId));
   const { port, token } = requireBackendConfig();
   const response = await fetch(`http://127.0.0.1:${port}${path}`, {
     method: 'DELETE',

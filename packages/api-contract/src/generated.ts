@@ -56,6 +56,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ssh/servers/{serverId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update SSH server configuration. */
+        put: operations["sshUpdateServer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ssh/servers/{serverId}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get SSH server credentials for editor form prefill. */
+        get: operations["sshGetServerCredentials"];
+        put?: never;
+        post?: never;
+        /** Delete SSH server configuration. */
+        delete: operations["sshDeleteServer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ssh/folders": {
         parameters: {
             query?: never;
@@ -69,6 +104,23 @@ export interface paths {
         /** Create SSH folder. */
         post: operations["sshCreateFolder"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ssh/folders/{folderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete SSH folder. */
+        delete: operations["sshDeleteFolder"];
         options?: never;
         head?: never;
         patch?: never;
@@ -305,6 +357,12 @@ export interface components {
         SshServerCreateData: {
             item: components["schemas"]["SshServerListItem"];
         };
+        SshServerCredentialsData: {
+            authType: components["schemas"]["SshAuthType"];
+            password?: string;
+            privateKey?: string;
+            privateKeyPassphrase?: string;
+        };
         SshFolderCreateData: {
             item: components["schemas"]["SshFolder"];
         };
@@ -334,6 +392,20 @@ export interface components {
             /** @enum {boolean} */
             success: true;
             data: components["schemas"]["SshServerCreateData"];
+        };
+        SshServerUpdateSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_SERVER_UPDATE_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshServerCreateData"];
+        };
+        SshServerCredentialsSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_SERVER_CREDENTIALS_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshServerCredentialsData"];
         };
         SshFolderListSuccess: components["schemas"]["ApiMeta"] & {
             /** @enum {string} */
@@ -523,6 +595,152 @@ export interface operations {
             };
         };
     };
+    sshUpdateServer: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshServerCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description SSH server updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshServerUpdateSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description SSH server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict with existing server. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshGetServerCredentials: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH server credentials fetched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshServerCredentialsSuccess"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description SSH server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshDeleteServer: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH server deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description SSH server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     sshListFolders: {
         parameters: {
             query?: never;
@@ -598,6 +816,46 @@ export interface operations {
             };
             /** @description Folder already exists. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshDeleteFolder: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path: {
+                folderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH folder deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description SSH folder not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -53,6 +53,7 @@ import { getLocale, t } from '../lib/i18n';
 
 type HomeProps = {
   onOpenSSH: (serverId: string) => void;
+  onOpenSshEditor: (serverId: string) => void;
 };
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
@@ -113,7 +114,7 @@ const hashString = (value: string): number => {
   return hash >>> 0;
 };
 
-const Home: React.FC<HomeProps> = ({ onOpenSSH }) => {
+const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor }) => {
   const [servers, setServers] = React.useState<SshServerListItem[]>([]);
   const [folders, setFolders] = React.useState<SshFolder[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
@@ -770,7 +771,9 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH }) => {
                               </ContextMenuSubContent>
                             </ContextMenuSub>
                             <ContextMenuSeparator />
-                            <ContextMenuItem>{t('home.contextEdit')}</ContextMenuItem>
+                            <ContextMenuItem onSelect={() => onOpenSshEditor(server.id)}>
+                              {t('home.contextEdit')}
+                            </ContextMenuItem>
                             <ContextMenuItem>{t('home.contextDelete')}</ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>

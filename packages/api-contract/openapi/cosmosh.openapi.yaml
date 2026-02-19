@@ -106,6 +106,115 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/servers/{serverId}:
+    put:
+      tags:
+        - ssh
+      summary: Update SSH server configuration.
+      operationId: sshUpdateServer
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SshServerCreateRequest"
+      responses:
+        "200":
+          description: SSH server updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshServerUpdateSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: SSH server not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Conflict with existing server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/servers/{serverId}/credentials:
+    get:
+      tags:
+        - ssh
+      summary: Get SSH server credentials for editor form prefill.
+      operationId: sshGetServerCredentials
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSH server credentials fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshServerCredentialsSuccess"
+        "404":
+          description: SSH server not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      tags:
+        - ssh
+      summary: Delete SSH server configuration.
+      operationId: sshDeleteServer
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: SSH server deleted.
+        "404":
+          description: SSH server not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/ssh/folders:
     get:
       tags:
@@ -155,6 +264,34 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "409":
           description: Folder already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/ssh/folders/{folderId}:
+    delete:
+      tags:
+        - ssh
+      summary: Delete SSH folder.
+      operationId: sshDeleteFolder
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+        - name: folderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: SSH folder deleted.
+        "404":
+          description: SSH folder not found.
           content:
             application/json:
               schema:
@@ -750,6 +887,19 @@ components:
       properties:
         item:
           $ref: "#/components/schemas/SshServerListItem"
+    SshServerCredentialsData:
+      type: object
+      required:
+        - authType
+      properties:
+        authType:
+          $ref: "#/components/schemas/SshAuthType"
+        password:
+          type: string
+        privateKey:
+          type: string
+        privateKeyPassphrase:
+          type: string
     SshFolderCreateData:
       type: object
       required:
@@ -822,6 +972,40 @@ components:
               enum: [true]
             data:
               $ref: "#/components/schemas/SshServerCreateData"
+    SshServerUpdateSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_SERVER_UPDATE_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshServerCreateData"
+    SshServerCredentialsSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_SERVER_CREDENTIALS_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshServerCredentialsData"
     SshFolderListSuccess:
       allOf:
         - $ref: "#/components/schemas/ApiMeta"

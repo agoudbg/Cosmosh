@@ -8,11 +8,14 @@ import type {
   ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
+  ApiSshGetServerCredentialsResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateServerRequest,
+  ApiSshUpdateServerResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 
@@ -23,6 +26,8 @@ export type BackendClient = {
   testPing: () => Promise<ApiTestPingResponse>;
   listSshServers: () => Promise<ApiSshListServersResponse>;
   createSshServer: (payload: ApiSshCreateServerRequest) => Promise<ApiSshCreateServerResponse>;
+  updateSshServer: (serverId: string, payload: ApiSshUpdateServerRequest) => Promise<ApiSshUpdateServerResponse>;
+  getSshServerCredentials: (serverId: string) => Promise<ApiSshGetServerCredentialsResponse>;
   listSshFolders: () => Promise<ApiSshListFoldersResponse>;
   createSshFolder: (payload: ApiSshCreateFolderRequest) => Promise<ApiSshCreateFolderResponse>;
   listSshTags: () => Promise<ApiSshListTagsResponse>;
@@ -32,6 +37,8 @@ export type BackendClient = {
   ) => Promise<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse>;
   trustSshFingerprint: (payload: ApiSshTrustFingerprintRequest) => Promise<ApiSshTrustFingerprintResponse>;
   closeSshSession: (sessionId: string) => Promise<{ success: boolean }>;
+  deleteSshServer: (serverId: string) => Promise<{ success: boolean }>;
+  deleteSshFolder: (folderId: string) => Promise<{ success: boolean }>;
 };
 
 export const createBackendClient = (): BackendClient => {
@@ -59,6 +66,24 @@ export const createBackendClient = (): BackendClient => {
     },
     createSshServer: async (requestPayload) => {
       const payload = await transport.createSshServer(requestPayload);
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    updateSshServer: async (serverId, requestPayload) => {
+      const payload = await transport.updateSshServer(serverId, requestPayload);
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    getSshServerCredentials: async (serverId) => {
+      const payload = await transport.getSshServerCredentials(serverId);
 
       if (!payload.success) {
         throw new Error(payload.message);
@@ -130,6 +155,12 @@ export const createBackendClient = (): BackendClient => {
     },
     closeSshSession: async (sessionId) => {
       return transport.closeSshSession(sessionId);
+    },
+    deleteSshServer: async (serverId) => {
+      return transport.deleteSshServer(serverId);
+    },
+    deleteSshFolder: async (folderId) => {
+      return transport.deleteSshFolder(folderId);
     },
   };
 };

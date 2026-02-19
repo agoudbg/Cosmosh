@@ -10,7 +10,7 @@ import Debug from './pages/Debug';
 import Home from './pages/Home';
 import Settings from './pages/Settings';
 import SSH from './pages/SSH';
-import SSHEditorMock from './pages/SSHEditorMock';
+import SSHEditor from './pages/SSHEditor';
 
 const App: React.FC = () => {
   const handleLastTabClose = React.useCallback(() => {
@@ -34,7 +34,7 @@ const App: React.FC = () => {
 
   return (
     <InputContextMenuProvider>
-      <div className="text-text flex h-screen w-screen flex-col bg-bg">
+      <div className="text-text flex h-screen w-screen flex-col overflow-hidden bg-bg">
         {/* Header */}
         <div
           className="flex-shrink-0"
@@ -68,10 +68,14 @@ const App: React.FC = () => {
                     setActiveSshServerId(serverId);
                     openPageInTab(tab.id, 'ssh');
                   }}
+                  onOpenSshEditor={(serverId) => {
+                    setActiveSshServerId(serverId);
+                    openPageInTab(tab.id, 'ssh-editor');
+                  }}
                 />
               )}
               {tab.page === 'ssh' && <SSH />}
-              {tab.page === 'ssh-editor-mock' && <SSHEditorMock />}
+              {tab.page === 'ssh-editor' && <SSHEditor />}
               {tab.page === 'settings' && <Settings />}
               {tab.page === 'components-field' && <ComponentsField />}
               {tab.page === 'debug' && (
@@ -85,8 +89,8 @@ const App: React.FC = () => {
                   onOpenComponentsField={(openInNewTab) =>
                     openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')
                   }
-                  onOpenSshEditorMock={(openInNewTab) =>
-                    openInNewTab ? addTab('ssh-editor-mock') : openPageInTab(tab.id, 'ssh-editor-mock')
+                  onOpenSshEditor={(openInNewTab) =>
+                    openInNewTab ? addTab('ssh-editor') : openPageInTab(tab.id, 'ssh-editor')
                   }
                   onRenameTab={(title) => updateTab(tab.id, { title })}
                   onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}

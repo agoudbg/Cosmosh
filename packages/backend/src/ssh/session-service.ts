@@ -838,7 +838,11 @@ export class SshSessionService {
         });
       });
 
-      client.once('error', (error: Error) => {
+      client.on('error', (error: Error) => {
+        if (settled) {
+          return;
+        }
+
         client.end();
 
         if (presentedFingerprint && !options.trustedFingerprintSet.has(presentedFingerprint)) {

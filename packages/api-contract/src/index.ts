@@ -12,6 +12,12 @@ export type ApiSshCreateServerRequest =
 	paths['/api/v1/ssh/servers']['post']['requestBody']['content']['application/json'];
 export type ApiSshCreateServerResponse =
 	paths['/api/v1/ssh/servers']['post']['responses']['200']['content']['application/json'];
+export type ApiSshUpdateServerRequest =
+	paths['/api/v1/ssh/servers/{serverId}']['put']['requestBody']['content']['application/json'];
+export type ApiSshUpdateServerResponse =
+	paths['/api/v1/ssh/servers/{serverId}']['put']['responses']['200']['content']['application/json'];
+export type ApiSshGetServerCredentialsResponse =
+	paths['/api/v1/ssh/servers/{serverId}/credentials']['get']['responses']['200']['content']['application/json'];
 export type ApiSshListFoldersResponse =
 	paths['/api/v1/ssh/folders']['get']['responses']['200']['content']['application/json'];
 export type ApiSshCreateFolderRequest =

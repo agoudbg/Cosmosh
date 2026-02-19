@@ -9,11 +9,14 @@ import type {
   ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
+  ApiSshGetServerCredentialsResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateServerRequest,
+  ApiSshUpdateServerResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 import { API_HEADERS, API_PATHS } from '@cosmosh/api-contract';
@@ -25,6 +28,8 @@ type ApiResponse =
   | ApiTestPingResponse
   | ApiSshListServersResponse
   | ApiSshCreateServerResponse
+  | ApiSshUpdateServerResponse
+  | ApiSshGetServerCredentialsResponse
   | ApiSshListFoldersResponse
   | ApiSshCreateFolderResponse
   | ApiSshListTagsResponse
@@ -38,6 +43,11 @@ export type ApiTransport = {
   testPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
   listSshServers: () => Promise<ApiSshListServersResponse | ApiErrorResponse>;
   createSshServer: (payload: ApiSshCreateServerRequest) => Promise<ApiSshCreateServerResponse | ApiErrorResponse>;
+  updateSshServer: (
+    serverId: string,
+    payload: ApiSshUpdateServerRequest,
+  ) => Promise<ApiSshUpdateServerResponse | ApiErrorResponse>;
+  getSshServerCredentials: (serverId: string) => Promise<ApiSshGetServerCredentialsResponse | ApiErrorResponse>;
   listSshFolders: () => Promise<ApiSshListFoldersResponse | ApiErrorResponse>;
   createSshFolder: (payload: ApiSshCreateFolderRequest) => Promise<ApiSshCreateFolderResponse | ApiErrorResponse>;
   listSshTags: () => Promise<ApiSshListTagsResponse | ApiErrorResponse>;
@@ -49,6 +59,8 @@ export type ApiTransport = {
     payload: ApiSshTrustFingerprintRequest,
   ) => Promise<ApiSshTrustFingerprintResponse | ApiErrorResponse>;
   closeSshSession: (sessionId: string) => Promise<{ success: boolean }>;
+  deleteSshServer: (serverId: string) => Promise<{ success: boolean }>;
+  deleteSshFolder: (folderId: string) => Promise<{ success: boolean }>;
 };
 
 // Browser fallback uses build-time URL configuration to prepare for future web runtime.
@@ -92,6 +104,16 @@ const createElectronTransport = (): ApiTransport => {
     createSshServer: async (payload) => {
       return (await window.electron!.backendSshCreateServer(payload)) as ApiSshCreateServerResponse | ApiErrorResponse;
     },
+    updateSshServer: async (serverId, payload) => {
+      return (await window.electron!.backendSshUpdateServer(serverId, payload)) as
+        | ApiSshUpdateServerResponse
+        | ApiErrorResponse;
+    },
+    getSshServerCredentials: async (serverId) => {
+      return (await window.electron!.backendSshGetServerCredentials(serverId)) as
+        | ApiSshGetServerCredentialsResponse
+        | ApiErrorResponse;
+    },
     listSshFolders: async () => {
       return (await window.electron!.backendSshListFolders()) as ApiSshListFoldersResponse | ApiErrorResponse;
     },
@@ -118,13 +140,19 @@ const createElectronTransport = (): ApiTransport => {
     closeSshSession: async (sessionId) => {
       return await window.electron!.backendSshCloseSession(sessionId);
     },
+    deleteSshServer: async (serverId) => {
+      return await window.electron!.backendSshDeleteServer(serverId);
+    },
+    deleteSshFolder: async (folderId) => {
+      return await window.electron!.backendSshDeleteFolder(folderId);
+    },
   };
 };
 
 const createBrowserTransport = (): ApiTransport => {
   const callBrowserApi = async (
     path: string,
-    method: 'GET' | 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     body?: unknown,
   ): Promise<ApiResponse> => {
     const token = resolveBrowserAuthToken();
@@ -164,6 +192,14 @@ const createBrowserTransport = (): ApiTransport => {
         | ApiSshCreateServerResponse
         | ApiErrorResponse;
     },
+    updateSshServer: async (serverId, payload) => {
+      const path = API_PATHS.sshUpdateServer.replace('{serverId}', encodeURIComponent(serverId));
+      return (await callBrowserApi(path, 'PUT', payload)) as ApiSshUpdateServerResponse | ApiErrorResponse;
+    },
+    getSshServerCredentials: async (serverId) => {
+      const path = API_PATHS.sshGetServerCredentials.replace('{serverId}', encodeURIComponent(serverId));
+      return (await callBrowserApi(path, 'GET')) as ApiSshGetServerCredentialsResponse | ApiErrorResponse;
+    },
     listSshFolders: async () => {
       return (await callBrowserApi(API_PATHS.sshListFolders, 'GET')) as ApiSshListFoldersResponse | ApiErrorResponse;
     },
@@ -193,6 +229,30 @@ const createBrowserTransport = (): ApiTransport => {
     },
     closeSshSession: async (sessionId) => {
       const path = API_PATHS.sshCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+
+      return { success: response.status === 204 };
+    },
+    deleteSshServer: async (serverId) => {
+      const path = API_PATHS.sshDeleteServer.replace('{serverId}', encodeURIComponent(serverId));
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+
+      return { success: response.status === 204 };
+    },
+    deleteSshFolder: async (folderId) => {
+      const path = API_PATHS.sshDeleteFolder.replace('{folderId}', encodeURIComponent(folderId));
       const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
         method: 'DELETE',
         headers: {

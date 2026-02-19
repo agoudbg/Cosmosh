@@ -10,7 +10,7 @@ type UseTabsOptions = {
 const pageDefaults: Record<TabPage, { title: string; iconKey: TabIconKey }> = {
   home: { title: 'Home', iconKey: 'home' },
   ssh: { title: 'SSH', iconKey: 'ssh' },
-  'ssh-editor-mock': { title: 'SSH Editor Mock', iconKey: 'ssh' },
+  'ssh-editor': { title: 'SSH Editor', iconKey: 'ssh' },
   settings: { title: 'Settings', iconKey: 'settings' },
   'components-field': { title: 'Components Playground', iconKey: 'file' },
   debug: { title: 'Debug', iconKey: 'debug' },

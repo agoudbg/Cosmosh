@@ -9,11 +9,14 @@ import type {
   ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
+  ApiSshGetServerCredentialsResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateServerRequest,
+  ApiSshUpdateServerResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 import { contextBridge, ipcRenderer } from 'electron';
@@ -54,6 +57,16 @@ contextBridge.exposeInMainWorld('electron', {
       ApiSshCreateServerResponse | ApiErrorResponse
     >;
   },
+  backendSshUpdateServer: (serverId: string, payload: ApiSshUpdateServerRequest) => {
+    return ipcRenderer.invoke('backend:ssh-update-server', serverId, payload) as Promise<
+      ApiSshUpdateServerResponse | ApiErrorResponse
+    >;
+  },
+  backendSshGetServerCredentials: (serverId: string) => {
+    return ipcRenderer.invoke('backend:ssh-get-server-credentials', serverId) as Promise<
+      ApiSshGetServerCredentialsResponse | ApiErrorResponse
+    >;
+  },
   backendSshListFolders: () => {
     return ipcRenderer.invoke('backend:ssh-list-folders') as Promise<ApiSshListFoldersResponse | ApiErrorResponse>;
   },
@@ -80,6 +93,12 @@ contextBridge.exposeInMainWorld('electron', {
   },
   backendSshCloseSession: (sessionId: string) => {
     return ipcRenderer.invoke('backend:ssh-close-session', sessionId) as Promise<{ success: boolean }>;
+  },
+  backendSshDeleteServer: (serverId: string) => {
+    return ipcRenderer.invoke('backend:ssh-delete-server', serverId) as Promise<{ success: boolean }>;
+  },
+  backendSshDeleteFolder: (folderId: string) => {
+    return ipcRenderer.invoke('backend:ssh-delete-folder', folderId) as Promise<{ success: boolean }>;
   },
   platform: process.platform,
 });

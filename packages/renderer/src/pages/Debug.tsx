@@ -15,7 +15,7 @@ type DebugProps = {
   onOpenSSH: (openInNewTab: boolean) => void;
   onOpenSettings: (openInNewTab: boolean) => void;
   onOpenComponentsField: (openInNewTab: boolean) => void;
-  onOpenSshEditorMock: (openInNewTab: boolean) => void;
+  onOpenSshEditor: (openInNewTab: boolean) => void;
   onRenameTab: (title: string) => void;
   onChangeIcon: (iconKey: TabIconKey) => void;
   activeTabTitle: string;
@@ -40,7 +40,7 @@ const Debug: React.FC<DebugProps> = ({
   onOpenSSH,
   onOpenSettings,
   onOpenComponentsField,
-  onOpenSshEditorMock,
+  onOpenSshEditor,
   onRenameTab,
   onChangeIcon,
   activeTabTitle,
@@ -56,7 +56,7 @@ const Debug: React.FC<DebugProps> = ({
 
   const navigationEntries: NavigationEntry[] = [
     { id: 'ssh', pageName: 'SSH', onClick: onOpenSSH },
-    { id: 'ssh-editor-mock', pageName: 'SSH Editor Mock', onClick: onOpenSshEditorMock },
+    { id: 'ssh-editor', pageName: 'SSH Editor', onClick: onOpenSshEditor },
     { id: 'settings', pageName: 'Settings', onClick: onOpenSettings },
     {
       id: 'components-playground',

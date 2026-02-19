@@ -8,11 +8,14 @@ import type {
   ApiSshCreateSessionResponse,
   ApiSshCreateTagRequest,
   ApiSshCreateTagResponse,
+  ApiSshGetServerCredentialsResponse,
   ApiSshListFoldersResponse,
   ApiSshListServersResponse,
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateServerRequest,
+  ApiSshUpdateServerResponse,
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 
@@ -32,6 +35,17 @@ export const listSshServers = async (): Promise<ApiSshListServersResponse> => {
 
 export const createSshServer = async (payload: ApiSshCreateServerRequest): Promise<ApiSshCreateServerResponse> => {
   return backendClient.createSshServer(payload);
+};
+
+export const updateSshServer = async (
+  serverId: string,
+  payload: ApiSshUpdateServerRequest,
+): Promise<ApiSshUpdateServerResponse> => {
+  return backendClient.updateSshServer(serverId, payload);
+};
+
+export const getSshServerCredentials = async (serverId: string): Promise<ApiSshGetServerCredentialsResponse> => {
+  return backendClient.getSshServerCredentials(serverId);
 };
 
 export const listSshFolders = async (): Promise<ApiSshListFoldersResponse> => {
@@ -64,4 +78,12 @@ export const trustSshFingerprint = async (
 
 export const closeSshSession = async (sessionId: string): Promise<{ success: boolean }> => {
   return backendClient.closeSshSession(sessionId);
+};
+
+export const deleteSshServer = async (serverId: string): Promise<{ success: boolean }> => {
+  return backendClient.deleteSshServer(serverId);
+};
+
+export const deleteSshFolder = async (folderId: string): Promise<{ success: boolean }> => {
+  return backendClient.deleteSshFolder(folderId);
 };
