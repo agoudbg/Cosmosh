@@ -91,6 +91,20 @@ const base = {
         danger: '#f87171',
       },
     },
+    toast: {
+      surface: '#070707f2',
+      border: '#3333332e',
+      text: {
+        DEFAULT: '#ffffff',
+        muted: '#a7b0bd',
+      },
+      icon: {
+        info: '#60a5fa',
+        success: '#4ade80',
+        warning: '#facc15',
+        error: '#f87171',
+      },
+    },
     form: {
       control: {
         DEFAULT: '#191919d9',
@@ -208,6 +222,20 @@ const light = {
       },
       action: {
         danger: '#dc2626',
+      },
+    },
+    toast: {
+      surface: '#f8fafc',
+      border: '#d6deea80',
+      text: {
+        DEFAULT: '#111827',
+        muted: '#475569',
+      },
+      icon: {
+        info: '#0ea5e9',
+        success: '#22c55e',
+        warning: '#d97706',
+        error: '#dc2626',
       },
     },
     form: {

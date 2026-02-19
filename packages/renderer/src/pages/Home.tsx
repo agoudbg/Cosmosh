@@ -77,6 +77,7 @@ import { listSshFolders, listSshServers } from '../lib/backend';
 import { createFolder, normalizeFolderName, removeFolder, renameFolder } from '../lib/folder-actions';
 import { colorKeyToClassName, type HomeIconKey, resolveHomeVisual } from '../lib/home-visuals';
 import { getLocale, t } from '../lib/i18n';
+import { useToast } from '../lib/toast-context';
 
 type HomeProps = {
   onOpenSSH: (serverId: string) => void;
@@ -144,6 +145,7 @@ const hashString = (value: string): number => {
 };
 
 const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => {
+  const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const [servers, setServers] = React.useState<SshServerListItem[]>([]);
   const [folders, setFolders] = React.useState<SshFolder[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
@@ -545,13 +547,17 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     );
   }, []);
 
-  const handleCopyToClipboard = React.useCallback(async (value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch (error: unknown) {
-      window.alert(error instanceof Error ? error.message : 'Failed to copy content to clipboard.');
-    }
-  }, []);
+  const handleCopyToClipboard = React.useCallback(
+    async (value: string) => {
+      try {
+        await navigator.clipboard.writeText(value);
+        notifySuccess(t('home.copySuccess'));
+      } catch (error: unknown) {
+        notifyError(error instanceof Error ? error.message : 'Failed to copy content to clipboard.');
+      }
+    },
+    [notifyError, notifySuccess],
+  );
 
   const openCreateFolderDialog = React.useCallback(() => {
     setFolderNameInput('');
@@ -573,7 +579,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   const submitCreateFolder = React.useCallback(async () => {
     const folderName = normalizeFolderName(folderNameInput);
     if (!folderName) {
-      window.alert(t('home.folderNameRequired'));
+      notifyWarning(t('home.folderNameRequired'));
       return;
     }
 
@@ -584,11 +590,11 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       setFolderNameInput('');
       await reloadHomeData();
     } catch (error: unknown) {
-      window.alert(error instanceof Error ? error.message : t('home.folderCreateFailed'));
+      notifyError(error instanceof Error ? error.message : t('home.folderCreateFailed'));
     } finally {
       setIsFolderActionSubmitting(false);
     }
-  }, [folderNameInput, reloadHomeData]);
+  }, [folderNameInput, notifyError, notifyWarning, reloadHomeData]);
 
   const submitEditFolder = React.useCallback(async () => {
     if (!activeFolderDraft) {
@@ -597,7 +603,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
 
     const folderName = normalizeFolderName(folderNameInput);
     if (!folderName) {
-      window.alert(t('home.folderNameRequired'));
+      notifyWarning(t('home.folderNameRequired'));
       return;
     }
 
@@ -609,11 +615,11 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       setActiveFolderDraft(null);
       await reloadHomeData();
     } catch (error: unknown) {
-      window.alert(error instanceof Error ? error.message : t('home.folderUpdateFailed'));
+      notifyError(error instanceof Error ? error.message : t('home.folderUpdateFailed'));
     } finally {
       setIsFolderActionSubmitting(false);
     }
-  }, [activeFolderDraft, folderNameInput, reloadHomeData]);
+  }, [activeFolderDraft, folderNameInput, notifyError, notifyWarning, reloadHomeData]);
 
   const submitDeleteFolder = React.useCallback(async () => {
     if (!activeFolderDraft) {
@@ -633,11 +639,11 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       setActiveFolderDraft(null);
       await reloadHomeData();
     } catch (error: unknown) {
-      window.alert(error instanceof Error ? error.message : t('home.folderDeleteFailed'));
+      notifyError(error instanceof Error ? error.message : t('home.folderDeleteFailed'));
     } finally {
       setIsFolderActionSubmitting(false);
     }
-  }, [activeFolderDraft, activeFolderId, reloadHomeData]);
+  }, [activeFolderDraft, activeFolderId, notifyError, reloadHomeData]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-2">

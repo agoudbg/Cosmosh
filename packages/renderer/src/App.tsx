@@ -4,6 +4,7 @@ import React from 'react';
 import Header from './components/header/Header';
 import { InputContextMenuProvider } from './components/ui/input-context-menu';
 import { requestSshEditorCreateMode, setActiveSshServerId } from './lib/ssh-target';
+import { AppToastProvider } from './lib/toast';
 import { useTabs } from './lib/useTabs';
 import ComponentsField from './pages/ComponentsField';
 import Debug from './pages/Debug';
@@ -33,79 +34,84 @@ const App: React.FC = () => {
   });
 
   return (
-    <InputContextMenuProvider>
-      <div className="text-text flex h-screen w-screen flex-col overflow-hidden bg-bg">
-        {/* Header */}
-        <div
-          className="flex-shrink-0"
-          // @ts-expect-error React.CSSProperties
-          style={{ WebkitAppRegion: 'drag' }}
-        >
-          <Header
+    <AppToastProvider>
+      <InputContextMenuProvider>
+        <div className="text-text flex h-screen w-screen flex-col overflow-hidden bg-bg">
+          {/* Header */}
+          <div
             className="flex-shrink-0"
-            tabs={tabs}
-            activeTab={activeTabId}
-            onActiveTabChange={setActiveTabId}
-            onAddTab={() => addTab('home')}
-            onCloseTab={closeTab}
-            onCloseRightTabs={closeRightTabs}
-            onCloseOtherTabs={closeOtherTabs}
-            onReorderTabs={reorderTabs}
-            onOpenSettingsTab={() => addTab('settings')}
-            onOpenDebugTab={() => addTab('debug')}
-          />
-        </div>
-        {/* Content */}
-        <div className="flex min-h-0 w-full flex-1 p-2 pt-0">
-          {tabs.map((tab) => (
-            <section
-              key={tab.id}
-              className={classNames('h-full min-h-0 w-full overflow-auto', tab.id === activeTabId ? 'block' : 'hidden')}
-            >
-              {tab.page === 'home' && (
-                <Home
-                  isActive={tab.id === activeTabId}
-                  onOpenSSH={(serverId) => {
-                    setActiveSshServerId(serverId);
-                    openPageInTab(tab.id, 'ssh');
-                  }}
-                  onOpenSshEditor={(serverId) => {
-                    const trimmedServerId = serverId.trim();
-                    if (trimmedServerId.length === 0) {
-                      requestSshEditorCreateMode();
+            // @ts-expect-error React.CSSProperties
+            style={{ WebkitAppRegion: 'drag' }}
+          >
+            <Header
+              className="flex-shrink-0"
+              tabs={tabs}
+              activeTab={activeTabId}
+              onActiveTabChange={setActiveTabId}
+              onAddTab={() => addTab('home')}
+              onCloseTab={closeTab}
+              onCloseRightTabs={closeRightTabs}
+              onCloseOtherTabs={closeOtherTabs}
+              onReorderTabs={reorderTabs}
+              onOpenSettingsTab={() => addTab('settings')}
+              onOpenDebugTab={() => addTab('debug')}
+            />
+          </div>
+          {/* Content */}
+          <div className="flex min-h-0 w-full flex-1 p-2 pt-0">
+            {tabs.map((tab) => (
+              <section
+                key={tab.id}
+                className={classNames(
+                  'h-full min-h-0 w-full overflow-auto',
+                  tab.id === activeTabId ? 'block' : 'hidden',
+                )}
+              >
+                {tab.page === 'home' && (
+                  <Home
+                    isActive={tab.id === activeTabId}
+                    onOpenSSH={(serverId) => {
+                      setActiveSshServerId(serverId);
+                      openPageInTab(tab.id, 'ssh');
+                    }}
+                    onOpenSshEditor={(serverId) => {
+                      const trimmedServerId = serverId.trim();
+                      if (trimmedServerId.length === 0) {
+                        requestSshEditorCreateMode();
+                      }
+                      setActiveSshServerId(trimmedServerId);
+                      openPageInTab(tab.id, 'ssh-editor');
+                    }}
+                  />
+                )}
+                {tab.page === 'ssh' && <SSH />}
+                {tab.page === 'ssh-editor' && <SSHEditor />}
+                {tab.page === 'settings' && <Settings />}
+                {tab.page === 'components-field' && <ComponentsField />}
+                {tab.page === 'debug' && (
+                  <Debug
+                    activeTabTitle={tab.title}
+                    activeTabIcon={tab.iconKey}
+                    onOpenSSH={(openInNewTab) => (openInNewTab ? addTab('ssh') : openPageInTab(tab.id, 'ssh'))}
+                    onOpenSettings={(openInNewTab) =>
+                      openInNewTab ? addTab('settings') : openPageInTab(tab.id, 'settings')
                     }
-                    setActiveSshServerId(trimmedServerId);
-                    openPageInTab(tab.id, 'ssh-editor');
-                  }}
-                />
-              )}
-              {tab.page === 'ssh' && <SSH />}
-              {tab.page === 'ssh-editor' && <SSHEditor />}
-              {tab.page === 'settings' && <Settings />}
-              {tab.page === 'components-field' && <ComponentsField />}
-              {tab.page === 'debug' && (
-                <Debug
-                  activeTabTitle={tab.title}
-                  activeTabIcon={tab.iconKey}
-                  onOpenSSH={(openInNewTab) => (openInNewTab ? addTab('ssh') : openPageInTab(tab.id, 'ssh'))}
-                  onOpenSettings={(openInNewTab) =>
-                    openInNewTab ? addTab('settings') : openPageInTab(tab.id, 'settings')
-                  }
-                  onOpenComponentsField={(openInNewTab) =>
-                    openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')
-                  }
-                  onOpenSshEditor={(openInNewTab) =>
-                    openInNewTab ? addTab('ssh-editor') : openPageInTab(tab.id, 'ssh-editor')
-                  }
-                  onRenameTab={(title) => updateTab(tab.id, { title })}
-                  onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
-                />
-              )}
-            </section>
-          ))}
+                    onOpenComponentsField={(openInNewTab) =>
+                      openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')
+                    }
+                    onOpenSshEditor={(openInNewTab) =>
+                      openInNewTab ? addTab('ssh-editor') : openPageInTab(tab.id, 'ssh-editor')
+                    }
+                    onRenameTab={(title) => updateTab(tab.id, { title })}
+                    onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
+                  />
+                )}
+              </section>
+            ))}
+          </div>
         </div>
-      </div>
-    </InputContextMenuProvider>
+      </InputContextMenuProvider>
+    </AppToastProvider>
   );
 };
 

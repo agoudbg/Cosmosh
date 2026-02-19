@@ -81,8 +81,16 @@ import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
 import { getLocale, setLocale, t } from '../lib/i18n';
+import { useToast } from '../lib/toast-context';
 
 const ComponentsField: React.FC = () => {
+  const {
+    error: notifyError,
+    info: notifyInfo,
+    push: pushToast,
+    success: notifySuccess,
+    warning: notifyWarning,
+  } = useToast();
   const [checked, setChecked] = React.useState<boolean>(true);
   const [compactMode, setCompactMode] = React.useState<boolean>(false);
   const [density, setDensity] = React.useState<string>('compact');
@@ -379,6 +387,32 @@ const ComponentsField: React.FC = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      </div>
+
+      <div className="rounded-md bg-bg-subtle p-3 shadow-soft backdrop-blur-[4px]">
+        <div className="mb-2 text-sm font-semibold">Toast Showcase</div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button onClick={() => notifyInfo('Session metadata synced.')}>Info Toast</Button>
+          <Button onClick={() => notifySuccess('Profile saved successfully.')}>Success Toast</Button>
+          <Button onClick={() => notifyWarning('Host fingerprint changed. Please verify it again.')}>
+            Warning Toast
+          </Button>
+          <Button onClick={() => notifyError('Connection test failed. Please check credentials.')}>Error Toast</Button>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              pushToast({
+                title: 'Custom Toast Title',
+                description:
+                  'This is a long description sample used to verify auto width behavior and text wrapping in the bottom toast viewport.',
+                variant: 'info',
+                duration: 5200,
+              })
+            }
+          >
+            Title + Long Text
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

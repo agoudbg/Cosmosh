@@ -32,6 +32,7 @@
     "contextEdit": "编辑",
     "contextEditFolder": "编辑文件夹",
     "contextOpenFolder": "打开文件夹",
+    "copySuccess": "已复制到剪贴板。",
     "dialogCreateFolderDescription": "创建一个用于组织 SSH 服务器的文件夹。",
     "dialogDeleteFolderDescription": "确认删除文件夹“{name}”？",
     "dialogEditFolderDescription": "更新文件夹名称。",

@@ -53,6 +53,7 @@ import { createFolder, normalizeFolderName } from '../lib/folder-actions';
 import { colorKeyToClassName, resolveHomeVisual } from '../lib/home-visuals';
 import { t } from '../lib/i18n';
 import { consumeSshEditorCreateMode, getActiveSshServerId } from '../lib/ssh-target';
+import { useToast } from '../lib/toast-context';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
 type SshFolder = components['schemas']['SshFolder'];
@@ -148,6 +149,7 @@ const createIconNode = (colorClassName: string, label: string): React.ReactNode 
 };
 
 const SSHEditor: React.FC = () => {
+  const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const [servers, setServers] = React.useState<SshServerListItem[]>([]);
   const [folders, setFolders] = React.useState<SshFolder[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
@@ -217,11 +219,11 @@ const SSHEditor: React.FC = () => {
         ...(cachedCredentials ?? {}),
       });
     } catch (error: unknown) {
-      window.alert(error instanceof Error ? error.message : t('ssh.editorLoadFailed'));
+      notifyError(error instanceof Error ? error.message : t('ssh.editorLoadFailed'));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [notifyError]);
 
   React.useEffect(() => {
     void reloadData();
@@ -255,7 +257,7 @@ const SSHEditor: React.FC = () => {
         }));
       } catch {
         if (!cancelled) {
-          window.alert(t('ssh.credentialsLoadFailed'));
+          notifyError(t('ssh.credentialsLoadFailed'));
         }
       }
     };
@@ -265,7 +267,7 @@ const SSHEditor: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeServerId]);
+  }, [activeServerId, notifyError]);
 
   const sortServers = React.useCallback((items: SshServerListItem[], mode: SortMode): SshServerListItem[] => {
     return [...items].sort((left, right) => {
@@ -428,7 +430,7 @@ const SSHEditor: React.FC = () => {
   const submitCreateFolder = React.useCallback(async () => {
     const folderName = normalizeFolderName(newFolderName);
     if (!folderName) {
-      window.alert(t('home.folderNameRequired'));
+      notifyWarning(t('home.folderNameRequired'));
       return;
     }
 
@@ -439,11 +441,11 @@ const SSHEditor: React.FC = () => {
       setNewFolderName('');
       await reloadData();
     } catch (error: unknown) {
-      window.alert(error instanceof Error ? error.message : t('home.folderCreateFailed'));
+      notifyError(error instanceof Error ? error.message : t('home.folderCreateFailed'));
     } finally {
       setIsFolderSubmitting(false);
     }
-  }, [newFolderName, reloadData]);
+  }, [newFolderName, notifyError, notifyWarning, reloadData]);
 
   const onSubmit = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -451,12 +453,12 @@ const SSHEditor: React.FC = () => {
 
       const port = parsePort(formState.port);
       if (!formState.name.trim() || !formState.host.trim() || !formState.username.trim()) {
-        window.alert(t('ssh.validationRequiredFields'));
+        notifyWarning(t('ssh.validationRequiredFields'));
         return;
       }
 
       if (port === null) {
-        window.alert(t('ssh.validationInvalidPort'));
+        notifyWarning(t('ssh.validationInvalidPort'));
         return;
       }
 
@@ -465,17 +467,17 @@ const SSHEditor: React.FC = () => {
         if (activeServerId) {
           const targetServer = servers.find((server) => server.id === activeServerId);
           if (!targetServer) {
-            window.alert(t('ssh.validationServerNotFound'));
+            notifyWarning(t('ssh.validationServerNotFound'));
             return;
           }
 
           if (requiresPassword && !formState.password.trim() && !targetServer.hasPassword) {
-            window.alert(t('ssh.validationPasswordRequired'));
+            notifyWarning(t('ssh.validationPasswordRequired'));
             return;
           }
 
           if (requiresPrivateKey && !formState.privateKey.trim() && !targetServer.hasPrivateKey) {
-            window.alert(t('ssh.validationPrivateKeyRequired'));
+            notifyWarning(t('ssh.validationPrivateKeyRequired'));
             return;
           }
 
@@ -506,15 +508,25 @@ const SSHEditor: React.FC = () => {
           });
         }
 
-        window.alert(activeServerId ? t('ssh.serverUpdatedSuccessfully') : t('ssh.serverCreatedSuccessfully'));
+        notifySuccess(activeServerId ? t('ssh.serverUpdatedSuccessfully') : t('ssh.serverCreatedSuccessfully'));
         await reloadData();
       } catch (error: unknown) {
-        window.alert(error instanceof Error ? error.message : t('ssh.saveServerFailed'));
+        notifyError(error instanceof Error ? error.message : t('ssh.saveServerFailed'));
       } finally {
         setIsSubmitting(false);
       }
     },
-    [activeServerId, formState, reloadData, requiresPassword, requiresPrivateKey, servers],
+    [
+      activeServerId,
+      formState,
+      notifyError,
+      notifySuccess,
+      notifyWarning,
+      reloadData,
+      requiresPassword,
+      requiresPrivateKey,
+      servers,
+    ],
   );
 
   return (

@@ -32,6 +32,7 @@
     "contextEdit": "Edit",
     "contextEditFolder": "Edit Folder",
     "contextOpenFolder": "Open Folder",
+    "copySuccess": "Copied to clipboard.",
     "dialogCreateFolderDescription": "Create a new folder for organizing SSH servers.",
     "dialogDeleteFolderDescription": "Delete folder \"{name}\"?",
     "dialogEditFolderDescription": "Update folder name.",
