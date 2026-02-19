@@ -454,6 +454,17 @@ ipcMain.handle('app:get-runtime-user-name', () => {
   }
 });
 
+ipcMain.handle('app:open-devtools', () => {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;
+
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return false;
+  }
+
+  targetWindow.webContents.openDevTools({ mode: 'detach' });
+  return true;
+});
+
 ipcMain.handle('backend:test-ping', async (): Promise<ApiTestPingResponse | ApiErrorResponse> => {
   const { port, token } = requireBackendConfig();
   const response = await fetch(`http://127.0.0.1:${port}${API_PATHS.testPing}`, {

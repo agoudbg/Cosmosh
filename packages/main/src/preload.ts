@@ -46,6 +46,9 @@ contextBridge.exposeInMainWorld('electron', {
   getRuntimeUserName: () => {
     return ipcRenderer.invoke('app:get-runtime-user-name');
   },
+  openDevTools: () => {
+    return ipcRenderer.invoke('app:open-devtools') as Promise<boolean>;
+  },
   backendTestPing: () => {
     return ipcRenderer.invoke('backend:test-ping') as Promise<ApiTestPingResponse | ApiErrorResponse>;
   },

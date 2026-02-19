@@ -51,6 +51,10 @@ const Header: React.FC<{
 
   const isDev = import.meta.env.DEV;
 
+  const onOpenDevTools = React.useCallback(() => {
+    void window.electron?.openDevTools();
+  }, []);
+
   return (
     <header
       className={classNames(
@@ -139,6 +143,12 @@ const Header: React.FC<{
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem icon={RefreshCcw}>{t('header.syncSettings')}</DropdownMenuItem>
+          <DropdownMenuItem
+            icon={Bug}
+            onSelect={onOpenDevTools}
+          >
+            {t('header.openDevTools')}
+          </DropdownMenuItem>
           {isDev ? (
             <DropdownMenuItem
               icon={Bug}

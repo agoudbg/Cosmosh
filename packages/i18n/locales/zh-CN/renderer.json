@@ -10,6 +10,7 @@
     "guestEmail": "guest@cosmosh.local",
     "guestUser": "未登录用户",
     "login": "登录",
+    "openDevTools": "打开 DevTools",
     "settings": "设置",
     "syncSettings": "同步设置"
   },

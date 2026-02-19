@@ -38,6 +38,7 @@ declare global {
       getLocale: () => Promise<string>;
       setLocale: (locale: string) => Promise<string>;
       getRuntimeUserName: () => Promise<string>;
+      openDevTools: () => Promise<boolean>;
       backendTestPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
       backendSshListServers: () => Promise<ApiSshListServersResponse | ApiErrorResponse>;
       backendSshCreateServer: (
