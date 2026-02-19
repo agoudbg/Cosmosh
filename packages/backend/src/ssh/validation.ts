@@ -4,6 +4,7 @@ import type {
   ApiSshCreateSessionRequest,
   ApiSshCreateTagRequest,
   ApiSshTrustFingerprintRequest,
+  ApiSshUpdateFolderRequest,
   ApiSshUpdateServerRequest,
 } from '@cosmosh/api-contract';
 import type { SshAuthType } from '@prisma/client';
@@ -81,6 +82,29 @@ export const parseCreateTagRequest = (payload: unknown): { value?: ApiSshCreateT
   }
 
   return { value: { name } };
+};
+
+export const parseUpdateFolderRequest = (payload: unknown): { value?: ApiSshUpdateFolderRequest; error?: string } => {
+  if (!isRecord(payload)) {
+    return { error: 'Request body must be a JSON object.' };
+  }
+
+  const name = normalizeOptionalString(payload.name);
+  if (!name || name.length > 120) {
+    return { error: 'Folder name is required and must be 1-120 characters.' };
+  }
+
+  const note = normalizeOptionalString(payload.note);
+  if (note && note.length > 1000) {
+    return { error: 'Folder note must be 1000 characters or fewer.' };
+  }
+
+  return {
+    value: {
+      name,
+      note,
+    },
+  };
 };
 
 export const parseCreateServerRequest = (payload: unknown): { value?: ApiSshCreateServerRequest; error?: string } => {

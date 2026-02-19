@@ -1,10 +1,28 @@
 import type { components } from '@cosmosh/api-contract';
 import classNames from 'classnames';
-import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, CalendarPlus, Folder, Plus, Search, Server } from 'lucide-react';
+import {
+  ArrowDownAZ,
+  ArrowUpAZ,
+  ArrowUpDown,
+  CalendarPlus,
+  Folder,
+  FolderPlus,
+  Plus,
+  Search,
+  Server,
+} from 'lucide-react';
 import React from 'react';
 
 import EntityCard from '../components/home/EntityCard';
 import { Button } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -25,13 +43,13 @@ import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
 import {
-  createSshFolder,
   createSshServer,
   getSshServerCredentials,
   listSshFolders,
   listSshServers,
   updateSshServer,
 } from '../lib/backend';
+import { createFolder, normalizeFolderName } from '../lib/folder-actions';
 import { colorKeyToClassName, resolveHomeVisual } from '../lib/home-visuals';
 import { t } from '../lib/i18n';
 import { consumeSshEditorCreateMode, getActiveSshServerId } from '../lib/ssh-target';
@@ -138,6 +156,9 @@ const SSHEditor: React.FC = () => {
   const [sortMode, setSortMode] = React.useState<SortMode>('default');
   const [activeServerId, setActiveServerId] = React.useState<string | null>(null);
   const [formState, setFormState] = React.useState<ServerEditorFormState>(createInitialFormState());
+  const [isCreateFolderDialogOpen, setIsCreateFolderDialogOpen] = React.useState<boolean>(false);
+  const [newFolderName, setNewFolderName] = React.useState<string>('');
+  const [isFolderSubmitting, setIsFolderSubmitting] = React.useState<boolean>(false);
   const activeServerIdRef = React.useRef<string | null>(null);
   const credentialsCacheRef = React.useRef<Record<string, ServerCredentialCache>>({});
 
@@ -399,21 +420,30 @@ const SSHEditor: React.FC = () => {
     setFormState(createInitialFormState());
   }, []);
 
-  const onCreateFolder = React.useCallback(async () => {
-    const folderName = window.prompt('Folder name');
+  const onCreateFolder = React.useCallback(() => {
+    setNewFolderName('');
+    setIsCreateFolderDialogOpen(true);
+  }, []);
 
-    if (!folderName || !folderName.trim()) {
+  const submitCreateFolder = React.useCallback(async () => {
+    const folderName = normalizeFolderName(newFolderName);
+    if (!folderName) {
+      window.alert(t('home.folderNameRequired'));
       return;
     }
 
+    setIsFolderSubmitting(true);
     try {
-      await createSshFolder({ name: folderName.trim() });
-      window.alert('Folder created successfully.');
+      await createFolder(folderName);
+      setIsCreateFolderDialogOpen(false);
+      setNewFolderName('');
       await reloadData();
     } catch (error: unknown) {
-      window.alert(error instanceof Error ? error.message : 'Failed to create folder.');
+      window.alert(error instanceof Error ? error.message : t('home.folderCreateFailed'));
+    } finally {
+      setIsFolderSubmitting(false);
     }
-  }, [reloadData]);
+  }, [newFolderName, reloadData]);
 
   const onSubmit = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -561,8 +591,18 @@ const SSHEditor: React.FC = () => {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuItem onSelect={onAddServer}>{t('home.quickAddServer')}</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void onCreateFolder()}>{t('home.quickAddFolder')}</DropdownMenuItem>
+                  <DropdownMenuItem
+                    icon={Server}
+                    onSelect={onAddServer}
+                  >
+                    {t('home.quickAddServer')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    icon={FolderPlus}
+                    onSelect={onCreateFolder}
+                  >
+                    {t('home.quickAddFolder')}
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </Menubar>
@@ -862,6 +902,39 @@ const SSHEditor: React.FC = () => {
           </div>
         </main>
       </div>
+
+      <Dialog
+        open={isCreateFolderDialogOpen}
+        onOpenChange={setIsCreateFolderDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('home.quickAddFolder')}</DialogTitle>
+            <DialogDescription>{t('home.dialogCreateFolderDescription')}</DialogDescription>
+          </DialogHeader>
+          <Input
+            value={newFolderName}
+            placeholder={t('home.folderNamePlaceholder')}
+            onChange={(event) => setNewFolderName(event.target.value)}
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setIsCreateFolderDialogOpen(false)}
+            >
+              {t('home.actionCancel')}
+            </Button>
+            <Button
+              disabled={isFolderSubmitting}
+              onClick={() => {
+                void submitCreateFolder();
+              }}
+            >
+              {t('home.actionCreate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

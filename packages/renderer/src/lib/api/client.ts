@@ -14,6 +14,8 @@ import type {
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateFolderRequest,
+  ApiSshUpdateFolderResponse,
   ApiSshUpdateServerRequest,
   ApiSshUpdateServerResponse,
   ApiTestPingResponse,
@@ -30,6 +32,7 @@ export type BackendClient = {
   getSshServerCredentials: (serverId: string) => Promise<ApiSshGetServerCredentialsResponse>;
   listSshFolders: () => Promise<ApiSshListFoldersResponse>;
   createSshFolder: (payload: ApiSshCreateFolderRequest) => Promise<ApiSshCreateFolderResponse>;
+  updateSshFolder: (folderId: string, payload: ApiSshUpdateFolderRequest) => Promise<ApiSshUpdateFolderResponse>;
   listSshTags: () => Promise<ApiSshListTagsResponse>;
   createSshTag: (payload: ApiSshCreateTagRequest) => Promise<ApiSshCreateTagResponse>;
   createSshSession: (
@@ -102,6 +105,15 @@ export const createBackendClient = (): BackendClient => {
     },
     createSshFolder: async (requestPayload) => {
       const payload = await transport.createSshFolder(requestPayload);
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    updateSshFolder: async (folderId, requestPayload) => {
+      const payload = await transport.updateSshFolder(folderId, requestPayload);
 
       if (!payload.success) {
         throw new Error(payload.message);

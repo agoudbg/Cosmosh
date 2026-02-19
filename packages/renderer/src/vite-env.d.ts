@@ -15,6 +15,8 @@ import type {
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateFolderRequest,
+  ApiSshUpdateFolderResponse,
   ApiSshUpdateServerRequest,
   ApiSshUpdateServerResponse,
   ApiTestPingResponse,
@@ -55,6 +57,10 @@ declare global {
       backendSshCreateFolder: (
         payload: ApiSshCreateFolderRequest,
       ) => Promise<ApiSshCreateFolderResponse | ApiErrorResponse>;
+      backendSshUpdateFolder: (
+        folderId: string,
+        payload: ApiSshUpdateFolderRequest,
+      ) => Promise<ApiSshUpdateFolderResponse | ApiErrorResponse>;
       backendSshListTags: () => Promise<ApiSshListTagsResponse | ApiErrorResponse>;
       backendSshCreateTag: (payload: ApiSshCreateTagRequest) => Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
       backendSshCreateSession: (

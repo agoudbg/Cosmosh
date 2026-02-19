@@ -117,7 +117,8 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /** Update SSH folder. */
+        put: operations["sshUpdateFolder"];
         post?: never;
         /** Delete SSH folder. */
         delete: operations["sshDeleteFolder"];
@@ -309,6 +310,10 @@ export interface components {
             name: string;
             note?: string;
         };
+        SshFolderUpdateRequest: {
+            name: string;
+            note?: string;
+        };
         SshTagCreateRequest: {
             name: string;
         };
@@ -417,6 +422,13 @@ export interface components {
         SshFolderCreateSuccess: components["schemas"]["ApiMeta"] & {
             /** @enum {string} */
             code: "SSH_FOLDER_CREATE_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SshFolderCreateData"];
+        };
+        SshFolderUpdateSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SSH_FOLDER_UPDATE_OK";
             /** @enum {boolean} */
             success: true;
             data: components["schemas"]["SshFolderCreateData"];
@@ -807,6 +819,70 @@ export interface operations {
             };
             /** @description Authentication failed. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Folder already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sshUpdateFolder: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path: {
+                folderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshFolderUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description SSH folder updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshFolderUpdateSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description SSH folder not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

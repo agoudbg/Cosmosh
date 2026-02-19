@@ -21,6 +21,8 @@ import type {
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateFolderRequest,
+  ApiSshUpdateFolderResponse,
   ApiSshUpdateServerRequest,
   ApiSshUpdateServerResponse,
   ApiTestPingResponse,
@@ -532,6 +534,21 @@ ipcMain.handle(
   async (_event, payload: ApiSshCreateFolderRequest): Promise<ApiSshCreateFolderResponse | ApiErrorResponse> => {
     return requestBackend<ApiSshCreateFolderResponse>(API_PATHS.sshCreateFolder, {
       method: 'POST',
+      body: payload,
+    });
+  },
+);
+
+ipcMain.handle(
+  'backend:ssh-update-folder',
+  async (
+    _event,
+    folderId: string,
+    payload: ApiSshUpdateFolderRequest,
+  ): Promise<ApiSshUpdateFolderResponse | ApiErrorResponse> => {
+    const path = API_PATHS.sshUpdateFolder.replace('{folderId}', encodeURIComponent(folderId));
+    return requestBackend<ApiSshUpdateFolderResponse>(path, {
+      method: 'PUT',
       body: payload,
     });
   },

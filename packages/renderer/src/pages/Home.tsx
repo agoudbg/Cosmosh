@@ -32,6 +32,16 @@ import React from 'react';
 
 import EntityCard from '../components/home/EntityCard';
 import HomeEmptyState from '../components/home/HomeEmptyState';
+import {
+  AlertDialog,
+  AlertDialogActionButton,
+  AlertDialogCancelButton,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 import { Button } from '../components/ui/button';
 import {
   ContextMenu,
@@ -43,6 +53,14 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '../components/ui/context-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -56,6 +74,7 @@ import { menuStyles } from '../components/ui/menu-styles';
 import { Menubar, MenubarSeparator, MenuToggleGroup, MenuToggleGroupItem } from '../components/ui/menubar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { listSshFolders, listSshServers } from '../lib/backend';
+import { createFolder, normalizeFolderName, removeFolder, renameFolder } from '../lib/folder-actions';
 import { colorKeyToClassName, type HomeIconKey, resolveHomeVisual } from '../lib/home-visuals';
 import { getLocale, t } from '../lib/i18n';
 
@@ -79,6 +98,7 @@ type ServerGroup = {
 
 type SidebarCardItem = {
   key: string;
+  folderId?: string;
   title: string;
   subtitle: string;
   selected: boolean;
@@ -135,6 +155,12 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   const [groupMode, setGroupMode] = React.useState<GroupMode>('lastUsed');
   const [sortMode, setSortMode] = React.useState<SortMode>('lastUsed');
   const [runtimeUserName, setRuntimeUserName] = React.useState<string>('user');
+  const [isCreateFolderDialogOpen, setIsCreateFolderDialogOpen] = React.useState<boolean>(false);
+  const [isEditFolderDialogOpen, setIsEditFolderDialogOpen] = React.useState<boolean>(false);
+  const [isDeleteFolderDialogOpen, setIsDeleteFolderDialogOpen] = React.useState<boolean>(false);
+  const [folderNameInput, setFolderNameInput] = React.useState<string>('');
+  const [activeFolderDraft, setActiveFolderDraft] = React.useState<{ id: string; name: string } | null>(null);
+  const [isFolderActionSubmitting, setIsFolderActionSubmitting] = React.useState<boolean>(false);
   const previousIsActiveRef = React.useRef<boolean>(isActive);
 
   const reloadHomeData = React.useCallback(async () => {
@@ -463,6 +489,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
 
       return {
         key: `folder:${folder.id}`,
+        folderId: folder.id,
         title: folder.name,
         subtitle: t('home.hostCount', { count }),
         selected: activeFolderId === folder.id,
@@ -525,6 +552,92 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       window.alert(error instanceof Error ? error.message : 'Failed to copy content to clipboard.');
     }
   }, []);
+
+  const openCreateFolderDialog = React.useCallback(() => {
+    setFolderNameInput('');
+    setActiveFolderDraft(null);
+    setIsCreateFolderDialogOpen(true);
+  }, []);
+
+  const openEditFolderDialog = React.useCallback((folderId: string, folderName: string) => {
+    setActiveFolderDraft({ id: folderId, name: folderName });
+    setFolderNameInput(folderName);
+    setIsEditFolderDialogOpen(true);
+  }, []);
+
+  const openDeleteFolderDialog = React.useCallback((folderId: string, folderName: string) => {
+    setActiveFolderDraft({ id: folderId, name: folderName });
+    setIsDeleteFolderDialogOpen(true);
+  }, []);
+
+  const submitCreateFolder = React.useCallback(async () => {
+    const folderName = normalizeFolderName(folderNameInput);
+    if (!folderName) {
+      window.alert(t('home.folderNameRequired'));
+      return;
+    }
+
+    setIsFolderActionSubmitting(true);
+    try {
+      await createFolder(folderName);
+      setIsCreateFolderDialogOpen(false);
+      setFolderNameInput('');
+      await reloadHomeData();
+    } catch (error: unknown) {
+      window.alert(error instanceof Error ? error.message : t('home.folderCreateFailed'));
+    } finally {
+      setIsFolderActionSubmitting(false);
+    }
+  }, [folderNameInput, reloadHomeData]);
+
+  const submitEditFolder = React.useCallback(async () => {
+    if (!activeFolderDraft) {
+      return;
+    }
+
+    const folderName = normalizeFolderName(folderNameInput);
+    if (!folderName) {
+      window.alert(t('home.folderNameRequired'));
+      return;
+    }
+
+    setIsFolderActionSubmitting(true);
+    try {
+      await renameFolder(activeFolderDraft.id, folderName);
+      setIsEditFolderDialogOpen(false);
+      setFolderNameInput('');
+      setActiveFolderDraft(null);
+      await reloadHomeData();
+    } catch (error: unknown) {
+      window.alert(error instanceof Error ? error.message : t('home.folderUpdateFailed'));
+    } finally {
+      setIsFolderActionSubmitting(false);
+    }
+  }, [activeFolderDraft, folderNameInput, reloadHomeData]);
+
+  const submitDeleteFolder = React.useCallback(async () => {
+    if (!activeFolderDraft) {
+      return;
+    }
+
+    setIsFolderActionSubmitting(true);
+    try {
+      await removeFolder(activeFolderDraft.id);
+
+      if (activeFolderId === activeFolderDraft.id) {
+        setActiveFolderId('all');
+        setQuickFilter('none');
+      }
+
+      setIsDeleteFolderDialogOpen(false);
+      setActiveFolderDraft(null);
+      await reloadHomeData();
+    } catch (error: unknown) {
+      window.alert(error instanceof Error ? error.message : t('home.folderDeleteFailed'));
+    } finally {
+      setIsFolderActionSubmitting(false);
+    }
+  }, [activeFolderDraft, activeFolderId, reloadHomeData]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-2">
@@ -589,17 +702,29 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                       >
                         {t('home.contextOpenFolder')}
                       </ContextMenuItem>
-                      {/* TODO(home): Folder edit flow is not wired from Home yet. Keep disabled until editor and API are connected. */}
                       <ContextMenuItem
-                        disabled
                         icon={Pencil}
+                        onSelect={() => {
+                          const folderId = item.folderId;
+                          if (!folderId) {
+                            return;
+                          }
+
+                          openEditFolderDialog(folderId, item.title);
+                        }}
                       >
                         {t('home.contextEditFolder')}
                       </ContextMenuItem>
-                      {/* TODO(home): Folder delete flow is not implemented in Home yet. Keep disabled until confirmation + backend call exist. */}
                       <ContextMenuItem
-                        disabled
                         icon={Trash2}
+                        onSelect={() => {
+                          const folderId = item.folderId;
+                          if (!folderId) {
+                            return;
+                          }
+
+                          openDeleteFolderDialog(folderId, item.title);
+                        }}
                       >
                         {t('home.contextDeleteFolder')}
                       </ContextMenuItem>
@@ -740,10 +865,9 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                         >
                           {t('home.quickAddServer')}
                         </DropdownMenuItem>
-                        {/* TODO(home): Quick create folder action is not implemented in Home yet. Keep disabled for now. */}
                         <DropdownMenuItem
-                          disabled
                           icon={FolderPlus}
+                          onSelect={openCreateFolderDialog}
                         >
                           {t('home.quickAddFolder')}
                         </DropdownMenuItem>
@@ -899,6 +1023,100 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
           ) : null}
         </main>
       </div>
+
+      <Dialog
+        open={isCreateFolderDialogOpen}
+        onOpenChange={setIsCreateFolderDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('home.quickAddFolder')}</DialogTitle>
+            <DialogDescription>{t('home.dialogCreateFolderDescription')}</DialogDescription>
+          </DialogHeader>
+          <Input
+            value={folderNameInput}
+            placeholder={t('home.folderNamePlaceholder')}
+            onChange={(event) => setFolderNameInput(event.target.value)}
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setIsCreateFolderDialogOpen(false)}
+            >
+              {t('home.actionCancel')}
+            </Button>
+            <Button
+              disabled={isFolderActionSubmitting}
+              onClick={() => {
+                void submitCreateFolder();
+              }}
+            >
+              {t('home.actionCreate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isEditFolderDialogOpen}
+        onOpenChange={setIsEditFolderDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('home.contextEditFolder')}</DialogTitle>
+            <DialogDescription>{t('home.dialogEditFolderDescription')}</DialogDescription>
+          </DialogHeader>
+          <Input
+            value={folderNameInput}
+            placeholder={t('home.folderNamePlaceholder')}
+            onChange={(event) => setFolderNameInput(event.target.value)}
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setIsEditFolderDialogOpen(false)}
+            >
+              {t('home.actionCancel')}
+            </Button>
+            <Button
+              disabled={isFolderActionSubmitting}
+              onClick={() => {
+                void submitEditFolder();
+              }}
+            >
+              {t('home.actionSave')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={isDeleteFolderDialogOpen}
+        onOpenChange={setIsDeleteFolderDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('home.contextDeleteFolder')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('home.dialogDeleteFolderDescription', { name: activeFolderDraft?.name ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancelButton disabled={isFolderActionSubmitting}>
+              {t('home.actionCancel')}
+            </AlertDialogCancelButton>
+            <AlertDialogActionButton
+              disabled={isFolderActionSubmitting}
+              onClick={(event) => {
+                event.preventDefault();
+                void submitDeleteFolder();
+              }}
+            >
+              {t('home.contextDelete')}
+            </AlertDialogActionButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

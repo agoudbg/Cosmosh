@@ -24,6 +24,10 @@ export type ApiSshCreateFolderRequest =
 	paths['/api/v1/ssh/folders']['post']['requestBody']['content']['application/json'];
 export type ApiSshCreateFolderResponse =
 	paths['/api/v1/ssh/folders']['post']['responses']['200']['content']['application/json'];
+export type ApiSshUpdateFolderRequest =
+	paths['/api/v1/ssh/folders/{folderId}']['put']['requestBody']['content']['application/json'];
+export type ApiSshUpdateFolderResponse =
+	paths['/api/v1/ssh/folders/{folderId}']['put']['responses']['200']['content']['application/json'];
 export type ApiSshListTagsResponse = paths['/api/v1/ssh/tags']['get']['responses']['200']['content']['application/json'];
 export type ApiSshCreateTagRequest = paths['/api/v1/ssh/tags']['post']['requestBody']['content']['application/json'];
 export type ApiSshCreateTagResponse =

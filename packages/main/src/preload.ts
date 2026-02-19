@@ -15,6 +15,8 @@ import type {
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateFolderRequest,
+  ApiSshUpdateFolderResponse,
   ApiSshUpdateServerRequest,
   ApiSshUpdateServerResponse,
   ApiTestPingResponse,
@@ -76,6 +78,11 @@ contextBridge.exposeInMainWorld('electron', {
   backendSshCreateFolder: (payload: ApiSshCreateFolderRequest) => {
     return ipcRenderer.invoke('backend:ssh-create-folder', payload) as Promise<
       ApiSshCreateFolderResponse | ApiErrorResponse
+    >;
+  },
+  backendSshUpdateFolder: (folderId: string, payload: ApiSshUpdateFolderRequest) => {
+    return ipcRenderer.invoke('backend:ssh-update-folder', folderId, payload) as Promise<
+      ApiSshUpdateFolderResponse | ApiErrorResponse
     >;
   },
   backendSshListTags: () => {

@@ -14,6 +14,8 @@ import type {
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateFolderRequest,
+  ApiSshUpdateFolderResponse,
   ApiSshUpdateServerRequest,
   ApiSshUpdateServerResponse,
   ApiTestPingResponse,
@@ -54,6 +56,13 @@ export const listSshFolders = async (): Promise<ApiSshListFoldersResponse> => {
 
 export const createSshFolder = async (payload: ApiSshCreateFolderRequest): Promise<ApiSshCreateFolderResponse> => {
   return backendClient.createSshFolder(payload);
+};
+
+export const updateSshFolder = async (
+  folderId: string,
+  payload: ApiSshUpdateFolderRequest,
+): Promise<ApiSshUpdateFolderResponse> => {
+  return backendClient.updateSshFolder(folderId, payload);
 };
 
 export const listSshTags = async (): Promise<ApiSshListTagsResponse> => {

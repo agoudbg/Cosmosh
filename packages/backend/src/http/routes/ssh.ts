@@ -13,6 +13,7 @@ import {
   type ApiSshListServersResponse,
   type ApiSshListTagsResponse,
   type ApiSshTrustFingerprintResponse,
+  type ApiSshUpdateFolderResponse,
   type ApiSshUpdateServerResponse,
   createApiSuccess,
 } from '@cosmosh/api-contract';
@@ -29,6 +30,7 @@ import {
   parseCreateSessionRequest,
   parseCreateTagRequest,
   parseTrustFingerprintRequest,
+  parseUpdateFolderRequest,
   parseUpdateServerRequest,
 } from '../../ssh/validation.js';
 import { buildErrorPayload } from '../errors.js';
@@ -91,6 +93,58 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
       return c.json(payload);
     } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return c.json(buildErrorPayload(API_CODES.sshFolderConflict, 'A folder with this name already exists.'), 409);
+      }
+
+      throw error;
+    }
+  });
+
+  app.put(API_PATHS.sshUpdateFolder.replace('{folderId}', ':folderId'), async (c) => {
+    const folderId = c.req.param('folderId');
+
+    if (!folderId) {
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, 'folderId is required.'), 400);
+    }
+
+    const parsed = parseUpdateFolderRequest(await c.req.json().catch(() => undefined));
+    if (!parsed.value) {
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+    }
+
+    try {
+      const db = context.getDbClient();
+      const folder = await db.sshFolder.update({
+        where: {
+          id: folderId,
+        },
+        data: {
+          name: parsed.value.name,
+          note: parsed.value.note,
+        },
+      });
+
+      const payload: ApiSshUpdateFolderResponse = createApiSuccess({
+        code: API_CODES.sshFolderUpdateOk,
+        message: 'SSH folder updated successfully.',
+        data: {
+          item: {
+            id: folder.id,
+            name: folder.name,
+            note: folder.note ?? undefined,
+            createdAt: folder.createdAt.toISOString(),
+            updatedAt: folder.updatedAt.toISOString(),
+          },
+        },
+      });
+
+      return c.json(payload);
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        return c.json(buildErrorPayload(API_CODES.sshNotFound, 'Folder was not found.'), 404);
+      }
+
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         return c.json(buildErrorPayload(API_CODES.sshFolderConflict, 'A folder with this name already exists.'), 409);
       }

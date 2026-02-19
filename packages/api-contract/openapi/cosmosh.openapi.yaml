@@ -275,6 +275,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
   /api/v1/ssh/folders/{folderId}:
+    put:
+      tags:
+        - ssh
+      summary: Update SSH folder.
+      operationId: sshUpdateFolder
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+        - name: folderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SshFolderUpdateRequest"
+      responses:
+        "200":
+          description: SSH folder updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshFolderUpdateSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: SSH folder not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Folder already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
     delete:
       tags:
         - ssh
@@ -769,6 +818,18 @@ components:
         note:
           type: string
           maxLength: 1000
+    SshFolderUpdateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        note:
+          type: string
+          maxLength: 1000
     SshTagCreateRequest:
       type: object
       required:
@@ -1035,6 +1096,23 @@ components:
             code:
               type: string
               enum: ["SSH_FOLDER_CREATE_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SshFolderCreateData"
+    SshFolderUpdateSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SSH_FOLDER_UPDATE_OK"]
             success:
               type: boolean
               enum: [true]

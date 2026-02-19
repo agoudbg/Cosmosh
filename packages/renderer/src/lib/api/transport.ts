@@ -15,6 +15,8 @@ import type {
   ApiSshListTagsResponse,
   ApiSshTrustFingerprintRequest,
   ApiSshTrustFingerprintResponse,
+  ApiSshUpdateFolderRequest,
+  ApiSshUpdateFolderResponse,
   ApiSshUpdateServerRequest,
   ApiSshUpdateServerResponse,
   ApiTestPingResponse,
@@ -32,6 +34,7 @@ type ApiResponse =
   | ApiSshGetServerCredentialsResponse
   | ApiSshListFoldersResponse
   | ApiSshCreateFolderResponse
+  | ApiSshUpdateFolderResponse
   | ApiSshListTagsResponse
   | ApiSshCreateTagResponse
   | ApiSshCreateSessionResponse
@@ -50,6 +53,10 @@ export type ApiTransport = {
   getSshServerCredentials: (serverId: string) => Promise<ApiSshGetServerCredentialsResponse | ApiErrorResponse>;
   listSshFolders: () => Promise<ApiSshListFoldersResponse | ApiErrorResponse>;
   createSshFolder: (payload: ApiSshCreateFolderRequest) => Promise<ApiSshCreateFolderResponse | ApiErrorResponse>;
+  updateSshFolder: (
+    folderId: string,
+    payload: ApiSshUpdateFolderRequest,
+  ) => Promise<ApiSshUpdateFolderResponse | ApiErrorResponse>;
   listSshTags: () => Promise<ApiSshListTagsResponse | ApiErrorResponse>;
   createSshTag: (payload: ApiSshCreateTagRequest) => Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
   createSshSession: (
@@ -119,6 +126,11 @@ const createElectronTransport = (): ApiTransport => {
     },
     createSshFolder: async (payload) => {
       return (await window.electron!.backendSshCreateFolder(payload)) as ApiSshCreateFolderResponse | ApiErrorResponse;
+    },
+    updateSshFolder: async (folderId, payload) => {
+      return (await window.electron!.backendSshUpdateFolder(folderId, payload)) as
+        | ApiSshUpdateFolderResponse
+        | ApiErrorResponse;
     },
     listSshTags: async () => {
       return (await window.electron!.backendSshListTags()) as ApiSshListTagsResponse | ApiErrorResponse;
@@ -207,6 +219,10 @@ const createBrowserTransport = (): ApiTransport => {
       return (await callBrowserApi(API_PATHS.sshCreateFolder, 'POST', payload)) as
         | ApiSshCreateFolderResponse
         | ApiErrorResponse;
+    },
+    updateSshFolder: async (folderId, payload) => {
+      const path = API_PATHS.sshUpdateFolder.replace('{folderId}', encodeURIComponent(folderId));
+      return (await callBrowserApi(path, 'PUT', payload)) as ApiSshUpdateFolderResponse | ApiErrorResponse;
     },
     listSshTags: async () => {
       return (await callBrowserApi(API_PATHS.sshListTags, 'GET')) as ApiSshListTagsResponse | ApiErrorResponse;
