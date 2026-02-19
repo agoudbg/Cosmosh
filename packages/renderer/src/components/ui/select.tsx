@@ -15,7 +15,84 @@ import { menuStyles } from './menu-styles';
 
 type MenuIconComponent = React.ComponentType<{ className?: string }>;
 
-const Select = SelectPrimitive.Root;
+type SelectProps = React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>;
+
+const SELECT_CLOSE_ANIMATION_MS = 150;
+
+const SelectAnimationContext = React.createContext<{ isClosing: boolean }>({ isClosing: false });
+
+const Select: React.FC<SelectProps> = ({ open, defaultOpen, onOpenChange, ...props }) => {
+  const isControlled = open !== undefined;
+  const closeTimerRef = React.useRef<number | null>(null);
+  const isClosingRef = React.useRef<boolean>(false);
+  const [internalOpen, setInternalOpen] = React.useState<boolean>(defaultOpen ?? false);
+  const [isClosing, setIsClosing] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
+
+  if (isControlled) {
+    return (
+      <SelectAnimationContext.Provider value={{ isClosing: false }}>
+        <SelectPrimitive.Root
+          open={open}
+          defaultOpen={defaultOpen}
+          onOpenChange={onOpenChange}
+          {...props}
+        />
+      </SelectAnimationContext.Provider>
+    );
+  }
+
+  const handleOpenChange = (nextOpen: boolean): void => {
+    if (nextOpen) {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+
+      isClosingRef.current = false;
+      setIsClosing(false);
+      setInternalOpen(true);
+      onOpenChange?.(true);
+      return;
+    }
+
+    if (isClosingRef.current) {
+      return;
+    }
+
+    isClosingRef.current = true;
+    setIsClosing(true);
+
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+
+    closeTimerRef.current = window.setTimeout(() => {
+      isClosingRef.current = false;
+      setIsClosing(false);
+      setInternalOpen(false);
+      onOpenChange?.(false);
+      closeTimerRef.current = null;
+    }, SELECT_CLOSE_ANIMATION_MS);
+  };
+
+  return (
+    <SelectAnimationContext.Provider value={{ isClosing }}>
+      <SelectPrimitive.Root
+        open={internalOpen || isClosing}
+        onOpenChange={handleOpenChange}
+        {...props}
+      />
+    </SelectAnimationContext.Provider>
+  );
+};
 const SelectGroup = SelectPrimitive.Group;
 const SelectValue = SelectPrimitive.Value;
 
@@ -40,6 +117,7 @@ const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = 'popper', sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
+  const { isClosing } = React.useContext(SelectAnimationContext);
   const viewportBoundsStyle = resolveViewportMenuBounds();
   const hasLeadingVisual = resolveMenuHasLeadingVisual(children);
 
@@ -48,13 +126,17 @@ const SelectContent = React.forwardRef<
       <SelectPrimitive.Content
         ref={ref}
         avoidCollisions
-        className={classNames(menuStyles.content, className)}
+        className={classNames(menuStyles.content, isClosing && 'pointer-events-none', className)}
         position={position}
         sideOffset={sideOffset}
         sticky="always"
         collisionPadding={normalizeCollisionPadding(collisionPadding)}
         style={{
           ...viewportBoundsStyle,
+          opacity: isClosing ? 0 : 1,
+          transform: isClosing ? 'scale(0.95)' : undefined,
+          transformOrigin: 'center center',
+          transition: 'opacity 150ms ease-in, transform 150ms ease-in',
           ...style,
         }}
         {...props}
