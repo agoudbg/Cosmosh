@@ -259,6 +259,19 @@ Run the locale consistency checker before commit when translation keys are chang
 
 ```bash
 pnpm --filter @cosmosh/i18n check
+pnpm --filter @cosmosh/i18n check:sort
+```
+
+Auto-sort locale files when needed:
+
+```bash
+pnpm --filter @cosmosh/i18n sort
+```
+
+If pre-commit hooks do not run on macOS (for example after clone or permission changes), run:
+
+```bash
+pnpm prepare
 ```
 
 Current default locale strategy:

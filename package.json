@@ -10,7 +10,7 @@
     "dev:renderer": "pnpm --filter @cosmosh/renderer dev",
     "dev:backend": "pnpm --filter @cosmosh/backend dev",
     "build": "pnpm -r build",
-    "prepare": "git config core.hooksPath .githooks",
+    "prepare": "node ./scripts/setup-githooks.mjs",
     "lint": "pnpm -r lint",
     "lint:fix": "pnpm -r --if-present lint:fix",
     "precommit:lint": "pnpm --filter @cosmosh/backend lint && pnpm --filter @cosmosh/main lint && pnpm --filter @cosmosh/renderer lint && pnpm --filter @cosmosh/i18n check && pnpm --filter @cosmosh/i18n check:sort && pnpm --filter @cosmosh/api-contract typecheck",
