@@ -15,6 +15,7 @@ export type LocalTerminalProfile = {
   id: string;
   name: string;
   command: string;
+  executablePath: string;
   args: string[];
 };
 
@@ -152,8 +153,20 @@ const resolveWindowsProfiles = async (): Promise<LocalTerminalProfile[]> => {
 
   for (const candidate of candidates) {
     try {
-      await execFileAsync('where', [candidate.command]);
-      profiles.push(candidate);
+      const { stdout } = await execFileAsync('where', [candidate.command]);
+      const firstMatch = stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0);
+
+      if (!firstMatch) {
+        continue;
+      }
+
+      profiles.push({
+        ...candidate,
+        executablePath: firstMatch,
+      });
     } catch {
       // Skip unavailable terminal profile.
     }
@@ -206,6 +219,7 @@ const resolveUnixProfiles = async (): Promise<LocalTerminalProfile[]> => {
       id: profileId,
       name: baseName,
       command: line,
+      executablePath: line,
       args: ['-i'],
     });
   }

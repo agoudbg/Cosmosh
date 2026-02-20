@@ -26,6 +26,7 @@ type LocalTerminalProfile = {
   id: string;
   name: string;
   command: string;
+  executablePath: string;
   args: string[];
 };
 
@@ -77,6 +78,7 @@ declare global {
       setLocale: (locale: string) => Promise<string>;
       getRuntimeUserName: () => Promise<string>;
       openDevTools: () => Promise<boolean>;
+      showInFileManager: (targetPath?: string) => Promise<boolean>;
       backendTestPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
       backendSshListServers: () => Promise<ApiSshListServersResponse | ApiErrorResponse>;
       backendSshCreateServer: (

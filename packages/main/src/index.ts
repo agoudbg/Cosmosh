@@ -30,7 +30,7 @@ import type {
 import { API_CODES, API_HEADERS, API_PATHS, createApiError } from '@cosmosh/api-contract';
 import { createI18n, enableI18nDevHotReload, resolveLocale } from '@cosmosh/i18n';
 import { spawn } from 'child_process';
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import path from 'path';
 
 import { getDatabaseEncryptionKey, getDatabasePath, toPrismaSqliteUrl } from './security/database-encryption';
@@ -39,6 +39,7 @@ type LocalTerminalProfile = {
   id: string;
   name: string;
   command: string;
+  executablePath: string;
   args: string[];
 };
 
@@ -590,6 +591,23 @@ ipcMain.handle('app:open-devtools', () => {
 
   targetWindow.webContents.openDevTools({ mode: 'detach' });
   return true;
+});
+
+ipcMain.handle('app:show-in-file-manager', async (_event, targetPath?: string): Promise<boolean> => {
+  const pathToOpen = typeof targetPath === 'string' && targetPath.trim().length > 0 ? targetPath.trim() : os.homedir();
+
+  try {
+    const stats = await fs.stat(pathToOpen);
+    if (stats.isFile()) {
+      shell.showItemInFolder(pathToOpen);
+      return true;
+    }
+
+    const result = await shell.openPath(pathToOpen);
+    return result.length === 0;
+  } catch {
+    return false;
+  }
 });
 
 ipcMain.handle('backend:test-ping', async (): Promise<ApiTestPingResponse | ApiErrorResponse> => {

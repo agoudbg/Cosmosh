@@ -29,6 +29,7 @@ export type LocalTerminalProfile = {
   id: string;
   name: string;
   command: string;
+  executablePath: string;
   args: string[];
 };
 

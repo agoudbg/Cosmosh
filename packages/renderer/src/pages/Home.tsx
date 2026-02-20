@@ -655,6 +655,19 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     );
   }, []);
 
+  const localTerminalFileManagerLabel = React.useMemo(() => {
+    const platform = window.electron?.platform;
+    if (platform === 'win32') {
+      return t('home.contextShowInFileExplorer');
+    }
+
+    if (platform === 'darwin') {
+      return t('home.contextShowInFinder');
+    }
+
+    return t('home.contextShowInFileManager');
+  }, []);
+
   const handleCopyToClipboard = React.useCallback(
     async (value: string) => {
       try {
@@ -665,6 +678,20 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       }
     },
     [notifyError, notifySuccess],
+  );
+
+  const handleShowInFileManager = React.useCallback(
+    async (targetPath: string) => {
+      try {
+        const opened = await window.electron?.showInFileManager?.(targetPath);
+        if (!opened) {
+          notifyError(t('home.openInFileManagerFailed'));
+        }
+      } catch (error: unknown) {
+        notifyError(error instanceof Error ? error.message : t('home.openInFileManagerFailed'));
+      }
+    },
+    [notifyError],
   );
 
   const openCreateFolderDialog = React.useCallback(() => {
@@ -1112,6 +1139,15 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                             onSelect={() => onOpenSSH(toLocalTerminalTargetId(profile.id))}
                           >
                             {t('home.contextConnect')}
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            icon={FolderOpen}
+                            onSelect={() => {
+                              void handleShowInFileManager(profile.executablePath);
+                            }}
+                          >
+                            {localTerminalFileManagerLabel}
                           </ContextMenuItem>
                           <ContextMenuSeparator />
                           <ContextMenuItem

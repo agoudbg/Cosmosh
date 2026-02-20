@@ -27,6 +27,7 @@ type LocalTerminalProfile = {
   id: string;
   name: string;
   command: string;
+  executablePath: string;
   args: string[];
 };
 
@@ -79,6 +80,9 @@ contextBridge.exposeInMainWorld('electron', {
   },
   openDevTools: () => {
     return ipcRenderer.invoke('app:open-devtools') as Promise<boolean>;
+  },
+  showInFileManager: (targetPath?: string) => {
+    return ipcRenderer.invoke('app:show-in-file-manager', targetPath) as Promise<boolean>;
   },
   backendTestPing: () => {
     return ipcRenderer.invoke('backend:test-ping') as Promise<ApiTestPingResponse | ApiErrorResponse>;
