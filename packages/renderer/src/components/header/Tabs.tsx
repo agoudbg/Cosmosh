@@ -116,6 +116,7 @@ const SortableTab = React.forwardRef<
       className={classNames('flex h-full', isDragging ? 'relative z-20' : '')}
       {...attributes}
       {...listeners}
+      tabIndex={-1}
       onContextMenu={onContextMenu}
     >
       <RadixTabs.Trigger
@@ -138,6 +139,7 @@ const SortableTab = React.forwardRef<
             <button
               type="button"
               aria-label={`Close ${tab.title}`}
+              tabIndex={isActive ? 0 : -1}
               onPointerDown={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
