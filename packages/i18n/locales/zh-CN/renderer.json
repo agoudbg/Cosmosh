@@ -36,6 +36,8 @@
     "dialogCreateFolderDescription": "创建一个用于组织 SSH 服务器的文件夹。",
     "dialogDeleteFolderDescription": "确认删除文件夹“{name}”？",
     "dialogEditFolderDescription": "更新文件夹名称。",
+    "dragServerToFolderFailed": "拖拽归档服务器失败。",
+    "dragServerToFolderSuccess": "服务器已添加到文件夹。",
     "empty": "当前筛选条件下没有主机。",
     "fileAction": "文件",
     "filterAction": "筛选",

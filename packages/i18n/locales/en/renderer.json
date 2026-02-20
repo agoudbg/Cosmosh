@@ -36,6 +36,8 @@
     "dialogCreateFolderDescription": "Create a new folder for organizing SSH servers.",
     "dialogDeleteFolderDescription": "Delete folder \"{name}\"?",
     "dialogEditFolderDescription": "Update folder name.",
+    "dragServerToFolderFailed": "Failed to move server into folder.",
+    "dragServerToFolderSuccess": "Server added to folder.",
     "empty": "No hosts match the current filter.",
     "fileAction": "Files",
     "filterAction": "Filter",

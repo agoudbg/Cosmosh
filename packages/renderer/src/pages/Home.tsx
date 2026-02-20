@@ -73,7 +73,7 @@ import { Input } from '../components/ui/input';
 import { menuStyles } from '../components/ui/menu-styles';
 import { Menubar, MenubarSeparator, MenuToggleGroup, MenuToggleGroupItem } from '../components/ui/menubar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
-import { listSshFolders, listSshServers } from '../lib/backend';
+import { listSshFolders, listSshServers, updateSshServer } from '../lib/backend';
 import { createFolder, normalizeFolderName, removeFolder, renameFolder } from '../lib/folder-actions';
 import { colorKeyToClassName, type HomeIconKey, resolveHomeVisual } from '../lib/home-visuals';
 import { getLocale, t } from '../lib/i18n';
@@ -163,6 +163,8 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   const [folderNameInput, setFolderNameInput] = React.useState<string>('');
   const [activeFolderDraft, setActiveFolderDraft] = React.useState<{ id: string; name: string } | null>(null);
   const [isFolderActionSubmitting, setIsFolderActionSubmitting] = React.useState<boolean>(false);
+  const [draggingServerId, setDraggingServerId] = React.useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = React.useState<string | null>(null);
   const previousIsActiveRef = React.useRef<boolean>(isActive);
 
   const reloadHomeData = React.useCallback(async () => {
@@ -645,6 +647,39 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     }
   }, [activeFolderDraft, activeFolderId, notifyError, reloadHomeData]);
 
+  const handleAssignServerToFolder = React.useCallback(
+    async (serverId: string, folderId: string) => {
+      const targetServer = servers.find((server) => server.id === serverId);
+      if (!targetServer) {
+        return;
+      }
+
+      if (targetServer.folder?.id === folderId) {
+        return;
+      }
+
+      try {
+        await updateSshServer(serverId, {
+          name: targetServer.name,
+          host: targetServer.host,
+          port: targetServer.port,
+          username: targetServer.username,
+          authType: targetServer.authType,
+          note: targetServer.note ?? undefined,
+          folderId,
+        });
+
+        await reloadHomeData();
+        setActiveFolderId(folderId);
+        setQuickFilter('none');
+        notifySuccess(t('home.dragServerToFolderSuccess'));
+      } catch (error: unknown) {
+        notifyError(error instanceof Error ? error.message : t('home.dragServerToFolderFailed'));
+      }
+    },
+    [notifyError, notifySuccess, reloadHomeData, servers],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-2">
       <h1 className="px-2 pb-2 text-[28px] font-semibold text-header-text">
@@ -696,8 +731,41 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                         title={item.title}
                         subtitle={item.subtitle}
                         selected={item.selected}
+                        className={dragOverFolderId === item.folderId ? 'bg-home-card-active' : undefined}
                         icon={createIconNode(item.iconKey, item.iconClassName, item.title)}
                         imageUrl={item.imageUrl}
+                        onDragOver={(event) => {
+                          if (!item.folderId || !draggingServerId) {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                          if (dragOverFolderId !== item.folderId) {
+                            setDragOverFolderId(item.folderId);
+                          }
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverFolderId === item.folderId) {
+                            setDragOverFolderId(null);
+                          }
+                        }}
+                        onDrop={(event) => {
+                          if (!item.folderId) {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          const droppedServerId =
+                            event.dataTransfer.getData('application/x-cosmosh-server-id') || draggingServerId;
+                          if (!droppedServerId) {
+                            return;
+                          }
+
+                          setDragOverFolderId(null);
+                          setDraggingServerId(null);
+                          void handleAssignServerToFolder(droppedServerId, item.folderId);
+                        }}
                         onClick={item.onClick}
                       />
                     </ContextMenuTrigger>
@@ -922,9 +990,11 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                         <ContextMenu key={`${group.key}:${server.id}`}>
                           <ContextMenuTrigger className="block">
                             <EntityCard
+                              draggable
                               layout="grid"
                               title={server.name}
                               subtitle={server.host}
+                              className={draggingServerId === server.id ? 'opacity-70' : undefined}
                               icon={createIconNode(visual.iconKey, colorKeyToClassName(visual.colorKey), server.name)}
                               imageUrl={visual.imageUrl}
                               action={
@@ -940,6 +1010,15 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                                   <File className="h-4 w-4 flex-shrink-0" />
                                 </Button>
                               }
+                              onDragStart={(event) => {
+                                event.dataTransfer.setData('application/x-cosmosh-server-id', server.id);
+                                event.dataTransfer.effectAllowed = 'move';
+                                setDraggingServerId(server.id);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingServerId(null);
+                                setDragOverFolderId(null);
+                              }}
                               onClick={() => onOpenSSH(server.id)}
                             />
                           </ContextMenuTrigger>

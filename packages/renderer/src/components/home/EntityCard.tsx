@@ -12,10 +12,37 @@ type EntityCardProps = {
   tone?: 'flat' | 'filled';
   className?: string;
   onClick?: () => void;
+  draggable?: boolean;
+  onDragStart?: React.DragEventHandler<HTMLDivElement>;
+  onDragEnd?: React.DragEventHandler<HTMLDivElement>;
+  onDragOver?: React.DragEventHandler<HTMLDivElement>;
+  onDrop?: React.DragEventHandler<HTMLDivElement>;
+  onDragEnter?: React.DragEventHandler<HTMLDivElement>;
+  onDragLeave?: React.DragEventHandler<HTMLDivElement>;
 };
 
 const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
-  ({ title, subtitle, icon, action, imageUrl, selected = false, tone = 'flat', className, onClick }, ref) => {
+  (
+    {
+      title,
+      subtitle,
+      icon,
+      action,
+      imageUrl,
+      selected = false,
+      tone = 'flat',
+      className,
+      onClick,
+      draggable,
+      onDragStart,
+      onDragEnd,
+      onDragOver,
+      onDrop,
+      onDragEnter,
+      onDragLeave,
+    },
+    ref,
+  ) => {
     const handleKeyDown = React.useCallback(
       (event: React.KeyboardEvent<HTMLDivElement>) => {
         if (!onClick) {
@@ -76,8 +103,15 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
               : 'hover:bg-home-card-hover',
           className,
         )}
+        draggable={draggable}
         onClick={onClick}
         onKeyDown={handleKeyDown}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
       >
         {content}
       </div>
