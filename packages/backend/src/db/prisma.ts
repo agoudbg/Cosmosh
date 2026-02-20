@@ -210,8 +210,34 @@ const isNativeDriverUnavailableError = (error: unknown): boolean => {
     return true;
   }
 
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes('NODE_MODULE_VERSION');
+  const topLevelMessage =
+    error instanceof Error
+      ? error.message
+      : typeof (error as { message?: unknown })?.message === 'string'
+        ? ((error as { message: string }).message ?? '')
+        : String(error);
+
+  const nestedCause = (error as { cause?: unknown })?.cause;
+  const causeMessage =
+    nestedCause instanceof Error
+      ? nestedCause.message
+      : typeof (nestedCause as { message?: unknown })?.message === 'string'
+        ? ((nestedCause as { message: string }).message ?? '')
+        : nestedCause != null
+          ? String(nestedCause)
+          : '';
+
+  const message = `${topLevelMessage}\n${causeMessage}`;
+
+  if (message.includes('NODE_MODULE_VERSION')) {
+    return true;
+  }
+
+  if (message.includes('Could not locate the bindings file')) {
+    return isDevelopmentRuntime();
+  }
+
+  return false;
 };
 
 const convertPlaintextDatabaseToSqlCipher = (databaseFilePath: string, databaseKey: string): void => {
