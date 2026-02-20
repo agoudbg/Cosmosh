@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "lint": "pnpm check && pnpm check:sort && pnpm typecheck",
-    "lint:fix": "pnpm lint"
+    "lint:fix": "pnpm sort && pnpm lint"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
