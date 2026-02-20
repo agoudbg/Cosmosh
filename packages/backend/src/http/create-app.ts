@@ -16,7 +16,7 @@ export const createBackendApp = (context: BackendAppContext): Hono => {
 
   app.onError((error, c) => {
     console.error('[http][UNHANDLED]', error);
-    return c.json(buildErrorPayload(API_CODES.authInvalidToken, `Internal server error: ${error.message}`), 500);
+    return c.json(buildErrorPayload(API_CODES.authInvalidToken, 'Internal server error.'), 500);
   });
 
   return app;

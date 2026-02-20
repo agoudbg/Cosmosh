@@ -15,7 +15,7 @@ import SSHEditor from './pages/SSHEditor';
 
 const App: React.FC = () => {
   const handleLastTabClose = React.useCallback(() => {
-    window.electron?.send('app:close-window', null);
+    window.electron?.closeWindow();
   }, []);
 
   const {

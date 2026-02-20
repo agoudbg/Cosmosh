@@ -154,6 +154,14 @@ const resolveDataRootDir = (): string => {
   return path.join(os.homedir(), '.local', 'share');
 };
 
+const hardenSecretKeyPermissions = async (secretFilePath: string): Promise<void> => {
+  if (process.platform === 'win32') {
+    return;
+  }
+
+  await fs.chmod(secretFilePath, 0o600);
+};
+
 const resolveBackendSecretKey = async (): Promise<string> => {
   const storageDirPath = path.join(resolveDataRootDir(), 'Cosmosh', 'backend', 'storage');
   const secretFilePath = path.join(storageDirPath, 'secret.key');
@@ -161,6 +169,7 @@ const resolveBackendSecretKey = async (): Promise<string> => {
   try {
     const existing = (await fs.readFile(secretFilePath, 'utf8')).trim();
     if (existing.length >= 32) {
+      await hardenSecretKeyPermissions(secretFilePath);
       return existing;
     }
   } catch {
@@ -169,7 +178,8 @@ const resolveBackendSecretKey = async (): Promise<string> => {
 
   const generated = randomBytes(32).toString('hex');
   await fs.mkdir(storageDirPath, { recursive: true });
-  await fs.writeFile(secretFilePath, generated, 'utf8');
+  await fs.writeFile(secretFilePath, generated, { encoding: 'utf8', mode: 0o600 });
+  await hardenSecretKeyPermissions(secretFilePath);
   return generated;
 };
 
@@ -530,6 +540,10 @@ ipcMain.handle('app:get-runtime-user-name', () => {
 });
 
 ipcMain.handle('app:open-devtools', () => {
+  if (app.isPackaged) {
+    return false;
+  }
+
   const targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;
 
   if (!targetWindow || targetWindow.isDestroyed()) {
