@@ -1,4 +1,5 @@
 const fs = require('node:fs/promises');
+const { builtinModules } = require('node:module');
 const path = require('node:path');
 
 const workspaceRoot = path.resolve(__dirname, '../../..');
@@ -7,8 +8,16 @@ const i18nNodeModulesRoot = path.join(workspaceRoot, 'packages', 'i18n', 'node_m
 const runtimeNodeModulesRoot = path.join(workspaceRoot, 'packages', 'main', 'resources-runtime', 'node_modules');
 const runtimeCosmoshRoot = path.join(runtimeNodeModulesRoot, '@cosmosh');
 
-const thirdPartyEntryPackages = ['@hono/node-server', 'hono', 'ssh2', 'ws', 'intl-messageformat'];
+const thirdPartyEntryPackages = [
+  '@hono/node-server',
+  'hono',
+  'ssh2',
+  'ws',
+  'intl-messageformat',
+  'better-sqlite3-multiple-ciphers',
+];
 const workspaceRuntimePackages = ['backend', 'api-contract', 'i18n'];
+const builtInModuleNames = new Set([...builtinModules, ...builtinModules.map((moduleName) => `node:${moduleName}`)]);
 
 const findPackageRootFromEntry = async (entryPath, expectedPackageName) => {
   let cursor = path.dirname(entryPath);
@@ -77,6 +86,10 @@ const syncPackageRecursively = async (packageName, resolvePaths) => {
 
   for (const dependencyName of dependencyNames) {
     if (dependencyName.startsWith('@cosmosh/')) {
+      continue;
+    }
+
+    if (builtInModuleNames.has(dependencyName)) {
       continue;
     }
 

@@ -33,6 +33,8 @@ import { spawn } from 'child_process';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 
+import { getDatabaseEncryptionKey, getDatabasePath, toPrismaSqliteUrl } from './security/database-encryption';
+
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number | null = null;
@@ -152,12 +154,6 @@ const resolveDataRootDir = (): string => {
   return path.join(os.homedir(), '.local', 'share');
 };
 
-const resolveBackendDatabaseUrl = (): string => {
-  const databaseFilePath = path.join(resolveDataRootDir(), 'Cosmosh', 'backend', 'storage', 'cosmosh.sqlite');
-  const normalizedPath = databaseFilePath.split(path.sep).join('/');
-  return `file:${encodeURI(normalizedPath)}`;
-};
-
 const resolveBackendSecretKey = async (): Promise<string> => {
   const storageDirPath = path.join(resolveDataRootDir(), 'Cosmosh', 'backend', 'storage');
   const secretFilePath = path.join(storageDirPath, 'secret.key');
@@ -175,6 +171,15 @@ const resolveBackendSecretKey = async (): Promise<string> => {
   await fs.mkdir(storageDirPath, { recursive: true });
   await fs.writeFile(secretFilePath, generated, 'utf8');
   return generated;
+};
+
+const fileExists = async (filePath: string): Promise<boolean> => {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const findAvailablePort = async (): Promise<number> => {
@@ -238,7 +243,9 @@ const startBackendService = async (): Promise<void> => {
 
   const port = await findAvailablePort();
   const token = randomBytes(32).toString('hex');
-  const databaseUrl = resolveBackendDatabaseUrl();
+  const databasePath = getDatabasePath();
+  const databaseUrl = toPrismaSqliteUrl(databasePath);
+  const databaseEncryptionKey = await getDatabaseEncryptionKey();
   const secretKey = await resolveBackendSecretKey();
   const isDev = !app.isPackaged;
   const workspaceRoot = resolveWorkspaceRoot();
@@ -256,6 +263,10 @@ const startBackendService = async (): Promise<void> => {
     COSMOSH_API_PORT: String(port),
     COSMOSH_INTERNAL_TOKEN: token,
     COSMOSH_SECRET_KEY: secretKey,
+    COSMOSH_DB_PATH: databasePath,
+    COSMOSH_DB_ENCRYPTION_KEY: databaseEncryptionKey,
+    COSMOSH_USER_DATA_PATH: app.getPath('userData'),
+    COSMOSH_APP_ENV: isDev ? 'development' : 'production',
     DATABASE_URL: databaseUrl,
   };
 
@@ -265,14 +276,22 @@ const startBackendService = async (): Promise<void> => {
   let backendProcessCwd = workspaceRoot;
 
   if (isDev) {
-    console.log('[backend:init] Preparing development database schema...');
-    await runCommand('pnpm --filter @cosmosh/backend run db:push', {
-      cwd: workspaceRoot,
-      env: backendEnv,
-      logPrefix: '[backend:init]',
-      shell: true,
-    });
-    console.log('[backend:init] Development database schema is ready.');
+    const hasExistingDatabase = await fileExists(databasePath);
+
+    if (!hasExistingDatabase) {
+      console.log('[backend:init] Preparing development database schema...');
+      await runCommand('pnpm --filter @cosmosh/backend run db:push', {
+        cwd: workspaceRoot,
+        env: backendEnv,
+        logPrefix: '[backend:init]',
+        shell: true,
+      });
+      console.log('[backend:init] Development database schema is ready.');
+    } else {
+      console.log(
+        '[backend:init] Development database exists. Skipping prisma db:push to avoid encrypted DB mismatch.',
+      );
+    }
 
     command = 'pnpm --filter @cosmosh/backend exec tsx src/index.ts';
     args = [];

@@ -132,6 +132,10 @@ const Debug: React.FC<DebugProps> = ({
         <div className="text-muted mt-2 text-sm">
           Backend ({backendRuntime}): {backendPingState.message}
         </div>
+        <div className="border-border-subtle mt-3 rounded-md border bg-bg-subtle p-3 text-xs text-header-text-muted">
+          SQLCipher fallback currently requires environment bootstrap when secure storage is unavailable. Configure the
+          temporary master-password environment path until the dedicated set/unlock password dialog is wired.
+        </div>
       </div>
 
       <div className="debug-panel">
