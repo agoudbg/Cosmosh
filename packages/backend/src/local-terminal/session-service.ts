@@ -322,7 +322,6 @@ export class LocalTerminalSessionService {
         },
         cols,
         rows,
-        windowsHide: true,
       });
     } catch (error: unknown) {
       return {
