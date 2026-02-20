@@ -180,16 +180,16 @@ const SelectItem = React.forwardRef<
       className={classNames(menuStyles.item, className)}
       {...props}
     >
-      <span className={menuStyles.itemIndicator}>
-        <SelectPrimitive.ItemIndicator>
+      <span className={classNames(menuStyles.leadingIconSlot, 'shrink-0')}>
+        <SelectPrimitive.ItemIndicator className="inline-flex h-4 w-4 items-center justify-center">
           <Check className="h-4 w-4" />
         </SelectPrimitive.ItemIndicator>
       </span>
-      {shouldShowIconSlot && (
+      {shouldShowIconSlot ? (
         <span className={classNames(menuStyles.leadingIconSlot, !Icon && 'opacity-0')}>
-          {Icon && <Icon className="h-4 w-4" />}
+          {Icon ? <Icon className="h-4 w-4" /> : null}
         </span>
-      )}
+      ) : null}
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
     </SelectPrimitive.Item>
   );
