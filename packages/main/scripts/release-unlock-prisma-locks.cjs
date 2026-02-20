@@ -5,9 +5,20 @@ if (process.platform !== 'win32') {
   process.exit(0);
 }
 
+if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
+  console.log('[main:prebuild] Prisma lock preflight skipped in CI environment.');
+  process.exit(0);
+}
+
+const protectedPids = [process.pid, process.ppid];
+
 const script = [
+  `$protectedPids = @(${protectedPids.join(',')})`,
   "$targets = Get-CimInstance Win32_Process | Where-Object {",
-  "  ($_.Name -in @('node.exe','electron.exe','Cosmosh.exe')) -and $_.CommandLine -like '*Cosmosh*'",
+  "  ($_.Name -in @('node.exe','electron.exe','Cosmosh.exe')) -and",
+  "  $_.ProcessId -notin $protectedPids -and",
+  "  $_.CommandLine -like '*Cosmosh*' -and",
+  "  $_.CommandLine -notlike '*release-unlock-prisma-locks.cjs*'",
   "}",
   "if (-not $targets) {",
   "  Write-Output '[main:prebuild] No Cosmosh lock-holder process detected.'",
