@@ -103,7 +103,7 @@ export const getDatabasePath = (): string => {
 
 export const toPrismaSqliteUrl = (databasePath: string): string => {
   const normalizedPath = databasePath.split(path.sep).join('/');
-  return `file:${encodeURI(normalizedPath)}`;
+  return `file:${normalizedPath}`;
 };
 
 export const getDatabaseEncryptionKey = async (): Promise<string> => {

@@ -197,7 +197,7 @@ export const getDatabaseEncryptionKey = (): string => {
 
 const toPrismaSqliteUrl = (filePath: string): string => {
   const normalizedPath = filePath.split(path.sep).join('/');
-  return `file:${encodeURI(normalizedPath)}`;
+  return `file:${normalizedPath}`;
 };
 
 const escapeSqliteLiteral = (input: string): string => {
@@ -324,10 +324,14 @@ const bootstrapSqlCipher = (databaseFilePath: string, databaseKey: string): bool
     return true;
   } catch (error: unknown) {
     if (isNativeDriverUnavailableError(error)) {
-      console.warn(
-        '[db:init] SQLCipher native addon is unavailable in current runtime. Falling back to Prisma SQLite mode.',
-      );
-      return false;
+      if (isDevelopmentRuntime()) {
+        console.warn(
+          '[db:init] SQLCipher native addon is unavailable in development runtime. Falling back to Prisma SQLite mode.',
+        );
+        return false;
+      }
+
+      throw error;
     }
 
     const message = error instanceof Error ? error.message : String(error);

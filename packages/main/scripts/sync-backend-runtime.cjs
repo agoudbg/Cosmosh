@@ -13,6 +13,7 @@ const thirdPartyEntryPackages = [
   'hono',
   'ssh2',
   'ws',
+  'node-pty',
   'intl-messageformat',
   'better-sqlite3-multiple-ciphers',
 ];
