@@ -688,7 +688,7 @@ const SSHEditor: React.FC = () => {
             </Menubar>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto pb-2 pr-1">
+          <div className="min-h-0 flex-1 overflow-auto pb-2">
             {isLoading ? <div className="px-2 text-sm text-home-text-subtle">{t('home.loading')}</div> : null}
 
             {!isLoading && displayGroups.length === 0 && activeServerId !== null ? (

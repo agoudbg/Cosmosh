@@ -821,7 +821,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
 
       <div className="flex min-h-0 flex-1 gap-3.5">
         <aside className="flex h-full w-[250px] shrink-0 flex-col">
-          <div className="min-h-0 flex-1 overflow-auto pb-2 pr-1">
+          <div className="min-h-0 flex-1 overflow-auto pb-2">
             <div className="pb-5">
               <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">{t('home.groupAll')}</div>
               <EntityCard
