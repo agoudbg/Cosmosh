@@ -8,6 +8,14 @@ import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles } from
 import React from 'react';
 
 import { Button } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Menubar } from '../components/ui/menubar';
 import { closeSshSession, createSshSession, listSshServers, trustSshFingerprint } from '../lib/backend';
@@ -69,6 +77,14 @@ type SshTelemetryState = {
   networkRxBytesPerSec: number | null;
   networkTxBytesPerSec: number | null;
   recentCommands: string[];
+};
+
+type HostFingerprintPrompt = {
+  serverId: string;
+  host: string;
+  port: number;
+  algorithm: string;
+  fingerprint: string;
 };
 
 const DEFAULT_TELEMETRY_STATE: SshTelemetryState = {
@@ -154,9 +170,34 @@ const SSH: React.FC = () => {
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const terminalContainerRef = React.useRef<HTMLDivElement | null>(null);
   const connectSessionRef = React.useRef<(() => void) | null>(null);
+  const fingerprintPromptResolverRef = React.useRef<((accepted: boolean) => void) | null>(null);
   const [connectionState, setConnectionState] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [connectionError, setConnectionError] = React.useState<string>('');
   const [telemetryState, setTelemetryState] = React.useState<SshTelemetryState>(DEFAULT_TELEMETRY_STATE);
+  const [hostFingerprintPrompt, setHostFingerprintPrompt] = React.useState<HostFingerprintPrompt | null>(null);
+
+  const resolveHostFingerprintPrompt = React.useCallback((accepted: boolean) => {
+    const resolver = fingerprintPromptResolverRef.current;
+    fingerprintPromptResolverRef.current = null;
+    setHostFingerprintPrompt(null);
+    resolver?.(accepted);
+  }, []);
+
+  const requestHostFingerprintTrust = React.useCallback((prompt: HostFingerprintPrompt): Promise<boolean> => {
+    return new Promise((resolve) => {
+      fingerprintPromptResolverRef.current = resolve;
+      setHostFingerprintPrompt(prompt);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (fingerprintPromptResolverRef.current) {
+        fingerprintPromptResolverRef.current(false);
+        fingerprintPromptResolverRef.current = null;
+      }
+    };
+  }, []);
 
   const handleRetry = React.useCallback(() => {
     if (connectionState === 'connecting' || connectionState === 'connected') {
@@ -330,9 +371,17 @@ const SSH: React.FC = () => {
         }
 
         if (!createResult.success && createResult.code === 'SSH_HOST_UNTRUSTED') {
-          const confirmed = window.confirm(
-            `首次连接检测到未受信任指纹。\n\nHost: ${createResult.data.host}:${createResult.data.port}\nAlgorithm: ${createResult.data.algorithm}\nFingerprint: ${createResult.data.fingerprint}\n\n是否信任并继续连接？`,
-          );
+          const confirmed = await requestHostFingerprintTrust({
+            serverId: createResult.data.serverId,
+            host: createResult.data.host,
+            port: createResult.data.port,
+            algorithm: createResult.data.algorithm,
+            fingerprint: createResult.data.fingerprint,
+          });
+
+          if (disposed) {
+            return;
+          }
 
           if (!confirmed) {
             setConnectionState('failed');
@@ -583,6 +632,60 @@ const SSH: React.FC = () => {
           </div>
         </div>
       ) : null}
+
+      <Dialog
+        open={hostFingerprintPrompt !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            resolveHostFingerprintPrompt(false);
+          }
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault();
+            resolveHostFingerprintPrompt(false);
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{t('ssh.hostFingerprintDialogTitle')}</DialogTitle>
+            <DialogDescription>{t('ssh.hostFingerprintDialogDescription')}</DialogDescription>
+          </DialogHeader>
+
+          {hostFingerprintPrompt ? (
+            <div className="space-y-2 rounded-md border border-home-divider p-3 text-sm">
+              <div>
+                <span className="text-home-text-subtle">{t('ssh.hostFingerprintDialogHost')}: </span>
+                <span>
+                  {hostFingerprintPrompt.host}:{hostFingerprintPrompt.port}
+                </span>
+              </div>
+              <div>
+                <span className="text-home-text-subtle">{t('ssh.hostFingerprintDialogAlgorithm')}: </span>
+                <span>{hostFingerprintPrompt.algorithm}</span>
+              </div>
+              <div>
+                <span className="text-home-text-subtle">{t('ssh.hostFingerprintDialogFingerprint')}: </span>
+                <span className="break-all">{hostFingerprintPrompt.fingerprint}</span>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => resolveHostFingerprintPrompt(false)}
+            >
+              {t('ssh.hostFingerprintDialogCancel')}
+            </Button>
+            <Button onClick={() => resolveHostFingerprintPrompt(true)}>
+              {t('ssh.hostFingerprintDialogTrustContinue')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
