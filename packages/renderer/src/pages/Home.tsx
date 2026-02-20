@@ -78,6 +78,7 @@ import { createFolder, normalizeFolderName, removeFolder, renameFolder } from '.
 import { colorKeyToClassName, type HomeIconKey, resolveHomeVisual } from '../lib/home-visuals';
 import { getLocale, t } from '../lib/i18n';
 import { useToast } from '../lib/toast-context';
+import { useDirectionalNavigation } from '../lib/use-directional-navigation';
 
 type HomeProps = {
   onOpenSSH: (serverId: string) => void;
@@ -508,6 +509,47 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     });
   }, [folders, folderServerCountMap, activeFolderId]);
 
+  const selectedFolderCardIndex = React.useMemo(() => {
+    return folderSidebarCards.findIndex((item) => item.selected);
+  }, [folderSidebarCards]);
+
+  const folderListNavigation = useDirectionalNavigation({
+    itemCount: folderSidebarCards.length,
+    columns: 1,
+    initialIndex: selectedFolderCardIndex >= 0 ? selectedFolderCardIndex : 0,
+  });
+
+  const setFolderListActiveIndex = folderListNavigation.setActiveIndex;
+
+  React.useEffect(() => {
+    if (selectedFolderCardIndex >= 0) {
+      setFolderListActiveIndex(selectedFolderCardIndex);
+    }
+  }, [selectedFolderCardIndex, setFolderListActiveIndex]);
+
+  const serverGridEntries = React.useMemo(() => {
+    return groupedServers.flatMap((group) => {
+      return group.items.map((server) => ({
+        key: `${group.key}:${server.id}`,
+      }));
+    });
+  }, [groupedServers]);
+
+  const serverGridIndexMap = React.useMemo(() => {
+    const indexMap = new Map<string, number>();
+    serverGridEntries.forEach((entry, index) => {
+      indexMap.set(entry.key, index);
+    });
+
+    return indexMap;
+  }, [serverGridEntries]);
+
+  const serverGridNavigation = useDirectionalNavigation({
+    itemCount: serverGridEntries.length,
+    columns: 3,
+    initialIndex: 0,
+  });
+
   const groupModeIcon = React.useMemo(() => {
     if (groupMode === 'tag') {
       return Tags;
@@ -724,10 +766,11 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
             <div>
               <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">{t('home.groupFolders')}</div>
               <div className="space-y-1.5">
-                {folderSidebarCards.map((item) => (
+                {folderSidebarCards.map((item, index) => (
                   <ContextMenu key={item.key}>
                     <ContextMenuTrigger className="block">
                       <EntityCard
+                        {...folderListNavigation.getItemProps(index)}
                         title={item.title}
                         subtitle={item.subtitle}
                         selected={item.selected}
@@ -985,11 +1028,14 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                   ) : null}
                   <div className="grid max-w-[880px] grid-cols-3 gap-x-7 gap-y-3">
                     {group.items.map((server) => {
+                      const serverEntryKey = `${group.key}:${server.id}`;
+                      const serverEntryIndex = serverGridIndexMap.get(serverEntryKey) ?? 0;
                       const visual = resolveHomeVisual('server', server.id, server.folder?.id ?? server.id);
                       return (
-                        <ContextMenu key={`${group.key}:${server.id}`}>
+                        <ContextMenu key={serverEntryKey}>
                           <ContextMenuTrigger className="block">
                             <EntityCard
+                              {...serverGridNavigation.getItemProps(serverEntryIndex)}
                               draggable
                               layout="grid"
                               title={server.name}
@@ -999,8 +1045,8 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                               imageUrl={visual.imageUrl}
                               action={
                                 <Button
-                                  disabled
                                   variant="ghost"
+                                  tabIndex={serverEntryIndex === serverGridNavigation.activeIndex ? 0 : -1}
                                   className="h-[32px] w-[32px] rounded-[8px] px-0 opacity-0 transition-opacity focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
                                   aria-label={t('home.contextConnectSftp')}
                                   onClick={(event) => {

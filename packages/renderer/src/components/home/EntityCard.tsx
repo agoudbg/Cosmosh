@@ -19,6 +19,9 @@ type EntityCardProps = {
   onDrop?: React.DragEventHandler<HTMLDivElement>;
   onDragEnter?: React.DragEventHandler<HTMLDivElement>;
   onDragLeave?: React.DragEventHandler<HTMLDivElement>;
+  tabIndex?: number;
+  onFocus?: React.FocusEventHandler<HTMLDivElement>;
+  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
 };
 
 const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
@@ -40,11 +43,19 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
       onDrop,
       onDragEnter,
       onDragLeave,
+      tabIndex,
+      onFocus,
+      onKeyDown,
     },
     ref,
   ) => {
     const handleKeyDown = React.useCallback(
       (event: React.KeyboardEvent<HTMLDivElement>) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented) {
+          return;
+        }
+
         if (!onClick) {
           return;
         }
@@ -54,7 +65,7 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
           onClick();
         }
       },
-      [onClick],
+      [onClick, onKeyDown],
     );
 
     const content = (
@@ -91,7 +102,7 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
       <div
         ref={ref}
         role="button"
-        tabIndex={0}
+        tabIndex={tabIndex ?? 0}
         className={classNames(
           'group w-full rounded-[15px] px-2 py-2 text-left transition-colors outline-none [-webkit-app-region:no-drag]',
           onClick ? 'cursor-pointer' : 'cursor-default',
@@ -112,6 +123,7 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
         onDrop={onDrop}
         onDragEnter={onDragEnter}
         onDragLeave={onDragLeave}
+        onFocus={onFocus}
       >
         {content}
       </div>

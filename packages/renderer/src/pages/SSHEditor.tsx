@@ -54,6 +54,7 @@ import { colorKeyToClassName, resolveHomeVisual } from '../lib/home-visuals';
 import { t } from '../lib/i18n';
 import { consumeSshEditorCreateMode, getActiveSshServerId, setActiveSshServerId } from '../lib/ssh-target';
 import { useToast } from '../lib/toast-context';
+import { useDirectionalNavigation } from '../lib/use-directional-navigation';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
 type SshFolder = components['schemas']['SshFolder'];
@@ -398,6 +399,54 @@ const SSHEditor: React.FC = () => {
     return ArrowUpDown;
   }, [sortMode]);
 
+  const sidebarEntries = React.useMemo(() => {
+    const entries: Array<{ key: string; serverId: string | null }> = [];
+
+    if (activeServerId === null) {
+      entries.push({ key: 'draft:server', serverId: null });
+    }
+
+    displayGroups.forEach((group) => {
+      group.items.forEach((server) => {
+        entries.push({
+          key: `server:${server.id}`,
+          serverId: server.id,
+        });
+      });
+    });
+
+    return entries;
+  }, [activeServerId, displayGroups]);
+
+  const sidebarEntryIndexMap = React.useMemo(() => {
+    const indexMap = new Map<string, number>();
+    sidebarEntries.forEach((entry, index) => {
+      indexMap.set(entry.key, index);
+    });
+
+    return indexMap;
+  }, [sidebarEntries]);
+
+  const activeSidebarIndex = React.useMemo(() => {
+    if (activeServerId === null) {
+      return sidebarEntryIndexMap.get('draft:server') ?? 0;
+    }
+
+    return sidebarEntryIndexMap.get(`server:${activeServerId}`) ?? 0;
+  }, [activeServerId, sidebarEntryIndexMap]);
+
+  const sidebarNavigation = useDirectionalNavigation({
+    itemCount: sidebarEntries.length,
+    columns: 1,
+    initialIndex: activeSidebarIndex,
+  });
+
+  const setSidebarActiveIndex = sidebarNavigation.setActiveIndex;
+
+  React.useEffect(() => {
+    setSidebarActiveIndex(activeSidebarIndex);
+  }, [activeSidebarIndex, setSidebarActiveIndex]);
+
   const onPickServer = React.useCallback(
     (serverId: string) => {
       const targetServer = servers.find((server) => server.id === serverId);
@@ -654,6 +703,7 @@ const SSHEditor: React.FC = () => {
                       {t('ssh.draftSectionTitle')}
                     </div>
                     <EntityCard
+                      {...sidebarNavigation.getItemProps(sidebarEntryIndexMap.get('draft:server') ?? 0)}
                       selected
                       title={t('ssh.draftServerTitle')}
                       subtitle={t('ssh.draftServerSubtitle')}
@@ -671,9 +721,11 @@ const SSHEditor: React.FC = () => {
                     <div className="space-y-1.5">
                       {group.items.map((server) => {
                         const visual = resolveHomeVisual('server', server.id, server.folder?.id ?? server.id);
+                        const sidebarIndex = sidebarEntryIndexMap.get(`server:${server.id}`) ?? 0;
                         return (
                           <EntityCard
                             key={server.id}
+                            {...sidebarNavigation.getItemProps(sidebarIndex)}
                             title={server.name}
                             subtitle={server.note || server.host}
                             selected={server.id === activeServerId}
