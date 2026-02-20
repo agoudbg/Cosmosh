@@ -140,9 +140,18 @@ const SortableTab = React.forwardRef<
               type="button"
               aria-label={`Close ${tab.title}`}
               tabIndex={isActive ? 0 : -1}
-              onPointerDown={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onClick={(event) => {
                 event.stopPropagation();
                 onClose(tab.id);
