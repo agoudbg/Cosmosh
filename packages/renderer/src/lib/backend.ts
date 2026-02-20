@@ -22,6 +22,11 @@ import type {
 } from '@cosmosh/api-contract';
 
 import { backendClient } from './api/client';
+import type {
+  LocalTerminalCreateSessionRequest,
+  LocalTerminalCreateSessionResponse,
+  LocalTerminalListResponse,
+} from './api/transport';
 
 export const testBackendPing = async (): Promise<ApiTestPingResponse> => {
   return backendClient.testPing();
@@ -87,6 +92,20 @@ export const trustSshFingerprint = async (
 
 export const closeSshSession = async (sessionId: string): Promise<{ success: boolean }> => {
   return backendClient.closeSshSession(sessionId);
+};
+
+export const listLocalTerminalProfiles = async (): Promise<LocalTerminalListResponse> => {
+  return backendClient.listLocalTerminalProfiles();
+};
+
+export const createLocalTerminalSession = async (
+  payload: LocalTerminalCreateSessionRequest,
+): Promise<LocalTerminalCreateSessionResponse> => {
+  return backendClient.createLocalTerminalSession(payload);
+};
+
+export const closeLocalTerminalSession = async (sessionId: string): Promise<{ success: boolean }> => {
+  return backendClient.closeLocalTerminalSession(sessionId);
 };
 
 export const deleteSshServer = async (serverId: string): Promise<{ success: boolean }> => {

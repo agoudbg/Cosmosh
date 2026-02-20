@@ -22,6 +22,45 @@ import type {
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 
+type LocalTerminalProfile = {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+};
+
+type LocalTerminalListResponse = {
+  success: true;
+  code: string;
+  message: string;
+  requestId: string;
+  timestamp: string;
+  data: {
+    items: LocalTerminalProfile[];
+  };
+};
+
+type LocalTerminalCreateSessionRequest = {
+  profileId: string;
+  cols: number;
+  rows: number;
+  term: string;
+};
+
+type LocalTerminalCreateSessionResponse = {
+  success: true;
+  code: string;
+  message: string;
+  requestId: string;
+  timestamp: string;
+  data: {
+    sessionId: string;
+    profileId: string;
+    websocketUrl: string;
+    websocketToken: string;
+  };
+};
+
 declare global {
   interface ImportMetaEnv {
     readonly DEV: boolean;
@@ -71,6 +110,11 @@ declare global {
       backendSshCloseSession: (sessionId: string) => Promise<{ success: boolean }>;
       backendSshDeleteServer: (serverId: string) => Promise<{ success: boolean }>;
       backendSshDeleteFolder: (folderId: string) => Promise<{ success: boolean }>;
+      backendLocalTerminalListProfiles: () => Promise<LocalTerminalListResponse | ApiErrorResponse>;
+      backendLocalTerminalCreateSession: (
+        payload: LocalTerminalCreateSessionRequest,
+      ) => Promise<LocalTerminalCreateSessionResponse | ApiErrorResponse>;
+      backendLocalTerminalCloseSession: (sessionId: string) => Promise<{ success: boolean }>;
       platform: NodeJS.Platform;
     };
   }

@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 
 import { buildErrorPayload } from './errors.js';
 import { registerCommonMiddleware } from './middleware.js';
+import { registerLocalTerminalRoutes } from './routes/local-terminal.js';
 import { registerSshRoutes } from './routes/ssh.js';
 import { registerSystemRoutes } from './routes/system.js';
 import type { BackendAppContext } from './types.js';
@@ -13,6 +14,7 @@ export const createBackendApp = (context: BackendAppContext): Hono => {
   registerCommonMiddleware(app, context);
   registerSystemRoutes(app);
   registerSshRoutes(app, context);
+  registerLocalTerminalRoutes(app, context);
 
   app.onError((error, c) => {
     console.error('[http][UNHANDLED]', error);

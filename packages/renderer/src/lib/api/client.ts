@@ -21,7 +21,12 @@ import type {
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 
-import { createApiTransport } from './transport';
+import {
+  createApiTransport,
+  LocalTerminalCreateSessionRequest,
+  LocalTerminalCreateSessionResponse,
+  LocalTerminalListResponse,
+} from './transport';
 
 export type BackendClient = {
   runtimeTarget: 'electron' | 'browser';
@@ -39,6 +44,11 @@ export type BackendClient = {
     payload: ApiSshCreateSessionRequest,
   ) => Promise<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse>;
   trustSshFingerprint: (payload: ApiSshTrustFingerprintRequest) => Promise<ApiSshTrustFingerprintResponse>;
+  listLocalTerminalProfiles: () => Promise<LocalTerminalListResponse>;
+  createLocalTerminalSession: (
+    payload: LocalTerminalCreateSessionRequest,
+  ) => Promise<LocalTerminalCreateSessionResponse>;
+  closeLocalTerminalSession: (sessionId: string) => Promise<{ success: boolean }>;
   closeSshSession: (sessionId: string) => Promise<{ success: boolean }>;
   deleteSshServer: (serverId: string) => Promise<{ success: boolean }>;
   deleteSshFolder: (folderId: string) => Promise<{ success: boolean }>;
@@ -164,6 +174,27 @@ export const createBackendClient = (): BackendClient => {
       }
 
       return payload;
+    },
+    listLocalTerminalProfiles: async () => {
+      const payload = await transport.listLocalTerminalProfiles();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    createLocalTerminalSession: async (requestPayload) => {
+      const payload = await transport.createLocalTerminalSession(requestPayload);
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    closeLocalTerminalSession: async (sessionId) => {
+      return transport.closeLocalTerminalSession(sessionId);
     },
     closeSshSession: async (sessionId) => {
       return transport.closeSshSession(sessionId);

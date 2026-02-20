@@ -73,10 +73,12 @@ import { Input } from '../components/ui/input';
 import { menuStyles } from '../components/ui/menu-styles';
 import { Menubar, MenubarSeparator, MenuToggleGroup, MenuToggleGroupItem } from '../components/ui/menubar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
-import { listSshFolders, listSshServers, updateSshServer } from '../lib/backend';
+import type { LocalTerminalProfile } from '../lib/api/transport';
+import { listLocalTerminalProfiles, listSshFolders, listSshServers, updateSshServer } from '../lib/backend';
 import { createFolder, normalizeFolderName, removeFolder, renameFolder } from '../lib/folder-actions';
 import { colorKeyToClassName, type HomeIconKey, resolveHomeVisual } from '../lib/home-visuals';
 import { getLocale, t } from '../lib/i18n';
+import { toLocalTerminalTargetId } from '../lib/ssh-target';
 import { useToast } from '../lib/toast-context';
 import { useDirectionalNavigation } from '../lib/use-directional-navigation';
 
@@ -109,6 +111,8 @@ type SidebarCardItem = {
   imageUrl?: string;
   onClick: () => void;
 };
+
+const LOCAL_TERMINAL_FOLDER_ID = '__local_terminals__';
 
 const iconMap: Record<HomeIconKey, React.ComponentType<{ className?: string }>> = {
   Folder,
@@ -149,6 +153,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const [servers, setServers] = React.useState<SshServerListItem[]>([]);
   const [folders, setFolders] = React.useState<SshFolder[]>([]);
+  const [localTerminalProfiles, setLocalTerminalProfiles] = React.useState<LocalTerminalProfile[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [errorMessage, setErrorMessage] = React.useState<string>('');
   const [activeFolderId, setActiveFolderId] = React.useState<string>('all');
@@ -173,9 +178,14 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     setErrorMessage('');
 
     try {
-      const [foldersResponse, serversResponse] = await Promise.all([listSshFolders(), listSshServers()]);
+      const [foldersResponse, serversResponse, localTerminalProfilesResponse] = await Promise.all([
+        listSshFolders(),
+        listSshServers(),
+        listLocalTerminalProfiles(),
+      ]);
       setFolders(foldersResponse.data.items);
       setServers(serversResponse.data.items);
+      setLocalTerminalProfiles(localTerminalProfilesResponse.data.items);
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to load home data.');
     } finally {
@@ -235,6 +245,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
 
   const tagSourceServers = React.useMemo(() => {
     return servers.filter((server) => {
+      if (activeFolderId === LOCAL_TERMINAL_FOLDER_ID) {
+        return false;
+      }
+
       if (activeFolderId !== 'all' && server.folder?.id !== activeFolderId) {
         return false;
       }
@@ -252,13 +266,17 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   }, [servers, activeFolderId, quickFilter]);
 
   const tags = React.useMemo(() => {
+    if (activeFolderId === LOCAL_TERMINAL_FOLDER_ID) {
+      return ['all'];
+    }
+
     const nameSet = new Set<string>();
     tagSourceServers.forEach((server) => {
       (server.tags ?? []).forEach((tag) => nameSet.add(tag.name));
     });
 
     return ['all', ...Array.from(nameSet)];
-  }, [tagSourceServers]);
+  }, [tagSourceServers, activeFolderId]);
 
   React.useEffect(() => {
     if (!tags.includes(activeTag)) {
@@ -268,6 +286,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
 
   const filteredServers = React.useMemo(() => {
     return servers.filter((server) => {
+      if (activeFolderId === LOCAL_TERMINAL_FOLDER_ID) {
+        return false;
+      }
+
       if (activeFolderId !== 'all' && server.folder?.id !== activeFolderId) {
         return false;
       }
@@ -299,6 +321,27 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       );
     });
   }, [servers, activeFolderId, quickFilter, activeTag, search]);
+
+  const filteredLocalTerminalProfiles = React.useMemo(() => {
+    if (activeFolderId !== LOCAL_TERMINAL_FOLDER_ID) {
+      return [];
+    }
+
+    const keyword = search.trim().toLowerCase();
+    const sortedProfiles = [...localTerminalProfiles].sort((left, right) => left.name.localeCompare(right.name));
+
+    if (!keyword) {
+      return sortedProfiles;
+    }
+
+    return sortedProfiles.filter((profile) => {
+      return (
+        profile.name.toLowerCase().includes(keyword) ||
+        profile.command.toLowerCase().includes(keyword) ||
+        profile.id.toLowerCase().includes(keyword)
+      );
+    });
+  }, [activeFolderId, localTerminalProfiles, search]);
 
   const sortServers = React.useCallback(
     (items: SshServerListItem[]): SshServerListItem[] => {
@@ -441,6 +484,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       return t('home.groupAllHosts');
     }
 
+    if (activeFolderId === LOCAL_TERMINAL_FOLDER_ID) {
+      return t('home.groupLocalTerminals');
+    }
+
     return folders.find((folder) => folder.id === activeFolderId)?.name ?? t('home.groupUntitled');
   }, [quickFilter, activeFolderId, folders]);
 
@@ -488,7 +535,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   }, [quickFilter, recentCount, favoriteCount]);
 
   const folderSidebarCards = React.useMemo<SidebarCardItem[]>(() => {
-    return folders.map((folder) => {
+    const userFolders = folders.map((folder) => {
       const visual = resolveHomeVisual('folder', folder.id, folder.id);
       const count = folderServerCountMap.get(folder.id) ?? 0;
 
@@ -507,7 +554,24 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
         },
       };
     });
-  }, [folders, folderServerCountMap, activeFolderId]);
+
+    return [
+      {
+        key: `folder:${LOCAL_TERMINAL_FOLDER_ID}`,
+        folderId: LOCAL_TERMINAL_FOLDER_ID,
+        title: t('home.groupLocalTerminals'),
+        subtitle: t('home.hostCount', { count: localTerminalProfiles.length }),
+        selected: activeFolderId === LOCAL_TERMINAL_FOLDER_ID,
+        iconKey: 'HardDrive',
+        iconClassName: 'bg-home-icon-blue text-home-icon-blue-ink',
+        onClick: () => {
+          setActiveFolderId(LOCAL_TERMINAL_FOLDER_ID);
+          setQuickFilter('none');
+        },
+      },
+      ...userFolders,
+    ];
+  }, [folders, folderServerCountMap, activeFolderId, localTerminalProfiles.length]);
 
   const selectedFolderCardIndex = React.useMemo(() => {
     return folderSidebarCards.findIndex((item) => item.selected);
@@ -778,7 +842,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                         icon={createIconNode(item.iconKey, item.iconClassName, item.title)}
                         imageUrl={item.imageUrl}
                         onDragOver={(event) => {
-                          if (!item.folderId || !draggingServerId) {
+                          if (!item.folderId || item.folderId === LOCAL_TERMINAL_FOLDER_ID || !draggingServerId) {
                             return;
                           }
 
@@ -794,7 +858,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                           }
                         }}
                         onDrop={(event) => {
-                          if (!item.folderId) {
+                          if (!item.folderId || item.folderId === LOCAL_TERMINAL_FOLDER_ID) {
                             return;
                           }
 
@@ -821,9 +885,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                       </ContextMenuItem>
                       <ContextMenuItem
                         icon={Pencil}
+                        disabled={item.folderId === LOCAL_TERMINAL_FOLDER_ID}
                         onSelect={() => {
                           const folderId = item.folderId;
-                          if (!folderId) {
+                          if (!folderId || folderId === LOCAL_TERMINAL_FOLDER_ID) {
                             return;
                           }
 
@@ -834,9 +899,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                       </ContextMenuItem>
                       <ContextMenuItem
                         icon={Trash2}
+                        disabled={item.folderId === LOCAL_TERMINAL_FOLDER_ID}
                         onSelect={() => {
                           const folderId = item.folderId;
-                          if (!folderId) {
+                          if (!folderId || folderId === LOCAL_TERMINAL_FOLDER_ID) {
                             return;
                           }
 
@@ -1021,132 +1087,185 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
 
           {!isLoading && !errorMessage ? (
             <div className="space-y-4 pb-2">
-              {groupedServers.map((group) => (
-                <section key={group.key}>
-                  {group.title ? (
-                    <div className="px-2 pb-2.5 text-[13px] font-medium text-home-text-subtle">{group.title}</div>
-                  ) : null}
+              {activeFolderId === LOCAL_TERMINAL_FOLDER_ID ? (
+                <section>
                   <div className="grid max-w-[880px] grid-cols-3 gap-x-7 gap-y-3">
-                    {group.items.map((server) => {
-                      const serverEntryKey = `${group.key}:${server.id}`;
-                      const serverEntryIndex = serverGridIndexMap.get(serverEntryKey) ?? 0;
-                      const visual = resolveHomeVisual('server', server.id, server.folder?.id ?? server.id);
-                      return (
-                        <ContextMenu key={serverEntryKey}>
-                          <ContextMenuTrigger className="block">
-                            <EntityCard
-                              {...serverGridNavigation.getItemProps(serverEntryIndex)}
-                              draggable
-                              layout="grid"
-                              title={server.name}
-                              subtitle={server.host}
-                              className={draggingServerId === server.id ? 'opacity-70' : undefined}
-                              icon={createIconNode(visual.iconKey, colorKeyToClassName(visual.colorKey), server.name)}
-                              imageUrl={visual.imageUrl}
-                              action={
-                                <Button
-                                  variant="ghost"
-                                  tabIndex={serverEntryIndex === serverGridNavigation.activeIndex ? 0 : -1}
-                                  className="h-[32px] w-[32px] rounded-[8px] px-0 opacity-0 transition-opacity focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
-                                  aria-label={t('home.contextConnectSftp')}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                  }}
-                                >
-                                  <File className="h-4 w-4 flex-shrink-0" />
-                                </Button>
-                              }
-                              onDragStart={(event) => {
-                                event.dataTransfer.setData('application/x-cosmosh-server-id', server.id);
-                                event.dataTransfer.effectAllowed = 'move';
-                                setDraggingServerId(server.id);
-                              }}
-                              onDragEnd={() => {
-                                setDraggingServerId(null);
-                                setDragOverFolderId(null);
-                              }}
-                              onClick={() => onOpenSSH(server.id)}
-                            />
-                          </ContextMenuTrigger>
-                          <ContextMenuContent>
-                            <ContextMenuItem
-                              icon={Terminal}
-                              onSelect={() => onOpenSSH(server.id)}
-                            >
-                              {t('home.contextConnect')}
-                            </ContextMenuItem>
-                            {/* TODO(home): SFTP connect entry is pending dedicated SFTP page/session wiring. */}
-                            <ContextMenuItem
-                              disabled
-                              icon={File}
-                            >
-                              {t('home.contextConnectSftp')}
-                            </ContextMenuItem>
-                            <ContextMenuSeparator />
-                            <ContextMenuSub>
-                              <ContextMenuSubTrigger icon={Copy}>{t('home.contextCopy')}</ContextMenuSubTrigger>
-                              <ContextMenuSubContent>
-                                <ContextMenuItem
-                                  icon={Network}
-                                  onSelect={() => {
-                                    void handleCopyToClipboard(server.host);
-                                  }}
-                                >
-                                  {t('home.contextCopyIp')}
-                                </ContextMenuItem>
-                                <ContextMenuItem
-                                  icon={Server}
-                                  onSelect={() => {
-                                    void handleCopyToClipboard(server.name);
-                                  }}
-                                >
-                                  {t('home.contextCopyName')}
-                                </ContextMenuItem>
-                                <ContextMenuItem
-                                  icon={Hash}
-                                  onSelect={() => {
-                                    void handleCopyToClipboard(String(server.port));
-                                  }}
-                                >
-                                  {t('home.contextCopyPort')}
-                                </ContextMenuItem>
-                                <ContextMenuItem
-                                  icon={Link}
-                                  onSelect={() => {
-                                    void handleCopyToClipboard(
-                                      `ssh://${server.username}@${server.host}:${server.port}`,
-                                    );
-                                  }}
-                                >
-                                  {t('home.contextCopySchema')}
-                                </ContextMenuItem>
-                              </ContextMenuSubContent>
-                            </ContextMenuSub>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem
-                              icon={Pencil}
-                              onSelect={() => onOpenSshEditor(server.id)}
-                            >
-                              {t('home.contextEdit')}
-                            </ContextMenuItem>
-                            {/* TODO(home): Server delete flow (confirm + API + local refresh) is not implemented yet. */}
-                            <ContextMenuItem
-                              disabled
-                              icon={Trash2}
-                            >
-                              {t('home.contextDelete')}
-                            </ContextMenuItem>
-                          </ContextMenuContent>
-                        </ContextMenu>
-                      );
-                    })}
+                    {filteredLocalTerminalProfiles.map((profile, index) => (
+                      <ContextMenu key={profile.id}>
+                        <ContextMenuTrigger className="block">
+                          <EntityCard
+                            {...serverGridNavigation.getItemProps(index)}
+                            layout="grid"
+                            title={profile.name}
+                            subtitle={profile.command}
+                            icon={createIconNode(
+                              'HardDrive',
+                              'bg-home-icon-blue text-home-icon-blue-ink',
+                              profile.name,
+                            )}
+                            onClick={() => onOpenSSH(toLocalTerminalTargetId(profile.id))}
+                          />
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem
+                            icon={Terminal}
+                            onSelect={() => onOpenSSH(toLocalTerminalTargetId(profile.id))}
+                          >
+                            {t('home.contextConnect')}
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            disabled
+                            className="text-xs text-home-text-subtle"
+                          >
+                            {t('home.contextLocalTerminalManagedHint')}
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    ))}
                   </div>
                 </section>
-              ))}
+              ) : (
+                groupedServers.map((group) => (
+                  <section key={group.key}>
+                    {group.title ? (
+                      <div className="px-2 pb-2.5 text-[13px] font-medium text-home-text-subtle">{group.title}</div>
+                    ) : null}
+                    <div className="grid max-w-[880px] grid-cols-3 gap-x-7 gap-y-3">
+                      {group.items.map((server) => {
+                        const serverEntryKey = `${group.key}:${server.id}`;
+                        const serverEntryIndex = serverGridIndexMap.get(serverEntryKey) ?? 0;
+                        const visual = resolveHomeVisual('server', server.id, server.folder?.id ?? server.id);
+                        return (
+                          <ContextMenu key={serverEntryKey}>
+                            <ContextMenuTrigger className="block">
+                              <EntityCard
+                                {...serverGridNavigation.getItemProps(serverEntryIndex)}
+                                draggable
+                                layout="grid"
+                                title={server.name}
+                                subtitle={server.host}
+                                className={draggingServerId === server.id ? 'opacity-70' : undefined}
+                                icon={createIconNode(visual.iconKey, colorKeyToClassName(visual.colorKey), server.name)}
+                                imageUrl={visual.imageUrl}
+                                action={
+                                  <Button
+                                    variant="ghost"
+                                    tabIndex={serverEntryIndex === serverGridNavigation.activeIndex ? 0 : -1}
+                                    className="h-[32px] w-[32px] rounded-[8px] px-0 opacity-0 transition-opacity focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
+                                    aria-label={t('home.contextConnectSftp')}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                    }}
+                                  >
+                                    <File className="h-4 w-4 flex-shrink-0" />
+                                  </Button>
+                                }
+                                onDragStart={(event) => {
+                                  event.dataTransfer.setData('application/x-cosmosh-server-id', server.id);
+                                  event.dataTransfer.effectAllowed = 'move';
+                                  setDraggingServerId(server.id);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingServerId(null);
+                                  setDragOverFolderId(null);
+                                }}
+                                onClick={() => onOpenSSH(server.id)}
+                              />
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                icon={Terminal}
+                                onSelect={() => onOpenSSH(server.id)}
+                              >
+                                {t('home.contextConnect')}
+                              </ContextMenuItem>
+                              {/* TODO(home): SFTP connect entry is pending dedicated SFTP page/session wiring. */}
+                              <ContextMenuItem
+                                disabled
+                                icon={File}
+                              >
+                                {t('home.contextConnectSftp')}
+                              </ContextMenuItem>
+                              <ContextMenuSeparator />
+                              <ContextMenuSub>
+                                <ContextMenuSubTrigger icon={Copy}>{t('home.contextCopy')}</ContextMenuSubTrigger>
+                                <ContextMenuSubContent>
+                                  <ContextMenuItem
+                                    icon={Network}
+                                    onSelect={() => {
+                                      void handleCopyToClipboard(server.host);
+                                    }}
+                                  >
+                                    {t('home.contextCopyIp')}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    icon={Server}
+                                    onSelect={() => {
+                                      void handleCopyToClipboard(server.name);
+                                    }}
+                                  >
+                                    {t('home.contextCopyName')}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    icon={Hash}
+                                    onSelect={() => {
+                                      void handleCopyToClipboard(String(server.port));
+                                    }}
+                                  >
+                                    {t('home.contextCopyPort')}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    icon={Link}
+                                    onSelect={() => {
+                                      void handleCopyToClipboard(
+                                        `ssh://${server.username}@${server.host}:${server.port}`,
+                                      );
+                                    }}
+                                  >
+                                    {t('home.contextCopySchema')}
+                                  </ContextMenuItem>
+                                </ContextMenuSubContent>
+                              </ContextMenuSub>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                icon={Pencil}
+                                onSelect={() => onOpenSshEditor(server.id)}
+                              >
+                                {t('home.contextEdit')}
+                              </ContextMenuItem>
+                              {/* TODO(home): Server delete flow (confirm + API + local refresh) is not implemented yet. */}
+                              <ContextMenuItem
+                                disabled
+                                icon={Trash2}
+                              >
+                                {t('home.contextDelete')}
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))
+              )}
             </div>
           ) : null}
 
-          {!isLoading && !errorMessage && filteredServers.length === 0 ? (
+          {!isLoading &&
+          !errorMessage &&
+          activeFolderId !== LOCAL_TERMINAL_FOLDER_ID &&
+          filteredServers.length === 0 ? (
+            <HomeEmptyState
+              text={t('home.empty')}
+              icon={PackageOpen}
+            />
+          ) : null}
+
+          {!isLoading &&
+          !errorMessage &&
+          activeFolderId === LOCAL_TERMINAL_FOLDER_ID &&
+          filteredLocalTerminalProfiles.length === 0 ? (
             <HomeEmptyState
               text={t('home.empty')}
               icon={PackageOpen}

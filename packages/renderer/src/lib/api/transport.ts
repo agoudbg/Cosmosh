@@ -25,6 +25,45 @@ import { API_HEADERS, API_PATHS } from '@cosmosh/api-contract';
 
 type RuntimeTarget = 'electron' | 'browser';
 
+export type LocalTerminalProfile = {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+};
+
+export type LocalTerminalListResponse = {
+  success: true;
+  code: string;
+  message: string;
+  requestId: string;
+  timestamp: string;
+  data: {
+    items: LocalTerminalProfile[];
+  };
+};
+
+export type LocalTerminalCreateSessionRequest = {
+  profileId: string;
+  cols: number;
+  rows: number;
+  term: string;
+};
+
+export type LocalTerminalCreateSessionResponse = {
+  success: true;
+  code: string;
+  message: string;
+  requestId: string;
+  timestamp: string;
+  data: {
+    sessionId: string;
+    profileId: string;
+    websocketUrl: string;
+    websocketToken: string;
+  };
+};
+
 type ApiResponse =
   | ApiErrorResponse
   | ApiTestPingResponse
@@ -39,7 +78,9 @@ type ApiResponse =
   | ApiSshCreateTagResponse
   | ApiSshCreateSessionResponse
   | ApiSshCreateSessionHostVerificationRequiredResponse
-  | ApiSshTrustFingerprintResponse;
+  | ApiSshTrustFingerprintResponse
+  | LocalTerminalListResponse
+  | LocalTerminalCreateSessionResponse;
 
 export type ApiTransport = {
   target: RuntimeTarget;
@@ -65,6 +106,11 @@ export type ApiTransport = {
   trustSshFingerprint: (
     payload: ApiSshTrustFingerprintRequest,
   ) => Promise<ApiSshTrustFingerprintResponse | ApiErrorResponse>;
+  listLocalTerminalProfiles: () => Promise<LocalTerminalListResponse | ApiErrorResponse>;
+  createLocalTerminalSession: (
+    payload: LocalTerminalCreateSessionRequest,
+  ) => Promise<LocalTerminalCreateSessionResponse | ApiErrorResponse>;
+  closeLocalTerminalSession: (sessionId: string) => Promise<{ success: boolean }>;
   closeSshSession: (sessionId: string) => Promise<{ success: boolean }>;
   deleteSshServer: (serverId: string) => Promise<{ success: boolean }>;
   deleteSshFolder: (folderId: string) => Promise<{ success: boolean }>;
@@ -148,6 +194,19 @@ const createElectronTransport = (): ApiTransport => {
       return (await window.electron!.backendSshTrustFingerprint(payload)) as
         | ApiSshTrustFingerprintResponse
         | ApiErrorResponse;
+    },
+    listLocalTerminalProfiles: async () => {
+      return (await window.electron!.backendLocalTerminalListProfiles()) as
+        | LocalTerminalListResponse
+        | ApiErrorResponse;
+    },
+    createLocalTerminalSession: async (payload) => {
+      return (await window.electron!.backendLocalTerminalCreateSession(payload)) as
+        | LocalTerminalCreateSessionResponse
+        | ApiErrorResponse;
+    },
+    closeLocalTerminalSession: async (sessionId) => {
+      return await window.electron!.backendLocalTerminalCloseSession(sessionId);
     },
     closeSshSession: async (sessionId) => {
       return await window.electron!.backendSshCloseSession(sessionId);
@@ -242,6 +301,15 @@ const createBrowserTransport = (): ApiTransport => {
       return (await callBrowserApi(API_PATHS.sshTrustFingerprint, 'POST', payload)) as
         | ApiSshTrustFingerprintResponse
         | ApiErrorResponse;
+    },
+    listLocalTerminalProfiles: async () => {
+      return createBrowserFallbackError('Local terminal profiles are only available in Electron runtime.');
+    },
+    createLocalTerminalSession: async () => {
+      return createBrowserFallbackError('Local terminal sessions are only available in Electron runtime.');
+    },
+    closeLocalTerminalSession: async () => {
+      return { success: false };
     },
     closeSshSession: async (sessionId) => {
       const path = API_PATHS.sshCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));

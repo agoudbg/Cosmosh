@@ -18,9 +18,16 @@ import {
 } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Menubar } from '../components/ui/menubar';
-import { closeSshSession, createSshSession, listSshServers, trustSshFingerprint } from '../lib/backend';
+import {
+  closeLocalTerminalSession,
+  closeSshSession,
+  createLocalTerminalSession,
+  createSshSession,
+  listSshServers,
+  trustSshFingerprint,
+} from '../lib/backend';
 import { t } from '../lib/i18n';
-import { getActiveSshServerId } from '../lib/ssh-target';
+import { getActiveSshServerId, parseTerminalTarget } from '../lib/ssh-target';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
 
@@ -147,7 +154,25 @@ const sendClientMessage = (socket: WebSocket, payload: ClientOutboundMessage): v
   socket.send(JSON.stringify(payload));
 };
 
-const resolveTargetServer = async (): Promise<SshServerListItem> => {
+type ResolvedTerminalTarget =
+  | {
+      type: 'ssh-server';
+      server: SshServerListItem;
+    }
+  | {
+      type: 'local-terminal';
+      profileId: string;
+    };
+
+const resolveTerminalTarget = async (): Promise<ResolvedTerminalTarget> => {
+  const activeTarget = parseTerminalTarget(getActiveSshServerId());
+  if (activeTarget?.type === 'local-terminal') {
+    return {
+      type: 'local-terminal',
+      profileId: activeTarget.id,
+    };
+  }
+
   const serverResponse = await listSshServers();
   const servers = serverResponse.data.items;
 
@@ -155,15 +180,22 @@ const resolveTargetServer = async (): Promise<SshServerListItem> => {
     throw new Error('No SSH server is configured yet.');
   }
 
-  const preferredServerId = getActiveSshServerId();
+  const preferredTarget = parseTerminalTarget(getActiveSshServerId());
+  const preferredServerId = preferredTarget?.type === 'ssh-server' ? preferredTarget.id : null;
   if (preferredServerId) {
     const preferredServer = servers.find((item) => item.id === preferredServerId);
     if (preferredServer) {
-      return preferredServer;
+      return {
+        type: 'ssh-server',
+        server: preferredServer,
+      };
     }
   }
 
-  return servers[0];
+  return {
+    type: 'ssh-server',
+    server: servers[0],
+  };
 };
 
 const SSH: React.FC = () => {
@@ -272,6 +304,7 @@ const SSH: React.FC = () => {
 
     let socket: WebSocket | null = null;
     let sessionId: string | null = null;
+    let sessionType: 'ssh-server' | 'local-terminal' | null = null;
 
     const setupResizeSync = (): (() => void) => {
       const observer = new ResizeObserver(() => {
@@ -350,13 +383,66 @@ const SSH: React.FC = () => {
         setConnectionError('');
         setTelemetryState(DEFAULT_TELEMETRY_STATE);
 
-        const targetServer = await resolveTargetServer();
+        const target = await resolveTerminalTarget();
         if (disposed) {
           return;
         }
 
+        if (target.type === 'local-terminal') {
+          const createResult = await createLocalTerminalSession({
+            profileId: target.profileId,
+            cols: terminal.cols,
+            rows: terminal.rows,
+            term: 'xterm-256color',
+          });
+
+          if (disposed) {
+            void closeLocalTerminalSession(createResult.data.sessionId).catch(() => undefined);
+            return;
+          }
+
+          sessionType = 'local-terminal';
+          sessionId = createResult.data.sessionId;
+          const websocketUrl = new URL(createResult.data.websocketUrl);
+          websocketUrl.searchParams.set('token', createResult.data.websocketToken);
+
+          socket = new WebSocket(websocketUrl.toString());
+          socket.addEventListener('message', handleSocketMessage);
+
+          socket.addEventListener('open', () => {
+            if (disposed) {
+              return;
+            }
+
+            setConnectionState('connected');
+            setConnectionError('');
+
+            sendClientMessage(socket!, { type: 'resize', cols: terminal.cols, rows: terminal.rows });
+          });
+
+          socket.addEventListener('close', () => {
+            if (disposed) {
+              return;
+            }
+
+            setConnectionState('failed');
+            setConnectionError(t('ssh.websocketClosed'));
+          });
+
+          socket.addEventListener('error', () => {
+            if (disposed) {
+              return;
+            }
+
+            setConnectionState('failed');
+            setConnectionError(t('ssh.websocketTransportFailed'));
+          });
+
+          return;
+        }
+
         const createPayload = await createSshSession({
-          serverId: targetServer.id,
+          serverId: target.server.id,
           cols: terminal.cols,
           rows: terminal.rows,
           term: 'xterm-256color',
@@ -396,7 +482,7 @@ const SSH: React.FC = () => {
           });
 
           createResult = await createSshSession({
-            serverId: targetServer.id,
+            serverId: target.server.id,
             cols: terminal.cols,
             rows: terminal.rows,
             term: 'xterm-256color',
@@ -414,6 +500,7 @@ const SSH: React.FC = () => {
           throw new Error(createResult.message);
         }
 
+        sessionType = 'ssh-server';
         sessionId = createResult.data.sessionId;
         const websocketUrl = new URL(createResult.data.websocketUrl);
         websocketUrl.searchParams.set('token', createResult.data.websocketToken);
@@ -492,7 +579,11 @@ const SSH: React.FC = () => {
       }
 
       if (sessionId) {
-        void closeSshSession(sessionId).catch(() => undefined);
+        if (sessionType === 'local-terminal') {
+          void closeLocalTerminalSession(sessionId).catch(() => undefined);
+        } else {
+          void closeSshSession(sessionId).catch(() => undefined);
+        }
       }
 
       connectSessionRef.current = null;
@@ -500,7 +591,7 @@ const SSH: React.FC = () => {
       disposeResize();
       terminal.dispose();
     };
-  }, []);
+  }, [requestHostFingerprintTrust]);
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg h-full w-full flex-1 rounded-[18px] p-1';

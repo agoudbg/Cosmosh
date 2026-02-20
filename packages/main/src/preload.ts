@@ -23,6 +23,45 @@ import type {
 } from '@cosmosh/api-contract';
 import { contextBridge, ipcRenderer } from 'electron';
 
+type LocalTerminalProfile = {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+};
+
+type LocalTerminalListResponse = {
+  success: true;
+  code: string;
+  message: string;
+  requestId: string;
+  timestamp: string;
+  data: {
+    items: LocalTerminalProfile[];
+  };
+};
+
+type LocalTerminalCreateSessionRequest = {
+  profileId: string;
+  cols: number;
+  rows: number;
+  term: string;
+};
+
+type LocalTerminalCreateSessionResponse = {
+  success: true;
+  code: string;
+  message: string;
+  requestId: string;
+  timestamp: string;
+  data: {
+    sessionId: string;
+    profileId: string;
+    websocketUrl: string;
+    websocketToken: string;
+  };
+};
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electron', {
@@ -99,6 +138,19 @@ contextBridge.exposeInMainWorld('electron', {
   },
   backendSshDeleteFolder: (folderId: string) => {
     return ipcRenderer.invoke('backend:ssh-delete-folder', folderId) as Promise<{ success: boolean }>;
+  },
+  backendLocalTerminalListProfiles: () => {
+    return ipcRenderer.invoke('backend:local-terminal-list-profiles') as Promise<
+      LocalTerminalListResponse | ApiErrorResponse
+    >;
+  },
+  backendLocalTerminalCreateSession: (payload: LocalTerminalCreateSessionRequest) => {
+    return ipcRenderer.invoke('backend:local-terminal-create-session', payload) as Promise<
+      LocalTerminalCreateSessionResponse | ApiErrorResponse
+    >;
+  },
+  backendLocalTerminalCloseSession: (sessionId: string) => {
+    return ipcRenderer.invoke('backend:local-terminal-close-session', sessionId) as Promise<{ success: boolean }>;
   },
   platform: process.platform,
 });

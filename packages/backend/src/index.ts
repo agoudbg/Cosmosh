@@ -9,6 +9,7 @@ import type { PrismaClient } from '@prisma/client';
 
 import { DatabaseInitError, initializeDatabase, shutdownDatabase } from './db/prisma.js';
 import { createBackendApp } from './http/create-app.js';
+import { LocalTerminalSessionService } from './local-terminal/session-service.js';
 import { resolveRuntimeMode } from './runtime.js';
 import { SshSessionService } from './ssh/session-service.js';
 
@@ -69,6 +70,7 @@ const workspaceRoot = path.resolve(currentDirPath, '../../..');
 const i18nLocaleRootDir = path.join(workspaceRoot, 'packages', 'i18n', 'locales');
 let disableI18nHotReload: (() => void) | null = null;
 let sshSessionService: SshSessionService | null = null;
+let localTerminalSessionService: LocalTerminalSessionService | null = null;
 
 if (isSecureLocalMode && !internalToken) {
   throw new Error('COSMOSH_INTERNAL_TOKEN is required when COSMOSH_RUNTIME_MODE is electron-main.');
@@ -101,6 +103,11 @@ const registerShutdownHooks = (): void => {
       if (sshSessionService) {
         await sshSessionService.stop();
         sshSessionService = null;
+      }
+
+      if (localTerminalSessionService) {
+        await localTerminalSessionService.stop();
+        localTerminalSessionService = null;
       }
 
       await shutdownDatabase();
@@ -142,12 +149,18 @@ const bootstrap = async (): Promise<void> => {
   // so runtime fails fast when persistence is not ready.
   dbClient = await initializeDatabase({ runtimeMode });
   const sshWebSocketPort = await findAvailablePort();
+  const localTerminalWebSocketPort = await findAvailablePort();
 
   sshSessionService = new SshSessionService({
     host: '127.0.0.1',
     port: sshWebSocketPort,
     getDbClient,
     credentialEncryptionKey,
+  });
+
+  localTerminalSessionService = new LocalTerminalSessionService({
+    host: '127.0.0.1',
+    port: localTerminalWebSocketPort,
   });
 
   const app = createBackendApp({
@@ -157,6 +170,7 @@ const bootstrap = async (): Promise<void> => {
     credentialEncryptionKey,
     getDbClient,
     sshSessionService,
+    localTerminalSessionService,
   });
 
   console.log(`🚀 Cosmosh Backend starting on http://127.0.0.1:${port} (${runtimeMode})`);
@@ -186,6 +200,13 @@ void bootstrap().catch(async (error: unknown) => {
       console.error('[bootstrap][SSH_SESSION] Failed to stop SSH session service.', serviceError);
     });
     sshSessionService = null;
+  }
+
+  if (localTerminalSessionService) {
+    await localTerminalSessionService.stop().catch((serviceError: unknown) => {
+      console.error('[bootstrap][LOCAL_TERMINAL_SESSION] Failed to stop local terminal session service.', serviceError);
+    });
+    localTerminalSessionService = null;
   }
 
   await shutdownDatabase();

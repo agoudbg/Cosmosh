@@ -35,6 +35,44 @@ import path from 'path';
 
 import { getDatabaseEncryptionKey, getDatabasePath, toPrismaSqliteUrl } from './security/database-encryption';
 
+type LocalTerminalProfile = {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+};
+
+type LocalTerminalListResponse = {
+  success: true;
+  code: string;
+  message: string;
+  requestId: string;
+  timestamp: string;
+  data: {
+    items: LocalTerminalProfile[];
+  };
+};
+
+type LocalTerminalCreateSessionRequest = {
+  profileId: string;
+  cols: number;
+  rows: number;
+  term: string;
+};
+
+type LocalTerminalCreateSessionResponse = {
+  success: true;
+  code: string;
+  message: string;
+  requestId: string;
+  timestamp: string;
+  data: {
+    sessionId: string;
+    profileId: string;
+    websocketUrl: string;
+    websocketToken: string;
+  };
+};
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number | null = null;
@@ -731,6 +769,47 @@ ipcMain.handle('backend:ssh-delete-folder', async (_event, folderId: string): Pr
     success: response.status === 204,
   };
 });
+
+ipcMain.handle(
+  'backend:local-terminal-list-profiles',
+  async (): Promise<LocalTerminalListResponse | ApiErrorResponse> => {
+    return requestBackend<LocalTerminalListResponse>('/api/v1/local-terminals/profiles', {
+      method: 'GET',
+    });
+  },
+);
+
+ipcMain.handle(
+  'backend:local-terminal-create-session',
+  async (
+    _event,
+    payload: LocalTerminalCreateSessionRequest,
+  ): Promise<LocalTerminalCreateSessionResponse | ApiErrorResponse> => {
+    return requestBackend<LocalTerminalCreateSessionResponse>('/api/v1/local-terminals/sessions', {
+      method: 'POST',
+      body: payload,
+    });
+  },
+);
+
+ipcMain.handle(
+  'backend:local-terminal-close-session',
+  async (_event, sessionId: string): Promise<{ success: boolean }> => {
+    const path = `/api/v1/local-terminals/sessions/${encodeURIComponent(sessionId)}`;
+    const { port, token } = requireBackendConfig();
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method: 'DELETE',
+      headers: {
+        [API_HEADERS.internalToken]: token,
+        [API_HEADERS.locale]: appLocale,
+      },
+    });
+
+    return {
+      success: response.status === 204,
+    };
+  },
+);
 
 app.on('before-quit', () => {
   disableI18nHotReload?.();
