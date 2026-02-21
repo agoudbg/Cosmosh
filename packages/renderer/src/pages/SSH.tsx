@@ -14,6 +14,8 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogPrimaryButton,
+  DialogSecondaryButton,
   DialogTitle,
 } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
@@ -767,15 +769,12 @@ const SSH: React.FC = () => {
           ) : null}
 
           <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => resolveHostFingerprintPrompt(false)}
-            >
+            <DialogSecondaryButton onClick={() => resolveHostFingerprintPrompt(false)}>
               {t('ssh.hostFingerprintDialogCancel')}
-            </Button>
-            <Button onClick={() => resolveHostFingerprintPrompt(true)}>
+            </DialogSecondaryButton>
+            <DialogPrimaryButton onClick={() => resolveHostFingerprintPrompt(true)}>
               {t('ssh.hostFingerprintDialogTrustContinue')}
-            </Button>
+            </DialogPrimaryButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -59,6 +59,8 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogPrimaryButton,
+  DialogSecondaryButton,
   DialogTitle,
 } from '../components/ui/dialog';
 import {
@@ -1325,20 +1327,17 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
             onChange={(event) => setFolderNameInput(event.target.value)}
           />
           <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setIsCreateFolderDialogOpen(false)}
-            >
+            <DialogSecondaryButton onClick={() => setIsCreateFolderDialogOpen(false)}>
               {t('home.actionCancel')}
-            </Button>
-            <Button
+            </DialogSecondaryButton>
+            <DialogPrimaryButton
               disabled={isFolderActionSubmitting}
               onClick={() => {
                 void submitCreateFolder();
               }}
             >
               {t('home.actionCreate')}
-            </Button>
+            </DialogPrimaryButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1358,20 +1357,17 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
             onChange={(event) => setFolderNameInput(event.target.value)}
           />
           <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setIsEditFolderDialogOpen(false)}
-            >
+            <DialogSecondaryButton onClick={() => setIsEditFolderDialogOpen(false)}>
               {t('home.actionCancel')}
-            </Button>
-            <Button
+            </DialogSecondaryButton>
+            <DialogPrimaryButton
               disabled={isFolderActionSubmitting}
               onClick={() => {
                 void submitEditFolder();
               }}
             >
               {t('home.actionSave')}
-            </Button>
+            </DialogPrimaryButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

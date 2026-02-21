@@ -80,11 +80,18 @@ AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayNam
 
 const AlertDialogCancelButton = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Cancel>,
-  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel> & {
+    padding?: 'default' | 'mid' | 'wide';
+  }
+>(({ className, padding = 'mid', ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
     ref={ref}
-    className={classNames(formStyles.buttonGhost, className)}
+    className={classNames(
+      formStyles.buttonGhost,
+      padding === 'mid' && 'px-[15px]',
+      padding === 'wide' && 'px-[18px]',
+      className,
+    )}
     {...props}
   />
 ));
@@ -92,11 +99,18 @@ AlertDialogCancelButton.displayName = AlertDialogPrimitive.Cancel.displayName;
 
 const AlertDialogActionButton = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
-  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action> & {
+    tone?: 'default' | 'inverted';
+    padding?: 'default' | 'wide';
+  }
+>(({ className, tone = 'inverted', padding = 'wide', ...props }, ref) => (
   <AlertDialogPrimitive.Action
     ref={ref}
-    className={classNames(formStyles.button, className)}
+    className={classNames(
+      tone === 'inverted' ? formStyles.buttonInverted : formStyles.button,
+      padding === 'wide' && 'px-[18px]',
+      className,
+    )}
     {...props}
   />
 ));

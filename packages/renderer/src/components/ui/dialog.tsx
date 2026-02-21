@@ -3,6 +3,7 @@ import classNames from 'classnames';
 import { X } from 'lucide-react';
 import React from 'react';
 
+import { Button } from './button';
 import { dialogStyles } from './dialog-styles';
 
 const Dialog = DialogPrimitive.Root;
@@ -60,11 +61,49 @@ DialogHeader.displayName = 'DialogHeader';
 
 const DialogFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, ...props }) => (
   <div
-    className={classNames(dialogStyles.footer, className)}
+    className={classNames(
+      dialogStyles.footer,
+      "[&>button[data-button-variant='ghost']]:px-[15px]",
+      "[&>button[data-button-variant='default']]:bg-form-text [&>button[data-button-variant='default']]:text-bg [&>button[data-button-variant='default']]:hover:opacity-90 [&>button[data-button-variant='default']]:px-[18px]",
+      "[&>button[data-button-variant='inverted']]:px-[18px]",
+      className,
+    )}
     {...props}
   />
 );
 DialogFooter.displayName = 'DialogFooter';
+
+type DialogPrimaryButtonProps = React.ComponentPropsWithoutRef<typeof Button> & {
+  tone?: 'default' | 'inverted';
+};
+
+const DialogPrimaryButton = React.forwardRef<HTMLButtonElement, DialogPrimaryButtonProps>(
+  ({ className, tone = 'inverted', padding = 'wide', ...props }, ref) => (
+    <Button
+      ref={ref}
+      variant={tone === 'inverted' ? 'inverted' : 'default'}
+      padding={padding}
+      className={className}
+      {...props}
+    />
+  ),
+);
+DialogPrimaryButton.displayName = 'DialogPrimaryButton';
+
+type DialogSecondaryButtonProps = React.ComponentPropsWithoutRef<typeof Button>;
+
+const DialogSecondaryButton = React.forwardRef<HTMLButtonElement, DialogSecondaryButtonProps>(
+  ({ className, variant = 'ghost', padding = 'mid', ...props }, ref) => (
+    <Button
+      ref={ref}
+      variant={variant}
+      padding={padding}
+      className={className}
+      {...props}
+    />
+  ),
+);
+DialogSecondaryButton.displayName = 'DialogSecondaryButton';
 
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
@@ -99,6 +138,8 @@ export {
   DialogClose,
   DialogHeader,
   DialogFooter,
+  DialogPrimaryButton,
+  DialogSecondaryButton,
   DialogTitle,
   DialogDescription,
 };

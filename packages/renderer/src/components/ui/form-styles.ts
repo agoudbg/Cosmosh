@@ -11,6 +11,8 @@ export const formStyles = {
     'menu-menubar-field flex min-h-[92px] w-full resize-y rounded-[14px] bg-form-control px-2.5 py-2 text-sm text-form-text outline-none placeholder:text-form-text-muted/80 hover:bg-form-control-hover disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',
   button:
     'menu-menubar-field inline-flex h-[34px] items-center justify-center gap-2 rounded-[14px] bg-form-control px-3 text-sm text-form-text outline-none hover:bg-form-control-hover disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',
+  buttonInverted:
+    'menu-menubar-field inline-flex h-[34px] items-center justify-center gap-2 rounded-[14px] bg-form-text px-3 text-sm text-bg outline-none hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',
   buttonGhost:
     'menu-menubar-field inline-flex h-[34px] items-center justify-center gap-2 rounded-[14px] bg-transparent px-3 text-sm text-form-text outline-none hover:bg-form-control-hover disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',
   checkbox:
