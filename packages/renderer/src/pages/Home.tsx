@@ -76,7 +76,13 @@ import { menuStyles } from '../components/ui/menu-styles';
 import { Menubar, MenubarSeparator, MenuToggleGroup, MenuToggleGroupItem } from '../components/ui/menubar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import type { LocalTerminalProfile } from '../lib/api/transport';
-import { listLocalTerminalProfiles, listSshFolders, listSshServers, updateSshServer } from '../lib/backend';
+import {
+  deleteSshServer,
+  listLocalTerminalProfiles,
+  listSshFolders,
+  listSshServers,
+  updateSshServer,
+} from '../lib/backend';
 import { createFolder, normalizeFolderName, removeFolder, renameFolder } from '../lib/folder-actions';
 import { colorKeyToClassName, type HomeIconKey, resolveHomeVisual } from '../lib/home-visuals';
 import { getLocale, t } from '../lib/i18n';
@@ -168,9 +174,12 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   const [isCreateFolderDialogOpen, setIsCreateFolderDialogOpen] = React.useState<boolean>(false);
   const [isEditFolderDialogOpen, setIsEditFolderDialogOpen] = React.useState<boolean>(false);
   const [isDeleteFolderDialogOpen, setIsDeleteFolderDialogOpen] = React.useState<boolean>(false);
+  const [isDeleteServerDialogOpen, setIsDeleteServerDialogOpen] = React.useState<boolean>(false);
   const [folderNameInput, setFolderNameInput] = React.useState<string>('');
   const [activeFolderDraft, setActiveFolderDraft] = React.useState<{ id: string; name: string } | null>(null);
+  const [activeServerDraft, setActiveServerDraft] = React.useState<{ id: string; name: string } | null>(null);
   const [isFolderActionSubmitting, setIsFolderActionSubmitting] = React.useState<boolean>(false);
+  const [isServerDeleteSubmitting, setIsServerDeleteSubmitting] = React.useState<boolean>(false);
   const [draggingServerId, setDraggingServerId] = React.useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = React.useState<string | null>(null);
   const previousIsActiveRef = React.useRef<boolean>(isActive);
@@ -713,6 +722,11 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     setIsDeleteFolderDialogOpen(true);
   }, []);
 
+  const openDeleteServerDialog = React.useCallback((serverId: string, serverName: string) => {
+    setActiveServerDraft({ id: serverId, name: serverName });
+    setIsDeleteServerDialogOpen(true);
+  }, []);
+
   const submitCreateFolder = React.useCallback(async () => {
     const folderName = normalizeFolderName(folderNameInput);
     if (!folderName) {
@@ -781,6 +795,29 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       setIsFolderActionSubmitting(false);
     }
   }, [activeFolderDraft, activeFolderId, notifyError, reloadHomeData]);
+
+  const submitDeleteServer = React.useCallback(async () => {
+    if (!activeServerDraft) {
+      return;
+    }
+
+    setIsServerDeleteSubmitting(true);
+    try {
+      const deleted = await deleteSshServer(activeServerDraft.id);
+      if (!deleted.success) {
+        throw new Error(t('home.serverDeleteFailed'));
+      }
+
+      setIsDeleteServerDialogOpen(false);
+      setActiveServerDraft(null);
+      await reloadHomeData();
+      notifySuccess(t('home.serverDeleteSuccess'));
+    } catch (error: unknown) {
+      notifyError(error instanceof Error ? error.message : t('home.serverDeleteFailed'));
+    } finally {
+      setIsServerDeleteSubmitting(false);
+    }
+  }, [activeServerDraft, notifyError, notifySuccess, reloadHomeData]);
 
   const handleAssignServerToFolder = React.useCallback(
     async (serverId: string, folderId: string) => {
@@ -1272,10 +1309,9 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                               >
                                 {t('home.contextEdit')}
                               </ContextMenuItem>
-                              {/* TODO(home): Server delete flow (confirm + API + local refresh) is not implemented yet. */}
                               <ContextMenuItem
-                                disabled
                                 icon={Trash2}
+                                onSelect={() => openDeleteServerDialog(server.id, server.name)}
                               >
                                 {t('home.contextDelete')}
                               </ContextMenuItem>
@@ -1392,6 +1428,34 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
               onClick={(event) => {
                 event.preventDefault();
                 void submitDeleteFolder();
+              }}
+            >
+              {t('home.contextDelete')}
+            </AlertDialogActionButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={isDeleteServerDialogOpen}
+        onOpenChange={setIsDeleteServerDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('home.dialogDeleteServerTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('home.dialogDeleteServerDescription', { name: activeServerDraft?.name ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancelButton disabled={isServerDeleteSubmitting}>
+              {t('home.actionCancel')}
+            </AlertDialogCancelButton>
+            <AlertDialogActionButton
+              disabled={isServerDeleteSubmitting}
+              onClick={(event) => {
+                event.preventDefault();
+                void submitDeleteServer();
               }}
             >
               {t('home.contextDelete')}

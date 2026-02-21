@@ -12,11 +12,23 @@ import {
   Save,
   Search,
   Server,
+  Trash,
 } from 'lucide-react';
 import React from 'react';
 
 import EntityCard from '../components/home/EntityCard';
+import {
+  AlertDialog,
+  AlertDialogActionButton,
+  AlertDialogCancelButton,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 import { Button } from '../components/ui/button';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '../components/ui/context-menu';
 import {
   Dialog,
   DialogContent,
@@ -46,6 +58,7 @@ import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
 import {
   createSshServer,
+  deleteSshServer,
   getSshServerCredentials,
   listSshFolders,
   listSshServers,
@@ -164,6 +177,9 @@ const SSHEditor: React.FC = () => {
   const [isCreateFolderDialogOpen, setIsCreateFolderDialogOpen] = React.useState<boolean>(false);
   const [newFolderName, setNewFolderName] = React.useState<string>('');
   const [isFolderSubmitting, setIsFolderSubmitting] = React.useState<boolean>(false);
+  const [isDeleteServerDialogOpen, setIsDeleteServerDialogOpen] = React.useState<boolean>(false);
+  const [isDeletingServer, setIsDeletingServer] = React.useState<boolean>(false);
+  const [deleteServerDraft, setDeleteServerDraft] = React.useState<{ id: string; name: string } | null>(null);
   const activeServerIdRef = React.useRef<string | null>(null);
   const credentialsCacheRef = React.useRef<Record<string, ServerCredentialCache>>({});
   const preferCreateModeRef = React.useRef<boolean>(false);
@@ -509,6 +525,46 @@ const SSHEditor: React.FC = () => {
     }
   }, [newFolderName, notifyError, notifyWarning, reloadData]);
 
+  const openDeleteServerDialog = React.useCallback(
+    (serverId: string) => {
+      const targetServer = servers.find((server) => server.id === serverId);
+      if (!targetServer) {
+        return;
+      }
+
+      setDeleteServerDraft({ id: targetServer.id, name: targetServer.name });
+      setIsDeleteServerDialogOpen(true);
+    },
+    [servers],
+  );
+
+  const submitDeleteServer = React.useCallback(async () => {
+    if (!deleteServerDraft) {
+      return;
+    }
+
+    setIsDeletingServer(true);
+    try {
+      const result = await deleteSshServer(deleteServerDraft.id);
+      if (!result.success) {
+        throw new Error(t('ssh.deleteServerFailed'));
+      }
+
+      if (activeServerId === deleteServerDraft.id) {
+        setActiveSshServerId('');
+      }
+
+      setIsDeleteServerDialogOpen(false);
+      setDeleteServerDraft(null);
+      await reloadData();
+      notifySuccess(t('ssh.deleteServerSuccess'));
+    } catch (error: unknown) {
+      notifyError(error instanceof Error ? error.message : t('ssh.deleteServerFailed'));
+    } finally {
+      setIsDeletingServer(false);
+    }
+  }, [activeServerId, deleteServerDraft, notifyError, notifySuccess, reloadData]);
+
   const onSubmit = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -725,16 +781,33 @@ const SSHEditor: React.FC = () => {
                         const visual = resolveHomeVisual('server', server.id, server.folder?.id ?? server.id);
                         const sidebarIndex = sidebarEntryIndexMap.get(`server:${server.id}`) ?? 0;
                         return (
-                          <EntityCard
-                            key={server.id}
-                            {...sidebarNavigation.getItemProps(sidebarIndex)}
-                            title={server.name}
-                            subtitle={server.note || server.host}
-                            selected={server.id === activeServerId}
-                            icon={createIconNode(colorKeyToClassName(visual.colorKey), server.name)}
-                            imageUrl={visual.imageUrl}
-                            onClick={() => onPickServer(server.id)}
-                          />
+                          <ContextMenu key={server.id}>
+                            <ContextMenuTrigger className="block">
+                              <EntityCard
+                                {...sidebarNavigation.getItemProps(sidebarIndex)}
+                                title={server.name}
+                                subtitle={server.note || server.host}
+                                selected={server.id === activeServerId}
+                                icon={createIconNode(colorKeyToClassName(visual.colorKey), server.name)}
+                                imageUrl={visual.imageUrl}
+                                onClick={() => onPickServer(server.id)}
+                              />
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                icon={Server}
+                                onSelect={() => onPickServer(server.id)}
+                              >
+                                {t('home.contextEdit')}
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                icon={Trash}
+                                onSelect={() => openDeleteServerDialog(server.id)}
+                              >
+                                {t('home.contextDelete')}
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         );
                       })}
                     </div>
@@ -760,6 +833,18 @@ const SSHEditor: React.FC = () => {
               </Menubar>
 
               <Menubar>
+                {activeServerId ? (
+                  <>
+                    <Button
+                      variant="icon"
+                      aria-label={t('home.contextDelete')}
+                      onClick={() => openDeleteServerDialog(activeServerId)}
+                    >
+                      <Trash size={16} />
+                    </Button>
+                    <MenubarSeparator vertical />
+                  </>
+                ) : null}
                 <Button
                   type="submit"
                   form="ssh-editor-form"
@@ -1043,6 +1128,32 @@ const SSHEditor: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={isDeleteServerDialogOpen}
+        onOpenChange={setIsDeleteServerDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('ssh.deleteServerConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('ssh.deleteServerConfirmDescription', { name: deleteServerDraft?.name ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancelButton disabled={isDeletingServer}>{t('home.actionCancel')}</AlertDialogCancelButton>
+            <AlertDialogActionButton
+              disabled={isDeletingServer}
+              onClick={(event) => {
+                event.preventDefault();
+                void submitDeleteServer();
+              }}
+            >
+              {t('home.contextDelete')}
+            </AlertDialogActionButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
