@@ -8,6 +8,8 @@ import {
   Folder,
   FolderPlus,
   Plus,
+  RefreshCcw,
+  Save,
   Search,
   Server,
 } from 'lucide-react';
@@ -763,6 +765,14 @@ const SSHEditor: React.FC = () => {
                   form="ssh-editor-form"
                   disabled={isSubmitting}
                 >
+                  {isSubmitting ? (
+                    <RefreshCcw
+                      size={16}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Save size={16} />
+                  )}
                   {isSubmitting ? t('ssh.saving') : activeServerId ? t('ssh.saveChanges') : t('ssh.createServerButton')}
                 </Button>
               </Menubar>
