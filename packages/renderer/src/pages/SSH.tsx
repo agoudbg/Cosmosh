@@ -245,6 +245,7 @@ const SSH: React.FC = () => {
     const terminal = new Terminal({
       convertEol: true,
       cursorBlink: true,
+      reflowCursorLine: true,
       scrollback: 10000,
       fontSize: 15,
       fontFamily: '"JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace',
@@ -265,6 +266,7 @@ const SSH: React.FC = () => {
 
     terminal.open(containerElement);
     let disposed = false;
+    let retryFitFrameId: number | null = null;
 
     const hasRenderableSize = (): boolean => {
       const rect = containerElement.getBoundingClientRect();
@@ -282,7 +284,6 @@ const SSH: React.FC = () => {
 
       try {
         fitAddon.fit();
-        terminal.refresh(0, Math.max(terminal.rows - 1, 0));
         return true;
       } catch {
         // Ignore fit races during StrictMode mount/unmount cycles.
@@ -296,10 +297,11 @@ const SSH: React.FC = () => {
       }
 
       if (safeFit()) {
+        retryFitFrameId = null;
         return;
       }
 
-      requestAnimationFrame(retryFitUntilVisible);
+      retryFitFrameId = requestAnimationFrame(retryFitUntilVisible);
     };
 
     retryFitUntilVisible();
@@ -307,27 +309,59 @@ const SSH: React.FC = () => {
     let socket: WebSocket | null = null;
     let sessionId: string | null = null;
     let sessionType: 'ssh-server' | 'local-terminal' | null = null;
+    let lastSyncedCols: number | null = null;
+    let lastSyncedRows: number | null = null;
+    let fitFrameId: number | null = null;
 
-    const setupResizeSync = (): (() => void) => {
-      const observer = new ResizeObserver(() => {
+    const syncResizeIfNeeded = (): void => {
+      if (disposed || !socket || socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      if (terminal.cols === lastSyncedCols && terminal.rows === lastSyncedRows) {
+        return;
+      }
+
+      lastSyncedCols = terminal.cols;
+      lastSyncedRows = terminal.rows;
+      sendClientMessage(socket, {
+        type: 'resize',
+        cols: terminal.cols,
+        rows: terminal.rows,
+      });
+    };
+
+    const scheduleFitAndResizeSync = (): void => {
+      if (disposed || fitFrameId !== null) {
+        return;
+      }
+
+      fitFrameId = requestAnimationFrame(() => {
+        fitFrameId = null;
+
         const didFit = safeFit();
-
-        if (disposed) {
+        if (!didFit || disposed) {
           return;
         }
 
-        if (didFit && socket && socket.readyState === WebSocket.OPEN) {
-          sendClientMessage(socket, {
-            type: 'resize',
-            cols: terminal.cols,
-            rows: terminal.rows,
-          });
-        }
+        syncResizeIfNeeded();
+      });
+    };
+
+    void document.fonts.ready.then(() => {
+      if (disposed) {
+        return;
+      }
+
+      scheduleFitAndResizeSync();
+    });
+
+    const setupResizeSync = (): (() => void) => {
+      const observer = new ResizeObserver(() => {
+        scheduleFitAndResizeSync();
       });
 
-      if (wrapperRef.current) {
-        observer.observe(wrapperRef.current);
-      }
+      observer.observe(containerElement);
 
       return () => observer.disconnect();
     };
@@ -391,6 +425,9 @@ const SSH: React.FC = () => {
         }
 
         if (target.type === 'local-terminal') {
+          terminal.options.windowsPty = { backend: 'conpty' };
+          terminal.options.reflowCursorLine = false;
+
           const createResult = await createLocalTerminalSession({
             profileId: target.profileId,
             cols: terminal.cols,
@@ -418,8 +455,7 @@ const SSH: React.FC = () => {
 
             setConnectionState('connected');
             setConnectionError('');
-
-            sendClientMessage(socket!, { type: 'resize', cols: terminal.cols, rows: terminal.rows });
+            scheduleFitAndResizeSync();
           });
 
           socket.addEventListener('close', () => {
@@ -442,6 +478,9 @@ const SSH: React.FC = () => {
 
           return;
         }
+
+        terminal.options.windowsPty = undefined;
+        terminal.options.reflowCursorLine = true;
 
         const createPayload = await createSshSession({
           serverId: target.server.id,
@@ -522,8 +561,7 @@ const SSH: React.FC = () => {
 
           setConnectionState('connected');
           setConnectionError('');
-
-          sendClientMessage(socket!, { type: 'resize', cols: terminal.cols, rows: terminal.rows });
+          scheduleFitAndResizeSync();
         });
 
         socket.addEventListener('close', () => {
@@ -570,6 +608,16 @@ const SSH: React.FC = () => {
 
     return () => {
       disposed = true;
+
+      if (retryFitFrameId !== null) {
+        cancelAnimationFrame(retryFitFrameId);
+        retryFitFrameId = null;
+      }
+
+      if (fitFrameId !== null) {
+        cancelAnimationFrame(fitFrameId);
+        fitFrameId = null;
+      }
 
       try {
         if (socket && socket.readyState === WebSocket.OPEN) {
