@@ -1,5 +1,8 @@
 import type {
   ApiErrorResponse,
+  ApiSettingsGetResponse,
+  ApiSettingsUpdateRequest,
+  ApiSettingsUpdateResponse,
   ApiSshCreateFolderRequest,
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
@@ -80,6 +83,10 @@ declare global {
       openDevTools: () => Promise<boolean>;
       showInFileManager: (targetPath?: string) => Promise<boolean>;
       backendTestPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
+      backendSettingsGet: () => Promise<ApiSettingsGetResponse | ApiErrorResponse>;
+      backendSettingsUpdate: (
+        payload: ApiSettingsUpdateRequest,
+      ) => Promise<ApiSettingsUpdateResponse | ApiErrorResponse>;
       backendSshListServers: () => Promise<ApiSshListServersResponse | ApiErrorResponse>;
       backendSshCreateServer: (
         payload: ApiSshCreateServerRequest,

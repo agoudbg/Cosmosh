@@ -90,6 +90,32 @@ sequenceDiagram
 - SFTP runtime channel is not implemented yet; only SSH terminal and local terminal session channels are active.
 - Renderer has SFTP entry placeholders in Home context menu; actual SFTP page/session wiring remains planned.
 
+## 5.1 Settings Runtime (Implemented)
+
+- Settings are now persisted by backend route `GET/PUT /api/v1/settings`.
+- Storage model is a single-row JSON payload per scope (`scopeAccountId` + `scopeDeviceId`) in `AppSettings`.
+- Scope defaults to local device (`deviceId=local-device`) while keeping account scope field for future sync.
+- Renderer bootstrap (`packages/renderer/src/main.tsx`) applies persisted language/theme at startup.
+- Non-visual settings (for example SSH runtime limits) are persisted and discoverable, but some are intentionally not bound to runtime behavior yet.
+
+```mermaid
+sequenceDiagram
+  participant UI as Renderer
+  participant PB as Preload
+  participant MP as Main IPC
+  participant BE as Backend Settings Route
+  participant DB as SQLite(AppSettings)
+
+  UI->>PB: window.electron.backendSettingsGet()
+  PB->>MP: ipcRenderer.invoke('backend:settings-get')
+  MP->>BE: GET /api/v1/settings
+  BE->>DB: load AppSettings row by scope
+  DB-->>BE: payloadJson + revision
+  BE-->>MP: SettingsGetSuccess
+  MP-->>UI: settings payload
+  UI->>UI: apply language + theme
+```
+
 ## 6. Core Data-Flow Views
 
 ### 6.1 Session Bootstrap Data Flow

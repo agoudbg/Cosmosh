@@ -90,6 +90,32 @@ sequenceDiagram
 - SFTP 运行时通道尚未实现；当前仅有 SSH 终端与本地终端会话通道。
 - Renderer 的 Home 右键菜单已有 SFTP 占位入口，实际页面/会话接线仍在规划中。
 
+## 5.1 设置运行时（已实现）
+
+- 设置通过后端路由 `GET/PUT /api/v1/settings` 持久化。
+- 存储模型为按作用域单行 JSON（`scopeAccountId` + `scopeDeviceId`）的 `AppSettings` 表。
+- 默认作用域为本机（`deviceId=local-device`），并预留 account 作用域字段用于未来同步。
+- Renderer 启动阶段（`packages/renderer/src/main.tsx`）会加载并应用已保存的语言与主题。
+- 非视觉设置（如 SSH 运行时限制）当前仅做持久化与可发现，部分暂未绑定真实运行时行为。
+
+```mermaid
+sequenceDiagram
+  participant UI as Renderer
+  participant PB as Preload
+  participant MP as Main IPC
+  participant BE as Backend Settings Route
+  participant DB as SQLite(AppSettings)
+
+  UI->>PB: window.electron.backendSettingsGet()
+  PB->>MP: ipcRenderer.invoke('backend:settings-get')
+  MP->>BE: GET /api/v1/settings
+  BE->>DB: 按作用域读取 AppSettings
+  DB-->>BE: payloadJson + revision
+  BE-->>MP: SettingsGetSuccess
+  MP-->>UI: settings payload
+  UI->>UI: 应用 language + theme
+```
+
 ## 6. 核心数据流视图
 
 ### 6.1 会话启动数据流

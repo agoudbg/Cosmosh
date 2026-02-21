@@ -6,6 +6,12 @@ import type { components, paths } from './generated';
 
 export type ApiErrorResponse = components['schemas']['ApiError'];
 export type ApiTestPingResponse = paths['/api/v1/test/ping']['get']['responses']['200']['content']['application/json'];
+export type ApiSettingsGetResponse =
+	paths['/api/v1/settings']['get']['responses']['200']['content']['application/json'];
+export type ApiSettingsUpdateRequest =
+	paths['/api/v1/settings']['put']['requestBody']['content']['application/json'];
+export type ApiSettingsUpdateResponse =
+	paths['/api/v1/settings']['put']['responses']['200']['content']['application/json'];
 export type ApiSshListServersResponse =
 	paths['/api/v1/ssh/servers']['get']['responses']['200']['content']['application/json'];
 export type ApiSshCreateServerRequest =

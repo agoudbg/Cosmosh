@@ -38,6 +38,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get application settings. */
+        get: operations["settingsGet"];
+        /** Update application settings. */
+        put: operations["settingsUpdate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ssh/servers": {
         parameters: {
             query?: never;
@@ -215,7 +233,7 @@ export interface components {
         };
         ApiError: components["schemas"]["ApiMeta"] & {
             /** @enum {string} */
-            code: "AUTH_INVALID_TOKEN" | "SSH_VALIDATION_FAILED" | "SSH_SERVER_CONFLICT" | "SSH_FOLDER_CONFLICT" | "SSH_TAG_CONFLICT" | "SSH_NOT_FOUND" | "SSH_HOST_UNTRUSTED" | "SSH_SESSION_NOT_FOUND";
+            code: "AUTH_INVALID_TOKEN" | "SETTINGS_VALIDATION_FAILED" | "SSH_VALIDATION_FAILED" | "SSH_SERVER_CONFLICT" | "SSH_FOLDER_CONFLICT" | "SSH_TAG_CONFLICT" | "SSH_NOT_FOUND" | "SSH_HOST_UNTRUSTED" | "SSH_SESSION_NOT_FOUND";
             /** @enum {boolean} */
             success: false;
         };
@@ -236,6 +254,40 @@ export interface components {
             /** @enum {boolean} */
             success: true;
             data: components["schemas"]["TestPingData"];
+        };
+        /** @enum {string} */
+        SettingsLanguage: "en" | "zh-CN";
+        /** @enum {string} */
+        SettingsTheme: "dark" | "light" | "auto";
+        SettingsValues: {
+            language: components["schemas"]["SettingsLanguage"];
+            theme: components["schemas"]["SettingsTheme"];
+            sshMaxRows: number;
+            sshConnectionTimeoutSec: number;
+            autoSaveEnabled: boolean;
+            accountSyncEnabled: boolean;
+            defaultServerNoteTemplate: string;
+        };
+        SettingsScope: {
+            accountId?: string;
+            deviceId: string;
+        };
+        SettingsResource: {
+            scope: components["schemas"]["SettingsScope"];
+            revision: number;
+            /** Format: date-time */
+            updatedAt: string;
+            values: components["schemas"]["SettingsValues"];
+        };
+        SettingsGetData: {
+            item: components["schemas"]["SettingsResource"];
+        };
+        SettingsUpdateRequest: {
+            scope?: components["schemas"]["SettingsScope"];
+            values: components["schemas"]["SettingsValues"];
+        };
+        SettingsUpdateData: {
+            item: components["schemas"]["SettingsResource"];
         };
         SshFolder: {
             id: string;
@@ -384,6 +436,20 @@ export interface components {
             /** @enum {boolean} */
             trusted: true;
         };
+        SettingsGetSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SETTINGS_GET_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SettingsGetData"];
+        };
+        SettingsUpdateSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "SETTINGS_UPDATE_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["SettingsUpdateData"];
+        };
         SshServerListSuccess: components["schemas"]["ApiMeta"] & {
             /** @enum {string} */
             code: "SSH_SERVER_LIST_OK";
@@ -510,6 +576,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestPingSuccess"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    settingsGet: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings fetched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsGetSuccess"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    settingsUpdate: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Settings updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsUpdateSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Authentication failed. */

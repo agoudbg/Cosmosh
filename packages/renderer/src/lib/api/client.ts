@@ -1,4 +1,7 @@
 import type {
+  ApiSettingsGetResponse,
+  ApiSettingsUpdateRequest,
+  ApiSettingsUpdateResponse,
   ApiSshCreateFolderRequest,
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
@@ -31,6 +34,8 @@ import {
 export type BackendClient = {
   runtimeTarget: 'electron' | 'browser';
   testPing: () => Promise<ApiTestPingResponse>;
+  getSettings: () => Promise<ApiSettingsGetResponse>;
+  updateSettings: (payload: ApiSettingsUpdateRequest) => Promise<ApiSettingsUpdateResponse>;
   listSshServers: () => Promise<ApiSshListServersResponse>;
   createSshServer: (payload: ApiSshCreateServerRequest) => Promise<ApiSshCreateServerResponse>;
   updateSshServer: (serverId: string, payload: ApiSshUpdateServerRequest) => Promise<ApiSshUpdateServerResponse>;
@@ -61,6 +66,24 @@ export const createBackendClient = (): BackendClient => {
     runtimeTarget: transport.target,
     testPing: async () => {
       const payload = await transport.testPing();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    getSettings: async () => {
+      const payload = await transport.getSettings();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    updateSettings: async (requestPayload) => {
+      const payload = await transport.updateSettings(requestPayload);
 
       if (!payload.success) {
         throw new Error(payload.message);

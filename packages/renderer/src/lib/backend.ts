@@ -1,4 +1,7 @@
 import type {
+  ApiSettingsGetResponse,
+  ApiSettingsUpdateRequest,
+  ApiSettingsUpdateResponse,
   ApiSshCreateFolderRequest,
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
@@ -34,6 +37,14 @@ export const testBackendPing = async (): Promise<ApiTestPingResponse> => {
 
 export const getBackendRuntimeTarget = (): 'electron' | 'browser' => {
   return backendClient.runtimeTarget;
+};
+
+export const getAppSettings = async (): Promise<ApiSettingsGetResponse> => {
+  return backendClient.getSettings();
+};
+
+export const updateAppSettings = async (payload: ApiSettingsUpdateRequest): Promise<ApiSettingsUpdateResponse> => {
+  return backendClient.updateSettings(payload);
 };
 
 export const listSshServers = async (): Promise<ApiSshListServersResponse> => {

@@ -30,15 +30,16 @@ flowchart TB
 - **Key folders**:
   - `src/pages`: feature pages (`Home`, `SSH`, `SSHEditor`, etc.).
   - `src/components/ui`: Radix-based primitive wrappers and styling contracts.
-  - `src/lib`: backend transport, i18n, utility abstractions.
+  - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), utility abstractions.
   - `theme`: token source used to generate CSS variable system.
 
 ### `packages/backend`
 
 - **Role**: Internal API + session orchestration runtime.
 - **Key folders**:
-  - `src/http/routes`: REST endpoints for SSH entities and local terminal actions.
+  - `src/http/routes`: REST endpoints for settings, SSH entities, and local terminal actions.
   - `src/ssh`: SSH auth/session logic (`ssh2`, known-host trust, telemetry).
+  - `src/settings`: settings payload defaults and validation parsers.
   - `src/local-terminal`: local PTY session logic (`node-pty`).
   - `src/db`: Prisma initialization and DB lifecycle.
 

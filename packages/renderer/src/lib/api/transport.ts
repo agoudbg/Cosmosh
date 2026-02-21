@@ -1,5 +1,8 @@
 import type {
   ApiErrorResponse,
+  ApiSettingsGetResponse,
+  ApiSettingsUpdateRequest,
+  ApiSettingsUpdateResponse,
   ApiSshCreateFolderRequest,
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
@@ -68,6 +71,8 @@ export type LocalTerminalCreateSessionResponse = {
 type ApiResponse =
   | ApiErrorResponse
   | ApiTestPingResponse
+  | ApiSettingsGetResponse
+  | ApiSettingsUpdateResponse
   | ApiSshListServersResponse
   | ApiSshCreateServerResponse
   | ApiSshUpdateServerResponse
@@ -86,6 +91,8 @@ type ApiResponse =
 export type ApiTransport = {
   target: RuntimeTarget;
   testPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
+  getSettings: () => Promise<ApiSettingsGetResponse | ApiErrorResponse>;
+  updateSettings: (payload: ApiSettingsUpdateRequest) => Promise<ApiSettingsUpdateResponse | ApiErrorResponse>;
   listSshServers: () => Promise<ApiSshListServersResponse | ApiErrorResponse>;
   createSshServer: (payload: ApiSshCreateServerRequest) => Promise<ApiSshCreateServerResponse | ApiErrorResponse>;
   updateSshServer: (
@@ -151,6 +158,12 @@ const createElectronTransport = (): ApiTransport => {
     target: 'electron',
     testPing: async () => {
       return (await window.electron!.backendTestPing()) as ApiTestPingResponse | ApiErrorResponse;
+    },
+    getSettings: async () => {
+      return (await window.electron!.backendSettingsGet()) as ApiSettingsGetResponse | ApiErrorResponse;
+    },
+    updateSettings: async (payload) => {
+      return (await window.electron!.backendSettingsUpdate(payload)) as ApiSettingsUpdateResponse | ApiErrorResponse;
     },
     listSshServers: async () => {
       return (await window.electron!.backendSshListServers()) as ApiSshListServersResponse | ApiErrorResponse;
@@ -255,6 +268,14 @@ const createBrowserTransport = (): ApiTransport => {
     target: 'browser',
     testPing: async () => {
       return (await callBrowserApi(API_PATHS.testPing, 'GET')) as ApiTestPingResponse | ApiErrorResponse;
+    },
+    getSettings: async () => {
+      return (await callBrowserApi(API_PATHS.settingsGet, 'GET')) as ApiSettingsGetResponse | ApiErrorResponse;
+    },
+    updateSettings: async (payload) => {
+      return (await callBrowserApi(API_PATHS.settingsUpdate, 'PUT', payload)) as
+        | ApiSettingsUpdateResponse
+        | ApiErrorResponse;
     },
     listSshServers: async () => {
       return (await callBrowserApi(API_PATHS.sshListServers, 'GET')) as ApiSshListServersResponse | ApiErrorResponse;

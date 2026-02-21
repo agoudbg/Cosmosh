@@ -47,6 +47,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/settings:
+    get:
+      tags:
+        - settings
+      summary: Get application settings.
+      operationId: settingsGet
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      responses:
+        "200":
+          description: Settings fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsGetSuccess"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      tags:
+        - settings
+      summary: Update application settings.
+      operationId: settingsUpdate
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdateRequest"
+      responses:
+        "200":
+          description: Settings updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsUpdateSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/ssh/servers:
     get:
       tags:
@@ -578,6 +631,7 @@ components:
               enum:
                 [
                   "AUTH_INVALID_TOKEN",
+                  "SETTINGS_VALIDATION_FAILED",
                   "SSH_VALIDATION_FAILED",
                   "SSH_SERVER_CONFLICT",
                   "SSH_FOLDER_CONFLICT",
@@ -633,6 +687,95 @@ components:
               enum: [true]
             data:
               $ref: "#/components/schemas/TestPingData"
+    SettingsLanguage:
+      type: string
+      enum: ["en", "zh-CN"]
+    SettingsTheme:
+      type: string
+      enum: ["dark", "light", "auto"]
+    SettingsValues:
+      type: object
+      additionalProperties: false
+      required:
+        - language
+        - theme
+        - sshMaxRows
+        - sshConnectionTimeoutSec
+        - autoSaveEnabled
+        - accountSyncEnabled
+        - defaultServerNoteTemplate
+      properties:
+        language:
+          $ref: "#/components/schemas/SettingsLanguage"
+        theme:
+          $ref: "#/components/schemas/SettingsTheme"
+        sshMaxRows:
+          type: integer
+          minimum: 100
+          maximum: 200000
+        sshConnectionTimeoutSec:
+          type: integer
+          minimum: 5
+          maximum: 180
+        autoSaveEnabled:
+          type: boolean
+        accountSyncEnabled:
+          type: boolean
+        defaultServerNoteTemplate:
+          type: string
+          maxLength: 1000
+    SettingsScope:
+      type: object
+      required:
+        - deviceId
+      properties:
+        accountId:
+          type: string
+        deviceId:
+          type: string
+          minLength: 1
+          maxLength: 120
+    SettingsResource:
+      type: object
+      required:
+        - scope
+        - revision
+        - updatedAt
+        - values
+      properties:
+        scope:
+          $ref: "#/components/schemas/SettingsScope"
+        revision:
+          type: integer
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+        values:
+          $ref: "#/components/schemas/SettingsValues"
+    SettingsGetData:
+      type: object
+      required:
+        - item
+      properties:
+        item:
+          $ref: "#/components/schemas/SettingsResource"
+    SettingsUpdateRequest:
+      type: object
+      required:
+        - values
+      properties:
+        scope:
+          $ref: "#/components/schemas/SettingsScope"
+        values:
+          $ref: "#/components/schemas/SettingsValues"
+    SettingsUpdateData:
+      type: object
+      required:
+        - item
+      properties:
+        item:
+          $ref: "#/components/schemas/SettingsResource"
     SshFolder:
       type: object
       required:
@@ -999,6 +1142,40 @@ components:
         trusted:
           type: boolean
           enum: [true]
+    SettingsGetSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SETTINGS_GET_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SettingsGetData"
+    SettingsUpdateSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["SETTINGS_UPDATE_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/SettingsUpdateData"
     SshServerListSuccess:
       allOf:
         - $ref: "#/components/schemas/ApiMeta"

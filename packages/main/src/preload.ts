@@ -1,5 +1,8 @@
 import type {
   ApiErrorResponse,
+  ApiSettingsGetResponse,
+  ApiSettingsUpdateRequest,
+  ApiSettingsUpdateResponse,
   ApiSshCreateFolderRequest,
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
@@ -86,6 +89,14 @@ contextBridge.exposeInMainWorld('electron', {
   },
   backendTestPing: () => {
     return ipcRenderer.invoke('backend:test-ping') as Promise<ApiTestPingResponse | ApiErrorResponse>;
+  },
+  backendSettingsGet: () => {
+    return ipcRenderer.invoke('backend:settings-get') as Promise<ApiSettingsGetResponse | ApiErrorResponse>;
+  },
+  backendSettingsUpdate: (payload: ApiSettingsUpdateRequest) => {
+    return ipcRenderer.invoke('backend:settings-update', payload) as Promise<
+      ApiSettingsUpdateResponse | ApiErrorResponse
+    >;
   },
   backendSshListServers: () => {
     return ipcRenderer.invoke('backend:ssh-list-servers') as Promise<ApiSshListServersResponse | ApiErrorResponse>;

@@ -417,6 +417,17 @@ const ensureSchema = async (client: PrismaClientType): Promise<void> => {
       "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );`,
     'CREATE INDEX IF NOT EXISTS "SshKnownHost_host_port_idx" ON "SshKnownHost"("host", "port");',
+    `CREATE TABLE IF NOT EXISTS "AppSettings" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "scopeAccountId" TEXT NOT NULL DEFAULT '',
+      "scopeDeviceId" TEXT NOT NULL,
+      "payloadJson" TEXT NOT NULL,
+      "revision" INTEGER NOT NULL DEFAULT 1,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );`,
+    'CREATE UNIQUE INDEX IF NOT EXISTS "AppSettings_scopeAccountId_scopeDeviceId_key" ON "AppSettings"("scopeAccountId", "scopeDeviceId");',
+    'CREATE INDEX IF NOT EXISTS "AppSettings_scopeDeviceId_idx" ON "AppSettings"("scopeDeviceId");',
     `CREATE TABLE IF NOT EXISTS "SshServerTag" (
       "serverId" TEXT NOT NULL,
       "tagId" TEXT NOT NULL,

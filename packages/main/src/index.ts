@@ -6,6 +6,9 @@ import os from 'node:os';
 
 import type {
   ApiErrorResponse,
+  ApiSettingsGetResponse,
+  ApiSettingsUpdateRequest,
+  ApiSettingsUpdateResponse,
   ApiSshCreateFolderRequest,
   ApiSshCreateFolderResponse,
   ApiSshCreateServerRequest,
@@ -628,6 +631,20 @@ ipcMain.handle('backend:test-ping', async (): Promise<ApiTestPingResponse | ApiE
 
   return payload;
 });
+
+ipcMain.handle('backend:settings-get', async (): Promise<ApiSettingsGetResponse | ApiErrorResponse> => {
+  return requestBackend<ApiSettingsGetResponse>(API_PATHS.settingsGet, { method: 'GET' });
+});
+
+ipcMain.handle(
+  'backend:settings-update',
+  async (_event, payload: ApiSettingsUpdateRequest): Promise<ApiSettingsUpdateResponse | ApiErrorResponse> => {
+    return requestBackend<ApiSettingsUpdateResponse>(API_PATHS.settingsUpdate, {
+      method: 'PUT',
+      body: payload,
+    });
+  },
+);
 
 ipcMain.handle('backend:ssh-list-servers', async (): Promise<ApiSshListServersResponse | ApiErrorResponse> => {
   return requestBackend<ApiSshListServersResponse>(API_PATHS.sshListServers, { method: 'GET' });

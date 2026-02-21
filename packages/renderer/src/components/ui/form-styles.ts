@@ -3,7 +3,7 @@ export const formStyles = {
   field: 'grid gap-2',
   label: 'px-2.5 text-sm text-form-text-muted',
   inlineLabel: 'px-0 !text-form-text',
-  helperText: 'text-xs text-form-text-muted',
+  helperText: 'px-2.5 text-xs text-form-text-muted',
   message: 'text-xs text-form-message-error',
   input:
     'menu-menubar-field flex h-[34px] w-full rounded-[14px] bg-form-control px-2.5 text-sm text-form-text outline-none placeholder:text-form-text-muted/80 hover:bg-form-control-hover disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',

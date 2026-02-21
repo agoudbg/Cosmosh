@@ -102,7 +102,98 @@
     "undo": "撤销"
   },
   "settings": {
-    "title": "设置页"
+    "applyJsonToForm": "应用 JSON 到表单",
+    "catalogDebug": "设置目录（调试）",
+    "catalogHeader": "key | type | default | description",
+    "categories": {
+      "about": "关于",
+      "account-sync": "账号与同步",
+      "advanced": "高级",
+      "general": "通用",
+      "theme": "主题"
+    },
+    "disabled": "已禁用",
+    "enabled": "已启用",
+    "items": {
+      "accountSyncEnabled": {
+        "description": "预留给未来云同步能力，当前仅保存偏好。",
+        "placeholder": "",
+        "title": "账号同步"
+      },
+      "autoSaveEnabled": {
+        "description": "启用后设置修改会自动保存，并隐藏保存按钮。",
+        "placeholder": "",
+        "title": "自动保存"
+      },
+      "defaultServerNoteTemplate": {
+        "description": "新建服务器时使用的备注模板，预留给未来运行时绑定。",
+        "placeholder": "示例：owner=@ops env=prod",
+        "title": "默认服务器备注模板"
+      },
+      "language": {
+        "description": "控制渲染层与主进程的界面语言。",
+        "placeholder": "",
+        "title": "语言"
+      },
+      "sshConnectionTimeoutSec": {
+        "description": "未来 SSH 连接流程使用的超时值。",
+        "placeholder": "45",
+        "title": "SSH 连接超时（秒）"
+      },
+      "sshMaxRows": {
+        "description": "SSH 会话保留的最大终端行数，预留给未来运行时绑定。",
+        "placeholder": "10000",
+        "title": "SSH 最大行数"
+      },
+      "theme": {
+        "description": "控制应用视觉主题。",
+        "placeholder": "",
+        "title": "主题"
+      }
+    },
+    "jsonApplied": "JSON 已应用到表单，点击保存后才会持久化。",
+    "jsonInvalid": "JSON 配置无效。",
+    "loading": "正在加载设置...",
+    "noMatches": "没有匹配当前搜索的设置项。",
+    "options": {
+      "boolean": {
+        "false": "已禁用",
+        "true": "已启用"
+      },
+      "language": {
+        "en": "English",
+        "zh-CN": "简体中文"
+      },
+      "theme": {
+        "auto": "跟随系统",
+        "dark": "深色",
+        "light": "浅色"
+      }
+    },
+    "query": "关键词",
+    "rawJsonDebug": "原始 JSON 配置（调试）",
+    "rawJsonHint": "仅用于调试：查看和修改当前持久化设置快照。",
+    "registryReadiness": "注册表状态",
+    "revision": "设置版本",
+    "runtimeLine1": "设置注册中心已启用，可用于搜索与未来命令面板集成。",
+    "runtimeLine2": "每个设置项都包含稳定 key path 与 command action id 元数据。",
+    "runtimeLine3": "语言与主题是已生效运行时设置；其他设置目前仅持久化，暂未绑定运行时行为。",
+    "saveChanges": "保存更改",
+    "saveFailed": "保存设置失败。",
+    "saveSuccess": "设置已保存。",
+    "saving": "保存中...",
+    "scope": "作用域",
+    "searchPlaceholder": "搜索设置",
+    "searchResults": "搜索结果",
+    "sections": {
+      "appearance": "外观",
+      "editorDefaults": "编辑器默认",
+      "localization": "本地化",
+      "runtime": "运行时",
+      "sshRuntime": "SSH 运行时",
+      "synchronization": "同步"
+    },
+    "title": "设置"
   },
   "ssh": {
     "authTypeBoth": "密码 + 私钥",

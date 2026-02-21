@@ -75,6 +75,19 @@ model SshKnownHost {
   @@index([host, port])
 }
 
+model AppSettings {
+  id             String   @id @default(cuid())
+  scopeAccountId String   @default("")
+  scopeDeviceId  String
+  payloadJson    String
+  revision       Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([scopeAccountId, scopeDeviceId])
+  @@index([scopeDeviceId])
+}
+
 model SshServerTag {
   serverId String
   tagId    String

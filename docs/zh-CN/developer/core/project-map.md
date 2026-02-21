@@ -30,15 +30,16 @@ flowchart TB
 - **关键目录**：
   - `src/pages`：功能页面（`Home`、`SSH`、`SSHEditor` 等）。
   - `src/components/ui`：基于 Radix 的原子组件封装与样式契约。
-  - `src/lib`：后端传输、i18n、工具抽象。
+  - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）与工具抽象。
   - `theme`：生成 CSS Variables 的令牌源。
 
 ### `packages/backend`
 
 - **角色**：内部 API + 会话编排运行时。
 - **关键目录**：
-  - `src/http/routes`：SSH 实体与本地终端动作 REST 路由。
+  - `src/http/routes`：设置、SSH 实体与本地终端动作 REST 路由。
   - `src/ssh`：SSH 认证/会话逻辑（`ssh2`、known-host 信任、遥测）。
+  - `src/settings`：设置默认值与请求校验解析。
   - `src/local-terminal`：本地 PTY 会话逻辑（`node-pty`）。
   - `src/db`：Prisma 初始化与数据库生命周期。
 

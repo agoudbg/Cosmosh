@@ -6,6 +6,8 @@
 export const API_PATHS = {
   health: '/api/health',
   testPing: '/api/v1/test/ping',
+  settingsGet: '/api/v1/settings',
+  settingsUpdate: '/api/v1/settings',
   sshListServers: '/api/v1/ssh/servers',
   sshCreateServer: '/api/v1/ssh/servers',
   sshUpdateServer: '/api/v1/ssh/servers/{serverId}',
@@ -29,6 +31,7 @@ export const API_HEADERS = {
 
 export const API_CODES = {
   authInvalidToken: 'AUTH_INVALID_TOKEN',
+  settingsValidationFailed: 'SETTINGS_VALIDATION_FAILED',
   sshValidationFailed: 'SSH_VALIDATION_FAILED',
   sshServerConflict: 'SSH_SERVER_CONFLICT',
   sshFolderConflict: 'SSH_FOLDER_CONFLICT',
@@ -37,6 +40,8 @@ export const API_CODES = {
   sshHostUntrusted: 'SSH_HOST_UNTRUSTED',
   sshSessionNotFound: 'SSH_SESSION_NOT_FOUND',
   testPingOk: 'TEST_PING_OK',
+  settingsGetOk: 'SETTINGS_GET_OK',
+  settingsUpdateOk: 'SETTINGS_UPDATE_OK',
   sshServerListOk: 'SSH_SERVER_LIST_OK',
   sshServerCreateOk: 'SSH_SERVER_CREATE_OK',
   sshServerUpdateOk: 'SSH_SERVER_UPDATE_OK',

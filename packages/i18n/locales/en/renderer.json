@@ -102,7 +102,98 @@
     "undo": "Undo"
   },
   "settings": {
-    "title": "Settings Page"
+    "applyJsonToForm": "Apply JSON to Form",
+    "catalogDebug": "Settings Catalog (Debug)",
+    "catalogHeader": "key | type | default | description",
+    "categories": {
+      "about": "About",
+      "account-sync": "Account & Sync",
+      "advanced": "Advanced",
+      "general": "General",
+      "theme": "Theme"
+    },
+    "disabled": "Disabled",
+    "enabled": "Enabled",
+    "items": {
+      "accountSyncEnabled": {
+        "description": "Reserved for future cloud sync. Currently stores preference only.",
+        "placeholder": "",
+        "title": "Account Sync"
+      },
+      "autoSaveEnabled": {
+        "description": "When enabled, settings changes are saved automatically and the save button is hidden.",
+        "placeholder": "",
+        "title": "Auto Save"
+      },
+      "defaultServerNoteTemplate": {
+        "description": "Template text for newly created server notes. Reserved for future runtime binding.",
+        "placeholder": "Example: owner=@ops env=prod",
+        "title": "Default Server Note Template"
+      },
+      "language": {
+        "description": "Controls UI language for the renderer and main process.",
+        "placeholder": "",
+        "title": "Language"
+      },
+      "sshConnectionTimeoutSec": {
+        "description": "Connection timeout used by future SSH dial pipeline.",
+        "placeholder": "45",
+        "title": "SSH Connection Timeout (sec)"
+      },
+      "sshMaxRows": {
+        "description": "Maximum retained terminal lines for SSH sessions. Reserved for future runtime binding.",
+        "placeholder": "10000",
+        "title": "SSH Max Rows"
+      },
+      "theme": {
+        "description": "Controls application visual theme.",
+        "placeholder": "",
+        "title": "Theme"
+      }
+    },
+    "jsonApplied": "JSON has been applied to form values. Click Save Changes to persist.",
+    "jsonInvalid": "JSON config is invalid.",
+    "loading": "Loading settings...",
+    "noMatches": "No settings matched your search.",
+    "options": {
+      "boolean": {
+        "false": "Disabled",
+        "true": "Enabled"
+      },
+      "language": {
+        "en": "English",
+        "zh-CN": "Chinese (Simplified)"
+      },
+      "theme": {
+        "auto": "Auto",
+        "dark": "Dark",
+        "light": "Light"
+      }
+    },
+    "query": "Query",
+    "rawJsonDebug": "Raw JSON Configuration (Debug)",
+    "rawJsonHint": "Debug-only editor for inspecting and modifying the current persisted settings snapshot.",
+    "registryReadiness": "Registry Readiness",
+    "revision": "Settings Revision",
+    "runtimeLine1": "Settings registry is enabled for search and future command palette integration.",
+    "runtimeLine2": "Each entry includes stable key path and command action id metadata.",
+    "runtimeLine3": "Language and theme are active runtime settings; other settings are persisted but not bound yet.",
+    "saveChanges": "Save Changes",
+    "saveFailed": "Failed to save settings.",
+    "saveSuccess": "Settings saved successfully.",
+    "saving": "Saving...",
+    "scope": "Scope",
+    "searchPlaceholder": "Search settings",
+    "searchResults": "Search Results",
+    "sections": {
+      "appearance": "Appearance",
+      "editorDefaults": "Editor Defaults",
+      "localization": "Localization",
+      "runtime": "Runtime",
+      "sshRuntime": "SSH Runtime",
+      "synchronization": "Synchronization"
+    },
+    "title": "Settings"
   },
   "ssh": {
     "authTypeBoth": "Both",
