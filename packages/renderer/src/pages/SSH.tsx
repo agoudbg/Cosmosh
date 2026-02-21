@@ -597,6 +597,7 @@ const SSH: React.FC = () => {
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg h-full w-full flex-1 rounded-[18px] p-1';
+  const sidebarCardStyle = 'bg-ssh-card-bg w-full flex-1 rounded-[18px] p-1';
   const cardHiddenArea =
     'overflow-hidden hof:my-[-38px] hof:py-[42px] hof:z-20 hof:shadow-lg transition-all duration-300 ease-in-out';
   const hiddenHeaderStyle = 'h-[34px] mt-[-38px]';
@@ -610,7 +611,7 @@ const SSH: React.FC = () => {
       className="relative flex h-full w-full gap-2.5"
     >
       {/* SSH */}
-      <div className={cardStyle}>
+      <div className={classNames(cardStyle, 'min-w-0')}>
         <div
           ref={terminalContainerRef}
           className="h-full w-full p-2"
@@ -618,11 +619,11 @@ const SSH: React.FC = () => {
       </div>
 
       {/* Sidebar */}
-      <div className="flex w-[300px] flex-col items-center justify-between gap-2.5 overflow-auto">
+      <div className="flex w-[300px] min-w-[300px] shrink-0 flex-col items-center justify-between gap-2.5 overflow-auto">
         {/* Usage */}
         <div
           className={classNames(
-            cardStyle,
+            sidebarCardStyle,
             'px-3 py-2 flex items-center justify-between gap-2 flex-grow-0 flex-shrink-0',
           )}
         >
@@ -651,7 +652,7 @@ const SSH: React.FC = () => {
         </div>
 
         {/* Recent commands */}
-        <div className={classNames(cardStyle, cardHiddenArea)}>
+        <div className={classNames(sidebarCardStyle, cardHiddenArea)}>
           <div className={classNames(hiddenHeaderStyle, 'flex items-center justify-between flex-shrink-0')}>
             <Button>Commands</Button>
             <div className="flex">
@@ -680,17 +681,17 @@ const SSH: React.FC = () => {
         </div>
 
         {/* Files */}
-        <div className={cardStyle}>
+        <div className={sidebarCardStyle}>
           <span>1</span>
         </div>
 
         {/* Shortcuts */}
-        <div className={cardStyle}>
+        <div className={sidebarCardStyle}>
           <span>1</span>
         </div>
 
         {/* Ask AI */}
-        <div className={classNames(cardStyle, 'flex-grow-0')}>
+        <div className={classNames(sidebarCardStyle, 'flex-grow-0')}>
           <div className="flex h-full w-full items-center justify-center">
             <Button
               variant="icon"
