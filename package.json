@@ -15,7 +15,9 @@
     "lint:fix": "pnpm -r --if-present lint:fix",
     "precommit:lint": "pnpm --filter @cosmosh/backend lint && pnpm --filter @cosmosh/main lint && pnpm --filter @cosmosh/renderer lint && pnpm --filter @cosmosh/i18n check && pnpm --filter @cosmosh/i18n check:sort && pnpm --filter @cosmosh/api-contract typecheck",
     "format": "pnpm -r format",
-    "theme:sync": "pnpm --filter @cosmosh/renderer theme:sync"
+    "theme:sync": "pnpm --filter @cosmosh/renderer theme:sync",
+    "docs:dev": "pnpm --filter @cosmosh/docs dev",
+    "docs:build": "pnpm --filter @cosmosh/docs build"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

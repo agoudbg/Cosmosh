@@ -41,3 +41,9 @@
 - The lead developer is a perfectionist with a strong focus on UX details.
 - Avoid boilerplate-heavy solutions; prioritize clean, performant, and maintainable React code.
 - When suggesting features, think from the perspective of a developer managing hundreds of servers daily.
+
+## 6. AI Governance Source (Mandatory)
+
+- Before starting any implementation task, always read and follow the repository root file `AGENTS.md`.
+- Treat `AGENTS.md` as the canonical AI collaboration policy for documentation sync, UI constraints, IPC changes, and architecture approval gates.
+- If any instruction in this file conflicts with `AGENTS.md`, follow the stricter rule and update docs accordingly.

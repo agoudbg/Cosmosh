@@ -1,0 +1,15 @@
+{
+  "name": "@cosmosh/docs",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cosmosh documentation site powered by VitePress",
+  "scripts": {
+    "dev": "vitepress dev . --port 5174",
+    "build": "vitepress build .",
+    "preview": "vitepress preview ."
+  },
+  "devDependencies": {
+    "mermaid": "^10.9.1",
+    "vitepress": "^1.6.4"
+  }
+}
