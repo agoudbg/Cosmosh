@@ -9,6 +9,9 @@ export const serverQueryInclude = {
     },
   },
   loginAudits: {
+    where: {
+      result: 'success',
+    },
     orderBy: {
       attemptedAt: 'desc',
     },

@@ -36,8 +36,11 @@ sequenceDiagram
   1. 读取 server 记录与加密凭据。
   2. 解析可信主机指纹。
   3. 通过 `ssh2.Client.shell` 打开 SSH shell。
-  4. 在内存中注册会话状态（`Map<sessionId, SshLiveSession>`）。
-  5. 返回短期 attach token 与 WS 端点。
+  4. 写入 `SshLoginAudit` 记录：
+     - 会话创建成功时写入 `result = success`，并记录 `sessionId` 与 `sessionStartedAt`。
+     - 主机信任/认证/连接失败时写入 `result = failed`，并记录 `failureReason`。
+  5. 在内存中注册会话状态（`Map<sessionId, SshLiveSession>`）。
+  6. 返回短期 attach token 与 WS 端点。
 
 ### 附加 WebSocket
 
@@ -51,6 +54,13 @@ sequenceDiagram
 - API 驱动关闭：`DELETE /api/v1/ssh/sessions/{sessionId}`
 - 传输驱动关闭：socket close/error、SSH stream close、SSH client error。
 - 释放行为：发送 terminal `exit` 事件，清理遥测定时器，关闭 SSH stream/client，关闭 WS。
+- 审计收尾：回写对应 `SshLoginAudit` 的 `sessionEndedAt` 与 `commandCount`。
+
+## 2.1 连接审计与最近使用排序
+
+- 服务列表中的 `lastLoginAudit` 映射为最近一次**成功连接**（`result = success`）。
+- 这样“按上次使用排序”将基于真实成功连接，而不是失败尝试。
+- 失败连接仍会写入 `SshLoginAudit`，用于后续日志查询/审计能力。
 
 ## 3. 数据流协议
 

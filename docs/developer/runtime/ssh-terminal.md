@@ -36,8 +36,11 @@ sequenceDiagram
   1. Load server record + encrypted credentials.
   2. Resolve trusted host fingerprints.
   3. Open SSH shell via `ssh2.Client.shell`.
-  4. Register live session state in memory (`Map<sessionId, SshLiveSession>`).
-  5. Return short-lived attach token + WS endpoint.
+  4. Write `SshLoginAudit` record:
+     - `result = success` on successful session creation, with `sessionId` and `sessionStartedAt`.
+     - `result = failed` on host-trust/auth/connect failures, with `failureReason`.
+  5. Register live session state in memory (`Map<sessionId, SshLiveSession>`).
+  6. Return short-lived attach token + WS endpoint.
 
 ### Attach WebSocket
 
@@ -51,6 +54,13 @@ sequenceDiagram
 - API-driven close: `DELETE /api/v1/ssh/sessions/{sessionId}`
 - Transport-driven close: socket close/error, SSH stream close, SSH client error.
 - Dispose behavior: send terminal `exit` event, clear telemetry timer, close SSH stream/client, close WS.
+- Audit finalization: update matching `SshLoginAudit` with `sessionEndedAt` and `commandCount`.
+
+## 2.1 Connection Audit and Last-Used Sorting
+
+- Server list payload maps `lastLoginAudit` to the latest **successful** login audit (`result = success`).
+- This keeps "sort by last used" aligned with actual successful connections instead of failed attempts.
+- Failed attempts are still persisted in `SshLoginAudit` for future query/audit features.
 
 ## 3. Data Stream Protocol
 

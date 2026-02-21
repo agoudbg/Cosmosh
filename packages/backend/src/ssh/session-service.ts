@@ -116,6 +116,7 @@ type ServerOutboundMessage =
 type SshLiveSession = {
   sessionId: string;
   serverId: string;
+  loginAuditId: string | null;
   websocketToken: string;
   client: Client;
   stream: ClientChannel;
@@ -128,6 +129,7 @@ type SshLiveSession = {
     timestampMs: number;
   } | null;
   commandBuffer: string;
+  commandCount: number;
   recentCommands: string[];
   socket: WebSocket | null;
   disposed: boolean;
@@ -305,6 +307,12 @@ export class SshSessionService {
     });
 
     if (shellResult.type === 'host-untrusted') {
+      await this.createLoginAudit({
+        serverId: server.id,
+        result: 'failed',
+        failureReason: shellResult.message || 'Host fingerprint is not trusted.',
+      });
+
       return {
         type: 'host-untrusted',
         serverId: server.id,
@@ -316,6 +324,12 @@ export class SshSessionService {
     }
 
     if (shellResult.type === 'failed') {
+      await this.createLoginAudit({
+        serverId: server.id,
+        result: 'failed',
+        failureReason: shellResult.message,
+      });
+
       return {
         type: 'failed',
         message: shellResult.message,
@@ -329,9 +343,17 @@ export class SshSessionService {
       this.disposeSession(sessionId, 'WebSocket connection timeout.');
     }, 30_000);
 
+    const loginAuditId = await this.createLoginAudit({
+      serverId: server.id,
+      result: 'success',
+      sessionId,
+      sessionStartedAt: new Date(),
+    });
+
     liveSession = {
       sessionId,
       serverId: server.id,
+      loginAuditId,
       websocketToken,
       client: shellResult.client,
       stream: shellResult.stream,
@@ -340,6 +362,7 @@ export class SshSessionService {
       telemetryInterval: null,
       lastNetworkSample: null,
       commandBuffer: '',
+      commandCount: 0,
       recentCommands: [],
       socket: null,
       disposed: false,
@@ -526,6 +549,8 @@ export class SshSessionService {
       clearInterval(session.telemetryInterval);
       session.telemetryInterval = null;
     }
+
+    void this.finalizeLoginAudit(session);
 
     this.sendServerMessage(session, {
       type: 'exit',
@@ -723,8 +748,60 @@ export class SshSessionService {
   }
 
   private pushRecentCommand(session: SshLiveSession, command: string): void {
+    session.commandCount += 1;
     // Keep all submitted commands for this session to match full-history UX expectations.
     session.recentCommands.push(command);
+  }
+
+  private async createLoginAudit(input: {
+    serverId: string;
+    result: 'success' | 'failed';
+    failureReason?: string;
+    sessionId?: string;
+    sessionStartedAt?: Date;
+  }): Promise<string | null> {
+    try {
+      const db = this.getDbClient();
+      const audit = await db.sshLoginAudit.create({
+        data: {
+          id: randomUUID(),
+          serverId: input.serverId,
+          result: input.result,
+          failureReason: input.failureReason,
+          sessionId: input.sessionId,
+          sessionStartedAt: input.sessionStartedAt,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      return audit.id;
+    } catch (error: unknown) {
+      console.error('[ssh][audit] Failed to create SSH login audit record.', error);
+      return null;
+    }
+  }
+
+  private async finalizeLoginAudit(session: SshLiveSession): Promise<void> {
+    if (!session.loginAuditId) {
+      return;
+    }
+
+    try {
+      const db = this.getDbClient();
+      await db.sshLoginAudit.update({
+        where: {
+          id: session.loginAuditId,
+        },
+        data: {
+          sessionEndedAt: new Date(),
+          commandCount: session.commandCount,
+        },
+      });
+    } catch (error: unknown) {
+      console.error('[ssh][audit] Failed to finalize SSH login audit record.', error);
+    }
   }
 
   private async openShell(
