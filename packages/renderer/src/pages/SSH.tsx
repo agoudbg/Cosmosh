@@ -764,16 +764,19 @@ const SSH: React.FC = () => {
           <div className="text-sm text-header-text">
             {connectionState === 'connecting' ? t('ssh.connecting') : connectionError}
           </div>
-          {connectionState !== 'connecting' ? (
-            <div className="flex items-center justify-center">
-              <Menubar>
-                <Button onClick={handleRetry}>
-                  <RefreshCw size={16} />
-                  {t('ssh.retry')}
-                </Button>
-              </Menubar>
-            </div>
-          ) : null}
+          <div
+            className={classNames(
+              'flex items-center justify-center',
+              connectionState === 'connecting' ? 'invisible' : '',
+            )}
+          >
+            <Menubar>
+              <Button onClick={handleRetry}>
+                <RefreshCw size={16} />
+                {t('ssh.retry')}
+              </Button>
+            </Menubar>
+          </div>
         </div>
       ) : null}
 
