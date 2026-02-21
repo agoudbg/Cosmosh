@@ -38,6 +38,7 @@ module.exports = {
       },
       boxShadow: {
         soft: '0 8px 30px var(--shadow-soft)',
+        menu: '0 8px 30px var(--shadow-menu)',
         glow: '0 0 40px var(--color-accent-glow)',
       },
       spacing: {

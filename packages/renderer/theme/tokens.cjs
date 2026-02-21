@@ -144,63 +144,82 @@ const base = {
   shadow: {
     lg: '0 0px 10px #00000088',
     soft: 'rgba(4, 8, 16, 0.6)',
+    menu: 'rgba(0, 0, 0, 0)',
   },
 };
 
 const light = {
   colors: {
     bg: {
-      DEFAULT: '#f7f9fc',
-      subtle: '#eef2f7',
+      DEFAULT: '#f5f5f7',
+      subtle: '#f0f0f3',
       panel: '#ffffff',
+    },
+    header: {
+      tab: {
+        hover: '#ececf0',
+        active: '#e4e4ea',
+      },
+      text: {
+        DEFAULT: '#111827',
+        muted: '#6e6e73',
+      },
+      divider: '#e2e2e8',
     },
     text: {
       DEFAULT: '#111827',
-      muted: '#475569',
-      faint: '#94a3b8',
+      muted: '#6e6e73',
+      faint: '#9b9ba1',
     },
     border: {
-      DEFAULT: '#e2e8f0',
-      strong: '#cbd5f5',
+      DEFAULT: '#e2e2e8',
+      strong: '#d1d1d8',
     },
     home: {
       card: {
-        DEFAULT: '#f8fafc',
-        hover: '#eef2f7',
-        active: '#e2e8f0',
+        DEFAULT: '#f7f7fa',
+        hover: '#efeff3',
+        active: '#e6e6ed',
       },
       chip: {
-        DEFAULT: '#f8fafc',
-        hover: '#eef2f7',
-        active: '#e2e8f0',
+        DEFAULT: '#f7f7fa',
+        hover: '#efeff3',
+        active: '#e6e6ed',
       },
       search: {
         DEFAULT: '#ffffff',
       },
       text: {
-        subtle: '#66758b',
+        subtle: '#6e6e73',
         empty: {
-          icon: '#8d939c',
+          icon: '#9b9ba1',
         },
       },
-      divider: '#d6deea',
+      divider: '#e2e2e8',
       icon: {
-        bg: '#d2d6dc',
+        bg: '#d8d8de',
         active: '#ffffff',
-        slate: '#dce3ed',
-        'slate-ink': '#3a4a61',
-        blue: '#d8e8ff',
-        'blue-ink': '#225aa8',
-        emerald: '#d6f4ea',
-        'emerald-ink': '#1f7d67',
-        violet: '#e8defc',
-        'violet-ink': '#6c48b7',
-        amber: '#fdeccc',
-        'amber-ink': '#9d640f',
-        rose: '#ffdce7',
-        'rose-ink': '#9a2f55',
-        cyan: '#d8f4fb',
-        'cyan-ink': '#177b93',
+        slate: '#e5e5ea',
+        'slate-ink': '#4b5563',
+        blue: '#e7efff',
+        'blue-ink': '#355b9a',
+        emerald: '#e4f4ee',
+        'emerald-ink': '#2f7a67',
+        violet: '#eee7fa',
+        'violet-ink': '#6a52a3',
+        amber: '#fdf0db',
+        'amber-ink': '#996722',
+        rose: '#fce5eb',
+        'rose-ink': '#9c4363',
+        cyan: '#e4f3f7',
+        'cyan-ink': '#2e7484',
+      },
+    },
+    ssh: {
+      card: {
+        bg: {
+          DEFAULT: '#ffffff',
+        },
       },
     },
     accent: {
@@ -209,8 +228,11 @@ const light = {
       glow: 'rgba(14, 165, 233, 0.35)',
     },
     menu: {
-      control: '#ffffff',
-      controlHover: '#f1f5f9',
+      control: {
+        DEFAULT: '#ffffff',
+        hover: '#f1f1f5',
+      },
+      divider: '#e2e2e8',
     },
     dialog: {
       overlay: '#0f172a4d',
@@ -241,20 +263,20 @@ const light = {
     form: {
       control: {
         DEFAULT: '#ffffff',
-        hover: '#f1f5f9',
+        hover: '#f1f1f5',
       },
       text: {
         DEFAULT: '#111827',
-        muted: '#475569',
+        muted: '#6e6e73',
       },
       switch: {
         track: {
-          off: '#d5deea',
+          off: '#d1d1d8',
           on: '#0a84ff',
         },
       },
       thumb: {
-        off: '#acb9cb',
+        off: '#a8a8b2',
         on: '#ffffff',
       },
       message: {
@@ -267,10 +289,17 @@ const light = {
       warn: '#facc15',
       bad: '#f87171',
     },
-    divider: '#333333',
+    divider: '#e2e2e8',
+    scrollbar: {
+      thumb: {
+        DEFAULT: '#c9c9d2',
+        hover: '#b4b4bf',
+      },
+    },
   },
   shadow: {
     soft: 'rgba(148, 163, 184, 0.4)',
+    menu: 'rgba(0, 0, 0, 0)',
   },
 };
 
