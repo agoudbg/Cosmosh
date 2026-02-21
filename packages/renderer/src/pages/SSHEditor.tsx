@@ -749,7 +749,7 @@ const SSHEditor: React.FC = () => {
 
         <main className="flex min-w-0 flex-1 flex-col pl-2">
           <div className="shrink-0 bg-bg pb-2">
-            <div className="flex items-center justify-between gap-4 pb-1 ps-2">
+            <div className="-ms-2 flex items-center justify-between gap-4 pb-1 ps-2">
               <Menubar>
                 <Input
                   value={formState.name}
