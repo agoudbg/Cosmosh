@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
-import { access, chmod, mkdir, open } from 'node:fs/promises';
+import { access, chmod, mkdir, open, rename } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -167,6 +167,22 @@ const ensureSecureFile = async (filePath: string): Promise<void> => {
   await access(filePath, fsConstants.R_OK | fsConstants.W_OK);
 };
 
+const backupUnreadableDatabaseFiles = async (databaseFilePath: string): Promise<void> => {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const candidates = [databaseFilePath, `${databaseFilePath}-wal`, `${databaseFilePath}-shm`];
+
+  for (const sourcePath of candidates) {
+    try {
+      await access(sourcePath, fsConstants.F_OK);
+    } catch {
+      continue;
+    }
+
+    const targetPath = `${sourcePath}.unreadable-${timestamp}.bak`;
+    await rename(sourcePath, targetPath);
+  }
+};
+
 export const getDatabasePath = (): string => {
   if (isDevelopmentRuntime()) {
     return path.join(workspaceRootDir, '.dev_data', DB_FILE_NAME);
@@ -240,31 +256,15 @@ const isNativeDriverUnavailableError = (error: unknown): boolean => {
   return false;
 };
 
-const convertPlaintextDatabaseToSqlCipher = (databaseFilePath: string, databaseKey: string): void => {
-  const SqlCipherDriver = resolveSqlCipherDriver();
-  if (!SqlCipherDriver) {
-    return;
+const isPrismaSqliteFileUnreadableError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('file is not a database')) {
+    return true;
   }
 
-  const sqlite = new SqlCipherDriver(databaseFilePath);
-
-  try {
-    sqlite.prepare('SELECT count(*) AS tableCount FROM sqlite_master').get();
-    sqlite.pragma("cipher = 'sqlcipher'");
-    sqlite.pragma(`rekey = '${escapeSqliteLiteral(databaseKey)}'`);
-    sqlite.pragma(`key = '${escapeSqliteLiteral(databaseKey)}'`);
-    sqlite.prepare('SELECT count(*) AS tableCount FROM sqlite_master').get();
-    console.warn('[db:init] Converted existing plaintext SQLite database to SQLCipher format.');
-  } catch (error: unknown) {
-    if (isNativeDriverUnavailableError(error)) {
-      console.warn('[db:init] SQLCipher native addon is unavailable in current runtime. Conversion is skipped.');
-      return;
-    }
-
-    throw error;
-  } finally {
-    sqlite.close();
-  }
+  const code = (error as { code?: string })?.code;
+  const metaCode = (error as { meta?: { code?: string } })?.meta?.code;
+  return code === 'P2010' && metaCode === '26';
 };
 
 const ensureDevelopmentPlaintextDatabase = (databaseFilePath: string, databaseKey: string): void => {
@@ -277,6 +277,8 @@ const ensureDevelopmentPlaintextDatabase = (databaseFilePath: string, databaseKe
 
   try {
     encryptedDb = new SqlCipherDriver(databaseFilePath);
+    encryptedDb.pragma('wal_checkpoint(FULL)');
+    encryptedDb.pragma('journal_mode = DELETE');
     encryptedDb.pragma("cipher = 'sqlcipher'");
     encryptedDb.pragma(`key = '${escapeSqliteLiteral(databaseKey)}'`);
     encryptedDb.prepare('SELECT count(*) AS tableCount FROM sqlite_master').get();
@@ -337,8 +339,10 @@ const bootstrapSqlCipher = (databaseFilePath: string, databaseKey: string): bool
     const message = error instanceof Error ? error.message : String(error);
 
     if (message.includes('file is not a database')) {
-      convertPlaintextDatabaseToSqlCipher(databaseFilePath, databaseKey);
-      return true;
+      console.warn(
+        '[db:init] Existing plaintext database detected. Skipping SQLCipher conversion for Prisma compatibility in current runtime.',
+      );
+      return false;
     }
 
     throw error;
@@ -527,7 +531,7 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
       );
     }
 
-    const client = new PrismaClient({
+    let client = new PrismaClient({
       datasources: {
         db: {
           url: databaseUrl,
@@ -549,13 +553,65 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
     try {
       await applyPragmas(client, runtimeMode, databaseKey!, sqlCipherEnabled);
     } catch (error: unknown) {
-      await client.$disconnect();
-      withDbError(
-        'DB_PRAGMA_FAILED',
-        'Failed to apply SQLite PRAGMA settings.',
-        { runtimeMode, databaseFilePath: databaseFilePath! },
-        error,
-      );
+      const shouldFallbackToCompatibilityMode =
+        !isDevelopmentRuntime() && sqlCipherEnabled && isPrismaSqliteFileUnreadableError(error);
+
+      if (shouldFallbackToCompatibilityMode) {
+        console.warn(
+          '[db:init] Prisma could not read SQLCipher database. Falling back to compatibility mode by decrypting database for Prisma runtime.',
+        );
+        await client.$disconnect();
+        ensureDevelopmentPlaintextDatabase(databaseFilePath!, databaseKey!);
+
+        client = new PrismaClient({
+          datasources: {
+            db: {
+              url: databaseUrl,
+            },
+          },
+        });
+
+        await client.$connect();
+        try {
+          await applyPragmas(client, runtimeMode, databaseKey!, false);
+        } catch (fallbackError: unknown) {
+          if (isPrismaSqliteFileUnreadableError(fallbackError)) {
+            console.warn(
+              '[db:init] Database remains unreadable after compatibility fallback. Backing up corrupted files and reinitializing a fresh database.',
+            );
+            await client.$disconnect();
+            await backupUnreadableDatabaseFiles(databaseFilePath!);
+            await ensureSecureFile(databaseFilePath!);
+
+            client = new PrismaClient({
+              datasources: {
+                db: {
+                  url: databaseUrl,
+                },
+              },
+            });
+
+            await client.$connect();
+            await applyPragmas(client, runtimeMode, databaseKey!, false);
+          } else {
+            await client.$disconnect();
+            withDbError(
+              'DB_PRAGMA_FAILED',
+              'Failed to apply SQLite PRAGMA settings.',
+              { runtimeMode, databaseFilePath: databaseFilePath! },
+              fallbackError,
+            );
+          }
+        }
+      } else {
+        await client.$disconnect();
+        withDbError(
+          'DB_PRAGMA_FAILED',
+          'Failed to apply SQLite PRAGMA settings.',
+          { runtimeMode, databaseFilePath: databaseFilePath! },
+          error,
+        );
+      }
     }
 
     try {

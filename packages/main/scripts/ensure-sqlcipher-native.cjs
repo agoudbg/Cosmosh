@@ -78,6 +78,24 @@ const resolveElectronVersion = async () => {
   return matched[0];
 };
 
+const resolveNodeGypCliPath = async () => {
+  const candidates = [
+    path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'node_modules', 'node-gyp', 'bin', 'node-gyp.js'),
+    path.join(workspaceRoot, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js'),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // Continue searching fallback candidates.
+    }
+  }
+
+  throw new Error('Unable to locate node-gyp CLI. Install node-gyp or use a Node.js distribution that bundles npm/node-gyp.');
+};
+
 const ensureSqlCipherNativeAddon = async () => {
   const packageEntry = require.resolve(packageName, {
     paths: [backendNodeModulesRoot, path.join(workspaceRoot, 'node_modules')],
@@ -89,18 +107,13 @@ const ensureSqlCipherNativeAddon = async () => {
   console.log(
     `[main:prebuild] Building SQLCipher native addon for Electron ${electronVersion} (ensures ABI compatibility).`,
   );
+  const nodeGypCliPath = await resolveNodeGypCliPath();
 
-  const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  await runCommand(
-    pnpmCmd,
-    ['run', 'build-release'],
-    packageRoot,
-    {
-      npm_config_runtime: 'electron',
-      npm_config_target: electronVersion,
-      npm_config_disturl: 'https://electronjs.org/headers',
-    },
-  );
+  await runCommand(process.execPath, [nodeGypCliPath, 'rebuild', '--release'], packageRoot, {
+    npm_config_runtime: 'electron',
+    npm_config_target: electronVersion,
+    npm_config_disturl: 'https://electronjs.org/headers',
+  });
 
   await fs.access(nativeBindingPath);
   console.log(`[main:prebuild] Native SQLCipher addon built successfully: ${nativeBindingPath}`);

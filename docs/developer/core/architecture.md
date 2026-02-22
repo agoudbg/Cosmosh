@@ -218,3 +218,26 @@ Handling principle:
 
 - Session runtime must guard against stale attach state.
 - Renderer should treat reload as a new lifecycle and re-establish state explicitly.
+
+### 8.4 Unreadable SQLite File During Startup
+
+```mermaid
+sequenceDiagram
+  participant BE as Backend Bootstrap
+  participant DB as SQLite File
+  participant MAIN as Electron Main
+
+  BE->>DB: Try SQLCipher bootstrap
+  DB-->>BE: file is not a database / unreadable
+  BE->>BE: Try compatibility fallback (decrypt for Prisma)
+  alt still unreadable
+    BE->>DB: Backup *.db / *.db-wal / *.db-shm as *.unreadable-<timestamp>.bak
+    BE->>DB: Recreate fresh database file and schema
+  end
+  BE-->>MAIN: /health ready
+```
+
+Handling principle:
+
+- Prefer preserving startup availability over hard-crashing on unreadable local state.
+- Preserve forensic recoverability by backing up unreadable database artifacts before reset.

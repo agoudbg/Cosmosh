@@ -32,7 +32,7 @@ const script = [
   "    Write-Output (\"[main:prebuild] Failed to stop process #{0}: {1}\" -f $_.ProcessId, $_.Exception.Message)",
   "  }",
   "}",
-].join('; ');
+].join('\n');
 
 const result = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
   stdio: 'inherit',
