@@ -54,6 +54,11 @@ const resolvePackageRoot = async (packageName, resolvePaths) => {
 const normalizeRelativePath = (sourcePath, sourcePackageRoot) =>
   path.relative(sourcePackageRoot, sourcePath).split(path.sep).join('/');
 
+const hasExcludedPathSegment = (relativePath, excludedNames) => {
+  const segments = relativePath.split('/');
+  return segments.some((segment) => excludedNames.has(segment.toLowerCase()));
+};
+
 const getNodePtyRuntimePrefixes = () => {
   const platform = process.platform;
   const arch = process.arch;
@@ -83,6 +88,40 @@ const getNodePtyRuntimePrefixes = () => {
 
 const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
 
+const excludedDirectoryNames = new Set([
+  '.github',
+  '.vscode',
+  '__tests__',
+  'benchmark',
+  'benchmarks',
+  'docs',
+  'doc',
+  'example',
+  'examples',
+  'test',
+  'tests',
+]);
+
+const excludedFileExtensions = new Set([
+  '.cc',
+  '.cpp',
+  '.c',
+  '.d.ts',
+  '.d.mts',
+  '.gyp',
+  '.h',
+  '.hpp',
+  '.map',
+  '.md',
+  '.mk',
+  '.pdb',
+  '.ts',
+  '.tsx',
+  '.vcxproj',
+  '.yaml',
+  '.yml',
+]);
+
 const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot) => {
   const relativePath = normalizeRelativePath(sourcePath, sourcePackageRoot);
 
@@ -96,7 +135,20 @@ const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot)
     return false;
   }
 
-  if (fileName.endsWith('.map') || fileName.endsWith('.pdb')) {
+  if (hasExcludedPathSegment(relativePath, excludedDirectoryNames)) {
+    return false;
+  }
+
+  const lowerRelativePath = relativePath.toLowerCase();
+  const lowerFileName = fileName.toLowerCase();
+
+  if (
+    excludedFileExtensions.has(path.extname(lowerFileName)) ||
+    lowerFileName.endsWith('.d.ts') ||
+    lowerFileName.endsWith('.d.mts') ||
+    lowerRelativePath.endsWith('.d.ts') ||
+    lowerRelativePath.endsWith('.d.mts')
+  ) {
     return false;
   }
 
@@ -215,7 +267,14 @@ const syncWorkspaceRuntimePackages = async () => {
     await fs.access(sourcePackageJsonPath);
     await fs.rm(targetPackageDir, { recursive: true, force: true });
     await fs.mkdir(targetPackageDir, { recursive: true });
-    await fs.cp(sourceDistDir, targetDistDir, { recursive: true, force: true });
+    await fs.cp(sourceDistDir, targetDistDir, {
+      recursive: true,
+      force: true,
+      filter: (sourcePath) => {
+        const lowerName = path.basename(sourcePath).toLowerCase();
+        return !(lowerName.endsWith('.map') || lowerName.endsWith('.d.ts') || lowerName.endsWith('.d.mts'));
+      },
+    });
     await fs.copyFile(sourcePackageJsonPath, targetPackageJsonPath);
 
     console.log(`[main:prebuild] Synced workspace runtime package: @cosmosh/${packageName}`);
