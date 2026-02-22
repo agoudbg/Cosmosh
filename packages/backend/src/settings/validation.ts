@@ -18,6 +18,9 @@ export const DEFAULT_SETTINGS_VALUES: SettingsValues = {
   autoSaveEnabled: true,
   accountSyncEnabled: false,
   defaultServerNoteTemplate: '',
+  terminalSelectionBarEnabled: true,
+  terminalSelectionSearchEngine: 'google',
+  terminalSelectionSearchUrlTemplate: '',
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -99,6 +102,29 @@ const normalizeSettingsValues = (value: unknown): { value?: SettingsValues; erro
     return { error: 'values.defaultServerNoteTemplate must be 1000 characters or fewer.' };
   }
 
+  if (typeof value.terminalSelectionBarEnabled !== 'boolean') {
+    return { error: 'values.terminalSelectionBarEnabled must be a boolean.' };
+  }
+
+  const terminalSelectionSearchEngine = value.terminalSelectionSearchEngine;
+  if (
+    terminalSelectionSearchEngine !== 'google' &&
+    terminalSelectionSearchEngine !== 'bing' &&
+    terminalSelectionSearchEngine !== 'duckduckgo' &&
+    terminalSelectionSearchEngine !== 'baidu' &&
+    terminalSelectionSearchEngine !== 'custom'
+  ) {
+    return {
+      error: 'values.terminalSelectionSearchEngine must be one of: google, bing, duckduckgo, baidu, custom.',
+    };
+  }
+
+  const terminalSelectionSearchUrlTemplate =
+    typeof value.terminalSelectionSearchUrlTemplate === 'string' ? value.terminalSelectionSearchUrlTemplate : '';
+  if (terminalSelectionSearchUrlTemplate.length > 1000) {
+    return { error: 'values.terminalSelectionSearchUrlTemplate must be 1000 characters or fewer.' };
+  }
+
   return {
     value: {
       language,
@@ -108,6 +134,9 @@ const normalizeSettingsValues = (value: unknown): { value?: SettingsValues; erro
       autoSaveEnabled: value.autoSaveEnabled,
       accountSyncEnabled: value.accountSyncEnabled,
       defaultServerNoteTemplate,
+      terminalSelectionBarEnabled: value.terminalSelectionBarEnabled,
+      terminalSelectionSearchEngine,
+      terminalSelectionSearchUrlTemplate,
     },
   };
 };

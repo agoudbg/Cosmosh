@@ -693,6 +693,9 @@ components:
     SettingsTheme:
       type: string
       enum: ["dark", "light", "auto"]
+    SettingsSearchEngine:
+      type: string
+      enum: ["google", "bing", "duckduckgo", "baidu", "custom"]
     SettingsValues:
       type: object
       additionalProperties: false
@@ -704,6 +707,9 @@ components:
         - autoSaveEnabled
         - accountSyncEnabled
         - defaultServerNoteTemplate
+        - terminalSelectionBarEnabled
+        - terminalSelectionSearchEngine
+        - terminalSelectionSearchUrlTemplate
       properties:
         language:
           $ref: "#/components/schemas/SettingsLanguage"
@@ -722,6 +728,13 @@ components:
         accountSyncEnabled:
           type: boolean
         defaultServerNoteTemplate:
+          type: string
+          maxLength: 1000
+        terminalSelectionBarEnabled:
+          type: boolean
+        terminalSelectionSearchEngine:
+          $ref: "#/components/schemas/SettingsSearchEngine"
+        terminalSelectionSearchUrlTemplate:
           type: string
           maxLength: 1000
     SettingsScope:

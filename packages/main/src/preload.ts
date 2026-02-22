@@ -87,6 +87,9 @@ contextBridge.exposeInMainWorld('electron', {
   showInFileManager: (targetPath?: string) => {
     return ipcRenderer.invoke('app:show-in-file-manager', targetPath) as Promise<boolean>;
   },
+  openExternalUrl: (targetUrl: string) => {
+    return ipcRenderer.invoke('app:open-external-url', targetUrl) as Promise<boolean>;
+  },
   backendTestPing: () => {
     return ipcRenderer.invoke('backend:test-ping') as Promise<ApiTestPingResponse | ApiErrorResponse>;
   },

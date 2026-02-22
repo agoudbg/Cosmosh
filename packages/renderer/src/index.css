@@ -45,9 +45,11 @@
   --color-home-icon-cyan: #183b45;
   --color-home-icon-cyan-ink: #b8f0ff;
   --color-ssh-card-bg: #191919;
+  --color-ssh-card-bg-terminal: #000000;
   --color-menu-control: #191919d9;
   --color-menu-control-hover: #292929cc;
   --color-menu-divider: #333333;
+  --color-menu-selection-bar-border: #ffffff1f;
   --color-dialog-overlay: #000000aa;
   --color-dialog-surface: #0e0e0ee6;
   --color-dialog-border: #33333333;
@@ -84,6 +86,7 @@
   --shadow-soft: rgba(4, 8, 16, 0.6);
   --shadow-menu: rgba(0, 0, 0, 0);
   --shadow-menu-content: rgba(4, 8, 16, 0.6);
+  --shadow-selection-bar: rgba(0, 0, 0, 0.24);
 }
 
 :root[data-theme='light'] {
@@ -133,6 +136,7 @@
   --color-menu-control: #ffffff;
   --color-menu-control-hover: #f1f1f5;
   --color-menu-divider: #e2e2e8;
+  --color-menu-selection-bar-border: #d4d8e180;
   --color-dialog-overlay: #0f172a4d;
   --color-dialog-surface: #ffffff;
   --color-dialog-border: #d6deea10;
@@ -166,6 +170,7 @@
   --shadow-soft: rgba(148, 163, 184, 0.4);
   --shadow-menu: rgba(0, 0, 0, 0);
   --shadow-menu-content: rgba(148, 163, 184, 0.4);
+  --shadow-selection-bar: rgba(148, 163, 184, 0.24);
 }
 
 @media (prefers-color-scheme: light) {
@@ -216,6 +221,7 @@
     --color-menu-control: #ffffff;
     --color-menu-control-hover: #f1f1f5;
     --color-menu-divider: #e2e2e8;
+    --color-menu-selection-bar-border: #d4d8e180;
     --color-dialog-overlay: #0f172a4d;
     --color-dialog-surface: #ffffff;
     --color-dialog-border: #d6deea10;
@@ -249,6 +255,7 @@
     --shadow-soft: rgba(148, 163, 184, 0.4);
     --shadow-menu: rgba(0, 0, 0, 0);
     --shadow-menu-content: rgba(148, 163, 184, 0.4);
+    --shadow-selection-bar: rgba(148, 163, 184, 0.24);
   }
 }
 /* theme-tokens:end */

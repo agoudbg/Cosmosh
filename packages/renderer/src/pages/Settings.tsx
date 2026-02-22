@@ -1,4 +1,4 @@
-import { Cloud, Info, Palette, Save, Search, Settings2, Wrench } from 'lucide-react';
+import { Cloud, Info, Link2, Palette, Save, Search, Settings2, Terminal, Wrench } from 'lucide-react';
 import React from 'react';
 
 import { Button } from '../components/ui/button';
@@ -34,12 +34,17 @@ type SettingsFormState = {
   autoSaveEnabled: string;
   accountSyncEnabled: string;
   defaultServerNoteTemplate: string;
+  terminalSelectionBarEnabled: boolean;
+  terminalSelectionSearchEngine: AppSettingsValues['terminalSelectionSearchEngine'];
+  terminalSelectionSearchUrlTemplate: string;
 };
 
 const categoryIconMap: Record<SettingsCategoryId, React.ComponentType<{ className?: string }>> = {
   general: Settings2,
   'account-sync': Cloud,
   theme: Palette,
+  terminal: Terminal,
+  connection: Link2,
   advanced: Wrench,
   about: Info,
 };
@@ -50,7 +55,32 @@ const sectionKeyMap: Record<string, string> = {
   Appearance: 'appearance',
   'SSH Runtime': 'sshRuntime',
   'Editor Defaults': 'editorDefaults',
+  'Terminal Selection': 'terminalSelection',
+  'Orbit Bar': 'terminalSelection',
+  Connection: 'connection',
+  Search: 'search',
   Runtime: 'runtime',
+};
+
+const TERMINAL_SELECTION_ENGINES: ReadonlyArray<AppSettingsValues['terminalSelectionSearchEngine']> = [
+  'google',
+  'bing',
+  'duckduckgo',
+  'baidu',
+  'custom',
+];
+
+const isTerminalSelectionSearchEngine = (
+  value: string,
+): value is AppSettingsValues['terminalSelectionSearchEngine'] => {
+  return TERMINAL_SELECTION_ENGINES.includes(value as AppSettingsValues['terminalSelectionSearchEngine']);
+};
+
+const optionLabelNamespaceMap: Partial<Record<keyof SettingsFormState, string>> = {
+  language: 'language',
+  theme: 'theme',
+  accountSyncEnabled: 'boolean',
+  terminalSelectionSearchEngine: 'searchEngine',
 };
 
 const toFormState = (values: AppSettingsValues): SettingsFormState => {
@@ -62,6 +92,9 @@ const toFormState = (values: AppSettingsValues): SettingsFormState => {
     autoSaveEnabled: String(values.autoSaveEnabled),
     accountSyncEnabled: String(values.accountSyncEnabled),
     defaultServerNoteTemplate: values.defaultServerNoteTemplate,
+    terminalSelectionBarEnabled: values.terminalSelectionBarEnabled,
+    terminalSelectionSearchEngine: values.terminalSelectionSearchEngine,
+    terminalSelectionSearchUrlTemplate: values.terminalSelectionSearchUrlTemplate,
   };
 };
 
@@ -96,6 +129,18 @@ const parseFormState = (formState: SettingsFormState): { value?: AppSettingsValu
     return { error: 'Default Server Note Template must be 1000 characters or fewer.' };
   }
 
+  if (typeof formState.terminalSelectionBarEnabled !== 'boolean') {
+    return { error: 'Orbit Bar value is invalid.' };
+  }
+
+  if (!TERMINAL_SELECTION_ENGINES.includes(formState.terminalSelectionSearchEngine)) {
+    return { error: 'Terminal Selection Search Engine is invalid.' };
+  }
+
+  if (formState.terminalSelectionSearchUrlTemplate.length > 1000) {
+    return { error: 'Terminal Selection Custom Search URL must be 1000 characters or fewer.' };
+  }
+
   return {
     value: {
       language: formState.language,
@@ -105,6 +150,9 @@ const parseFormState = (formState: SettingsFormState): { value?: AppSettingsValu
       autoSaveEnabled: formState.autoSaveEnabled === 'true',
       accountSyncEnabled: formState.accountSyncEnabled === 'true',
       defaultServerNoteTemplate: formState.defaultServerNoteTemplate,
+      terminalSelectionBarEnabled: formState.terminalSelectionBarEnabled,
+      terminalSelectionSearchEngine: formState.terminalSelectionSearchEngine,
+      terminalSelectionSearchUrlTemplate: formState.terminalSelectionSearchUrlTemplate,
     },
   };
 };
@@ -144,6 +192,12 @@ const parseJsonToFormState = (rawJson: string): { value?: SettingsFormState; err
   }
 
   const candidate = parsedUnknown as Partial<AppSettingsValues>;
+  const terminalSelectionSearchEngineCandidate =
+    typeof candidate.terminalSelectionSearchEngine === 'string' ? candidate.terminalSelectionSearchEngine : 'google';
+
+  if (!isTerminalSelectionSearchEngine(terminalSelectionSearchEngineCandidate)) {
+    return { error: 'Terminal Selection Search Engine is invalid.' };
+  }
 
   const nextFormState: SettingsFormState = {
     language: typeof candidate.language === 'string' ? candidate.language : '',
@@ -154,6 +208,13 @@ const parseJsonToFormState = (rawJson: string): { value?: SettingsFormState; err
     accountSyncEnabled: String(candidate.accountSyncEnabled ?? false),
     defaultServerNoteTemplate:
       typeof candidate.defaultServerNoteTemplate === 'string' ? candidate.defaultServerNoteTemplate : '',
+    terminalSelectionBarEnabled:
+      typeof candidate.terminalSelectionBarEnabled === 'boolean' ? candidate.terminalSelectionBarEnabled : true,
+    terminalSelectionSearchEngine: terminalSelectionSearchEngineCandidate,
+    terminalSelectionSearchUrlTemplate:
+      typeof candidate.terminalSelectionSearchUrlTemplate === 'string'
+        ? candidate.terminalSelectionSearchUrlTemplate
+        : '',
   };
 
   const validated = parseFormState(nextFormState);
@@ -165,16 +226,9 @@ const parseJsonToFormState = (rawJson: string): { value?: SettingsFormState; err
 };
 
 const resolveLocalizedOptionLabel = (itemKey: string, value: string): string => {
-  if (itemKey === 'language') {
-    return t(`settings.options.language.${value}`);
-  }
-
-  if (itemKey === 'theme') {
-    return t(`settings.options.theme.${value}`);
-  }
-
-  if (itemKey === 'accountSyncEnabled') {
-    return t(`settings.options.boolean.${value}`);
+  const optionNamespace = optionLabelNamespaceMap[itemKey as keyof SettingsFormState];
+  if (optionNamespace) {
+    return t(`settings.options.${optionNamespace}.${value}`);
   }
 
   return value;
@@ -198,6 +252,7 @@ const Settings: React.FC = () => {
   );
 
   React.useEffect(() => {
+    // Re-render translated labels when locale changes at runtime.
     return onLocaleChange(() => {
       setLocaleTick((value) => value + 1);
     });
@@ -226,6 +281,7 @@ const Settings: React.FC = () => {
   }, [visibleSettings]);
 
   React.useEffect(() => {
+    // Keep selected category valid when search filtering hides it.
     if (activeCategoryId === 'about' || isSearchMode) {
       return;
     }
@@ -243,6 +299,7 @@ const Settings: React.FC = () => {
   }, [activeCategoryId, isSearchMode, visibleCategoryIds]);
 
   React.useEffect(() => {
+    // Keep debug JSON view in sync with the current form, except while save is in-flight.
     if (isSaving) {
       return;
     }
@@ -316,12 +373,16 @@ const Settings: React.FC = () => {
   }, [activeCategoryId, visibleSettings]);
 
   const renderedSettings = React.useMemo(() => {
-    if (isSearchMode) {
-      return visibleSettings;
-    }
+    const candidate = isSearchMode ? visibleSettings : categorySettings;
 
-    return categorySettings;
-  }, [categorySettings, isSearchMode, visibleSettings]);
+    return candidate.filter((item) => {
+      if (item.key === 'terminalSelectionSearchUrlTemplate') {
+        return formState.terminalSelectionSearchEngine === 'custom';
+      }
+
+      return true;
+    });
+  }, [categorySettings, formState.terminalSelectionSearchEngine, isSearchMode, visibleSettings]);
 
   const sections = React.useMemo(() => {
     const grouped = new Map<string, SettingDefinition[]>();
@@ -404,6 +465,7 @@ const Settings: React.FC = () => {
   );
 
   React.useEffect(() => {
+    // Auto-save only when enabled and when current values are valid.
     if (isLoading || isSaving || !isAutoSaveEnabled || !hasChanges) {
       return;
     }
@@ -479,6 +541,26 @@ const Settings: React.FC = () => {
               ))}
             </SelectContent>
           </Select>
+        );
+      }
+
+      if (item.control === 'switch') {
+        const value = Boolean(formState[item.key]);
+        return (
+          <div className="flex items-center gap-2.5 px-2.5">
+            <Switch
+              checked={value}
+              onCheckedChange={(checkedState) => {
+                updateField(
+                  item.key as keyof SettingsFormState,
+                  checkedState as SettingsFormState[keyof SettingsFormState],
+                );
+              }}
+            />
+            <span className="text-sm text-form-text-muted">
+              {value ? t('settings.enabled') : t('settings.disabled')}
+            </span>
+          </div>
         );
       }
 

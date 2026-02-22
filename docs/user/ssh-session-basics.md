@@ -14,6 +14,13 @@
 3. Prefer explicit command sequencing over long interactive drift.
 4. Record important command outputs before switching sessions.
 
+## Orbit Bar
+
+- Select terminal text to show Orbit Bar near the current selection.
+- Use Orbit Bar actions for quick copy and search workflows.
+- Search behavior follows the Settings search engine configuration.
+- If Orbit Bar is not needed, disable it from Settings > Terminal.
+
 ## Trust and Verification
 
 - Review host fingerprint prompts carefully.

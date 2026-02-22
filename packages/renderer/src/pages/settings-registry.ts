@@ -1,9 +1,16 @@
 import type { components } from '@cosmosh/api-contract';
 import type React from 'react';
 
-export type SettingsCategoryId = 'general' | 'account-sync' | 'theme' | 'advanced' | 'about';
+export type SettingsCategoryId =
+  | 'general'
+  | 'account-sync'
+  | 'theme'
+  | 'terminal'
+  | 'connection'
+  | 'advanced'
+  | 'about';
 
-type SettingControlType = 'select' | 'input' | 'textarea';
+type SettingControlType = 'select' | 'input' | 'textarea' | 'switch';
 type SettingValueType = 'string' | 'number' | 'boolean';
 
 type SettingsValues = components['schemas']['SettingsValues'];
@@ -53,9 +60,19 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     searchTerms: ['theme', 'appearance', 'dark', 'light', 'auto'],
   },
   {
+    id: 'terminal',
+    label: 'Terminal',
+    searchTerms: ['terminal', 'orbit bar', 'floating bar', 'search'],
+  },
+  {
+    id: 'connection',
+    label: 'Connection',
+    searchTerms: ['connection', 'ssh', 'timeout', 'dial'],
+  },
+  {
     id: 'advanced',
     label: 'Advanced',
-    searchTerms: ['advanced', 'ssh', 'terminal', 'rows', 'timeout'],
+    searchTerms: ['advanced', 'editor', 'template', 'autosave'],
   },
   {
     id: 'about',
@@ -123,12 +140,12 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     defaultValue: 10000,
     title: 'SSH Max Rows',
     description: 'Maximum retained terminal lines for SSH sessions. Reserved for future runtime binding.',
-    categoryId: 'advanced',
-    sectionTitle: 'SSH Runtime',
+    categoryId: 'terminal',
+    sectionTitle: 'Runtime',
     control: 'input',
-    path: 'advanced.ssh.maxRows',
-    commandActionId: 'settings.advanced.ssh.maxRows.set',
-    searchTerms: ['ssh', 'max rows', 'terminal lines', 'scrollback'],
+    path: 'terminal.runtime.maxRows',
+    commandActionId: 'settings.terminal.runtime.maxRows.set',
+    searchTerms: ['ssh', 'max rows', 'terminal lines', 'scrollback', 'terminal'],
     inputMode: 'numeric',
     placeholder: '10000',
   },
@@ -138,11 +155,11 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     defaultValue: 45,
     title: 'SSH Connection Timeout (sec)',
     description: 'Connection timeout used by future SSH dial pipeline.',
-    categoryId: 'advanced',
-    sectionTitle: 'SSH Runtime',
+    categoryId: 'connection',
+    sectionTitle: 'Connection',
     control: 'input',
-    path: 'advanced.ssh.connectionTimeoutSec',
-    commandActionId: 'settings.advanced.ssh.timeout.set',
+    path: 'connection.ssh.timeoutSec',
+    commandActionId: 'settings.connection.ssh.timeout.set',
     searchTerms: ['ssh', 'timeout', 'connection timeout'],
     inputMode: 'numeric',
     placeholder: '45',
@@ -177,5 +194,52 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     commandActionId: 'settings.advanced.editor.defaultServerNoteTemplate.set',
     searchTerms: ['template', 'note', 'server note', 'editor defaults'],
     placeholder: 'Example: owner=@ops env=prod',
+  },
+  {
+    key: 'terminalSelectionBarEnabled',
+    valueType: 'boolean',
+    defaultValue: true,
+    title: 'Orbit Bar',
+    description: 'Show Orbit Bar when text is selected in terminal sessions.',
+    categoryId: 'terminal',
+    sectionTitle: 'Orbit Bar',
+    control: 'switch',
+    path: 'terminal.selection.toolbar.enabled',
+    commandActionId: 'settings.terminal.selection.toolbar.toggle',
+    searchTerms: ['terminal', 'orbit bar', 'floating bar', 'enable orbit bar'],
+  },
+  {
+    key: 'terminalSelectionSearchEngine',
+    valueType: 'string',
+    defaultValue: 'google',
+    title: 'Search Engine',
+    description: 'Defines the default search engine for quick search actions.',
+    categoryId: 'terminal',
+    sectionTitle: 'Search',
+    control: 'select',
+    path: 'ssh.search.searchEngine',
+    commandActionId: 'settings.ssh.searchEngine.set',
+    searchTerms: ['search engine', 'quick search', 'google', 'bing', 'duckduckgo', 'baidu'],
+    options: [
+      { label: 'Google', value: 'google' },
+      { label: 'Bing', value: 'bing' },
+      { label: 'DuckDuckGo', value: 'duckduckgo' },
+      { label: 'Baidu', value: 'baidu' },
+      { label: 'Custom', value: 'custom' },
+    ],
+  },
+  {
+    key: 'terminalSelectionSearchUrlTemplate',
+    valueType: 'string',
+    defaultValue: '',
+    title: 'Custom Search URL',
+    description: 'Optional custom URL template for quick search actions. Use %s as placeholder for selected text.',
+    categoryId: 'terminal',
+    sectionTitle: 'Search',
+    control: 'input',
+    path: 'ssh.search.searchUrlTemplate',
+    commandActionId: 'settings.ssh.searchUrlTemplate.set',
+    searchTerms: ['search url', 'template', '%s', 'browser'],
+    placeholder: 'https://www.google.com/search?q=%s',
   },
 ];

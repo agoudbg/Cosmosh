@@ -14,6 +14,9 @@ export const DEFAULT_APP_SETTINGS_VALUES: AppSettingsValues = {
   autoSaveEnabled: true,
   accountSyncEnabled: false,
   defaultServerNoteTemplate: '',
+  terminalSelectionBarEnabled: true,
+  terminalSelectionSearchEngine: 'google',
+  terminalSelectionSearchUrlTemplate: '',
 };
 
 export const applyThemeSetting = (theme: AppSettingsValues['theme']): void => {

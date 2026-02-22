@@ -55,7 +55,18 @@ Implementation principles:
 - Maintain consistent control rhythm and spacing within each feature surface.
 - Avoid decorative patterns that reduce clarity or compete with task-focused content.
 
-## 7. Compliance Checklist
+## 7. Orbit Bar Standard
+
+Terminal text selection interactions in SSH pages must follow these rules:
+
+- Use tokenized Menubar-like surface style (`menu-control`, `menu-divider`, `shadow-menu`) for the Orbit Bar.
+- Show Orbit Bar only when terminal selection exists and place it above selection first.
+- If above placement would overlap selection or exceed viewport bounds, place it below selection.
+- Keep Orbit Bar position synchronized with selection movement and viewport/layout updates.
+- Provide tooltip labels for each icon action and keep labels localized through renderer i18n resources.
+- Non-implemented actions must use explicit "coming soon" feedback instead of silent no-op behavior.
+
+## 8. Compliance Checklist
 
 Before merging UI changes:
 

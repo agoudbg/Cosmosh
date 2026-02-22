@@ -109,7 +109,9 @@
       "about": "About",
       "account-sync": "Account & Sync",
       "advanced": "Advanced",
+      "connection": "Connection",
       "general": "General",
+      "terminal": "Terminal",
       "theme": "Theme"
     },
     "disabled": "Disabled",
@@ -145,6 +147,21 @@
         "placeholder": "10000",
         "title": "SSH Max Rows"
       },
+      "terminalSelectionBarEnabled": {
+        "description": "Show Orbit Bar when text is selected in terminal sessions.",
+        "placeholder": "",
+        "title": "Orbit Bar"
+      },
+      "terminalSelectionSearchEngine": {
+        "description": "Defines the default search engine for quick search actions.",
+        "placeholder": "",
+        "title": "Search Engine"
+      },
+      "terminalSelectionSearchUrlTemplate": {
+        "description": "Optional custom URL template for quick search actions. Use the query placeholder token in your template.",
+        "placeholder": "https://www.google.com/search?q=QUERY_TOKEN",
+        "title": "Custom Search URL"
+      },
       "theme": {
         "description": "Controls application visual theme.",
         "placeholder": "",
@@ -163,6 +180,13 @@
       "language": {
         "en": "English",
         "zh-CN": "Chinese (Simplified)"
+      },
+      "searchEngine": {
+        "baidu": "Baidu",
+        "bing": "Bing",
+        "custom": "Custom",
+        "duckduckgo": "DuckDuckGo",
+        "google": "Google"
       },
       "theme": {
         "auto": "Auto",
@@ -187,11 +211,14 @@
     "searchResults": "Search Results",
     "sections": {
       "appearance": "Appearance",
+      "connection": "Connection",
       "editorDefaults": "Editor Defaults",
       "localization": "Localization",
       "runtime": "Runtime",
+      "search": "Search",
       "sshRuntime": "SSH Runtime",
-      "synchronization": "Synchronization"
+      "synchronization": "Synchronization",
+      "terminalSelection": "Orbit Bar"
     },
     "title": "Settings"
   },
@@ -266,6 +293,19 @@
     "sectionPerformance": "Performance",
     "sectionSecurity": "Security",
     "sectionSettings": "Settings",
+    "selectionBarAskAiComingSoon": "Ask AI is coming soon.",
+    "selectionBarAskAiLabel": "Ask AI",
+    "selectionBarClose": "Close Orbit Bar",
+    "selectionBarCopy": "Copy selected text",
+    "selectionBarCopyFailed": "Failed to copy selected text.",
+    "selectionBarCopySuccess": "Selected text copied.",
+    "selectionBarDrag": "Drag selected text",
+    "selectionBarDragDataLabel": "Terminal Selection",
+    "selectionBarInsert": "Insert selected text into terminal input",
+    "selectionBarOpenDirectory": "Open directory in SFTP (coming soon)",
+    "selectionBarOpenDirectoryComingSoon": "Open directory in SFTP is coming soon.",
+    "selectionBarSearch": "Search selected text online",
+    "selectionBarSearchFailed": "Failed to open browser search.",
     "serverCreatedSuccessfully": "Server created successfully.",
     "serverListTitle": "Server List",
     "serverNamePlaceholder": "Server name",

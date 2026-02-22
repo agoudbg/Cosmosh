@@ -259,6 +259,8 @@ export interface components {
         SettingsLanguage: "en" | "zh-CN";
         /** @enum {string} */
         SettingsTheme: "dark" | "light" | "auto";
+        /** @enum {string} */
+        SettingsSearchEngine: "google" | "bing" | "duckduckgo" | "baidu" | "custom";
         SettingsValues: {
             language: components["schemas"]["SettingsLanguage"];
             theme: components["schemas"]["SettingsTheme"];
@@ -267,6 +269,9 @@ export interface components {
             autoSaveEnabled: boolean;
             accountSyncEnabled: boolean;
             defaultServerNoteTemplate: string;
+            terminalSelectionBarEnabled: boolean;
+            terminalSelectionSearchEngine: components["schemas"]["SettingsSearchEngine"];
+            terminalSelectionSearchUrlTemplate: string;
         };
         SettingsScope: {
             accountId?: string;

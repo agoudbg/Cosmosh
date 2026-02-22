@@ -109,7 +109,9 @@
       "about": "关于",
       "account-sync": "账号与同步",
       "advanced": "高级",
+      "connection": "连接",
       "general": "通用",
+      "terminal": "终端",
       "theme": "主题"
     },
     "disabled": "已禁用",
@@ -145,6 +147,21 @@
         "placeholder": "10000",
         "title": "SSH 最大行数"
       },
+      "terminalSelectionBarEnabled": {
+        "description": "在终端中选中文本时显示 Orbit Bar。",
+        "placeholder": "",
+        "title": "Orbit Bar"
+      },
+      "terminalSelectionSearchEngine": {
+        "description": "定义快速搜索动作使用的默认搜索引擎。",
+        "placeholder": "",
+        "title": "搜索引擎"
+      },
+      "terminalSelectionSearchUrlTemplate": {
+        "description": "可选的快速搜索动作 URL 模板，请在模板中放置查询占位标记。",
+        "placeholder": "https://www.google.com/search?q=QUERY_TOKEN",
+        "title": "自定义搜索 URL"
+      },
       "theme": {
         "description": "控制应用视觉主题。",
         "placeholder": "",
@@ -163,6 +180,13 @@
       "language": {
         "en": "English",
         "zh-CN": "简体中文"
+      },
+      "searchEngine": {
+        "baidu": "百度",
+        "bing": "Bing",
+        "custom": "自定义",
+        "duckduckgo": "DuckDuckGo",
+        "google": "Google"
       },
       "theme": {
         "auto": "跟随系统",
@@ -187,11 +211,14 @@
     "searchResults": "搜索结果",
     "sections": {
       "appearance": "外观",
+      "connection": "连接",
       "editorDefaults": "编辑器默认",
       "localization": "本地化",
       "runtime": "运行时",
+      "search": "搜索",
       "sshRuntime": "SSH 运行时",
-      "synchronization": "同步"
+      "synchronization": "同步",
+      "terminalSelection": "Orbit Bar"
     },
     "title": "设置"
   },
@@ -266,6 +293,19 @@
     "sectionPerformance": "性能",
     "sectionSecurity": "安全",
     "sectionSettings": "设置",
+    "selectionBarAskAiComingSoon": "问 AI 功能即将上线。",
+    "selectionBarAskAiLabel": "问 AI",
+    "selectionBarClose": "关闭 Orbit Bar",
+    "selectionBarCopy": "复制选中文本",
+    "selectionBarCopyFailed": "复制选中文本失败。",
+    "selectionBarCopySuccess": "已复制选中文本。",
+    "selectionBarDrag": "拖拽选中文本",
+    "selectionBarDragDataLabel": "终端选区",
+    "selectionBarInsert": "将选中文本插入终端输入",
+    "selectionBarOpenDirectory": "在 SFTP 中打开目录（即将支持）",
+    "selectionBarOpenDirectoryComingSoon": "在 SFTP 中打开目录功能即将支持。",
+    "selectionBarSearch": "联网搜索选中文本",
+    "selectionBarSearchFailed": "打开浏览器搜索失败。",
     "serverCreatedSuccessfully": "服务器创建成功。",
     "serverListTitle": "服务器列表",
     "serverNamePlaceholder": "服务器名称",

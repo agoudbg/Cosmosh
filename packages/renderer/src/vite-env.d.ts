@@ -82,6 +82,7 @@ declare global {
       getRuntimeUserName: () => Promise<string>;
       openDevTools: () => Promise<boolean>;
       showInFileManager: (targetPath?: string) => Promise<boolean>;
+      openExternalUrl: (targetUrl: string) => Promise<boolean>;
       backendTestPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
       backendSettingsGet: () => Promise<ApiSettingsGetResponse | ApiErrorResponse>;
       backendSettingsUpdate: (

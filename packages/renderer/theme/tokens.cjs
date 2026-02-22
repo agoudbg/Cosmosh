@@ -69,6 +69,7 @@ const base = {
       card: {
         bg: {
           DEFAULT: '#191919',
+          terminal: '#000000',
         }
       }
     },
@@ -78,6 +79,7 @@ const base = {
         hover: '#292929cc',
       },
       divider: '#333333',
+      'selection-bar-border': '#ffffff1f',
     },
     dialog: {
       overlay: '#000000aa',
@@ -146,6 +148,7 @@ const base = {
     soft: 'rgba(4, 8, 16, 0.6)',
     menu: 'rgba(0, 0, 0, 0)',
     'menu-content': 'rgba(4, 8, 16, 0.6)',
+    'selection-bar': 'rgba(0, 0, 0, 0.24)',
   },
 };
 
@@ -234,6 +237,7 @@ const light = {
         hover: '#f1f1f5',
       },
       divider: '#e2e2e8',
+      'selection-bar-border': '#d4d8e180',
     },
     dialog: {
       overlay: '#0f172a4d',
@@ -302,6 +306,7 @@ const light = {
     soft: 'rgba(148, 163, 184, 0.4)',
     menu: 'rgba(0, 0, 0, 0)',
     'menu-content': 'rgba(148, 163, 184, 0.4)',
+    'selection-bar': 'rgba(148, 163, 184, 0.24)',
   },
 };
 

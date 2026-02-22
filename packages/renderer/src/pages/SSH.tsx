@@ -7,6 +7,7 @@ import classNames from 'classnames';
 import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles } from 'lucide-react';
 import React from 'react';
 
+import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
 import { Button } from '../components/ui/button';
 import {
   Dialog,
@@ -20,16 +21,19 @@ import {
 } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Menubar } from '../components/ui/menubar';
+import { DEFAULT_APP_SETTINGS_VALUES } from '../lib/app-settings';
 import {
   closeLocalTerminalSession,
   closeSshSession,
   createLocalTerminalSession,
   createSshSession,
+  getAppSettings,
   listSshServers,
   trustSshFingerprint,
 } from '../lib/backend';
 import { t } from '../lib/i18n';
 import { getActiveSshServerId, parseTerminalTarget } from '../lib/ssh-target';
+import { useToast } from '../lib/toast-context';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
 
@@ -200,15 +204,116 @@ const resolveTerminalTarget = async (): Promise<ResolvedTerminalTarget> => {
   };
 };
 
+type TerminalSelectionAnchor = {
+  selectionText: string;
+  pointerClientX: number | null;
+  anchorLeft: number;
+  anchorRight: number;
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+};
+
+type TerminalSelectionBarPosition = {
+  top: number;
+  left: number;
+};
+
+type TerminalSelectionSettings = {
+  enabled: boolean;
+  searchEngine: components['schemas']['SettingsSearchEngine'];
+  searchUrlTemplate: string;
+};
+
+type TerminalSelectionBounds = Pick<
+  TerminalSelectionAnchor,
+  'anchorLeft' | 'anchorRight' | 'top' | 'left' | 'right' | 'bottom'
+>;
+
+const DEFAULT_TERMINAL_SELECTION_SETTINGS: TerminalSelectionSettings = {
+  enabled: DEFAULT_APP_SETTINGS_VALUES.terminalSelectionBarEnabled,
+  searchEngine: DEFAULT_APP_SETTINGS_VALUES.terminalSelectionSearchEngine,
+  searchUrlTemplate: DEFAULT_APP_SETTINGS_VALUES.terminalSelectionSearchUrlTemplate,
+};
+
+const SEARCH_URL_BY_ENGINE: Partial<Record<TerminalSelectionSettings['searchEngine'], string>> = {
+  google: 'https://www.google.com/search?q=',
+  bing: 'https://www.bing.com/search?q=',
+  duckduckgo: 'https://duckduckgo.com/?q=',
+  baidu: 'https://www.baidu.com/s?wd=',
+};
+
+const resolveSearchTemplate = (template: string, encodedQuery: string): string => {
+  if (template.includes('%s')) {
+    return template.replaceAll('%s', encodedQuery);
+  }
+
+  if (template.includes('QUERY_TOKEN')) {
+    return template.replaceAll('QUERY_TOKEN', encodedQuery);
+  }
+
+  return `${template}${encodedQuery}`;
+};
+
+const tryResolveCustomSearchUrl = (searchUrlTemplate: string, encodedQuery: string): string | null => {
+  const normalizedTemplate = searchUrlTemplate.trim();
+  if (normalizedTemplate.length === 0) {
+    return null;
+  }
+
+  const resolvedTemplate = resolveSearchTemplate(normalizedTemplate, encodedQuery);
+
+  try {
+    const parsedCustomUrl = new URL(resolvedTemplate);
+    if (parsedCustomUrl.protocol === 'http:' || parsedCustomUrl.protocol === 'https:') {
+      return parsedCustomUrl.toString();
+    }
+  } catch {
+    // Ignore invalid custom templates and fallback to configured search engine.
+  }
+
+  return null;
+};
+
+const resolveSearchUrl = (
+  engine: TerminalSelectionSettings['searchEngine'],
+  query: string,
+  searchUrlTemplate: string,
+): string => {
+  const encodedQuery = encodeURIComponent(query.trim());
+
+  if (engine === 'custom') {
+    const customUrl = tryResolveCustomSearchUrl(searchUrlTemplate, encodedQuery);
+    if (customUrl) {
+      return customUrl;
+    }
+  }
+
+  const baseUrl = SEARCH_URL_BY_ENGINE[engine] ?? SEARCH_URL_BY_ENGINE.google;
+  return `${baseUrl}${encodedQuery}`;
+};
+
 const SSH: React.FC = () => {
+  const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const terminalContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const selectionPointerClientXRef = React.useRef<number | null>(null);
+  const terminalRef = React.useRef<Terminal | null>(null);
+  const socketRef = React.useRef<WebSocket | null>(null);
+  const selectionBarRef = React.useRef<HTMLDivElement | null>(null);
   const connectSessionRef = React.useRef<(() => void) | null>(null);
   const fingerprintPromptResolverRef = React.useRef<((accepted: boolean) => void) | null>(null);
   const [connectionState, setConnectionState] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [connectionError, setConnectionError] = React.useState<string>('');
   const [telemetryState, setTelemetryState] = React.useState<SshTelemetryState>(DEFAULT_TELEMETRY_STATE);
   const [hostFingerprintPrompt, setHostFingerprintPrompt] = React.useState<HostFingerprintPrompt | null>(null);
+  const [selectionAnchor, setSelectionAnchor] = React.useState<TerminalSelectionAnchor | null>(null);
+  const [selectionBarPosition, setSelectionBarPosition] = React.useState<TerminalSelectionBarPosition | null>(null);
+  const [dismissedSelectionText, setDismissedSelectionText] = React.useState<string | null>(null);
+  const [terminalSelectionSettings, setTerminalSelectionSettings] = React.useState<TerminalSelectionSettings>(
+    DEFAULT_TERMINAL_SELECTION_SETTINGS,
+  );
 
   const resolveHostFingerprintPrompt = React.useCallback((accepted: boolean) => {
     const resolver = fingerprintPromptResolverRef.current;
@@ -241,6 +346,311 @@ const SSH: React.FC = () => {
     connectSessionRef.current?.();
   }, [connectionState]);
 
+  const resolveSelectionBounds = React.useCallback((): TerminalSelectionBounds | null => {
+    const containerElement = terminalContainerRef.current;
+    if (!containerElement) {
+      return null;
+    }
+
+    const selectionLayer = containerElement.querySelector('.xterm-selection');
+    if (!selectionLayer) {
+      return null;
+    }
+
+    const selectionBlocks = selectionLayer.querySelectorAll('div');
+    if (selectionBlocks.length === 0) {
+      return null;
+    }
+
+    let top = Number.POSITIVE_INFINITY;
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    let bottom = Number.NEGATIVE_INFINITY;
+    let anchorLeft = Number.POSITIVE_INFINITY;
+    let anchorRight = Number.NEGATIVE_INFINITY;
+
+    selectionBlocks.forEach((block) => {
+      const rect = block.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+
+      if (rect.top < top - 0.5) {
+        top = rect.top;
+        anchorLeft = rect.left;
+      } else if (Math.abs(rect.top - top) <= 0.5) {
+        anchorLeft = Math.min(anchorLeft, rect.left);
+      }
+
+      if (rect.bottom > bottom + 0.5) {
+        bottom = rect.bottom;
+        anchorRight = rect.right;
+      } else if (Math.abs(rect.bottom - bottom) <= 0.5) {
+        anchorRight = Math.max(anchorRight, rect.right);
+      }
+
+      left = Math.min(left, rect.left);
+      right = Math.max(right, rect.right);
+    });
+
+    if (
+      !Number.isFinite(top) ||
+      !Number.isFinite(left) ||
+      !Number.isFinite(right) ||
+      !Number.isFinite(bottom) ||
+      !Number.isFinite(anchorLeft) ||
+      !Number.isFinite(anchorRight)
+    ) {
+      return null;
+    }
+
+    return {
+      anchorLeft,
+      anchorRight,
+      top,
+      left,
+      right,
+      bottom,
+    };
+  }, []);
+
+  const refreshSelectionAnchor = React.useCallback(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      setSelectionAnchor(null);
+      return;
+    }
+
+    const selectionText = terminal.getSelection();
+    const normalizedText = selectionText.trim();
+    if (normalizedText.length === 0) {
+      setSelectionAnchor(null);
+      return;
+    }
+
+    const bounds = resolveSelectionBounds();
+    if (!bounds) {
+      setSelectionAnchor(null);
+      return;
+    }
+
+    setSelectionAnchor({
+      selectionText,
+      ...bounds,
+      pointerClientX: selectionPointerClientXRef.current,
+    });
+  }, [resolveSelectionBounds]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadSelectionSettings = async () => {
+      try {
+        const response = await getAppSettings();
+        if (cancelled) {
+          return;
+        }
+
+        setTerminalSelectionSettings({
+          enabled: response.data.item.values.terminalSelectionBarEnabled,
+          searchEngine: response.data.item.values.terminalSelectionSearchEngine,
+          searchUrlTemplate: response.data.item.values.terminalSelectionSearchUrlTemplate,
+        });
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setTerminalSelectionSettings(DEFAULT_TERMINAL_SELECTION_SETTINGS);
+      }
+    };
+
+    void loadSelectionSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (
+      !selectionAnchor ||
+      !terminalSelectionSettings.enabled ||
+      dismissedSelectionText === selectionAnchor.selectionText
+    ) {
+      setSelectionBarPosition(null);
+      return;
+    }
+
+    const wrapperElement = wrapperRef.current;
+    const selectionBarElement = selectionBarRef.current;
+    if (!wrapperElement) {
+      return;
+    }
+
+    const terminalBoundsElement = terminalContainerRef.current;
+
+    const wrapperRect = wrapperElement.getBoundingClientRect();
+    const placementBoundsRect = terminalBoundsElement?.getBoundingClientRect() ?? wrapperRect;
+    const barWidth = selectionBarElement?.offsetWidth ?? 320;
+    const barHeight = selectionBarElement?.offsetHeight ?? 42;
+    const edgePadding = 8;
+    const gap = 8;
+
+    const selectionTop = selectionAnchor.top - wrapperRect.top;
+    const selectionBottom = selectionAnchor.bottom - wrapperRect.top;
+    const selectionLeft = selectionAnchor.anchorLeft - wrapperRect.left;
+    const pointerBasedRight =
+      selectionAnchor.pointerClientX !== null &&
+      selectionAnchor.pointerClientX >= selectionAnchor.left &&
+      selectionAnchor.pointerClientX <= selectionAnchor.right
+        ? selectionAnchor.pointerClientX
+        : null;
+    const selectionRight = (pointerBasedRight ?? selectionAnchor.anchorRight) - wrapperRect.left;
+    const boundsTop = placementBoundsRect.top - wrapperRect.top;
+    const boundsBottom = placementBoundsRect.bottom - wrapperRect.top;
+
+    const canPlaceAbove = selectionTop - gap - barHeight >= boundsTop + edgePadding;
+    const canPlaceBelow = selectionBottom + gap + barHeight <= boundsBottom - edgePadding;
+    const horizontalPadding = canPlaceAbove ? edgePadding : 0;
+    const minLeftBound = placementBoundsRect.left - wrapperRect.left + horizontalPadding;
+    const maxLeftBound = placementBoundsRect.right - wrapperRect.left - horizontalPadding - barWidth;
+
+    if (!canPlaceAbove && !canPlaceBelow) {
+      setSelectionBarPosition(null);
+      return;
+    }
+
+    const unclampedLeft = canPlaceAbove ? selectionLeft : selectionRight - barWidth;
+    const maxLeft = Math.max(minLeftBound, maxLeftBound);
+    const left = Math.max(minLeftBound, Math.min(unclampedLeft, maxLeft));
+    const top = canPlaceAbove ? selectionTop - gap - barHeight : selectionBottom + gap;
+
+    setSelectionBarPosition({
+      left,
+      top,
+    });
+  }, [dismissedSelectionText, selectionAnchor, terminalSelectionSettings.enabled]);
+
+  React.useEffect(() => {
+    if (!selectionAnchor) {
+      setDismissedSelectionText(null);
+      return;
+    }
+
+    if (dismissedSelectionText && dismissedSelectionText !== selectionAnchor.selectionText) {
+      setDismissedSelectionText(null);
+    }
+  }, [dismissedSelectionText, selectionAnchor]);
+
+  const handleSelectionBarCopy = React.useCallback(async () => {
+    if (!selectionAnchor?.selectionText) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(selectionAnchor.selectionText);
+      notifySuccess(t('ssh.selectionBarCopySuccess'));
+    } catch (error: unknown) {
+      notifyError(error instanceof Error ? error.message : t('ssh.selectionBarCopyFailed'));
+    }
+  }, [notifyError, notifySuccess, selectionAnchor]);
+
+  const handleSelectionBarInsert = React.useCallback(() => {
+    if (!selectionAnchor?.selectionText) {
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    sendClientMessage(socket, {
+      type: 'input',
+      data: selectionAnchor.selectionText,
+    });
+    terminalRef.current?.focus();
+  }, [selectionAnchor]);
+
+  const handleSelectionBarSearch = React.useCallback(() => {
+    if (!selectionAnchor?.selectionText.trim()) {
+      return;
+    }
+
+    try {
+      const resolvedSearchUrl = resolveSearchUrl(
+        terminalSelectionSettings.searchEngine,
+        selectionAnchor.selectionText,
+        terminalSelectionSettings.searchUrlTemplate,
+      );
+      if (window.electron?.openExternalUrl) {
+        void window.electron.openExternalUrl(resolvedSearchUrl).then((opened) => {
+          if (!opened) {
+            notifyError(t('ssh.selectionBarSearchFailed'));
+          }
+        });
+        return;
+      }
+
+      const openedWindow = window.open(resolvedSearchUrl, '_blank', 'noopener,noreferrer');
+      if (!openedWindow) {
+        notifyError(t('ssh.selectionBarSearchFailed'));
+        return;
+      }
+
+      openedWindow.opener = null;
+    } catch (error: unknown) {
+      notifyError(error instanceof Error ? error.message : t('ssh.selectionBarSearchFailed'));
+    }
+  }, [
+    notifyError,
+    selectionAnchor,
+    terminalSelectionSettings.searchEngine,
+    terminalSelectionSettings.searchUrlTemplate,
+  ]);
+
+  const handleSelectionBarDragStart = React.useCallback(
+    (event: React.DragEvent<HTMLButtonElement>) => {
+      if (!selectionAnchor?.selectionText) {
+        event.preventDefault();
+        return;
+      }
+
+      const escapedHtml = selectionAnchor.selectionText
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
+        .replaceAll('\n', '<br/>');
+
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('text/plain', selectionAnchor.selectionText);
+      event.dataTransfer.setData('text', selectionAnchor.selectionText);
+      event.dataTransfer.setData('text/unicode', selectionAnchor.selectionText);
+      event.dataTransfer.setData('text/html', `<pre>${escapedHtml}</pre>`);
+    },
+    [selectionAnchor],
+  );
+
+  const handleSelectionBarClose = React.useCallback(() => {
+    if (!selectionAnchor?.selectionText) {
+      return;
+    }
+
+    setDismissedSelectionText(selectionAnchor.selectionText);
+    setSelectionBarPosition(null);
+  }, [selectionAnchor]);
+
+  const handleSelectionOpenDirectory = React.useCallback(() => {
+    notifyWarning(t('ssh.selectionBarOpenDirectoryComingSoon'));
+  }, [notifyWarning]);
+
+  const handleSelectionAskAi = React.useCallback(() => {
+    notifyWarning(t('ssh.selectionBarAskAiComingSoon'));
+  }, [notifyWarning]);
+
   React.useEffect(() => {
     const terminal = new Terminal({
       convertEol: true,
@@ -252,7 +662,8 @@ const SSH: React.FC = () => {
       letterSpacing: 0,
       lineHeight: 1,
       theme: {
-        background: getComputedStyle(document.documentElement).getPropertyValue('--color-ssh-card-bg') || '#000000',
+        background:
+          getComputedStyle(document.documentElement).getPropertyValue('--color-ssh-card-bg-terminal') || '#000000',
       },
     });
     const fitAddon = new FitAddon();
@@ -260,11 +671,13 @@ const SSH: React.FC = () => {
 
     const containerElement = terminalContainerRef.current;
     if (!containerElement) {
+      terminalRef.current = null;
       terminal.dispose();
       return;
     }
 
     terminal.open(containerElement);
+    terminalRef.current = terminal;
     let disposed = false;
     let retryFitFrameId: number | null = null;
 
@@ -345,6 +758,7 @@ const SSH: React.FC = () => {
         }
 
         syncResizeIfNeeded();
+        refreshSelectionAnchor();
       });
     };
 
@@ -359,6 +773,7 @@ const SSH: React.FC = () => {
     const setupResizeSync = (): (() => void) => {
       const observer = new ResizeObserver(() => {
         scheduleFitAndResizeSync();
+        refreshSelectionAnchor();
       });
 
       observer.observe(containerElement);
@@ -446,6 +861,7 @@ const SSH: React.FC = () => {
           websocketUrl.searchParams.set('token', createResult.data.websocketToken);
 
           socket = new WebSocket(websocketUrl.toString());
+          socketRef.current = socket;
           socket.addEventListener('message', handleSocketMessage);
 
           socket.addEventListener('open', () => {
@@ -459,6 +875,7 @@ const SSH: React.FC = () => {
           });
 
           socket.addEventListener('close', () => {
+            socketRef.current = null;
             if (disposed) {
               return;
             }
@@ -468,6 +885,7 @@ const SSH: React.FC = () => {
           });
 
           socket.addEventListener('error', () => {
+            socketRef.current = null;
             if (disposed) {
               return;
             }
@@ -552,6 +970,7 @@ const SSH: React.FC = () => {
         }
 
         socket = new WebSocket(websocketUrl.toString());
+        socketRef.current = socket;
         socket.addEventListener('message', handleSocketMessage);
 
         socket.addEventListener('open', () => {
@@ -565,6 +984,7 @@ const SSH: React.FC = () => {
         });
 
         socket.addEventListener('close', () => {
+          socketRef.current = null;
           if (disposed) {
             return;
           }
@@ -575,6 +995,7 @@ const SSH: React.FC = () => {
         });
 
         socket.addEventListener('error', () => {
+          socketRef.current = null;
           if (disposed) {
             return;
           }
@@ -590,6 +1011,11 @@ const SSH: React.FC = () => {
     };
 
     const disposeResize = setupResizeSync();
+    const trackPointerPosition = (event: MouseEvent | PointerEvent): void => {
+      selectionPointerClientXRef.current = event.clientX;
+    };
+    containerElement.addEventListener('pointerup', trackPointerPosition);
+    containerElement.addEventListener('mouseup', trackPointerPosition);
     const disposeTerminalInput = terminal.onData((data) => {
       if (disposed) {
         return;
@@ -602,6 +1028,24 @@ const SSH: React.FC = () => {
         });
       }
     });
+    const disposeSelectionChange = terminal.onSelectionChange(() => {
+      refreshSelectionAnchor();
+    });
+    const disposeSelectionScroll = terminal.onScroll(() => {
+      refreshSelectionAnchor();
+    });
+    const disposeSelectionRender = terminal.onRender(() => {
+      if (!terminal.hasSelection()) {
+        return;
+      }
+
+      refreshSelectionAnchor();
+    });
+    const handleWindowResize = (): void => {
+      refreshSelectionAnchor();
+    };
+    window.addEventListener('resize', handleWindowResize);
+    refreshSelectionAnchor();
 
     connectSessionRef.current = connectSession;
     void connectSession();
@@ -628,6 +1072,8 @@ const SSH: React.FC = () => {
         // Ignore websocket close race conditions.
       }
 
+      socketRef.current = null;
+
       if (sessionId) {
         if (sessionType === 'local-terminal') {
           void closeLocalTerminalSession(sessionId).catch(() => undefined);
@@ -637,14 +1083,24 @@ const SSH: React.FC = () => {
       }
 
       connectSessionRef.current = null;
+      terminalRef.current = null;
+      selectionPointerClientXRef.current = null;
+      setSelectionAnchor(null);
+      setSelectionBarPosition(null);
       disposeTerminalInput.dispose();
+      disposeSelectionChange.dispose();
+      disposeSelectionScroll.dispose();
+      disposeSelectionRender.dispose();
+      containerElement.removeEventListener('pointerup', trackPointerPosition);
+      containerElement.removeEventListener('mouseup', trackPointerPosition);
+      window.removeEventListener('resize', handleWindowResize);
       disposeResize();
       terminal.dispose();
     };
-  }, [requestHostFingerprintTrust]);
+  }, [refreshSelectionAnchor, requestHostFingerprintTrust]);
 
   // Card style
-  const cardStyle = 'bg-ssh-card-bg h-full w-full flex-1 rounded-[18px] p-1';
+  const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 rounded-[18px] p-1';
   const sidebarCardStyle = 'bg-ssh-card-bg w-full flex-1 rounded-[18px] p-1';
   const cardHiddenArea =
     'overflow-hidden hof:my-[-38px] hof:py-[42px] hof:z-20 hof:shadow-lg transition-all duration-300 ease-in-out';
@@ -665,6 +1121,41 @@ const SSH: React.FC = () => {
           className="h-full w-full p-2"
         />
       </div>
+
+      {connectionState === 'connected' &&
+      terminalSelectionSettings.enabled &&
+      selectionAnchor &&
+      selectionBarPosition &&
+      dismissedSelectionText !== selectionAnchor.selectionText ? (
+        <div
+          className="pointer-events-none absolute z-40"
+          style={{
+            top: `${selectionBarPosition.top}px`,
+            left: `${selectionBarPosition.left}px`,
+          }}
+        >
+          <TerminalSelectionBar
+            ref={selectionBarRef}
+            selectedText={selectionAnchor.selectionText}
+            dragLabel={t('ssh.selectionBarDrag')}
+            copyLabel={t('ssh.selectionBarCopy')}
+            insertLabel={t('ssh.selectionBarInsert')}
+            openDirectoryLabel={t('ssh.selectionBarOpenDirectory')}
+            searchLabel={t('ssh.selectionBarSearch')}
+            askAiLabel={t('ssh.selectionBarAskAiLabel')}
+            closeLabel={t('ssh.selectionBarClose')}
+            onDragStart={handleSelectionBarDragStart}
+            onCopy={() => {
+              void handleSelectionBarCopy();
+            }}
+            onInsert={handleSelectionBarInsert}
+            onOpenDirectory={handleSelectionOpenDirectory}
+            onSearch={handleSelectionBarSearch}
+            onAskAi={handleSelectionAskAi}
+            onClose={handleSelectionBarClose}
+          />
+        </div>
+      ) : null}
 
       {/* Sidebar */}
       <div className="flex w-[300px] min-w-[300px] shrink-0 flex-col items-center justify-between gap-2.5 overflow-auto">

@@ -613,6 +613,30 @@ ipcMain.handle('app:show-in-file-manager', async (_event, targetPath?: string): 
   }
 });
 
+ipcMain.handle('app:open-external-url', async (_event, targetUrl?: string): Promise<boolean> => {
+  if (typeof targetUrl !== 'string' || targetUrl.trim().length === 0) {
+    return false;
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(targetUrl.trim());
+  } catch {
+    return false;
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return false;
+  }
+
+  try {
+    await shell.openExternal(parsedUrl.toString());
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 ipcMain.handle('backend:test-ping', async (): Promise<ApiTestPingResponse | ApiErrorResponse> => {
   const { port, token } = requireBackendConfig();
   const response = await fetch(`http://127.0.0.1:${port}${API_PATHS.testPing}`, {
