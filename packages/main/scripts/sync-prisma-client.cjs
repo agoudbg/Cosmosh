@@ -9,15 +9,40 @@ const targetPrismaClientDir = path.join(runtimeResourcesRoot, '@prisma', 'client
 
 const shouldSkipPrismaArtifact = (sourcePath) => {
   const fileName = path.basename(sourcePath);
+  const lowerFileName = fileName.toLowerCase();
+
+  const skipExactFiles = new Set([
+    'index-browser.js',
+    'query_engine_bg.js',
+    'query_engine_bg.wasm',
+    'react-native.js',
+    'wasm.js',
+    'wasm.mjs',
+    'wasm-worker-loader.mjs',
+    'wasm-edge-light-loader.mjs',
+  ]);
+
+  if (skipExactFiles.has(lowerFileName)) {
+    return true;
+  }
+
   if (/\.tmp\d+$/i.test(fileName)) {
     return true;
   }
 
-  if (fileName.endsWith('.map')) {
+  if (fileName.endsWith('.map') || lowerFileName.endsWith('.d.ts') || lowerFileName.endsWith('.d.mts')) {
     return true;
   }
 
-  if (/query_(engine|compiler)_bg\.(?!sqlite\.)[a-z0-9-]+\.wasm-base64\.(js|mjs)$/i.test(fileName)) {
+  if (/^query_(engine|compiler)_bg\.[a-z0-9-]+\.wasm-base64\.(js|mjs)$/i.test(fileName)) {
+    return true;
+  }
+
+  if (/^(edge|edge-esm|react-native)\.(js|mjs|d\.ts)$/i.test(fileName)) {
+    return true;
+  }
+
+  if (/^wasm-(engine|compiler)-edge\.(js|mjs|d\.ts)$/i.test(fileName)) {
     return true;
   }
 
