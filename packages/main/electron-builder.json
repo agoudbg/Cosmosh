@@ -8,8 +8,6 @@
   "npmRebuild": false,
   "files": [
     "dist/**/*",
-    "node_modules/**/*",
-    "node_modules/.prisma/**/*",
     "package.json"
   ],
   "extraResources": [

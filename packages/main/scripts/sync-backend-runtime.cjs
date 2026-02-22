@@ -96,7 +96,7 @@ const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot)
     return false;
   }
 
-  if (fileName.endsWith('.map')) {
+  if (fileName.endsWith('.map') || fileName.endsWith('.pdb')) {
     return false;
   }
 
@@ -115,9 +115,21 @@ const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot)
   }
 
   if (packageName === 'node-pty') {
-    const { prebuildPrefix, conptyPrefix, conptyArchSegment } = getNodePtyRuntimePrefixes();
+    const { prebuildPrefix } = getNodePtyRuntimePrefixes();
     const prebuildRoot = trimTrailingSlash(prebuildPrefix);
-    const conptyArchMarker = trimTrailingSlash(conptyArchSegment).replace(/^\//, '');
+
+    if (
+      relativePath === 'src' ||
+      relativePath.startsWith('src/') ||
+      relativePath === 'scripts' ||
+      relativePath.startsWith('scripts/') ||
+      relativePath === 'typings' ||
+      relativePath.startsWith('typings/') ||
+      relativePath === 'third_party' ||
+      relativePath.startsWith('third_party/')
+    ) {
+      return false;
+    }
 
     if (relativePath === 'prebuilds') {
       return true;
@@ -125,20 +137,6 @@ const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot)
 
     if (relativePath.startsWith('prebuilds/')) {
       return relativePath === prebuildRoot || relativePath.startsWith(prebuildPrefix);
-    }
-
-    if (conptyPrefix && (relativePath === 'third_party' || relativePath === 'third_party/conpty')) {
-      return true;
-    }
-
-    if (conptyPrefix && relativePath.startsWith(conptyPrefix)) {
-      const conptyArchMatch = relativePath.match(/\/win10-(x64|arm64)(?:\/|$)/i);
-
-      if (!conptyArchMatch) {
-        return true;
-      }
-
-      return conptyArchMatch[0].toLowerCase().includes(conptyArchMarker.toLowerCase());
     }
   }
 
