@@ -145,6 +145,7 @@ const base = {
     lg: '0 0px 10px #00000088',
     soft: 'rgba(4, 8, 16, 0.6)',
     menu: 'rgba(0, 0, 0, 0)',
+    'menu-content': 'rgba(4, 8, 16, 0.6)',
   },
 };
 
@@ -300,6 +301,7 @@ const light = {
   shadow: {
     soft: 'rgba(148, 163, 184, 0.4)',
     menu: 'rgba(0, 0, 0, 0)',
+    'menu-content': 'rgba(148, 163, 184, 0.4)',
   },
 };
 

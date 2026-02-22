@@ -83,6 +83,7 @@
   --shadow-lg: 0 0px 10px #00000088;
   --shadow-soft: rgba(4, 8, 16, 0.6);
   --shadow-menu: rgba(0, 0, 0, 0);
+  --shadow-menu-content: rgba(4, 8, 16, 0.6);
 }
 
 :root[data-theme='light'] {
@@ -164,6 +165,7 @@
   --color-scrollbar-thumb-hover: #b4b4bf;
   --shadow-soft: rgba(148, 163, 184, 0.4);
   --shadow-menu: rgba(0, 0, 0, 0);
+  --shadow-menu-content: rgba(148, 163, 184, 0.4);
 }
 
 @media (prefers-color-scheme: light) {
@@ -246,6 +248,7 @@
     --color-scrollbar-thumb-hover: #b4b4bf;
     --shadow-soft: rgba(148, 163, 184, 0.4);
     --shadow-menu: rgba(0, 0, 0, 0);
+    --shadow-menu-content: rgba(148, 163, 184, 0.4);
   }
 }
 /* theme-tokens:end */
