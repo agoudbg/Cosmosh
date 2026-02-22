@@ -7,6 +7,11 @@
 3. Choose authentication method (password or private key).
 4. Save and run a quick connection test.
 
+## Default Note Template
+
+- Settings > Advanced > Default Server Note Template pre-fills the Note field when creating a new server profile.
+- This template is applied only for new profiles and does not overwrite existing server notes.
+
 ## Organize for Daily Use
 
 1. Apply stable naming, for example `env-region-role`.

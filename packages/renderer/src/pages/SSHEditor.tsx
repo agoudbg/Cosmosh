@@ -53,12 +53,13 @@ import { menuStyles } from '../components/ui/menu-styles';
 import { Menubar, MenubarSeparator } from '../components/ui/menubar';
 import { PasswordField } from '../components/ui/password-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
+import { DEFAULT_APP_SETTINGS_VALUES } from '../lib/app-settings';
 import {
   createSshServer,
   deleteSshServer,
+  getAppSettings,
   getSshServerCredentials,
   listSshFolders,
   listSshServers,
@@ -89,7 +90,6 @@ type ServerEditorFormState = {
   privateKeyPassphrase: string;
   folderId: string;
   strictHostKey: boolean;
-  connectionTimeout: number[];
 };
 
 type ServerCredentialCache = {
@@ -101,10 +101,10 @@ type ServerCredentialCache = {
 
 const NO_FOLDER_SELECT_VALUE = '__none__';
 
-const createInitialFormState = (): ServerEditorFormState => {
+const createInitialFormState = (defaultServerNoteTemplate = ''): ServerEditorFormState => {
   return {
     name: '',
-    note: '',
+    note: defaultServerNoteTemplate,
     host: '',
     port: '22',
     username: '',
@@ -114,7 +114,6 @@ const createInitialFormState = (): ServerEditorFormState => {
     privateKeyPassphrase: '',
     folderId: '',
     strictHostKey: true,
-    connectionTimeout: [45],
   };
 };
 
@@ -148,7 +147,6 @@ const mapServerToFormState = (server: SshServerListItem): ServerEditorFormState 
     privateKeyPassphrase: '',
     folderId: server.folder?.id ?? '',
     strictHostKey: true,
-    connectionTimeout: [45],
   };
 };
 
@@ -173,7 +171,12 @@ const SSHEditor: React.FC = () => {
   const [search, setSearch] = React.useState<string>('');
   const [sortMode, setSortMode] = React.useState<SortMode>('default');
   const [activeServerId, setActiveServerId] = React.useState<string | null>(null);
-  const [formState, setFormState] = React.useState<ServerEditorFormState>(createInitialFormState());
+  const [defaultServerNoteTemplate, setDefaultServerNoteTemplate] = React.useState<string>(
+    DEFAULT_APP_SETTINGS_VALUES.defaultServerNoteTemplate,
+  );
+  const [formState, setFormState] = React.useState<ServerEditorFormState>(
+    createInitialFormState(DEFAULT_APP_SETTINGS_VALUES.defaultServerNoteTemplate),
+  );
   const [isCreateFolderDialogOpen, setIsCreateFolderDialogOpen] = React.useState<boolean>(false);
   const [newFolderName, setNewFolderName] = React.useState<string>('');
   const [isFolderSubmitting, setIsFolderSubmitting] = React.useState<boolean>(false);
@@ -203,12 +206,18 @@ const SSHEditor: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [foldersResponse, serversResponse] = await Promise.all([listSshFolders(), listSshServers()]);
+      const [foldersResponse, serversResponse, settingsResponse] = await Promise.all([
+        listSshFolders(),
+        listSshServers(),
+        getAppSettings(),
+      ]);
       const nextFolders = foldersResponse.data.items;
       const nextServers = serversResponse.data.items;
+      const nextDefaultServerNoteTemplate = settingsResponse.data.item.values.defaultServerNoteTemplate;
 
       setFolders(nextFolders);
       setServers(nextServers);
+      setDefaultServerNoteTemplate(nextDefaultServerNoteTemplate);
 
       if (consumeSshEditorCreateMode()) {
         preferCreateModeRef.current = true;
@@ -216,14 +225,14 @@ const SSHEditor: React.FC = () => {
 
       if (preferCreateModeRef.current) {
         setActiveServerId(null);
-        setFormState(createInitialFormState());
+        setFormState(createInitialFormState(nextDefaultServerNoteTemplate));
         return;
       }
 
       if (nextServers.length === 0) {
         preferCreateModeRef.current = true;
         setActiveServerId(null);
-        setFormState(createInitialFormState());
+        setFormState(createInitialFormState(nextDefaultServerNoteTemplate));
         return;
       }
 
@@ -497,8 +506,8 @@ const SSHEditor: React.FC = () => {
     preferCreateModeRef.current = true;
     setActiveSshServerId('');
     setActiveServerId(null);
-    setFormState(createInitialFormState());
-  }, []);
+    setFormState(createInitialFormState(defaultServerNoteTemplate));
+  }, [defaultServerNoteTemplate]);
 
   const onCreateFolder = React.useCallback(() => {
     setNewFolderName('');
@@ -1044,33 +1053,6 @@ const SSHEditor: React.FC = () => {
                     {t('ssh.strictHostKeyChecking')}
                   </Label>
                 </div>
-              </section>
-
-              <section className="grid gap-3">
-                <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">
-                  {t('ssh.sectionPerformance')}
-                </div>
-
-                <FormField>
-                  <div className="mb-1 flex items-center justify-between px-2.5">
-                    <FormLabel
-                      htmlFor="ssh-editor-timeout"
-                      className={formStyles.inlineLabel}
-                    >
-                      {t('ssh.connectionTimeout')}
-                    </FormLabel>
-                    <span className={formStyles.helperText}>{formState.connectionTimeout[0]}s</span>
-                  </div>
-                  <Slider
-                    className="px-2.5"
-                    id="ssh-editor-timeout"
-                    min={5}
-                    max={180}
-                    step={5}
-                    value={formState.connectionTimeout}
-                    onValueChange={(value) => onChangeForm('connectionTimeout', value)}
-                  />
-                </FormField>
               </section>
 
               <section className="grid gap-3">

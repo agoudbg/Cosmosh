@@ -1017,6 +1017,11 @@ components:
           minLength: 2
           maxLength: 64
           default: xterm-256color
+        connectTimeoutSec:
+          type: integer
+          minimum: 5
+          maximum: 180
+          default: 45
     SshTrustFingerprintRequest:
       type: object
       required:

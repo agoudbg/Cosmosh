@@ -13,6 +13,7 @@ type CreateSshSessionInput = {
   cols: number;
   rows: number;
   term: string;
+  connectTimeoutSec: number;
 };
 
 type CreateSshSessionSuccess = {
@@ -292,6 +293,7 @@ export class SshSessionService {
       cols: input.cols,
       rows: input.rows,
       term: input.term,
+      connectTimeoutSec: input.connectTimeoutSec,
       trustedFingerprintSet,
       onOutput: (data) => {
         if (liveSession) {
@@ -810,6 +812,7 @@ export class SshSessionService {
       cols: number;
       rows: number;
       term: string;
+      connectTimeoutSec: number;
       trustedFingerprintSet: Set<string>;
       onOutput: (data: string) => void;
     },
@@ -821,7 +824,7 @@ export class SshSessionService {
       host: server.host,
       port: server.port,
       username: server.username,
-      readyTimeout: 20_000,
+      readyTimeout: options.connectTimeoutSec * 1000,
       keepaliveInterval: 10_000,
       keepaliveCountMax: 3,
       hostHash: 'sha256',

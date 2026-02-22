@@ -311,6 +311,11 @@ const SSH: React.FC = () => {
   const [selectionAnchor, setSelectionAnchor] = React.useState<TerminalSelectionAnchor | null>(null);
   const [selectionBarPosition, setSelectionBarPosition] = React.useState<TerminalSelectionBarPosition | null>(null);
   const [dismissedSelectionText, setDismissedSelectionText] = React.useState<string | null>(null);
+  const [sshRuntimeSettingsLoaded, setSshRuntimeSettingsLoaded] = React.useState<boolean>(false);
+  const [sshMaxRows, setSshMaxRows] = React.useState<number>(DEFAULT_APP_SETTINGS_VALUES.sshMaxRows);
+  const [sshConnectionTimeoutSec, setSshConnectionTimeoutSec] = React.useState<number>(
+    DEFAULT_APP_SETTINGS_VALUES.sshConnectionTimeoutSec,
+  );
   const [terminalSelectionSettings, setTerminalSelectionSettings] = React.useState<TerminalSelectionSettings>(
     DEFAULT_TERMINAL_SELECTION_SETTINGS,
   );
@@ -444,13 +449,15 @@ const SSH: React.FC = () => {
   React.useEffect(() => {
     let cancelled = false;
 
-    const loadSelectionSettings = async () => {
+    const loadRuntimeSettings = async () => {
       try {
         const response = await getAppSettings();
         if (cancelled) {
           return;
         }
 
+        setSshMaxRows(response.data.item.values.sshMaxRows);
+        setSshConnectionTimeoutSec(response.data.item.values.sshConnectionTimeoutSec);
         setTerminalSelectionSettings({
           enabled: response.data.item.values.terminalSelectionBarEnabled,
           searchEngine: response.data.item.values.terminalSelectionSearchEngine,
@@ -461,11 +468,17 @@ const SSH: React.FC = () => {
           return;
         }
 
+        setSshMaxRows(DEFAULT_APP_SETTINGS_VALUES.sshMaxRows);
+        setSshConnectionTimeoutSec(DEFAULT_APP_SETTINGS_VALUES.sshConnectionTimeoutSec);
         setTerminalSelectionSettings(DEFAULT_TERMINAL_SELECTION_SETTINGS);
+      } finally {
+        if (!cancelled) {
+          setSshRuntimeSettingsLoaded(true);
+        }
       }
     };
 
-    void loadSelectionSettings();
+    void loadRuntimeSettings();
 
     return () => {
       cancelled = true;
@@ -652,11 +665,15 @@ const SSH: React.FC = () => {
   }, [notifyWarning]);
 
   React.useEffect(() => {
+    if (!sshRuntimeSettingsLoaded) {
+      return;
+    }
+
     const terminal = new Terminal({
       convertEol: true,
       cursorBlink: true,
       reflowCursorLine: true,
-      scrollback: 10000,
+      scrollback: sshMaxRows,
       fontSize: 15,
       fontFamily: '"JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace',
       letterSpacing: 0,
@@ -905,6 +922,7 @@ const SSH: React.FC = () => {
           cols: terminal.cols,
           rows: terminal.rows,
           term: 'xterm-256color',
+          connectTimeoutSec: sshConnectionTimeoutSec,
         });
 
         let createResult = createPayload;
@@ -945,6 +963,7 @@ const SSH: React.FC = () => {
             cols: terminal.cols,
             rows: terminal.rows,
             term: 'xterm-256color',
+            connectTimeoutSec: sshConnectionTimeoutSec,
           });
 
           if (disposed) {
@@ -1097,7 +1116,13 @@ const SSH: React.FC = () => {
       disposeResize();
       terminal.dispose();
     };
-  }, [refreshSelectionAnchor, requestHostFingerprintTrust]);
+  }, [
+    refreshSelectionAnchor,
+    requestHostFingerprintTrust,
+    sshConnectionTimeoutSec,
+    sshMaxRows,
+    sshRuntimeSettingsLoaded,
+  ]);
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 rounded-[18px] p-1';

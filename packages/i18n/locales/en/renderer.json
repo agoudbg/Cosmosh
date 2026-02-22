@@ -12,7 +12,10 @@
     "login": "Login",
     "openDevTools": "Open DevTools",
     "settings": "Settings",
-    "syncSettings": "Sync Settings"
+    "syncDisabled": "Account Sync is disabled in Settings.",
+    "syncFailed": "Failed to sync settings.",
+    "syncSettings": "Sync Settings",
+    "syncSuccess": "Settings synced from current account scope."
   },
   "home": {
     "actionCancel": "Cancel",
@@ -118,7 +121,7 @@
     "enabled": "Enabled",
     "items": {
       "accountSyncEnabled": {
-        "description": "Reserved for future cloud sync. Currently stores preference only.",
+        "description": "Controls whether the header Sync Settings action is enabled.",
         "placeholder": "",
         "title": "Account Sync"
       },
@@ -128,7 +131,7 @@
         "title": "Auto Save"
       },
       "defaultServerNoteTemplate": {
-        "description": "Template text for newly created server notes. Reserved for future runtime binding.",
+        "description": "Template text prefilled in Note when creating a new server profile.",
         "placeholder": "Example: owner=@ops env=prod",
         "title": "Default Server Note Template"
       },
@@ -138,12 +141,12 @@
         "title": "Language"
       },
       "sshConnectionTimeoutSec": {
-        "description": "Connection timeout used by future SSH dial pipeline.",
+        "description": "SSH handshake timeout in seconds for session creation.",
         "placeholder": "45",
         "title": "SSH Connection Timeout (sec)"
       },
       "sshMaxRows": {
-        "description": "Maximum retained terminal lines for SSH sessions. Reserved for future runtime binding.",
+        "description": "Maximum retained terminal lines for SSH sessions.",
         "placeholder": "10000",
         "title": "SSH Max Rows"
       },
@@ -201,7 +204,7 @@
     "revision": "Settings Revision",
     "runtimeLine1": "Settings registry is enabled for search and future command palette integration.",
     "runtimeLine2": "Each entry includes stable key path and command action id metadata.",
-    "runtimeLine3": "Language and theme are active runtime settings; other settings are persisted but not bound yet.",
+    "runtimeLine3": "Language, theme, SSH max rows, SSH connection timeout, and default server note template are active runtime settings; other settings are persisted but not bound yet.",
     "saveChanges": "Save Changes",
     "saveFailed": "Failed to save settings.",
     "saveSuccess": "Settings saved successfully.",

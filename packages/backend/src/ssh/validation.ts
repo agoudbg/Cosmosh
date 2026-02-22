@@ -247,6 +247,8 @@ export const parseCreateSessionRequest = (payload: unknown): { value?: ApiSshCre
   const cols = typeof payload.cols === 'number' ? payload.cols : Number(payload.cols ?? 120);
   const rows = typeof payload.rows === 'number' ? payload.rows : Number(payload.rows ?? 32);
   const term = normalizeOptionalString(payload.term) ?? 'xterm-256color';
+  const connectTimeoutSec =
+    typeof payload.connectTimeoutSec === 'number' ? payload.connectTimeoutSec : Number(payload.connectTimeoutSec ?? 45);
 
   if (!Number.isInteger(cols) || cols < 20 || cols > 400) {
     return { error: 'cols must be an integer between 20 and 400.' };
@@ -260,12 +262,17 @@ export const parseCreateSessionRequest = (payload: unknown): { value?: ApiSshCre
     return { error: 'term must be a string between 2 and 64 characters.' };
   }
 
+  if (!Number.isInteger(connectTimeoutSec) || connectTimeoutSec < 5 || connectTimeoutSec > 180) {
+    return { error: 'connectTimeoutSec must be an integer between 5 and 180.' };
+  }
+
   return {
     value: {
       serverId,
       cols,
       rows,
       term,
+      connectTimeoutSec,
     },
   };
 };

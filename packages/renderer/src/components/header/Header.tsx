@@ -3,7 +3,10 @@ import classNames from 'classnames';
 import { Bug, Info, RefreshCcw, Settings } from 'lucide-react';
 import React from 'react';
 
+import { applyRuntimeSettings } from '../../lib/app-settings';
+import { getAppSettings } from '../../lib/backend';
 import { t } from '../../lib/i18n';
+import { useToast } from '../../lib/toast-context';
 import type { TabItem } from '../../types/tabs';
 import {
   DropdownMenu,
@@ -39,6 +42,7 @@ const Header: React.FC<{
   onOpenSettingsTab,
   onOpenDebugTab,
 }) => {
+  const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   // Margin for window controls on macOS/Windows/Linux
   const platform = window.electron?.platform;
 
@@ -54,6 +58,21 @@ const Header: React.FC<{
   const onOpenDevTools = React.useCallback(() => {
     void window.electron?.openDevTools();
   }, []);
+
+  const onSyncSettings = React.useCallback(async () => {
+    try {
+      const response = await getAppSettings();
+      if (!response.data.item.values.accountSyncEnabled) {
+        notifyWarning(t('header.syncDisabled'));
+        return;
+      }
+
+      await applyRuntimeSettings(response.data.item.values);
+      notifySuccess(t('header.syncSuccess'));
+    } catch (error: unknown) {
+      notifyError(error instanceof Error ? error.message : t('header.syncFailed'));
+    }
+  }, [notifyError, notifySuccess, notifyWarning]);
 
   return (
     <header
@@ -142,7 +161,14 @@ const Header: React.FC<{
             </div>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem icon={RefreshCcw}>{t('header.syncSettings')}</DropdownMenuItem>
+          <DropdownMenuItem
+            icon={RefreshCcw}
+            onSelect={() => {
+              void onSyncSettings();
+            }}
+          >
+            {t('header.syncSettings')}
+          </DropdownMenuItem>
           <DropdownMenuItem
             icon={Bug}
             onSelect={onOpenDevTools}

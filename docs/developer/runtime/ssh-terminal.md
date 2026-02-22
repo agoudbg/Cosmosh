@@ -15,7 +15,7 @@ sequenceDiagram
   participant SSH as SshSessionService
   participant REM as Remote SSH Host
 
-  UI->>MAIN: backend:ssh-create-session(serverId, cols, rows, term)
+  UI->>MAIN: backend:ssh-create-session(serverId, cols, rows, term, connectTimeoutSec)
   MAIN->>API: POST /api/v1/ssh/sessions
   API->>SSH: createSession(input)
   SSH->>REM: ssh2 connect + shell()
@@ -32,6 +32,9 @@ sequenceDiagram
 
 - Route: `POST /api/v1/ssh/sessions`
 - Service: `SshSessionService.createSession`
+- Request fields:
+  - `cols` / `rows`: terminal viewport dimensions.
+  - `connectTimeoutSec`: per-session SSH handshake timeout from Settings (`sshConnectionTimeoutSec`).
 - Steps:
   1. Load server record + encrypted credentials.
   2. Resolve trusted host fingerprints.
@@ -115,6 +118,7 @@ flowchart LR
 
 ## 6. Performance Strategies in Current Code
 
+- Renderer binds Settings `sshMaxRows` to xterm `scrollback` when initializing SSH terminal.
 - Renderer uses `FitAddon` + resize observer to keep shell size synchronized.
 - Backend normalizes terminal sizes to prevent extreme allocations (`20-400 cols`, `10-200 rows`).
 - Pending output queue avoids losing early SSH output before WS attach.

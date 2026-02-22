@@ -12,7 +12,10 @@
     "login": "登录",
     "openDevTools": "打开 DevTools",
     "settings": "设置",
-    "syncSettings": "同步设置"
+    "syncDisabled": "设置中未启用账号同步。",
+    "syncFailed": "同步设置失败。",
+    "syncSettings": "同步设置",
+    "syncSuccess": "已从当前账号作用域同步设置。"
   },
   "home": {
     "actionCancel": "取消",
@@ -118,7 +121,7 @@
     "enabled": "已启用",
     "items": {
       "accountSyncEnabled": {
-        "description": "预留给未来云同步能力，当前仅保存偏好。",
+        "description": "控制头部“同步设置”动作是否可用。",
         "placeholder": "",
         "title": "账号同步"
       },
@@ -128,7 +131,7 @@
         "title": "自动保存"
       },
       "defaultServerNoteTemplate": {
-        "description": "新建服务器时使用的备注模板，预留给未来运行时绑定。",
+        "description": "新建服务器配置时，默认预填到备注字段的模板文本。",
         "placeholder": "示例：owner=@ops env=prod",
         "title": "默认服务器备注模板"
       },
@@ -138,12 +141,12 @@
         "title": "语言"
       },
       "sshConnectionTimeoutSec": {
-        "description": "未来 SSH 连接流程使用的超时值。",
+        "description": "会话创建时 SSH 握手超时秒数。",
         "placeholder": "45",
         "title": "SSH 连接超时（秒）"
       },
       "sshMaxRows": {
-        "description": "SSH 会话保留的最大终端行数，预留给未来运行时绑定。",
+        "description": "SSH 会话保留的最大终端行数（xterm scrollback）。",
         "placeholder": "10000",
         "title": "SSH 最大行数"
       },
@@ -201,7 +204,7 @@
     "revision": "设置版本",
     "runtimeLine1": "设置注册中心已启用，可用于搜索与未来命令面板集成。",
     "runtimeLine2": "每个设置项都包含稳定 key path 与 command action id 元数据。",
-    "runtimeLine3": "语言与主题是已生效运行时设置；其他设置目前仅持久化，暂未绑定运行时行为。",
+    "runtimeLine3": "语言、主题、SSH 最大行数、SSH 连接超时和默认服务器备注模板是已生效运行时设置；其他设置目前仅持久化，暂未绑定运行时行为。",
     "saveChanges": "保存更改",
     "saveFailed": "保存设置失败。",
     "saveSuccess": "设置已保存。",

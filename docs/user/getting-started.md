@@ -21,6 +21,7 @@ This page walks you through the fastest practical path from first launch to a st
 
 - Add a naming convention for server entries (for example `env-region-role`).
 - Group hosts by environment to reduce mistakes in daily operations.
+- Enable Account Sync in Settings before using the avatar menu `Sync Settings` action.
 - Close the session explicitly when done.
 
 ## Screenshot Placeholders

@@ -382,6 +382,8 @@ export interface components {
             rows: number;
             /** @default xterm-256color */
             term: string;
+            /** @default 45 */
+            connectTimeoutSec: number;
         };
         SshTrustFingerprintRequest: {
             serverId: string;

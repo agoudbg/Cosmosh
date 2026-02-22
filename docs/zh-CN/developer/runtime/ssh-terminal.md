@@ -15,7 +15,7 @@ sequenceDiagram
   participant SSH as SshSessionService
   participant REM as Remote SSH Host
 
-  UI->>MAIN: backend:ssh-create-session(serverId, cols, rows, term)
+  UI->>MAIN: backend:ssh-create-session(serverId, cols, rows, term, connectTimeoutSec)
   MAIN->>API: POST /api/v1/ssh/sessions
   API->>SSH: createSession(input)
   SSH->>REM: ssh2 connect + shell()
@@ -32,6 +32,9 @@ sequenceDiagram
 
 - 路由：`POST /api/v1/ssh/sessions`
 - 服务：`SshSessionService.createSession`
+- 请求字段：
+  - `cols` / `rows`：终端视口尺寸。
+  - `connectTimeoutSec`：来自设置项 `sshConnectionTimeoutSec` 的会话级 SSH 握手超时。
 - 步骤：
   1. 读取 server 记录与加密凭据。
   2. 解析可信主机指纹。
@@ -115,6 +118,7 @@ flowchart LR
 
 ## 6. 当前代码中的性能策略
 
+- Renderer 在初始化 SSH 终端时，将设置项 `sshMaxRows` 绑定到 xterm `scrollback`。
 - Renderer 使用 `FitAddon` + resize observer 保持终端尺寸同步。
 - Backend 对终端尺寸做归一化限制（`20-400 cols`、`10-200 rows`）。
 - 通过 pending output queue 避免 attach 前早期输出丢失。
