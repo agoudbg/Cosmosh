@@ -4,6 +4,7 @@ const { spawn } = require('node:child_process');
 
 const workspaceRoot = path.resolve(__dirname, '../../..');
 const backendNodeModulesRoot = path.join(workspaceRoot, 'packages', 'backend', 'node_modules');
+const mainNodeModulesRoot = path.join(workspaceRoot, 'packages', 'main', 'node_modules');
 const packageName = 'better-sqlite3-multiple-ciphers';
 const mainPackageJsonPath = path.join(workspaceRoot, 'packages', 'main', 'package.json');
 
@@ -79,7 +80,18 @@ const resolveElectronVersion = async () => {
 };
 
 const resolveNodeGypCliPath = async () => {
+  const configuredNodeGyp = process.env.npm_config_node_gyp;
+  if (configuredNodeGyp) {
+    try {
+      await fs.access(configuredNodeGyp);
+      return configuredNodeGyp;
+    } catch {
+      // Ignore invalid npm_config_node_gyp and continue searching.
+    }
+  }
+
   const candidates = [
+    path.join(mainNodeModulesRoot, 'node-gyp', 'bin', 'node-gyp.js'),
     path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'node_modules', 'node-gyp', 'bin', 'node-gyp.js'),
     path.join(workspaceRoot, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js'),
   ];
@@ -91,6 +103,15 @@ const resolveNodeGypCliPath = async () => {
     } catch {
       // Continue searching fallback candidates.
     }
+  }
+
+  const resolveFromPaths = [mainNodeModulesRoot, backendNodeModulesRoot, workspaceRoot];
+  try {
+    return require.resolve('node-gyp/bin/node-gyp.js', {
+      paths: resolveFromPaths,
+    });
+  } catch {
+    // Keep the dedicated error below for clearer guidance.
   }
 
   throw new Error('Unable to locate node-gyp CLI. Install node-gyp or use a Node.js distribution that bundles npm/node-gyp.');
