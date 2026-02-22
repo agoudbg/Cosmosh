@@ -51,6 +51,100 @@ const resolvePackageRoot = async (packageName, resolvePaths) => {
   return await findPackageRootFromEntry(resolvedEntryPath, packageName);
 };
 
+const normalizeRelativePath = (sourcePath, sourcePackageRoot) =>
+  path.relative(sourcePackageRoot, sourcePath).split(path.sep).join('/');
+
+const getNodePtyRuntimePrefixes = () => {
+  const platform = process.platform;
+  const arch = process.arch;
+
+  if (platform === 'win32') {
+    return {
+      prebuildPrefix: `prebuilds/win32-${arch}/`,
+      conptyPrefix: 'third_party/conpty/',
+      conptyArchSegment: `/win10-${arch}/`,
+    };
+  }
+
+  if (platform === 'darwin') {
+    return {
+      prebuildPrefix: `prebuilds/darwin-${arch}/`,
+      conptyPrefix: '',
+      conptyArchSegment: '',
+    };
+  }
+
+  return {
+    prebuildPrefix: `prebuilds/linux-${arch}/`,
+    conptyPrefix: '',
+    conptyArchSegment: '',
+  };
+};
+
+const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
+
+const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot) => {
+  const relativePath = normalizeRelativePath(sourcePath, sourcePackageRoot);
+
+  if (!relativePath) {
+    return true;
+  }
+
+  const fileName = path.basename(sourcePath);
+
+  if (relativePath === 'node_modules' || relativePath.startsWith('node_modules/')) {
+    return false;
+  }
+
+  if (fileName.endsWith('.map')) {
+    return false;
+  }
+
+  if (packageName === 'better-sqlite3-multiple-ciphers') {
+    if (relativePath === 'build' || relativePath === 'build/Release') {
+      return true;
+    }
+
+    if (relativePath.startsWith('build/')) {
+      return relativePath === 'build/Release/better_sqlite3.node';
+    }
+
+    if (relativePath === 'deps' || relativePath.startsWith('deps/') || relativePath === 'src' || relativePath.startsWith('src/')) {
+      return false;
+    }
+  }
+
+  if (packageName === 'node-pty') {
+    const { prebuildPrefix, conptyPrefix, conptyArchSegment } = getNodePtyRuntimePrefixes();
+    const prebuildRoot = trimTrailingSlash(prebuildPrefix);
+    const conptyArchMarker = trimTrailingSlash(conptyArchSegment).replace(/^\//, '');
+
+    if (relativePath === 'prebuilds') {
+      return true;
+    }
+
+    if (relativePath.startsWith('prebuilds/')) {
+      return relativePath === prebuildRoot || relativePath.startsWith(prebuildPrefix);
+    }
+
+    if (conptyPrefix && (relativePath === 'third_party' || relativePath === 'third_party/conpty')) {
+      return true;
+    }
+
+    if (conptyPrefix && relativePath.startsWith(conptyPrefix)) {
+      const conptyArchMatch = relativePath.match(/\/win10-(x64|arm64)(?:\/|$)/i);
+
+      if (!conptyArchMatch) {
+        return true;
+      }
+
+      return conptyArchMatch[0].toLowerCase().includes(conptyArchMarker.toLowerCase());
+    }
+  }
+
+  return true;
+};
+
 const copyPackageToRuntime = async (packageName, sourcePackageRoot) => {
   const segments = packageName.split('/');
   const targetPackageRoot = path.join(runtimeNodeModulesRoot, ...segments);
@@ -62,6 +156,7 @@ const copyPackageToRuntime = async (packageName, sourcePackageRoot) => {
     force: true,
     dereference: true,
     errorOnExist: false,
+    filter: (sourcePath) => shouldIncludeThirdPartyPath(packageName, sourcePath, sourcePackageRoot),
   });
 };
 

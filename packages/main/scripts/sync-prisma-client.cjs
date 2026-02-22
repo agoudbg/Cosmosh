@@ -7,6 +7,23 @@ const runtimeResourcesRoot = path.join(workspaceRoot, 'packages', 'main', 'resou
 const targetDir = path.join(runtimeResourcesRoot, '.prisma');
 const targetPrismaClientDir = path.join(runtimeResourcesRoot, '@prisma', 'client');
 
+const shouldSkipPrismaArtifact = (sourcePath) => {
+  const fileName = path.basename(sourcePath);
+  if (/\.tmp\d+$/i.test(fileName)) {
+    return true;
+  }
+
+  if (fileName.endsWith('.map')) {
+    return true;
+  }
+
+  if (/query_(engine|compiler)_bg\.(?!sqlite\.)[a-z0-9-]+\.wasm-base64\.(js|mjs)$/i.test(fileName)) {
+    return true;
+  }
+
+  return false;
+};
+
 const findPrismaSourceDirs = async () => {
   const entries = await fs.readdir(pnpmStoreDir, { withFileTypes: true });
   const prismaClientPackageDir = entries.find(
@@ -33,8 +50,14 @@ const syncPrismaClient = async () => {
   await fs.rm(targetPrismaClientDir, { recursive: true, force: true });
   await fs.mkdir(path.dirname(targetDir), { recursive: true });
   await fs.mkdir(path.dirname(targetPrismaClientDir), { recursive: true });
-  await fs.cp(prismaRuntimeDir, targetDir, { recursive: true });
-  await fs.cp(prismaClientDir, targetPrismaClientDir, { recursive: true });
+  await fs.cp(prismaRuntimeDir, targetDir, {
+    recursive: true,
+    filter: (sourcePath) => !shouldSkipPrismaArtifact(sourcePath),
+  });
+  await fs.cp(prismaClientDir, targetPrismaClientDir, {
+    recursive: true,
+    filter: (sourcePath) => !shouldSkipPrismaArtifact(sourcePath),
+  });
 
   console.log(`[main:prebuild] Synced Prisma runtime: ${prismaRuntimeDir} -> ${targetDir}`);
   console.log(`[main:prebuild] Synced Prisma package: ${prismaClientDir} -> ${targetPrismaClientDir}`);
