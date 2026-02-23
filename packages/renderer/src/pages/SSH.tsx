@@ -7,6 +7,7 @@ import classNames from 'classnames';
 import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles } from 'lucide-react';
 import React from 'react';
 
+import { TerminalContextMenu } from '../components/terminal/terminal-context-menu';
 import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
 import { TerminalTextDropZone } from '../components/terminal/terminal-text-drop-zone';
 import { Button } from '../components/ui/button';
@@ -551,18 +552,65 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     }
   }, [dismissedSelectionText, selectionAnchor]);
 
+  // ---------------------------------------------------------------------------
+  // Shared terminal action helpers — used by both the Orbit Bar and the context
+  // menu so that behaviour is consistent across interaction surfaces.
+  // ---------------------------------------------------------------------------
+
+  const copyTextToClipboard = React.useCallback(
+    async (text: string): Promise<void> => {
+      try {
+        await navigator.clipboard.writeText(text);
+        notifySuccess(t('ssh.selectionBarCopySuccess'));
+      } catch (error: unknown) {
+        notifyError(error instanceof Error ? error.message : t('ssh.selectionBarCopyFailed'));
+      }
+    },
+    [notifyError, notifySuccess],
+  );
+
+  const openSearchForText = React.useCallback(
+    (text: string): void => {
+      try {
+        const resolvedSearchUrl = resolveSearchUrl(
+          terminalSelectionSettings.searchEngine,
+          text,
+          terminalSelectionSettings.searchUrlTemplate,
+        );
+        if (window.electron?.openExternalUrl) {
+          void window.electron.openExternalUrl(resolvedSearchUrl).then((opened) => {
+            if (!opened) {
+              notifyError(t('ssh.selectionBarSearchFailed'));
+            }
+          });
+          return;
+        }
+
+        const openedWindow = window.open(resolvedSearchUrl, '_blank', 'noopener,noreferrer');
+        if (!openedWindow) {
+          notifyError(t('ssh.selectionBarSearchFailed'));
+          return;
+        }
+
+        openedWindow.opener = null;
+      } catch (error: unknown) {
+        notifyError(error instanceof Error ? error.message : t('ssh.selectionBarSearchFailed'));
+      }
+    },
+    [notifyError, terminalSelectionSettings.searchEngine, terminalSelectionSettings.searchUrlTemplate],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Orbit Bar (TerminalSelectionBar) handlers
+  // ---------------------------------------------------------------------------
+
   const handleSelectionBarCopy = React.useCallback(async () => {
     if (!selectionAnchor?.selectionText) {
       return;
     }
 
-    try {
-      await navigator.clipboard.writeText(selectionAnchor.selectionText);
-      notifySuccess(t('ssh.selectionBarCopySuccess'));
-    } catch (error: unknown) {
-      notifyError(error instanceof Error ? error.message : t('ssh.selectionBarCopyFailed'));
-    }
-  }, [notifyError, notifySuccess, selectionAnchor]);
+    await copyTextToClipboard(selectionAnchor.selectionText);
+  }, [copyTextToClipboard, selectionAnchor]);
 
   const handleSelectionBarInsert = React.useCallback(() => {
     if (!selectionAnchor?.selectionText) {
@@ -586,37 +634,68 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       return;
     }
 
-    try {
-      const resolvedSearchUrl = resolveSearchUrl(
-        terminalSelectionSettings.searchEngine,
-        selectionAnchor.selectionText,
-        terminalSelectionSettings.searchUrlTemplate,
-      );
-      if (window.electron?.openExternalUrl) {
-        void window.electron.openExternalUrl(resolvedSearchUrl).then((opened) => {
-          if (!opened) {
-            notifyError(t('ssh.selectionBarSearchFailed'));
-          }
-        });
-        return;
-      }
+    openSearchForText(selectionAnchor.selectionText);
+  }, [openSearchForText, selectionAnchor]);
 
-      const openedWindow = window.open(resolvedSearchUrl, '_blank', 'noopener,noreferrer');
-      if (!openedWindow) {
-        notifyError(t('ssh.selectionBarSearchFailed'));
-        return;
-      }
+  // ---------------------------------------------------------------------------
+  // Context menu handlers
+  // ---------------------------------------------------------------------------
 
-      openedWindow.opener = null;
-    } catch (error: unknown) {
-      notifyError(error instanceof Error ? error.message : t('ssh.selectionBarSearchFailed'));
+  const handleContextMenuCopy = React.useCallback(() => {
+    const selectionText = terminalRef.current?.getSelection() ?? '';
+    if (!selectionText) {
+      return;
     }
-  }, [
-    notifyError,
-    selectionAnchor,
-    terminalSelectionSettings.searchEngine,
-    terminalSelectionSettings.searchUrlTemplate,
-  ]);
+
+    void copyTextToClipboard(selectionText);
+  }, [copyTextToClipboard]);
+
+  const handleContextMenuPaste = React.useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    void navigator.clipboard
+      .readText()
+      .then((text) => {
+        if (text) {
+          sendClientMessage(socket, { type: 'input', data: text });
+          terminalRef.current?.focus();
+        }
+      })
+      .catch(() => {
+        // Clipboard read permission denied or unavailable; silently ignore.
+      });
+  }, []);
+
+  const handleContextMenuSearchOnline = React.useCallback(() => {
+    const selectionText = terminalRef.current?.getSelection() ?? '';
+    if (!selectionText.trim()) {
+      return;
+    }
+
+    openSearchForText(selectionText);
+  }, [openSearchForText]);
+
+  const handleContextMenuFind = React.useCallback(() => {
+    notifyWarning(t('ssh.contextMenuFindComingSoon'));
+  }, [notifyWarning]);
+
+  const handleContextMenuSelectAll = React.useCallback(() => {
+    terminalRef.current?.selectAll();
+  }, []);
+
+  const handleContextMenuClearTerminal = React.useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    // Send Ctrl+L — the standard ANSI clear-screen sequence.
+    sendClientMessage(socket, { type: 'input', data: '\x0c' });
+    terminalRef.current?.focus();
+  }, []);
 
   const handleSelectionBarDragStart = React.useCallback(
     (event: React.DragEvent<HTMLButtonElement>) => {
@@ -1171,10 +1250,27 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     >
       {/* SSH */}
       <div className={classNames(cardStyle, 'min-w-0')}>
-        <div
-          ref={terminalContainerRef}
-          className="h-full w-full p-2"
-        />
+        <TerminalContextMenu
+          hasSelection={!!selectionAnchor?.selectionText}
+          isConnected={connectionState === 'connected'}
+          copyLabel={t('ssh.contextMenuCopy')}
+          pasteLabel={t('ssh.contextMenuPaste')}
+          searchOnlineLabel={t('ssh.contextMenuSearchOnline')}
+          findLabel={t('ssh.contextMenuFind')}
+          selectAllLabel={t('ssh.contextMenuSelectAll')}
+          clearTerminalLabel={t('ssh.contextMenuClearTerminal')}
+          onCopy={handleContextMenuCopy}
+          onPaste={handleContextMenuPaste}
+          onSearchOnline={handleContextMenuSearchOnline}
+          onFind={handleContextMenuFind}
+          onSelectAll={handleContextMenuSelectAll}
+          onClearTerminal={handleContextMenuClearTerminal}
+        >
+          <div
+            ref={terminalContainerRef}
+            className="h-full w-full p-2"
+          />
+        </TerminalContextMenu>
       </div>
 
       {connectionState === 'connected' &&
