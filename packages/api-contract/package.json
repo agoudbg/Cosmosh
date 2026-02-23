@@ -1,6 +1,6 @@
 {
   "name": "@cosmosh/api-contract",
-  "version": "0.1.0",
+  "version": "0.1.0+116",
   "private": true,
   "description": "OpenAPI contract and generated TypeScript types for Cosmosh APIs",
   "scripts": {

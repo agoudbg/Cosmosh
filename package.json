@@ -1,6 +1,6 @@
 {
   "name": "cosmosh",
-  "version": "0.1.0",
+  "version": "0.1.0+116",
   "private": true,
   "description": "A high-performance, professional-grade SSH/Terminal client built with Electron",
   "author": "agoudbg",

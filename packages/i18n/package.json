@@ -1,6 +1,6 @@
 {
   "name": "@cosmosh/i18n",
-  "version": "0.1.0",
+  "version": "0.1.0+116",
   "private": true,
   "description": "Shared i18n core for Cosmosh main, renderer and backend",
   "scripts": {
