@@ -1,5 +1,6 @@
 {
   "name": "@cosmosh/main",
+  "productName": "Cosmosh",
   "version": "0.1.0+116",
   "private": true,
   "description": "Cosmosh Electron Main Process",
