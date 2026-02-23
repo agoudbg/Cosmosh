@@ -105,9 +105,16 @@
     "undo": "Undo"
   },
   "settings": {
-    "applyJsonToForm": "Apply JSON to Form",
-    "catalogDebug": "Settings Catalog (Debug)",
-    "catalogHeader": "key | type | default | description",
+    "about": {
+      "appIconAlt": "Application Icon",
+      "copyright": "© 2026 agoudbg. All rights reserved.",
+      "github": "GitHub",
+      "openGithubFailed": "Failed to open GitHub link.",
+      "openSourceLicense": "Open Source License",
+      "openWebsiteFailed": "Failed to open website link.",
+      "versionDisplay": "Version {version} (Build {build})",
+      "website": "Website"
+    },
     "categories": {
       "about": "About",
       "account-sync": "Account & Sync",
@@ -181,8 +188,6 @@
         "title": "Theme"
       }
     },
-    "jsonApplied": "JSON has been applied to form values. Click Save Changes to persist.",
-    "jsonInvalid": "JSON config is invalid.",
     "loading": "Loading settings...",
     "noMatches": "No settings matched your search.",
     "options": {
@@ -213,18 +218,10 @@
       }
     },
     "query": "Query",
-    "rawJsonDebug": "Raw JSON Configuration (Debug)",
-    "rawJsonHint": "Debug-only editor for inspecting and modifying the current persisted settings snapshot.",
-    "registryReadiness": "Registry Readiness",
-    "revision": "Settings Revision",
-    "runtimeLine1": "Settings registry is enabled for search and future command palette integration.",
-    "runtimeLine2": "Each entry includes stable key path and command action id metadata.",
-    "runtimeLine3": "Language, theme, SSH max rows, SSH connection timeout, and default server note template are active runtime settings; other settings are persisted but not bound yet.",
     "saveChanges": "Save Changes",
     "saveFailed": "Failed to save settings.",
     "saveSuccess": "Settings saved successfully.",
     "saving": "Saving...",
-    "scope": "Scope",
     "searchPlaceholder": "Search settings",
     "searchResults": "Search Results",
     "sections": {

@@ -27,7 +27,7 @@ const Header: React.FC<{
   onCloseRightTabs?: (id: string) => void;
   onCloseOtherTabs?: (id: string) => void;
   onReorderTabs?: (nextTabs: TabItem[]) => void;
-  onOpenSettingsTab?: () => void;
+  onOpenSettingsTab?: (options?: { categoryId?: 'about' }) => void;
   onOpenDebugTab?: () => void;
 }> = ({
   className,
@@ -249,7 +249,14 @@ const Header: React.FC<{
           >
             {t('header.settings')}
           </DropdownMenuItem>
-          <DropdownMenuItem icon={Info}>{t('header.about')}</DropdownMenuItem>
+          <DropdownMenuItem
+            icon={Info}
+            onSelect={() => {
+              onOpenSettingsTab?.({ categoryId: 'about' });
+            }}
+          >
+            {t('header.about')}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

@@ -17,6 +17,7 @@ flowchart TB
 | `i18n:get-locale` | `invoke` | none | `Promise<string>` | Returns current resolved locale |
 | `i18n:set-locale` | `invoke` | `locale: string` | `Promise<string>` | Resolves/persists in-memory locale and updates title |
 | `app:get-runtime-user-name` | `invoke` | none | `Promise<string>` | Returns OS username fallback chain |
+| `app:get-version-info` | `invoke` | none | `Promise<{ appName: string; version: string; buildVersion: string }>` | Returns app display name, version, and internal build version for About page |
 | `app:open-devtools` | `invoke` | none | `Promise<boolean>` | Opens devtools when unpackaged |
 | `app:show-in-file-manager` | `invoke` | `targetPath?: string` | `Promise<boolean>` | Opens file/folder in OS file manager |
 | `app:open-external-url` | `invoke` | `targetUrl: string` | `Promise<boolean>` | Opens trusted HTTP(S) URL with system default browser |

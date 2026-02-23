@@ -42,6 +42,20 @@ type SettingsFormState = {
   terminalSelectionSearchUrlTemplate: string;
 };
 
+type AppVersionInfo = {
+  appName: string;
+  version: string;
+  buildVersion: string;
+};
+
+const DEFAULT_APP_VERSION_INFO: AppVersionInfo = {
+  appName: 'Cosmosh',
+  version: '0.0.0',
+  buildVersion: '',
+};
+
+const APP_LOGO_URL = new URL('../assets/logo.svg', import.meta.url).href;
+
 const categoryIconMap: Record<SettingsCategoryId, React.ComponentType<{ className?: string }>> = {
   general: Settings2,
   'account-sync': Cloud,
@@ -72,12 +86,6 @@ const TERMINAL_SELECTION_ENGINES: ReadonlyArray<AppSettingsValues['terminalSelec
   'baidu',
   'custom',
 ];
-
-const isTerminalSelectionSearchEngine = (
-  value: string,
-): value is AppSettingsValues['terminalSelectionSearchEngine'] => {
-  return TERMINAL_SELECTION_ENGINES.includes(value as AppSettingsValues['terminalSelectionSearchEngine']);
-};
 
 const optionLabelNamespaceMap: Partial<Record<keyof SettingsFormState, string>> = {
   language: 'language',
@@ -193,66 +201,6 @@ const matchesSearch = (item: SettingDefinition, categoryLabel: string, query: st
   return haystack.includes(query);
 };
 
-const toSettingsJson = (formState: SettingsFormState): string => {
-  const parsed = parseFormState(formState);
-  const values = parsed.value ?? DEFAULT_APP_SETTINGS_VALUES;
-  return JSON.stringify(values, null, 2);
-};
-
-const parseJsonToFormState = (rawJson: string): { value?: SettingsFormState; error?: string } => {
-  let parsedUnknown: unknown;
-
-  try {
-    parsedUnknown = JSON.parse(rawJson);
-  } catch {
-    return { error: 'JSON is invalid.' };
-  }
-
-  if (typeof parsedUnknown !== 'object' || parsedUnknown === null) {
-    return { error: 'JSON root must be an object.' };
-  }
-
-  const candidate = parsedUnknown as Partial<AppSettingsValues>;
-  const terminalSelectionSearchEngineCandidate =
-    typeof candidate.terminalSelectionSearchEngine === 'string' ? candidate.terminalSelectionSearchEngine : 'google';
-
-  if (!isTerminalSelectionSearchEngine(terminalSelectionSearchEngineCandidate)) {
-    return { error: 'Terminal Selection Search Engine is invalid.' };
-  }
-
-  const nextFormState: SettingsFormState = {
-    language: typeof candidate.language === 'string' ? candidate.language : '',
-    theme: typeof candidate.theme === 'string' ? candidate.theme : '',
-    sshMaxRows: String(candidate.sshMaxRows ?? ''),
-    sshConnectionTimeoutSec: String(candidate.sshConnectionTimeoutSec ?? ''),
-    devToolsEnabled: String(candidate.devToolsEnabled ?? false),
-    autoSaveEnabled: String(candidate.autoSaveEnabled ?? true),
-    accountSyncEnabled: String(candidate.accountSyncEnabled ?? false),
-    defaultServerNoteTemplate:
-      typeof candidate.defaultServerNoteTemplate === 'string' ? candidate.defaultServerNoteTemplate : '',
-    terminalSelectionBarEnabled:
-      typeof candidate.terminalSelectionBarEnabled === 'boolean' ? candidate.terminalSelectionBarEnabled : true,
-    terminalTextDropMode:
-      candidate.terminalTextDropMode === 'off' ||
-      candidate.terminalTextDropMode === 'always' ||
-      candidate.terminalTextDropMode === 'external'
-        ? candidate.terminalTextDropMode
-        : 'external',
-    terminalSelectionSearchEngine: terminalSelectionSearchEngineCandidate,
-    terminalSelectionSearchUrlTemplate:
-      typeof candidate.terminalSelectionSearchUrlTemplate === 'string'
-        ? candidate.terminalSelectionSearchUrlTemplate
-        : '',
-  };
-
-  const validated = parseFormState(nextFormState);
-  if (!validated.value) {
-    return { error: validated.error };
-  }
-
-  return { value: nextFormState };
-};
-
 const resolveLocalizedOptionLabel = (itemKey: string, value: string): string => {
   const optionNamespace = optionLabelNamespaceMap[itemKey as keyof SettingsFormState];
   if (optionNamespace) {
@@ -262,22 +210,22 @@ const resolveLocalizedOptionLabel = (itemKey: string, value: string): string => 
   return value;
 };
 
-const Settings: React.FC = () => {
+const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId }) => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const [, setLocaleTick] = React.useState<number>(0);
-  const [activeCategoryId, setActiveCategoryId] = React.useState<SettingsCategoryId>('general');
+  const [activeCategoryId, setActiveCategoryId] = React.useState<SettingsCategoryId>(() => {
+    return initialCategoryId === 'about' ? 'about' : 'general';
+  });
   const [search, setSearch] = React.useState<string>('');
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [isSaving, setIsSaving] = React.useState<boolean>(false);
   const [scope, setScope] = React.useState<AppSettingsScope>({ deviceId: 'local-device' });
-  const [revision, setRevision] = React.useState<number>(0);
   const [formState, setFormState] = React.useState<SettingsFormState>(toFormState(DEFAULT_APP_SETTINGS_VALUES));
   const [savedFormState, setSavedFormState] = React.useState<SettingsFormState>(
     toFormState(DEFAULT_APP_SETTINGS_VALUES),
   );
-  const [rawJsonDraft, setRawJsonDraft] = React.useState<string>(
-    toSettingsJson(toFormState(DEFAULT_APP_SETTINGS_VALUES)),
-  );
+  const [appVersionInfo, setAppVersionInfo] = React.useState<AppVersionInfo>(DEFAULT_APP_VERSION_INFO);
+  const [aboutIconLoadFailed, setAboutIconLoadFailed] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     // Re-render translated labels when locale changes at runtime.
@@ -327,15 +275,6 @@ const Settings: React.FC = () => {
   }, [activeCategoryId, isSearchMode, visibleCategoryIds]);
 
   React.useEffect(() => {
-    // Keep debug JSON view in sync with the current form, except while save is in-flight.
-    if (isSaving) {
-      return;
-    }
-
-    setRawJsonDraft(toSettingsJson(formState));
-  }, [formState, isSaving]);
-
-  React.useEffect(() => {
     let cancelled = false;
 
     const loadSettings = async () => {
@@ -350,10 +289,8 @@ const Settings: React.FC = () => {
         const nextFormState = toFormState(response.data.item.values);
 
         setScope(response.data.item.scope);
-        setRevision(response.data.item.revision);
         setFormState(nextFormState);
         setSavedFormState(nextFormState);
-        setRawJsonDraft(toSettingsJson(nextFormState));
       } catch (error: unknown) {
         if (!cancelled) {
           notifyError(error instanceof Error ? error.message : 'Failed to load settings.');
@@ -372,21 +309,36 @@ const Settings: React.FC = () => {
     };
   }, [notifyError]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadAppVersionInfo = async () => {
+      try {
+        const response = await window.electron?.getAppVersionInfo?.();
+        if (cancelled || !response) {
+          return;
+        }
+
+        setAppVersionInfo(response);
+      } catch {
+        if (!cancelled) {
+          setAppVersionInfo(DEFAULT_APP_VERSION_INFO);
+        }
+      }
+    };
+
+    void loadAppVersionInfo();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const hasChanges = React.useMemo(() => {
     return JSON.stringify(formState) !== JSON.stringify(savedFormState);
   }, [formState, savedFormState]);
 
   const isAutoSaveEnabled = formState.autoSaveEnabled === 'true';
-
-  const settingsCatalogText = [
-    t('settings.catalogHeader'),
-    ...SETTINGS_REGISTRY.map((item) => {
-      const displayDefault =
-        typeof item.defaultValue === 'string' ? `"${item.defaultValue}"` : String(item.defaultValue);
-      const description = t(`settings.items.${item.key}.description`);
-      return `${item.key} | ${item.valueType} | ${displayDefault} | ${description}`;
-    }),
-  ].join('\n');
 
   const activeCategory = React.useMemo(() => {
     return SETTINGS_CATEGORIES.find((item) => item.id === activeCategoryId) ?? SETTINGS_CATEGORIES[0];
@@ -465,10 +417,8 @@ const Settings: React.FC = () => {
 
         const nextFormState = toFormState(response.data.item.values);
         setScope(response.data.item.scope);
-        setRevision(response.data.item.revision);
         setFormState(nextFormState);
         setSavedFormState(nextFormState);
-        setRawJsonDraft(toSettingsJson(nextFormState));
         await applyRuntimeSettings(response.data.item.values);
         emitRuntimeSettingsUpdated(response.data.item.values);
         if (!options?.silent) {
@@ -512,17 +462,6 @@ const Settings: React.FC = () => {
       window.clearTimeout(timerId);
     };
   }, [formState, hasChanges, isAutoSaveEnabled, isLoading, isSaving, persistSettings]);
-
-  const applyJsonDraftToForm = React.useCallback(() => {
-    const parsed = parseJsonToFormState(rawJsonDraft);
-    if (!parsed.value) {
-      notifyWarning(parsed.error ?? t('settings.jsonInvalid'));
-      return;
-    }
-
-    setFormState(parsed.value);
-    notifySuccess(t('settings.jsonApplied'));
-  }, [notifySuccess, notifyWarning, rawJsonDraft]);
 
   const renderControl = React.useCallback(
     (item: SettingDefinition): React.ReactNode => {
@@ -692,59 +631,76 @@ const Settings: React.FC = () => {
 
             {!isLoading && activeCategoryId === 'about' && !isSearchMode ? (
               <div className="grid gap-4 pb-4">
-                <section className="grid gap-3">
-                  <div className="px-2.5 pb-1 text-[15px] font-medium text-home-text-subtle">
-                    {t('settings.sections.runtime')}
-                  </div>
-                  <FormField>
-                    <Label>{t('settings.scope')}</Label>
-                    <Input
-                      readOnly
-                      value={`${scope.accountId ?? 'device-local'} / ${scope.deviceId}`}
-                    />
-                  </FormField>
-                  <FormField>
-                    <Label>{t('settings.revision')}</Label>
-                    <Input
-                      readOnly
-                      value={String(revision)}
-                    />
-                  </FormField>
-                  <FormField>
-                    <Label>{t('settings.registryReadiness')}</Label>
-                    <Textarea
-                      readOnly
-                      rows={5}
-                      value={[t('settings.runtimeLine1'), t('settings.runtimeLine2'), t('settings.runtimeLine3')].join(
-                        '\n',
+                <section className="mx-auto grid w-full max-w-[600px] gap-3">
+                  <div className="flex flex-col items-center gap-3 px-2 py-1">
+                    <div className="bg-elevated flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border border-home-divider">
+                      {!aboutIconLoadFailed ? (
+                        <img
+                          src={APP_LOGO_URL}
+                          alt={t('settings.about.appIconAlt')}
+                          className="h-full w-full object-cover"
+                          onDragStart={(e) => {
+                            e.preventDefault();
+                          }}
+                          onError={() => setAboutIconLoadFailed(true)}
+                        />
+                      ) : (
+                        <Info className="h-10 w-10 text-home-text-subtle" />
                       )}
-                    />
-                  </FormField>
-                  <FormField>
-                    <Label>{t('settings.rawJsonDebug')}</Label>
-                    <Textarea
-                      rows={10}
-                      value={rawJsonDraft}
-                      onChange={(event) => setRawJsonDraft(event.target.value)}
-                    />
-                    <div className={formStyles.helperText}>{t('settings.rawJsonHint')}</div>
-                    <div className="flex justify-end">
-                      <Button
-                        variant="ghost"
-                        onClick={applyJsonDraftToForm}
-                      >
-                        {t('settings.applyJsonToForm')}
-                      </Button>
                     </div>
-                  </FormField>
-                  <FormField>
-                    <Label>{t('settings.catalogDebug')}</Label>
-                    <Textarea
-                      readOnly
-                      rows={9}
-                      value={settingsCatalogText}
-                    />
-                  </FormField>
+                    <h2 className="text-home-text text-2xl font-semibold">{appVersionInfo.appName}</h2>
+                    <div className="grid justify-items-center gap-1">
+                      <p className="select-text text-sm text-home-text-subtle">
+                        {t('settings.about.versionDisplay', {
+                          version: appVersionInfo.version,
+                          build: appVersionInfo.buildVersion || '0',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 px-2.5 pt-5">
+                    <div className="flex items-center justify-between py-1 text-sm">
+                      <span className="text-home-text-subtle">{t('settings.about.openSourceLicense')}</span>
+                      <span className="text-home-text select-text">GPL-3.0-only</span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 text-sm">
+                      <span className="text-home-text-subtle">{t('settings.about.github')}</span>
+                      <button
+                        type="button"
+                        className="text-home-text select-text underline hover:text-home-text-subtle"
+                        onClick={() => {
+                          void window.electron
+                            ?.openExternalUrl?.('https://github.com/agoudbg/cosmosh')
+                            .then((opened) => {
+                              if (!opened) {
+                                notifyWarning(t('settings.about.openGithubFailed'));
+                              }
+                            });
+                        }}
+                      >
+                        https://github.com/agoudbg/cosmosh
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between py-1 text-sm">
+                      <span className="text-home-text-subtle">{t('settings.about.website')}</span>
+                      <button
+                        type="button"
+                        className="text-home-text select-text underline hover:text-home-text-subtle"
+                        onClick={() => {
+                          void window.electron?.openExternalUrl?.('https://cosmosh.pages.dev').then((opened) => {
+                            if (!opened) {
+                              notifyWarning(t('settings.about.openWebsiteFailed'));
+                            }
+                          });
+                        }}
+                      >
+                        https://cosmosh.pages.dev
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="px-2.5 text-xs text-home-text-subtle">{t('settings.about.copyright')}</p>
                 </section>
               </div>
             ) : null}

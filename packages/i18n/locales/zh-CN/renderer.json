@@ -105,9 +105,16 @@
     "undo": "撤销"
   },
   "settings": {
-    "applyJsonToForm": "应用 JSON 到表单",
-    "catalogDebug": "设置目录（调试）",
-    "catalogHeader": "key | type | default | description",
+    "about": {
+      "appIconAlt": "应用图标",
+      "copyright": "© 2026 agoudbg。保留所有权利。",
+      "github": "GitHub",
+      "openGithubFailed": "打开 GitHub 链接失败。",
+      "openSourceLicense": "开放源代码许可",
+      "openWebsiteFailed": "打开官网链接失败。",
+      "versionDisplay": "版本 {version} (内部版本号 {build})",
+      "website": "官网"
+    },
     "categories": {
       "about": "关于",
       "account-sync": "账号与同步",
@@ -181,8 +188,6 @@
         "title": "主题"
       }
     },
-    "jsonApplied": "JSON 已应用到表单，点击保存后才会持久化。",
-    "jsonInvalid": "JSON 配置无效。",
     "loading": "正在加载设置...",
     "noMatches": "没有匹配当前搜索的设置项。",
     "options": {
@@ -213,18 +218,10 @@
       }
     },
     "query": "关键词",
-    "rawJsonDebug": "原始 JSON 配置（调试）",
-    "rawJsonHint": "仅用于调试：查看和修改当前持久化设置快照。",
-    "registryReadiness": "注册表状态",
-    "revision": "设置版本",
-    "runtimeLine1": "设置注册中心已启用，可用于搜索与未来命令面板集成。",
-    "runtimeLine2": "每个设置项都包含稳定 key path 与 command action id 元数据。",
-    "runtimeLine3": "语言、主题、SSH 最大行数、SSH 连接超时和默认服务器备注模板是已生效运行时设置；其他设置目前仅持久化，暂未绑定运行时行为。",
     "saveChanges": "保存更改",
     "saveFailed": "保存设置失败。",
     "saveSuccess": "设置已保存。",
     "saving": "保存中...",
-    "scope": "作用域",
     "searchPlaceholder": "搜索设置",
     "searchResults": "搜索结果",
     "sections": {

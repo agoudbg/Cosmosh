@@ -17,6 +17,7 @@ flowchart TB
 | `i18n:get-locale` | `invoke` | none | `Promise<string>` | Returns current resolved locale |
 | `i18n:set-locale` | `invoke` | `locale: string` | `Promise<string>` | Resolves/persists in-memory locale and updates title |
 | `app:get-runtime-user-name` | `invoke` | none | `Promise<string>` | Returns OS username fallback chain |
+| `app:get-version-info` | `invoke` | none | `Promise<{ appName: string; version: string; buildVersion: string }>` | 为关于页返回应用名称、版本号和内部版本号 |
 | `app:open-devtools` | `invoke` | none | `Promise<boolean>` | Opens devtools when unpackaged |
 | `app:show-in-file-manager` | `invoke` | `targetPath?: string` | `Promise<boolean>` | Opens file/folder in OS file manager |
 | `app:open-external-url` | `invoke` | `targetUrl: string` | `Promise<boolean>` | 使用系统默认浏览器打开受信任的 HTTP(S) 链接 |

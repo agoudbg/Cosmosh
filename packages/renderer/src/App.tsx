@@ -53,7 +53,13 @@ const App: React.FC = () => {
               onCloseRightTabs={closeRightTabs}
               onCloseOtherTabs={closeOtherTabs}
               onReorderTabs={reorderTabs}
-              onOpenSettingsTab={() => addTab('settings')}
+              onOpenSettingsTab={(options) =>
+                addTab('settings', {
+                  state: {
+                    settingsCategory: options?.categoryId,
+                  },
+                })
+              }
               onOpenDebugTab={() => addTab('debug')}
             />
           </div>
@@ -95,7 +101,7 @@ const App: React.FC = () => {
                   />
                 )}
                 {tab.page === 'ssh-editor' && <SSHEditor />}
-                {tab.page === 'settings' && <Settings />}
+                {tab.page === 'settings' && <Settings initialCategoryId={tab.state?.settingsCategory} />}
                 {tab.page === 'components-field' && <ComponentsField />}
                 {tab.page === 'debug' && (
                   <Debug

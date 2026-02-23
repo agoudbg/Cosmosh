@@ -80,6 +80,11 @@ declare global {
       getLocale: () => Promise<string>;
       setLocale: (locale: string) => Promise<string>;
       getRuntimeUserName: () => Promise<string>;
+      getAppVersionInfo: () => Promise<{
+        appName: string;
+        version: string;
+        buildVersion: string;
+      }>;
       openDevTools: () => Promise<boolean>;
       showInFileManager: (targetPath?: string) => Promise<boolean>;
       openExternalUrl: (targetUrl: string) => Promise<boolean>;

@@ -81,6 +81,13 @@ contextBridge.exposeInMainWorld('electron', {
   getRuntimeUserName: () => {
     return ipcRenderer.invoke('app:get-runtime-user-name');
   },
+  getAppVersionInfo: () => {
+    return ipcRenderer.invoke('app:get-version-info') as Promise<{
+      appName: string;
+      version: string;
+      buildVersion: string;
+    }>;
+  },
   openDevTools: () => {
     return ipcRenderer.invoke('app:open-devtools') as Promise<boolean>;
   },

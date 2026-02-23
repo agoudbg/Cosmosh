@@ -591,6 +591,17 @@ ipcMain.handle('app:get-runtime-user-name', () => {
   }
 });
 
+ipcMain.handle('app:get-version-info', () => {
+  const electronMajorVersion = Number.parseInt(process.versions.electron.split('.')[0] ?? '', 10);
+  const buildVersion = Number.isFinite(electronMajorVersion) ? String(electronMajorVersion) : '0';
+
+  return {
+    appName: app.getName(),
+    version: app.getVersion(),
+    buildVersion,
+  };
+});
+
 ipcMain.handle('app:open-devtools', () => {
   if (app.isPackaged) {
     return false;

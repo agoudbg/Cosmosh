@@ -8,4 +8,7 @@ export type TabItem = {
   page: TabPage;
   iconKey: TabIconKey;
   closable?: boolean;
+  state?: {
+    settingsCategory?: string;
+  };
 };
