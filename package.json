@@ -6,6 +6,7 @@
   "author": "agoudbg",
   "license": "GPL-3.0-only",
   "scripts": {
+    "version:update": "node ./scripts/update-version.js",
     "dev:main": "pnpm --filter @cosmosh/main dev",
     "dev:renderer": "pnpm --filter @cosmosh/renderer dev",
     "dev:backend": "pnpm --filter @cosmosh/backend dev",
