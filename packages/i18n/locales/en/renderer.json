@@ -165,6 +165,11 @@
         "placeholder": "https://www.google.com/search?q=QUERY_TOKEN",
         "title": "Custom Search URL"
       },
+      "terminalTextDropMode": {
+        "description": "Controls when drag-and-drop text insertion into terminal is enabled.",
+        "placeholder": "",
+        "title": "Drag To Terminal"
+      },
       "theme": {
         "description": "Controls application visual theme.",
         "placeholder": "",
@@ -190,6 +195,11 @@
         "custom": "Custom",
         "duckduckgo": "DuckDuckGo",
         "google": "Google"
+      },
+      "terminalTextDropMode": {
+        "always": "Always Enabled",
+        "external": "Enable on External Drag",
+        "off": "Off"
       },
       "theme": {
         "auto": "Auto",
@@ -255,6 +265,7 @@
     "draftSectionTitle": "Draft",
     "draftServerSubtitle": "Unsaved",
     "draftServerTitle": "New Server",
+    "dropTextToTerminal": "Drop text here to insert into terminal",
     "editorLoadFailed": "Failed to load server editor resources.",
     "emptyServers": "No SSH servers yet.",
     "folderNamePlaceholder": "Folder name",

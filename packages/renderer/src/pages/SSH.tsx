@@ -8,6 +8,7 @@ import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles } from
 import React from 'react';
 
 import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
+import { TerminalTextDropZone } from '../components/terminal/terminal-text-drop-zone';
 import { Button } from '../components/ui/button';
 import {
   Dialog,
@@ -34,6 +35,7 @@ import {
 import { t } from '../lib/i18n';
 import { getActiveSshServerId, parseTerminalTarget } from '../lib/ssh-target';
 import { useToast } from '../lib/toast-context';
+import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
 
@@ -237,6 +239,8 @@ const DEFAULT_TERMINAL_SELECTION_SETTINGS: TerminalSelectionSettings = {
   searchUrlTemplate: DEFAULT_APP_SETTINGS_VALUES.terminalSelectionSearchUrlTemplate,
 };
 
+const INTERNAL_TERMINAL_TEXT_DRAG_MIME = 'application/x-cosmosh-terminal-text';
+
 const SEARCH_URL_BY_ENGINE: Partial<Record<TerminalSelectionSettings['searchEngine'], string>> = {
   google: 'https://www.google.com/search?q=',
   bing: 'https://www.bing.com/search?q=',
@@ -310,6 +314,9 @@ const SSH: React.FC = () => {
   const [hostFingerprintPrompt, setHostFingerprintPrompt] = React.useState<HostFingerprintPrompt | null>(null);
   const [selectionAnchor, setSelectionAnchor] = React.useState<TerminalSelectionAnchor | null>(null);
   const [selectionBarPosition, setSelectionBarPosition] = React.useState<TerminalSelectionBarPosition | null>(null);
+  const [terminalTextDropMode, setTerminalTextDropMode] = React.useState<
+    components['schemas']['SettingsTerminalTextDropMode']
+  >(DEFAULT_APP_SETTINGS_VALUES.terminalTextDropMode);
   const [dismissedSelectionText, setDismissedSelectionText] = React.useState<string | null>(null);
   const [sshRuntimeSettingsLoaded, setSshRuntimeSettingsLoaded] = React.useState<boolean>(false);
   const [sshMaxRows, setSshMaxRows] = React.useState<number>(DEFAULT_APP_SETTINGS_VALUES.sshMaxRows);
@@ -458,6 +465,7 @@ const SSH: React.FC = () => {
 
         setSshMaxRows(response.data.item.values.sshMaxRows);
         setSshConnectionTimeoutSec(response.data.item.values.sshConnectionTimeoutSec);
+        setTerminalTextDropMode(response.data.item.values.terminalTextDropMode);
         setTerminalSelectionSettings({
           enabled: response.data.item.values.terminalSelectionBarEnabled,
           searchEngine: response.data.item.values.terminalSelectionSearchEngine,
@@ -470,6 +478,7 @@ const SSH: React.FC = () => {
 
         setSshMaxRows(DEFAULT_APP_SETTINGS_VALUES.sshMaxRows);
         setSshConnectionTimeoutSec(DEFAULT_APP_SETTINGS_VALUES.sshConnectionTimeoutSec);
+        setTerminalTextDropMode(DEFAULT_APP_SETTINGS_VALUES.terminalTextDropMode);
         setTerminalSelectionSettings(DEFAULT_TERMINAL_SELECTION_SETTINGS);
       } finally {
         if (!cancelled) {
@@ -639,6 +648,7 @@ const SSH: React.FC = () => {
         .replaceAll('\n', '<br/>');
 
       event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData(INTERNAL_TERMINAL_TEXT_DRAG_MIME, '1');
       event.dataTransfer.setData('text/plain', selectionAnchor.selectionText);
       event.dataTransfer.setData('text', selectionAnchor.selectionText);
       event.dataTransfer.setData('text/unicode', selectionAnchor.selectionText);
@@ -663,6 +673,40 @@ const SSH: React.FC = () => {
   const handleSelectionAskAi = React.useCallback(() => {
     notifyWarning(t('ssh.selectionBarAskAiComingSoon'));
   }, [notifyWarning]);
+
+  const handleTerminalTextDrop = React.useCallback((droppedText: string) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    sendClientMessage(socket, {
+      type: 'input',
+      data: droppedText,
+    });
+    terminalRef.current?.focus();
+  }, []);
+
+  const {
+    isVisible: isTextDropZoneVisible,
+    isActive: isTextDropZoneActive,
+    centerX: textDropZoneCenterX,
+    handleWrapperDragEnter,
+    handleWrapperDragOver,
+    handleWrapperDragLeave,
+    handleWrapperDrop,
+    handleZoneDragEnter: handleTextDropZoneDragEnter,
+    handleZoneDragOver: handleTextDropZoneDragOver,
+    handleZoneDragLeave: handleTextDropZoneDragLeave,
+    handleZoneDrop: handleTextDropZoneDrop,
+  } = useTerminalTextDropZone({
+    mode: terminalTextDropMode,
+    isConnected: connectionState === 'connected',
+    wrapperRef,
+    terminalContainerRef,
+    internalDragMimeType: INTERNAL_TERMINAL_TEXT_DRAG_MIME,
+    onDropText: handleTerminalTextDrop,
+  });
 
   React.useEffect(() => {
     if (!sshRuntimeSettingsLoaded) {
@@ -1138,6 +1182,10 @@ const SSH: React.FC = () => {
     <div
       ref={wrapperRef}
       className="relative flex h-full w-full gap-2.5"
+      onDragEnter={handleWrapperDragEnter}
+      onDragOver={handleWrapperDragOver}
+      onDragLeave={handleWrapperDragLeave}
+      onDrop={handleWrapperDrop}
     >
       {/* SSH */}
       <div className={classNames(cardStyle, 'min-w-0')}>
@@ -1180,6 +1228,18 @@ const SSH: React.FC = () => {
             onClose={handleSelectionBarClose}
           />
         </div>
+      ) : null}
+
+      {connectionState === 'connected' && isTextDropZoneVisible ? (
+        <TerminalTextDropZone
+          centerX={textDropZoneCenterX ?? 0}
+          label={t('ssh.dropTextToTerminal')}
+          active={isTextDropZoneActive}
+          onDragEnter={handleTextDropZoneDragEnter}
+          onDragOver={handleTextDropZoneDragOver}
+          onDragLeave={handleTextDropZoneDragLeave}
+          onDrop={handleTextDropZoneDrop}
+        />
       ) : null}
 
       {/* Sidebar */}

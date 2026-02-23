@@ -261,6 +261,8 @@ export interface components {
         SettingsTheme: "dark" | "light" | "auto";
         /** @enum {string} */
         SettingsSearchEngine: "google" | "bing" | "duckduckgo" | "baidu" | "custom";
+        /** @enum {string} */
+        SettingsTerminalTextDropMode: "off" | "always" | "external";
         SettingsValues: {
             language: components["schemas"]["SettingsLanguage"];
             theme: components["schemas"]["SettingsTheme"];
@@ -270,6 +272,7 @@ export interface components {
             accountSyncEnabled: boolean;
             defaultServerNoteTemplate: string;
             terminalSelectionBarEnabled: boolean;
+            terminalTextDropMode: components["schemas"]["SettingsTerminalTextDropMode"];
             terminalSelectionSearchEngine: components["schemas"]["SettingsSearchEngine"];
             terminalSelectionSearchUrlTemplate: string;
         };

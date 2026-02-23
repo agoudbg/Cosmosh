@@ -15,6 +15,7 @@ export const DEFAULT_APP_SETTINGS_VALUES: AppSettingsValues = {
   accountSyncEnabled: false,
   defaultServerNoteTemplate: '',
   terminalSelectionBarEnabled: true,
+  terminalTextDropMode: 'external',
   terminalSelectionSearchEngine: 'google',
   terminalSelectionSearchUrlTemplate: '',
 };

@@ -696,6 +696,9 @@ components:
     SettingsSearchEngine:
       type: string
       enum: ["google", "bing", "duckduckgo", "baidu", "custom"]
+    SettingsTerminalTextDropMode:
+      type: string
+      enum: ["off", "always", "external"]
     SettingsValues:
       type: object
       additionalProperties: false
@@ -708,6 +711,7 @@ components:
         - accountSyncEnabled
         - defaultServerNoteTemplate
         - terminalSelectionBarEnabled
+        - terminalTextDropMode
         - terminalSelectionSearchEngine
         - terminalSelectionSearchUrlTemplate
       properties:
@@ -732,6 +736,8 @@ components:
           maxLength: 1000
         terminalSelectionBarEnabled:
           type: boolean
+        terminalTextDropMode:
+          $ref: "#/components/schemas/SettingsTerminalTextDropMode"
         terminalSelectionSearchEngine:
           $ref: "#/components/schemas/SettingsSearchEngine"
         terminalSelectionSearchUrlTemplate:

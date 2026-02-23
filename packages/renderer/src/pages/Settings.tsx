@@ -35,6 +35,7 @@ type SettingsFormState = {
   accountSyncEnabled: string;
   defaultServerNoteTemplate: string;
   terminalSelectionBarEnabled: boolean;
+  terminalTextDropMode: AppSettingsValues['terminalTextDropMode'];
   terminalSelectionSearchEngine: AppSettingsValues['terminalSelectionSearchEngine'];
   terminalSelectionSearchUrlTemplate: string;
 };
@@ -80,6 +81,7 @@ const optionLabelNamespaceMap: Partial<Record<keyof SettingsFormState, string>> 
   language: 'language',
   theme: 'theme',
   accountSyncEnabled: 'boolean',
+  terminalTextDropMode: 'terminalTextDropMode',
   terminalSelectionSearchEngine: 'searchEngine',
 };
 
@@ -93,6 +95,7 @@ const toFormState = (values: AppSettingsValues): SettingsFormState => {
     accountSyncEnabled: String(values.accountSyncEnabled),
     defaultServerNoteTemplate: values.defaultServerNoteTemplate,
     terminalSelectionBarEnabled: values.terminalSelectionBarEnabled,
+    terminalTextDropMode: values.terminalTextDropMode,
     terminalSelectionSearchEngine: values.terminalSelectionSearchEngine,
     terminalSelectionSearchUrlTemplate: values.terminalSelectionSearchUrlTemplate,
   };
@@ -133,6 +136,14 @@ const parseFormState = (formState: SettingsFormState): { value?: AppSettingsValu
     return { error: 'Orbit Bar value is invalid.' };
   }
 
+  if (
+    formState.terminalTextDropMode !== 'off' &&
+    formState.terminalTextDropMode !== 'always' &&
+    formState.terminalTextDropMode !== 'external'
+  ) {
+    return { error: 'Drag To Terminal value is invalid.' };
+  }
+
   if (!TERMINAL_SELECTION_ENGINES.includes(formState.terminalSelectionSearchEngine)) {
     return { error: 'Terminal Selection Search Engine is invalid.' };
   }
@@ -151,6 +162,7 @@ const parseFormState = (formState: SettingsFormState): { value?: AppSettingsValu
       accountSyncEnabled: formState.accountSyncEnabled === 'true',
       defaultServerNoteTemplate: formState.defaultServerNoteTemplate,
       terminalSelectionBarEnabled: formState.terminalSelectionBarEnabled,
+      terminalTextDropMode: formState.terminalTextDropMode,
       terminalSelectionSearchEngine: formState.terminalSelectionSearchEngine,
       terminalSelectionSearchUrlTemplate: formState.terminalSelectionSearchUrlTemplate,
     },
@@ -210,6 +222,12 @@ const parseJsonToFormState = (rawJson: string): { value?: SettingsFormState; err
       typeof candidate.defaultServerNoteTemplate === 'string' ? candidate.defaultServerNoteTemplate : '',
     terminalSelectionBarEnabled:
       typeof candidate.terminalSelectionBarEnabled === 'boolean' ? candidate.terminalSelectionBarEnabled : true,
+    terminalTextDropMode:
+      candidate.terminalTextDropMode === 'off' ||
+      candidate.terminalTextDropMode === 'always' ||
+      candidate.terminalTextDropMode === 'external'
+        ? candidate.terminalTextDropMode
+        : 'external',
     terminalSelectionSearchEngine: terminalSelectionSearchEngineCandidate,
     terminalSelectionSearchUrlTemplate:
       typeof candidate.terminalSelectionSearchUrlTemplate === 'string'

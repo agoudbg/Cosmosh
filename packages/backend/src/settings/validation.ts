@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS_VALUES: SettingsValues = {
   accountSyncEnabled: false,
   defaultServerNoteTemplate: '',
   terminalSelectionBarEnabled: true,
+  terminalTextDropMode: 'external',
   terminalSelectionSearchEngine: 'google',
   terminalSelectionSearchUrlTemplate: '',
 };
@@ -106,6 +107,11 @@ const normalizeSettingsValues = (value: unknown): { value?: SettingsValues; erro
     return { error: 'values.terminalSelectionBarEnabled must be a boolean.' };
   }
 
+  const terminalTextDropMode = value.terminalTextDropMode;
+  if (terminalTextDropMode !== 'off' && terminalTextDropMode !== 'always' && terminalTextDropMode !== 'external') {
+    return { error: 'values.terminalTextDropMode must be one of: off, always, external.' };
+  }
+
   const terminalSelectionSearchEngine = value.terminalSelectionSearchEngine;
   if (
     terminalSelectionSearchEngine !== 'google' &&
@@ -135,6 +141,7 @@ const normalizeSettingsValues = (value: unknown): { value?: SettingsValues; erro
       accountSyncEnabled: value.accountSyncEnabled,
       defaultServerNoteTemplate,
       terminalSelectionBarEnabled: value.terminalSelectionBarEnabled,
+      terminalTextDropMode,
       terminalSelectionSearchEngine,
       terminalSelectionSearchUrlTemplate,
     },
