@@ -84,6 +84,16 @@ let backendToken: string | null = null;
 let disableI18nHotReload: (() => void) | null = null;
 
 let appLocale = resolveLocale(process.env.COSMOSH_LOCALE, 'en');
+const DEFAULT_RENDERER_DEV_PORT = 2767;
+
+const resolveRendererDevPort = (): number => {
+  const candidate = Number(process.env.COSMOSH_RENDERER_DEV_PORT ?? DEFAULT_RENDERER_DEV_PORT);
+  if (!Number.isInteger(candidate) || candidate < 1024 || candidate > 65535) {
+    return DEFAULT_RENDERER_DEV_PORT;
+  }
+
+  return candidate;
+};
 
 const getMainI18n = () => {
   return createI18n({ locale: appLocale, scope: 'main', fallbackLocale: 'en' });
@@ -496,7 +506,7 @@ const createWindow = async (): Promise<void> => {
 
   // Load renderer based on environment
   if (isDev) {
-    await mainWindow.loadURL('http://localhost:5173');
+    await mainWindow.loadURL(`http://localhost:${resolveRendererDevPort()}`);
     mainWindow.webContents.openDevTools();
   } else {
     const rendererEntryPath = path.join(process.resourcesPath, 'renderer', 'index.html');

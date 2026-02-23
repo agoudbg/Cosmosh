@@ -68,9 +68,11 @@ pnpm install
 ```bash
 # Start all services in development mode
 pnpm dev              # Start Electron app
-pnpm dev:renderer     # Start Vite dev server (port 5173)
+pnpm dev:renderer     # Start Vite dev server (port 2767)
 pnpm dev:backend      # Start Hono backend (port 3000)
 ```
+
+Optional override: set `COSMOSH_RENDERER_DEV_PORT` before starting dev services.
 
 ### Build
 

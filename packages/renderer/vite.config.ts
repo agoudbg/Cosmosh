@@ -7,6 +7,16 @@ import themeWatcher from './scripts/vite-theme-watcher.js';
 
 const workspaceRoot = path.resolve(__dirname, '../..');
 const i18nSourceEntry = path.resolve(workspaceRoot, 'packages/i18n/src/index.ts');
+const DEFAULT_RENDERER_DEV_PORT = 2767;
+
+const resolveRendererDevPort = (): number => {
+  const candidate = Number(process.env.COSMOSH_RENDERER_DEV_PORT ?? DEFAULT_RENDERER_DEV_PORT);
+  if (!Number.isInteger(candidate) || candidate < 1024 || candidate > 65535) {
+    return DEFAULT_RENDERER_DEV_PORT;
+  }
+
+  return candidate;
+};
 
 const createCspHtmlPlugin = (cspPolicy: string) => {
   return {
@@ -17,14 +27,14 @@ const createCspHtmlPlugin = (cspPolicy: string) => {
   };
 };
 
-const resolveCspPolicy = (mode: string): string => {
+const resolveCspPolicy = (mode: string, rendererDevPort: number): string => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
   const runtimeTarget = (env.VITE_RUNTIME_TARGET ?? 'electron').toLowerCase();
 
   const defaultConnectSrc =
     runtimeTarget === 'browser'
       ? "'self' https: wss: http://localhost:* ws://localhost:*"
-      : "'self' http://127.0.0.1:* ws://127.0.0.1:* http://localhost:5173 ws://localhost:5173";
+      : `'self' http://127.0.0.1:* ws://127.0.0.1:* http://localhost:${rendererDevPort} ws://localhost:${rendererDevPort}`;
 
   const connectSrc = env.VITE_CSP_CONNECT_SRC?.trim() || defaultConnectSrc;
 
@@ -42,7 +52,8 @@ const resolveCspPolicy = (mode: string): string => {
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
-  const cspPolicy = resolveCspPolicy(mode);
+  const rendererDevPort = resolveRendererDevPort();
+  const cspPolicy = resolveCspPolicy(mode, rendererDevPort);
 
   return {
     plugins: [themeWatcher(), react(), createCspHtmlPlugin(cspPolicy)],
@@ -59,7 +70,7 @@ export default defineConfig(({ command, mode }) => {
       emptyOutDir: true,
     },
     server: {
-      port: 5173,
+      port: rendererDevPort,
       strictPort: true,
       fs: {
         allow: [workspaceRoot],

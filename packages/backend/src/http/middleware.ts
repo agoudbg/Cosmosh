@@ -8,6 +8,17 @@ import { logger } from 'hono/logger';
 import { buildErrorPayload } from './errors.js';
 import type { BackendAppContext } from './types.js';
 
+const DEFAULT_RENDERER_DEV_PORT = 2767;
+
+const resolveRendererDevPort = (): number => {
+  const candidate = Number(process.env.COSMOSH_RENDERER_DEV_PORT ?? DEFAULT_RENDERER_DEV_PORT);
+  if (!Number.isInteger(candidate) || candidate < 1024 || candidate > 65535) {
+    return DEFAULT_RENDERER_DEV_PORT;
+  }
+
+  return candidate;
+};
+
 const isValidInternalToken = (providedToken: string | undefined, expectedToken: string | undefined): boolean => {
   if (!providedToken || !expectedToken) {
     return false;
@@ -24,11 +35,13 @@ const isValidInternalToken = (providedToken: string | undefined, expectedToken: 
 };
 
 export const registerCommonMiddleware = (app: Hono, context: BackendAppContext): void => {
+  const rendererDevOrigin = `http://localhost:${resolveRendererDevPort()}`;
+
   app.use('*', logger());
   app.use(
     '*',
     cors({
-      origin: ['http://localhost:5173', 'file://'],
+      origin: [rendererDevOrigin, 'file://'],
       credentials: true,
     }),
   );

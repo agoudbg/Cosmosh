@@ -38,7 +38,7 @@ pnpm --filter @cosmosh/backend dev
 ### Option 2: Using the Root Scripts
 
 ```bash
-# Start Electron main process (will try to load renderer from localhost:5173)
+# Start Electron main process (will try to load renderer from localhost:2767)
 pnpm dev
 
 # Start renderer dev server
@@ -128,7 +128,7 @@ symptoms during debugging, verify no extra process is trying to attach to the sa
 
 ## Important Notes
 
-1. **For Electron development**: You MUST start the renderer dev server first (port 5173), then start the main process.
+1. **For Electron development**: You MUST start the renderer dev server first (port 2767), then start the main process.
 
 2. **Hot Reload**:
    - Renderer changes will hot-reload automatically via Vite
@@ -145,8 +145,9 @@ pnpm --filter @cosmosh/i18n dev
 ```
 
 4. **Ports**:
-   - Renderer: `http://localhost:5173`
+   - Renderer: `http://localhost:2767`
    - Backend API: `http://localhost:3000`
+   - Optional override: set `COSMOSH_RENDERER_DEV_PORT` before running dev commands.
 
 ## API Contract and Usage
 
@@ -322,4 +323,4 @@ Chinese example pattern:
 
 ### Electron Won't Start
 
-Make sure the renderer dev server is running first on port 5173.
+Make sure the renderer dev server is running first on port 2767.
