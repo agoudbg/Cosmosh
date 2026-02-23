@@ -52,7 +52,7 @@ DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayNam
 const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
->(({ className, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
+>(({ className, sideOffset = 6, alignOffset = -4, collisionPadding = 8, style, ...props }, ref) => {
   const viewportBoundsStyle = resolveViewportMenuBounds();
   const hasLeadingVisual = resolveMenuHasLeadingVisual(props.children);
 
@@ -63,6 +63,7 @@ const DropdownMenuSubContent = React.forwardRef<
         forceMount
         avoidCollisions
         sideOffset={sideOffset}
+        alignOffset={alignOffset}
         sticky="always"
         collisionPadding={normalizeCollisionPadding(collisionPadding)}
         style={{

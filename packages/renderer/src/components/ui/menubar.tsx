@@ -77,7 +77,7 @@ const MenubarSub = MenubarPrimitive.Sub;
 const MenubarSubContent = React.forwardRef<
   React.ElementRef<typeof MenubarPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof MenubarPrimitive.SubContent>
->(({ className, sideOffset = 6, collisionPadding = 8, style, ...props }, ref) => {
+>(({ className, sideOffset = 6, alignOffset = -4, collisionPadding = 8, style, ...props }, ref) => {
   const viewportBoundsStyle = resolveViewportMenuBounds();
   const hasLeadingVisual = resolveMenuHasLeadingVisual(props.children);
 
@@ -87,6 +87,7 @@ const MenubarSubContent = React.forwardRef<
         ref={ref}
         forceMount
         sideOffset={sideOffset}
+        alignOffset={alignOffset}
         avoidCollisions={true}
         sticky="always"
         collisionPadding={normalizeCollisionPadding(collisionPadding)}
