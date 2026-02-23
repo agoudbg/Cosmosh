@@ -1,19 +1,39 @@
 import React from 'react';
 
 import type { TabIconKey, TabItem, TabPage } from '../types/tabs';
+import { t } from './i18n';
 
 type UseTabsOptions = {
   initialPage?: TabPage;
   onLastTabClose?: () => void;
 };
 
-const pageDefaults: Record<TabPage, { title: string; iconKey: TabIconKey }> = {
-  home: { title: 'Home', iconKey: 'home' },
-  ssh: { title: 'SSH', iconKey: 'ssh' },
-  'ssh-editor': { title: 'SSH Editor', iconKey: 'ssh' },
-  settings: { title: 'Settings', iconKey: 'settings' },
-  'components-field': { title: 'Components Playground', iconKey: 'file' },
-  debug: { title: 'Debug', iconKey: 'debug' },
+const resolvePageDefaults = (page: TabPage): { title: string; iconKey: TabIconKey } => {
+  if (page === 'home') {
+    return { title: t('tabs.page.home'), iconKey: 'home' };
+  }
+
+  if (page === 'ssh') {
+    return { title: t('tabs.page.ssh'), iconKey: 'ssh' };
+  }
+
+  if (page === 'ssh-editor') {
+    return { title: t('tabs.page.sshEditor'), iconKey: 'ssh' };
+  }
+
+  if (page === 'settings') {
+    return { title: t('tabs.page.settings'), iconKey: 'settings' };
+  }
+
+  if (page === 'components-field') {
+    return { title: t('tabs.page.componentsField'), iconKey: 'file' };
+  }
+
+  if (page === 'debug') {
+    return { title: t('tabs.page.debug'), iconKey: 'debug' };
+  }
+
+  return { title: page, iconKey: 'file' };
 };
 
 export const useTabs = (options?: UseTabsOptions) => {
@@ -21,7 +41,7 @@ export const useTabs = (options?: UseTabsOptions) => {
   const tabCounterRef = React.useRef<number>(1);
 
   const buildTab = React.useCallback((page: TabPage, overrides?: Partial<TabItem>): TabItem => {
-    const defaults = pageDefaults[page];
+    const defaults = resolvePageDefaults(page);
     const id = `tab-${Date.now()}-${tabCounterRef.current++}`;
     return {
       id,
@@ -62,7 +82,7 @@ export const useTabs = (options?: UseTabsOptions) => {
   }, []);
 
   const openPageInTab = React.useCallback((id: string, page: TabPage) => {
-    const defaults = pageDefaults[page];
+    const defaults = resolvePageDefaults(page);
     setTabs((current) =>
       current.map((tab) =>
         tab.id === id

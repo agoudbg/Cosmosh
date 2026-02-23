@@ -343,6 +343,15 @@
   "tabs": {
     "closeCurrent": "Close Current Tab",
     "closeOthers": "Close Other Tabs",
-    "closeRight": "Close Right Tabs"
+    "closeRight": "Close Right Tabs",
+    "page": {
+      "componentsField": "Components Playground",
+      "debug": "Debug",
+      "home": "Home",
+      "localTerminal": "Local Terminal",
+      "settings": "Settings",
+      "ssh": "SSH",
+      "sshEditor": "SSH Editor"
+    }
   }
 }

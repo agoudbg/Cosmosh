@@ -29,6 +29,7 @@ import {
   createLocalTerminalSession,
   createSshSession,
   getAppSettings,
+  listLocalTerminalProfiles,
   listSshServers,
   trustSshFingerprint,
 } from '../lib/backend';
@@ -170,14 +171,31 @@ type ResolvedTerminalTarget =
   | {
       type: 'local-terminal';
       profileId: string;
+      profileName: string | null;
     };
+
+const resolveLocalTerminalProfileName = async (profileId: string): Promise<string | null> => {
+  try {
+    const response = await listLocalTerminalProfiles();
+    const profile = response.data.items.find((item) => item.id === profileId);
+    if (!profile?.name) {
+      return null;
+    }
+
+    return profile.name;
+  } catch {
+    return null;
+  }
+};
 
 const resolveTerminalTarget = async (): Promise<ResolvedTerminalTarget> => {
   const activeTarget = parseTerminalTarget(getActiveSshServerId());
   if (activeTarget?.type === 'local-terminal') {
+    const profileName = await resolveLocalTerminalProfileName(activeTarget.id);
     return {
       type: 'local-terminal',
       profileId: activeTarget.id,
+      profileName,
     };
   }
 
@@ -298,8 +316,13 @@ const resolveSearchUrl = (
   return `${baseUrl}${encodedQuery}`;
 };
 
-const SSH: React.FC = () => {
+type SSHProps = {
+  onTabTitleChange?: (title: string) => void;
+};
+
+const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
+  const onTabTitleChangeRef = React.useRef<SSHProps['onTabTitleChange']>(onTabTitleChange);
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const terminalContainerRef = React.useRef<HTMLDivElement | null>(null);
   const selectionPointerClientXRef = React.useRef<number | null>(null);
@@ -326,6 +349,10 @@ const SSH: React.FC = () => {
   const [terminalSelectionSettings, setTerminalSelectionSettings] = React.useState<TerminalSelectionSettings>(
     DEFAULT_TERMINAL_SELECTION_SETTINGS,
   );
+
+  React.useEffect(() => {
+    onTabTitleChangeRef.current = onTabTitleChange;
+  }, [onTabTitleChange]);
 
   const resolveHostFingerprintPrompt = React.useCallback((accepted: boolean) => {
     const resolver = fingerprintPromptResolverRef.current;
@@ -898,6 +925,12 @@ const SSH: React.FC = () => {
         const target = await resolveTerminalTarget();
         if (disposed) {
           return;
+        }
+
+        if (target.type === 'ssh-server') {
+          onTabTitleChangeRef.current?.(target.server.name.trim() || t('tabs.page.ssh'));
+        } else {
+          onTabTitleChangeRef.current?.(target.profileName?.trim() || t('tabs.page.localTerminal'));
         }
 
         if (target.type === 'local-terminal') {

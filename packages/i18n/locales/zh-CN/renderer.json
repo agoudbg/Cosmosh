@@ -343,6 +343,15 @@
   "tabs": {
     "closeCurrent": "关闭当前标签页",
     "closeOthers": "关闭其他标签页",
-    "closeRight": "关闭右侧标签页"
+    "closeRight": "关闭右侧标签页",
+    "page": {
+      "componentsField": "组件实验场",
+      "debug": "调试",
+      "home": "主页",
+      "localTerminal": "本地终端",
+      "settings": "设置",
+      "ssh": "SSH",
+      "sshEditor": "SSH 编辑器"
+    }
   }
 }

@@ -91,7 +91,7 @@ import { useToast } from '../lib/toast-context';
 import { useDirectionalNavigation } from '../lib/use-directional-navigation';
 
 type HomeProps = {
-  onOpenSSH: (serverId: string) => void;
+  onOpenSSH: (serverId: string, tabTitle?: string) => void;
   onOpenSshEditor: (serverId: string) => void;
   isActive: boolean;
 };
@@ -1169,13 +1169,13 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                               'bg-home-icon-blue text-home-icon-blue-ink',
                               profile.name,
                             )}
-                            onClick={() => onOpenSSH(toLocalTerminalTargetId(profile.id))}
+                            onClick={() => onOpenSSH(toLocalTerminalTargetId(profile.id), profile.name)}
                           />
                         </ContextMenuTrigger>
                         <ContextMenuContent>
                           <ContextMenuItem
                             icon={Terminal}
-                            onSelect={() => onOpenSSH(toLocalTerminalTargetId(profile.id))}
+                            onSelect={() => onOpenSSH(toLocalTerminalTargetId(profile.id), profile.name)}
                           >
                             {t('home.contextConnect')}
                           </ContextMenuItem>
@@ -1245,13 +1245,13 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                                   setDraggingServerId(null);
                                   setDragOverFolderId(null);
                                 }}
-                                onClick={() => onOpenSSH(server.id)}
+                                onClick={() => onOpenSSH(server.id, server.name)}
                               />
                             </ContextMenuTrigger>
                             <ContextMenuContent>
                               <ContextMenuItem
                                 icon={Terminal}
-                                onSelect={() => onOpenSSH(server.id)}
+                                onSelect={() => onOpenSSH(server.id, server.name)}
                               >
                                 {t('home.contextConnect')}
                               </ContextMenuItem>

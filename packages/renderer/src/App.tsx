@@ -70,9 +70,12 @@ const App: React.FC = () => {
                 {tab.page === 'home' && (
                   <Home
                     isActive={tab.id === activeTabId}
-                    onOpenSSH={(serverId) => {
+                    onOpenSSH={(serverId, tabTitle) => {
                       setActiveSshServerId(serverId);
                       openPageInTab(tab.id, 'ssh');
+                      if (tabTitle) {
+                        updateTab(tab.id, { title: tabTitle });
+                      }
                     }}
                     onOpenSshEditor={(serverId) => {
                       const trimmedServerId = serverId.trim();
@@ -84,7 +87,13 @@ const App: React.FC = () => {
                     }}
                   />
                 )}
-                {tab.page === 'ssh' && <SSH />}
+                {tab.page === 'ssh' && (
+                  <SSH
+                    onTabTitleChange={(title) => {
+                      updateTab(tab.id, { title });
+                    }}
+                  />
+                )}
                 {tab.page === 'ssh-editor' && <SSHEditor />}
                 {tab.page === 'settings' && <Settings />}
                 {tab.page === 'components-field' && <ComponentsField />}
