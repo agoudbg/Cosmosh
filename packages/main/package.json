@@ -12,7 +12,7 @@
   "scripts": {
     "predev": "pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build",
     "dev": "tsc -p tsconfig.json && electron dist/index.js",
-    "prebuild": "node ./scripts/cleanup-legacy-artifacts.cjs && node ./scripts/release-unlock-prisma-locks.cjs && pnpm --filter @cosmosh/backend build && pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && node ./scripts/ensure-sqlcipher-native.cjs && node ./scripts/sync-prisma-client.cjs && node ./scripts/sync-backend-runtime.cjs && pnpm --filter @cosmosh/renderer build",
+    "prebuild": "node ./scripts/cleanup-legacy-artifacts.cjs && node ./scripts/release-unlock-prisma-locks.cjs && pnpm --filter @cosmosh/backend build && pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && node ./scripts/ensure-sqlcipher-native.cjs && node ./scripts/sync-prisma-client.cjs && node ./scripts/sync-backend-runtime.cjs && node ./scripts/generate-installer-strings.mjs && pnpm --filter @cosmosh/renderer build",
     "build": "tsc && electron-builder",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",

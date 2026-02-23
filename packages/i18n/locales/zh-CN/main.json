@@ -1,5 +1,16 @@
 {
   "app": {
     "title": "Cosmosh"
+  },
+  "installer": {
+    "shortcutPage": {
+      "desktop": "创建桌面快捷方式(&D)",
+      "label": "选择要创建的快捷方式：",
+      "startMenu": "创建开始菜单快捷方式(&S)"
+    },
+    "uninstallPage": {
+      "deleteData": "同时删除 AppData 中的用户数据（此操作无法撤销）(&D)",
+      "description": "卸载 {productName} 将删除所有应用程序文件。\n\n您也可以选择同时删除保存在 AppData 中的个人数据（设置、已知主机、SSH 密钥等）。"
+    }
   }
 }

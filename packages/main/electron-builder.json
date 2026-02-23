@@ -38,6 +38,19 @@
       "nsis"
     ]
   },
+  "nsis": {
+    "oneClick": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true,
+    "perMachine": false,
+    "createDesktopShortcut": false,
+    "createStartMenuShortcut": false,
+    "shortcutName": "Cosmosh",
+    "menuCategory": "Cosmosh",
+    "runAfterFinish": true,
+    "deleteAppDataOnUninstall": false,
+    "include": "resources/installer.nsh"
+  },
   "linux": {
     "target": [
       "AppImage",

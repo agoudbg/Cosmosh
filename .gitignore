@@ -144,6 +144,9 @@ packages/main/release-fix*/
 .pnpm-store/
 **/.cosmosh/
 
+# Auto-generated NSIS installer string defines (built from i18n locale JSON files)
+packages/main/resources/installer-strings.nsh
+
 # IDE
 .vscode/*
 !.vscode/extensions.json
