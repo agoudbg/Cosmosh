@@ -2,6 +2,7 @@ import { normalizeSettingsValuesStrict, type SettingValidationError } from '@cos
 import { Cloud, Info, Link2, Palette, Save, Search, Settings2, Terminal, Wrench } from 'lucide-react';
 import React from 'react';
 
+import SettingsAboutSection, { type AppVersionInfo } from '../components/settings/SettingsAboutSection';
 import { Button } from '../components/ui/button';
 import { FormField } from '../components/ui/form';
 import { formStyles } from '../components/ui/form-styles';
@@ -33,19 +34,11 @@ type SettingsFormState = {
 
 type SettingKey = keyof AppSettingsValues;
 
-type AppVersionInfo = {
-  appName: string;
-  version: string;
-  buildVersion: string;
-};
-
 const DEFAULT_APP_VERSION_INFO: AppVersionInfo = {
   appName: 'Cosmosh',
   version: '0.0.0',
   buildVersion: '',
 };
-
-const APP_LOGO_URL = new URL('../assets/logo.svg', import.meta.url).href;
 
 const categoryIconMap: Record<SettingsCategoryId, React.ComponentType<{ className?: string }>> = {
   general: Settings2,
@@ -160,7 +153,6 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
     toFormState(DEFAULT_APP_SETTINGS_VALUES),
   );
   const [appVersionInfo, setAppVersionInfo] = React.useState<AppVersionInfo>(DEFAULT_APP_VERSION_INFO);
-  const [aboutIconLoadFailed, setAboutIconLoadFailed] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     // Re-render translated labels when locale changes at runtime.
@@ -562,79 +554,12 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
             {isLoading ? <div className="px-2 text-sm text-home-text-subtle">{t('settings.loading')}</div> : null}
 
             {!isLoading && activeCategoryId === 'about' && !isSearchMode ? (
-              <div className="grid gap-4 pb-4">
-                <section className="mx-auto grid w-full max-w-[600px] gap-3">
-                  <div className="flex flex-col items-center gap-3 px-2 py-1">
-                    <div className="bg-elevated flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border border-home-divider">
-                      {!aboutIconLoadFailed ? (
-                        <img
-                          src={APP_LOGO_URL}
-                          alt={t('settings.about.appIconAlt')}
-                          className="h-full w-full object-cover"
-                          onDragStart={(e) => {
-                            e.preventDefault();
-                          }}
-                          onError={() => setAboutIconLoadFailed(true)}
-                        />
-                      ) : (
-                        <Info className="h-10 w-10 text-home-text-subtle" />
-                      )}
-                    </div>
-                    <h2 className="text-home-text text-2xl font-semibold">{appVersionInfo.appName}</h2>
-                    <div className="grid justify-items-center gap-1">
-                      <p className="select-text text-sm text-home-text-subtle">
-                        {t('settings.about.versionDisplay', {
-                          version: appVersionInfo.version,
-                          build: appVersionInfo.buildVersion || '0',
-                        })}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2 px-2.5 pt-5">
-                    <div className="flex items-center justify-between py-1 text-sm">
-                      <span className="text-home-text-subtle">{t('settings.about.openSourceLicense')}</span>
-                      <span className="text-home-text select-text">GPL-3.0-only</span>
-                    </div>
-                    <div className="flex items-center justify-between py-1 text-sm">
-                      <span className="text-home-text-subtle">{t('settings.about.github')}</span>
-                      <button
-                        type="button"
-                        className="text-home-text select-text underline hover:text-home-text-subtle"
-                        onClick={() => {
-                          void window.electron
-                            ?.openExternalUrl?.('https://github.com/agoudbg/cosmosh')
-                            .then((opened) => {
-                              if (!opened) {
-                                notifyWarning(t('settings.about.openGithubFailed'));
-                              }
-                            });
-                        }}
-                      >
-                        https://github.com/agoudbg/cosmosh
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between py-1 text-sm">
-                      <span className="text-home-text-subtle">{t('settings.about.website')}</span>
-                      <button
-                        type="button"
-                        className="text-home-text select-text underline hover:text-home-text-subtle"
-                        onClick={() => {
-                          void window.electron?.openExternalUrl?.('https://cosmosh.pages.dev').then((opened) => {
-                            if (!opened) {
-                              notifyWarning(t('settings.about.openWebsiteFailed'));
-                            }
-                          });
-                        }}
-                      >
-                        https://cosmosh.pages.dev
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="px-2.5 text-xs text-home-text-subtle">{t('settings.about.copyright')}</p>
-                </section>
-              </div>
+              <SettingsAboutSection
+                appVersionInfo={appVersionInfo}
+                onOpenFailed={(i18nKey) => {
+                  notifyWarning(t(i18nKey));
+                }}
+              />
             ) : null}
 
             {!isLoading && activeCategoryId !== 'about' && sections.length === 0 ? (
