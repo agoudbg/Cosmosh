@@ -24,7 +24,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           : variant === 'inverted'
             ? formStyles.buttonInverted
             : formStyles.button,
-        variant === 'icon' && 'w-[34px] h-[34px] flex-shrink-0 !p-0',
+        variant === 'icon' && 'h-[34px] w-[34px] flex-shrink-0 !p-0',
         padding === 'mid' && variant !== 'icon' && 'px-[15px]',
         padding === 'wide' && variant !== 'icon' && 'px-[18px]',
         className,

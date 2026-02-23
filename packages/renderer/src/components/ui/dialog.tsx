@@ -64,7 +64,7 @@ const DialogFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ classNam
     className={classNames(
       dialogStyles.footer,
       "[&>button[data-button-variant='ghost']]:px-[15px]",
-      "[&>button[data-button-variant='default']]:bg-form-text [&>button[data-button-variant='default']]:text-bg [&>button[data-button-variant='default']]:hover:opacity-90 [&>button[data-button-variant='default']]:px-[18px]",
+      "[&>button[data-button-variant='default']]:bg-form-text [&>button[data-button-variant='default']]:px-[18px] [&>button[data-button-variant='default']]:text-bg [&>button[data-button-variant='default']]:hover:opacity-90",
       "[&>button[data-button-variant='inverted']]:px-[18px]",
       className,
     )}

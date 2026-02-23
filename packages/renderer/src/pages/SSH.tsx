@@ -1230,7 +1230,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         <div
           className={classNames(
             sidebarCardStyle,
-            'px-3 py-2 flex items-center justify-between gap-2 flex-grow-0 flex-shrink-0',
+            'flex flex-shrink-0 flex-grow-0 items-center justify-between gap-2 px-3 py-2',
           )}
         >
           {/* CPU */}
@@ -1259,7 +1259,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
 
         {/* Recent commands */}
         <div className={classNames(sidebarCardStyle, cardHiddenArea)}>
-          <div className={classNames(hiddenHeaderStyle, 'flex items-center justify-between flex-shrink-0')}>
+          <div className={classNames(hiddenHeaderStyle, 'flex flex-shrink-0 items-center justify-between')}>
             <Button>Commands</Button>
             <div className="flex">
               <Button

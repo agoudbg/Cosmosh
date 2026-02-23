@@ -378,8 +378,8 @@ export const Tabs: React.FC<TabsProps> = ({
               aria-label="Scroll tabs left"
               aria-hidden={!canScrollLeft}
               className={classNames(
-                'hover:bg-header-tab-hover absolute left-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out',
-                { 'opacity-0 pointer-events-none': !canScrollLeft, 'opacity-100': canScrollLeft },
+                'absolute left-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out hover:bg-header-tab-hover',
+                { 'pointer-events-none opacity-0': !canScrollLeft, 'opacity-100': canScrollLeft },
               )}
               // @ts-expect-error React.CSSProperties
               style={{ WebkitAppRegion: 'no-drag' }}
@@ -393,8 +393,8 @@ export const Tabs: React.FC<TabsProps> = ({
               aria-label="Scroll tabs right"
               aria-hidden={!canScrollRight}
               className={classNames(
-                'hover:bg-header-tab-hover absolute right-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out',
-                { 'opacity-0 pointer-events-none': !canScrollRight, 'opacity-100': canScrollRight },
+                'absolute right-0 z-10 h-full bg-bg px-1 transition-opacity duration-100 ease-in-out hover:bg-header-tab-hover',
+                { 'pointer-events-none opacity-0': !canScrollRight, 'opacity-100': canScrollRight },
               )}
               // @ts-expect-error React.CSSProperties
               style={{ WebkitAppRegion: 'no-drag' }}
@@ -516,7 +516,7 @@ export const Tabs: React.FC<TabsProps> = ({
                           <span
                             aria-hidden
                             className={classNames(
-                              'bg-header-divider h-[16px] w-[2px] shrink-0',
+                              'h-[16px] w-[2px] shrink-0 bg-header-divider',
                               activeTab === tab.id || activeTab === orderedTabs[index + 1]?.id
                                 ? 'opacity-0'
                                 : 'opacity-100',
@@ -547,7 +547,7 @@ export const Tabs: React.FC<TabsProps> = ({
         <span
           aria-hidden
           className={classNames(
-            'bg-header-divider h-[16px] w-[2px] flex-shrink-0',
+            'h-[16px] w-[2px] flex-shrink-0 bg-header-divider',
             isLastTabActive ? 'opacity-0' : 'opacity-100',
           )}
         />

@@ -98,7 +98,7 @@ const Header: React.FC<{
   return (
     <header
       className={classNames(
-        'text-header-text flex w-[-webkit-fill-available] items-center p-2 gap-2',
+        'flex w-[-webkit-fill-available] items-center gap-2 p-2 text-header-text',
         padding,
         className,
       )}

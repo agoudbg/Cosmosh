@@ -72,7 +72,7 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
       <>
         <span
           className={classNames(
-            'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[8px] h-9 w-9',
+            'inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[8px]',
           )}
         >
           {imageUrl ? (
@@ -87,11 +87,11 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
           )}
         </span>
         <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-          <span className={classNames('block truncate font-semibold leading-tight text-header-text text-sm')}>
+          <span className={classNames('block truncate text-sm font-semibold leading-tight text-header-text')}>
             {title}
           </span>
           {subtitle ? (
-            <span className={classNames('block truncate text-home-text-subtle text-xs')}>{subtitle}</span>
+            <span className={classNames('block truncate text-xs text-home-text-subtle')}>{subtitle}</span>
           ) : null}
         </span>
         {action ? <span className="shrink-0">{action}</span> : null}
@@ -104,7 +104,7 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
         role="button"
         tabIndex={tabIndex ?? 0}
         className={classNames(
-          'group w-full rounded-[15px] px-2 py-2 text-left transition-colors outline-none [-webkit-app-region:no-drag]',
+          'group w-full rounded-[15px] px-2 py-2 text-left outline-none transition-colors [-webkit-app-region:no-drag]',
           onClick ? 'cursor-pointer' : 'cursor-default',
           'inline-flex min-h-[46px] items-center gap-2.5',
           selected

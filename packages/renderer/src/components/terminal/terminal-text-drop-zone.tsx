@@ -30,7 +30,7 @@ const TerminalTextDropZone: React.FC<TerminalTextDropZoneProps> = ({
     >
       <div
         className={classNames(
-          'pointer-events-auto min-h-[100px] min-w-[400px] select-none rounded-[18px] border border-menu-selection-bar-border px-7 py-4 text-sm text-header-text shadow-selection-bar backdrop-blur-[4px] transition-colors flex items-center justify-center',
+          'shadow-selection-bar pointer-events-auto flex min-h-[100px] min-w-[400px] select-none items-center justify-center rounded-[18px] border border-menu-selection-bar-border px-7 py-4 text-sm text-header-text backdrop-blur-[4px] transition-colors',
           active ? 'bg-menu-control-hover' : 'bg-menu-control',
         )}
         onDragEnter={onDragEnter}
