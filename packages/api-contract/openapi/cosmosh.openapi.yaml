@@ -687,65 +687,14 @@ components:
               enum: [true]
             data:
               $ref: "#/components/schemas/TestPingData"
-    SettingsLanguage:
-      type: string
-      enum: ["en", "zh-CN"]
-    SettingsTheme:
-      type: string
-      enum: ["dark", "light", "auto"]
-    SettingsSearchEngine:
-      type: string
-      enum: ["google", "bing", "duckduckgo", "baidu", "custom"]
-    SettingsTerminalTextDropMode:
-      type: string
-      enum: ["off", "always", "external"]
     SettingsValues:
       type: object
-      additionalProperties: false
-      required:
-        - language
-        - theme
-        - sshMaxRows
-        - sshConnectionTimeoutSec
-        - devToolsEnabled
-        - autoSaveEnabled
-        - accountSyncEnabled
-        - defaultServerNoteTemplate
-        - terminalSelectionBarEnabled
-        - terminalTextDropMode
-        - terminalSelectionSearchEngine
-        - terminalSelectionSearchUrlTemplate
-      properties:
-        language:
-          $ref: "#/components/schemas/SettingsLanguage"
-        theme:
-          $ref: "#/components/schemas/SettingsTheme"
-        sshMaxRows:
-          type: integer
-          minimum: 100
-          maximum: 200000
-        sshConnectionTimeoutSec:
-          type: integer
-          minimum: 5
-          maximum: 180
-        devToolsEnabled:
-          type: boolean
-        autoSaveEnabled:
-          type: boolean
-        accountSyncEnabled:
-          type: boolean
-        defaultServerNoteTemplate:
-          type: string
-          maxLength: 1000
-        terminalSelectionBarEnabled:
-          type: boolean
-        terminalTextDropMode:
-          $ref: "#/components/schemas/SettingsTerminalTextDropMode"
-        terminalSelectionSearchEngine:
-          $ref: "#/components/schemas/SettingsSearchEngine"
-        terminalSelectionSearchUrlTemplate:
-          type: string
-          maxLength: 1000
+      description: >
+        Application settings values. Property definitions, types, defaults,
+        constraints, and enum sets are managed by the settings registry at
+        packages/api-contract/src/settings-registry.ts.
+        This schema is intentionally loose; runtime validation lives in code.
+      additionalProperties: true
     SettingsScope:
       type: object
       required:

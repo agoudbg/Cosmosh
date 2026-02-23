@@ -1,17 +1,73 @@
 export type { components, operations, paths } from './generated';
 export { createApiError, createApiSuccess } from './envelope';
 export { API_CAPABILITIES, API_CODES, API_HEADERS, API_PATHS } from './protocol';
+export {
+	DEFAULT_SETTINGS_VALUES,
+	normalizeSettingsValuesStrict,
+	normalizeSettingsValuesWithDefaults,
+} from './settings';
+export type { SettingValidationError } from './settings';
+export {
+	getVisibleCategories,
+	paginateSettingsByCategory,
+	resolveCategoryId,
+	SETTINGS_CATEGORIES,
+	SETTINGS_CATEGORY_IDS,
+	SETTINGS_DEFINITION_MAP,
+	SETTINGS_REGISTRY,
+} from './settings-registry';
+export type {
+	SettingDefinition,
+	SettingKey,
+	SettingsCategory,
+	SettingsCategoryId,
+	SettingsSection,
+	SettingsValues,
+} from './settings-registry';
 
 import type { components, paths } from './generated';
+import type { SettingsValues } from './settings-registry';
+
+// ── Settings API types ───────────────────────────────────────
+// Hand-crafted with strict SettingsValues from the registry.
+// The OpenAPI SettingsValues schema is intentionally loose;
+// these types provide compile-time safety the generated ones cannot.
+
+type SettingsScope = components['schemas']['SettingsScope'];
+export type { SettingsScope };
+
+export interface SettingsResource {
+	scope: SettingsScope;
+	revision: number;
+	updatedAt: string;
+	values: SettingsValues;
+}
+
+interface ApiSuccessBase {
+	success: true;
+	code: string;
+	message: string;
+	requestId: string;
+	timestamp: string;
+}
+
+export type ApiSettingsGetResponse = ApiSuccessBase & {
+	data: { item: SettingsResource };
+};
+
+export type ApiSettingsUpdateRequest = {
+	scope?: SettingsScope;
+	values: SettingsValues;
+};
+
+export type ApiSettingsUpdateResponse = ApiSuccessBase & {
+	data: { item: SettingsResource };
+};
+
+// ── Non-settings API types (generated) ───────────────────────
 
 export type ApiErrorResponse = components['schemas']['ApiError'];
 export type ApiTestPingResponse = paths['/api/v1/test/ping']['get']['responses']['200']['content']['application/json'];
-export type ApiSettingsGetResponse =
-	paths['/api/v1/settings']['get']['responses']['200']['content']['application/json'];
-export type ApiSettingsUpdateRequest =
-	paths['/api/v1/settings']['put']['requestBody']['content']['application/json'];
-export type ApiSettingsUpdateResponse =
-	paths['/api/v1/settings']['put']['responses']['200']['content']['application/json'];
 export type ApiSshListServersResponse =
 	paths['/api/v1/ssh/servers']['get']['responses']['200']['content']['application/json'];
 export type ApiSshCreateServerRequest =

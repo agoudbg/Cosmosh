@@ -91,7 +91,10 @@ export const registerSettingsRoutes = (app: Hono, context: BackendAppContext): v
     const parsed = parseSettingsUpdateRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
       return c.json(
-        buildErrorPayload(API_CODES.settingsValidationFailed, parsed.error ?? 'Invalid settings request payload.'),
+        buildErrorPayload(
+          API_CODES.settingsValidationFailed,
+          parsed.error?.fallbackMessage ?? 'Invalid settings request payload.',
+        ),
         400,
       );
     }

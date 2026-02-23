@@ -235,7 +235,21 @@
       "synchronization": "同步",
       "terminalSelection": "Orbit Bar"
     },
-    "title": "设置"
+    "title": "设置",
+    "validation": {
+      "booleanRequired": "{name}必须是布尔值。",
+      "enumRequired": "{name}必须是以下之一：{options}。",
+      "integerRange": "{name}必须是 {min} 到 {max} 之间的整数。",
+      "integerRequired": "{name}必须是整数。",
+      "invalid": "{key}无效。",
+      "maxLengthExceeded": "{name}不得超过 {limit} 个字符。",
+      "missingKey": "{name}为必填项。",
+      "notObject": "设置值必须是 JSON 对象。",
+      "stringRequired": "{name}必须是字符串。",
+      "unknownKeys": "设置包含未知键：{keys}。",
+      "unsupportedKey": "不支持的设置键：{key}。",
+      "unsupportedType": "不支持的设置值类型，键：{key}。"
+    }
   },
   "ssh": {
     "authTypeBoth": "密码 + 私钥",

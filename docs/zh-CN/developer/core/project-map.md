@@ -47,6 +47,9 @@ flowchart TB
 
 共享协议常量、请求/响应类型、OpenAPI 源与生成产物。
 
+- `src/settings-registry.ts`：所有设置定义的**唯一来源**——类型、默认值、约束、枚举集、UI 控件元数据、分类与辅助函数。增删设置项仅需编辑此文件。
+- `src/settings.ts`：基于注册表的通用校验与规范化辅助函数（`normalizeSettingsValuesStrict`、`normalizeSettingsValuesWithDefaults`），供 backend 与 renderer 共享。
+
 ### `packages/i18n`
 
 main/backend/renderer 作用域共用的语言 JSON 源与运行时 i18n 包。
@@ -98,3 +101,11 @@ flowchart TD
 3. 增加输入边界校验/解析层。
 4. 通过 main bridge 暴露给 renderer。
 5. 同步架构与运行时文档。
+
+### 新增应用设置项
+
+1. 在 `packages/api-contract/src/settings-registry.ts` 中：
+   - 在 `SettingsValues` 接口中添加 key 及其类型。
+   - 在 `SETTINGS_REGISTRY` 数组中添加一条 `SettingDefinition` 条目（默认值、约束、UI 控件、分类、i18n key 等）。
+2. 在 `packages/i18n/locales/en/*.json` 和 `zh-CN/*.json` 中添加 i18n key。
+3. 无需修改其他文件——校验、默认值与 UI 渲染均从注册表自动派生。

@@ -1,6 +1,6 @@
 import '@xterm/xterm/css/xterm.css';
 
-import type { components } from '@cosmosh/api-contract';
+import type { components, SettingsValues } from '@cosmosh/api-contract';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import classNames from 'classnames';
@@ -22,18 +22,17 @@ import {
 } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Menubar } from '../components/ui/menubar';
-import { DEFAULT_APP_SETTINGS_VALUES } from '../lib/app-settings';
 import {
   closeLocalTerminalSession,
   closeSshSession,
   createLocalTerminalSession,
   createSshSession,
-  getAppSettings,
   listLocalTerminalProfiles,
   listSshServers,
   trustSshFingerprint,
 } from '../lib/backend';
 import { t } from '../lib/i18n';
+import { useSettingsValues } from '../lib/settings-store';
 import { getActiveSshServerId, parseTerminalTarget } from '../lib/ssh-target';
 import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
@@ -242,7 +241,7 @@ type TerminalSelectionBarPosition = {
 
 type TerminalSelectionSettings = {
   enabled: boolean;
-  searchEngine: components['schemas']['SettingsSearchEngine'];
+  searchEngine: SettingsValues['terminalSelectionSearchEngine'];
   searchUrlTemplate: string;
 };
 
@@ -250,12 +249,6 @@ type TerminalSelectionBounds = Pick<
   TerminalSelectionAnchor,
   'anchorLeft' | 'anchorRight' | 'top' | 'left' | 'right' | 'bottom'
 >;
-
-const DEFAULT_TERMINAL_SELECTION_SETTINGS: TerminalSelectionSettings = {
-  enabled: DEFAULT_APP_SETTINGS_VALUES.terminalSelectionBarEnabled,
-  searchEngine: DEFAULT_APP_SETTINGS_VALUES.terminalSelectionSearchEngine,
-  searchUrlTemplate: DEFAULT_APP_SETTINGS_VALUES.terminalSelectionSearchUrlTemplate,
-};
 
 const INTERNAL_TERMINAL_TEXT_DRAG_MIME = 'application/x-cosmosh-terminal-text';
 
@@ -322,6 +315,7 @@ type SSHProps = {
 
 const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
+  const settingsValues = useSettingsValues();
   const onTabTitleChangeRef = React.useRef<SSHProps['onTabTitleChange']>(onTabTitleChange);
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const terminalContainerRef = React.useRef<HTMLDivElement | null>(null);
@@ -337,17 +331,23 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const [hostFingerprintPrompt, setHostFingerprintPrompt] = React.useState<HostFingerprintPrompt | null>(null);
   const [selectionAnchor, setSelectionAnchor] = React.useState<TerminalSelectionAnchor | null>(null);
   const [selectionBarPosition, setSelectionBarPosition] = React.useState<TerminalSelectionBarPosition | null>(null);
-  const [terminalTextDropMode, setTerminalTextDropMode] = React.useState<
-    components['schemas']['SettingsTerminalTextDropMode']
-  >(DEFAULT_APP_SETTINGS_VALUES.terminalTextDropMode);
   const [dismissedSelectionText, setDismissedSelectionText] = React.useState<string | null>(null);
-  const [sshRuntimeSettingsLoaded, setSshRuntimeSettingsLoaded] = React.useState<boolean>(false);
-  const [sshMaxRows, setSshMaxRows] = React.useState<number>(DEFAULT_APP_SETTINGS_VALUES.sshMaxRows);
-  const [sshConnectionTimeoutSec, setSshConnectionTimeoutSec] = React.useState<number>(
-    DEFAULT_APP_SETTINGS_VALUES.sshConnectionTimeoutSec,
-  );
-  const [terminalSelectionSettings, setTerminalSelectionSettings] = React.useState<TerminalSelectionSettings>(
-    DEFAULT_TERMINAL_SELECTION_SETTINGS,
+
+  // Derive terminal-relevant settings from the centralized store.
+  const sshMaxRows = settingsValues.sshMaxRows;
+  const sshConnectionTimeoutSec = settingsValues.sshConnectionTimeoutSec;
+  const terminalTextDropMode = settingsValues.terminalTextDropMode;
+  const terminalSelectionSettings: TerminalSelectionSettings = React.useMemo(
+    () => ({
+      enabled: settingsValues.terminalSelectionBarEnabled,
+      searchEngine: settingsValues.terminalSelectionSearchEngine,
+      searchUrlTemplate: settingsValues.terminalSelectionSearchUrlTemplate,
+    }),
+    [
+      settingsValues.terminalSelectionBarEnabled,
+      settingsValues.terminalSelectionSearchEngine,
+      settingsValues.terminalSelectionSearchUrlTemplate,
+    ],
   );
 
   React.useEffect(() => {
@@ -479,47 +479,6 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       pointerClientX: selectionPointerClientXRef.current,
     });
   }, [resolveSelectionBounds]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    const loadRuntimeSettings = async () => {
-      try {
-        const response = await getAppSettings();
-        if (cancelled) {
-          return;
-        }
-
-        setSshMaxRows(response.data.item.values.sshMaxRows);
-        setSshConnectionTimeoutSec(response.data.item.values.sshConnectionTimeoutSec);
-        setTerminalTextDropMode(response.data.item.values.terminalTextDropMode);
-        setTerminalSelectionSettings({
-          enabled: response.data.item.values.terminalSelectionBarEnabled,
-          searchEngine: response.data.item.values.terminalSelectionSearchEngine,
-          searchUrlTemplate: response.data.item.values.terminalSelectionSearchUrlTemplate,
-        });
-      } catch {
-        if (cancelled) {
-          return;
-        }
-
-        setSshMaxRows(DEFAULT_APP_SETTINGS_VALUES.sshMaxRows);
-        setSshConnectionTimeoutSec(DEFAULT_APP_SETTINGS_VALUES.sshConnectionTimeoutSec);
-        setTerminalTextDropMode(DEFAULT_APP_SETTINGS_VALUES.terminalTextDropMode);
-        setTerminalSelectionSettings(DEFAULT_TERMINAL_SELECTION_SETTINGS);
-      } finally {
-        if (!cancelled) {
-          setSshRuntimeSettingsLoaded(true);
-        }
-      }
-    };
-
-    void loadRuntimeSettings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   React.useLayoutEffect(() => {
     if (
@@ -736,10 +695,6 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   });
 
   React.useEffect(() => {
-    if (!sshRuntimeSettingsLoaded) {
-      return;
-    }
-
     const terminal = new Terminal({
       convertEol: true,
       cursorBlink: true,
@@ -1193,13 +1148,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       disposeResize();
       terminal.dispose();
     };
-  }, [
-    refreshSelectionAnchor,
-    requestHostFingerprintTrust,
-    sshConnectionTimeoutSec,
-    sshMaxRows,
-    sshRuntimeSettingsLoaded,
-  ]);
+  }, [refreshSelectionAnchor, requestHostFingerprintTrust, sshConnectionTimeoutSec, sshMaxRows]);
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 rounded-[18px] p-1';

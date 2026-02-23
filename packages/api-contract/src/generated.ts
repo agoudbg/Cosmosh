@@ -255,27 +255,9 @@ export interface components {
             success: true;
             data: components["schemas"]["TestPingData"];
         };
-        /** @enum {string} */
-        SettingsLanguage: "en" | "zh-CN";
-        /** @enum {string} */
-        SettingsTheme: "dark" | "light" | "auto";
-        /** @enum {string} */
-        SettingsSearchEngine: "google" | "bing" | "duckduckgo" | "baidu" | "custom";
-        /** @enum {string} */
-        SettingsTerminalTextDropMode: "off" | "always" | "external";
+        /** @description Application settings values. Property definitions, types, defaults, constraints, and enum sets are managed by the settings registry at packages/api-contract/src/settings-registry.ts. This schema is intentionally loose; runtime validation lives in code. */
         SettingsValues: {
-            language: components["schemas"]["SettingsLanguage"];
-            theme: components["schemas"]["SettingsTheme"];
-            sshMaxRows: number;
-            sshConnectionTimeoutSec: number;
-            devToolsEnabled: boolean;
-            autoSaveEnabled: boolean;
-            accountSyncEnabled: boolean;
-            defaultServerNoteTemplate: string;
-            terminalSelectionBarEnabled: boolean;
-            terminalTextDropMode: components["schemas"]["SettingsTerminalTextDropMode"];
-            terminalSelectionSearchEngine: components["schemas"]["SettingsSearchEngine"];
-            terminalSelectionSearchUrlTemplate: string;
+            [key: string]: unknown;
         };
         SettingsScope: {
             accountId?: string;

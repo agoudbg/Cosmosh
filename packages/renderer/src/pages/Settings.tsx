@@ -1,3 +1,4 @@
+import { normalizeSettingsValuesStrict, type SettingValidationError } from '@cosmosh/api-contract';
 import { Cloud, Info, Link2, Palette, Save, Search, Settings2, Terminal, Wrench } from 'lucide-react';
 import React from 'react';
 
@@ -10,37 +11,27 @@ import { Menubar } from '../components/ui/menubar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
-import {
-  applyRuntimeSettings,
-  type AppSettingsScope,
-  type AppSettingsValues,
-  DEFAULT_APP_SETTINGS_VALUES,
-  emitRuntimeSettingsUpdated,
-} from '../lib/app-settings';
+import { type AppSettingsScope, type AppSettingsValues, DEFAULT_APP_SETTINGS_VALUES } from '../lib/app-settings';
 import { getAppSettings, updateAppSettings } from '../lib/backend';
 import { onLocaleChange, t } from '../lib/i18n';
+import { updateSettingsStoreValues } from '../lib/settings-store';
 import { useToast } from '../lib/toast-context';
 import {
+  getVisibleCategories,
+  paginateSettingsByCategory,
+  resolveCategoryId,
   type SettingDefinition,
   SETTINGS_CATEGORIES,
+  SETTINGS_CATEGORY_IDS,
   SETTINGS_REGISTRY,
   type SettingsCategoryId,
 } from './settings-registry';
 
 type SettingsFormState = {
-  language: string;
-  theme: string;
-  sshMaxRows: string;
-  sshConnectionTimeoutSec: string;
-  devToolsEnabled: string;
-  autoSaveEnabled: string;
-  accountSyncEnabled: string;
-  defaultServerNoteTemplate: string;
-  terminalSelectionBarEnabled: boolean;
-  terminalTextDropMode: AppSettingsValues['terminalTextDropMode'];
-  terminalSelectionSearchEngine: AppSettingsValues['terminalSelectionSearchEngine'];
-  terminalSelectionSearchUrlTemplate: string;
+  [K in keyof AppSettingsValues]: string | boolean;
 };
+
+type SettingKey = keyof AppSettingsValues;
 
 type AppVersionInfo = {
   appName: string;
@@ -66,131 +57,75 @@ const categoryIconMap: Record<SettingsCategoryId, React.ComponentType<{ classNam
   about: Info,
 };
 
-const sectionKeyMap: Record<string, string> = {
-  Localization: 'localization',
-  Synchronization: 'synchronization',
-  Appearance: 'appearance',
-  'SSH Runtime': 'sshRuntime',
-  'Editor Defaults': 'editorDefaults',
-  'Terminal Selection': 'terminalSelection',
-  'Orbit Bar': 'terminalSelection',
-  Connection: 'connection',
-  Search: 'search',
-  Runtime: 'runtime',
-};
-
-const TERMINAL_SELECTION_ENGINES: ReadonlyArray<AppSettingsValues['terminalSelectionSearchEngine']> = [
-  'google',
-  'bing',
-  'duckduckgo',
-  'baidu',
-  'custom',
-];
-
-const optionLabelNamespaceMap: Partial<Record<keyof SettingsFormState, string>> = {
-  language: 'language',
-  theme: 'theme',
-  devToolsEnabled: 'boolean',
-  accountSyncEnabled: 'boolean',
-  terminalTextDropMode: 'terminalTextDropMode',
-  terminalSelectionSearchEngine: 'searchEngine',
-};
-
 const toFormState = (values: AppSettingsValues): SettingsFormState => {
-  return {
-    language: values.language,
-    theme: values.theme,
-    sshMaxRows: String(values.sshMaxRows),
-    sshConnectionTimeoutSec: String(values.sshConnectionTimeoutSec),
-    devToolsEnabled: String(values.devToolsEnabled),
-    autoSaveEnabled: String(values.autoSaveEnabled),
-    accountSyncEnabled: String(values.accountSyncEnabled),
-    defaultServerNoteTemplate: values.defaultServerNoteTemplate,
-    terminalSelectionBarEnabled: values.terminalSelectionBarEnabled,
-    terminalTextDropMode: values.terminalTextDropMode,
-    terminalSelectionSearchEngine: values.terminalSelectionSearchEngine,
-    terminalSelectionSearchUrlTemplate: values.terminalSelectionSearchUrlTemplate,
-  };
+  const formState = {} as SettingsFormState;
+
+  SETTINGS_REGISTRY.forEach((item) => {
+    const raw = values[item.key];
+    formState[item.key] = item.control === 'switch' ? Boolean(raw) : String(raw);
+  });
+
+  return formState;
+};
+
+const toValidationCandidateValue = (item: SettingDefinition, draftValue: string | boolean): unknown => {
+  if (item.control === 'switch') {
+    return Boolean(draftValue);
+  }
+
+  if (item.valueType === 'number') {
+    return Number(draftValue);
+  }
+
+  if (item.valueType === 'boolean') {
+    if (draftValue === 'true') {
+      return true;
+    }
+
+    if (draftValue === 'false') {
+      return false;
+    }
+
+    return draftValue;
+  }
+
+  return String(draftValue);
+};
+
+const formatValidationError = (error: SettingValidationError): string => {
+  try {
+    // Resolve the setting name if the error references one via nameI18nKey.
+    const params: Record<string, string | number> = { ...error.params };
+    if (typeof params.nameI18nKey === 'string') {
+      params.name = t(params.nameI18nKey as string);
+    }
+
+    return t(error.i18nKey, params);
+  } catch {
+    return error.fallbackMessage;
+  }
 };
 
 const parseFormState = (formState: SettingsFormState): { value?: AppSettingsValues; error?: string } => {
-  if (formState.language !== 'en' && formState.language !== 'zh-CN') {
-    return { error: 'Language must be either English or Chinese (Simplified).' };
+  const candidate = {} as Record<SettingKey, unknown>;
+
+  for (const item of SETTINGS_REGISTRY) {
+    candidate[item.key] = toValidationCandidateValue(item, formState[item.key]);
   }
 
-  if (formState.theme !== 'dark' && formState.theme !== 'light' && formState.theme !== 'auto') {
-    return { error: 'Theme must be Dark, Light, or Auto.' };
+  const normalized = normalizeSettingsValuesStrict(candidate);
+  if (!normalized.value) {
+    return { error: normalized.error ? formatValidationError(normalized.error) : 'Settings are invalid.' };
   }
 
-  const sshMaxRows = Number(formState.sshMaxRows);
-  if (!Number.isInteger(sshMaxRows) || sshMaxRows < 100 || sshMaxRows > 200000) {
-    return { error: 'SSH Max Rows must be an integer between 100 and 200000.' };
-  }
-
-  const sshConnectionTimeoutSec = Number(formState.sshConnectionTimeoutSec);
-  if (!Number.isInteger(sshConnectionTimeoutSec) || sshConnectionTimeoutSec < 5 || sshConnectionTimeoutSec > 180) {
-    return { error: 'SSH Connection Timeout must be an integer between 5 and 180 seconds.' };
-  }
-
-  if (formState.devToolsEnabled !== 'true' && formState.devToolsEnabled !== 'false') {
-    return { error: 'Enable DevTools value is invalid.' };
-  }
-
-  if (formState.autoSaveEnabled !== 'true' && formState.autoSaveEnabled !== 'false') {
-    return { error: 'Auto Save value is invalid.' };
-  }
-
-  if (formState.accountSyncEnabled !== 'true' && formState.accountSyncEnabled !== 'false') {
-    return { error: 'Account Sync value is invalid.' };
-  }
-
-  if (formState.defaultServerNoteTemplate.length > 1000) {
-    return { error: 'Default Server Note Template must be 1000 characters or fewer.' };
-  }
-
-  if (typeof formState.terminalSelectionBarEnabled !== 'boolean') {
-    return { error: 'Orbit Bar value is invalid.' };
-  }
-
-  if (
-    formState.terminalTextDropMode !== 'off' &&
-    formState.terminalTextDropMode !== 'always' &&
-    formState.terminalTextDropMode !== 'external'
-  ) {
-    return { error: 'Drag To Terminal value is invalid.' };
-  }
-
-  if (!TERMINAL_SELECTION_ENGINES.includes(formState.terminalSelectionSearchEngine)) {
-    return { error: 'Terminal Selection Search Engine is invalid.' };
-  }
-
-  if (formState.terminalSelectionSearchUrlTemplate.length > 1000) {
-    return { error: 'Terminal Selection Custom Search URL must be 1000 characters or fewer.' };
-  }
-
-  return {
-    value: {
-      language: formState.language,
-      theme: formState.theme,
-      sshMaxRows,
-      sshConnectionTimeoutSec,
-      devToolsEnabled: formState.devToolsEnabled === 'true',
-      autoSaveEnabled: formState.autoSaveEnabled === 'true',
-      accountSyncEnabled: formState.accountSyncEnabled === 'true',
-      defaultServerNoteTemplate: formState.defaultServerNoteTemplate,
-      terminalSelectionBarEnabled: formState.terminalSelectionBarEnabled,
-      terminalTextDropMode: formState.terminalTextDropMode,
-      terminalSelectionSearchEngine: formState.terminalSelectionSearchEngine,
-      terminalSelectionSearchUrlTemplate: formState.terminalSelectionSearchUrlTemplate,
-    },
-  };
+  return { value: normalized.value };
 };
 
 const matchesSearch = (item: SettingDefinition, categoryLabel: string, query: string): boolean => {
   const haystack = [
-    item.title,
-    item.description ?? '',
-    item.sectionTitle,
+    t(item.nameI18nKey),
+    t(item.descriptionI18nKey),
+    t(item.section.labelI18nKey),
     item.path,
     categoryLabel,
     ...item.searchTerms,
@@ -201,8 +136,8 @@ const matchesSearch = (item: SettingDefinition, categoryLabel: string, query: st
   return haystack.includes(query);
 };
 
-const resolveLocalizedOptionLabel = (itemKey: string, value: string): string => {
-  const optionNamespace = optionLabelNamespaceMap[itemKey as keyof SettingsFormState];
+const resolveLocalizedOptionLabel = (item: SettingDefinition, value: string): string => {
+  const optionNamespace = item.optionI18nNamespace;
   if (optionNamespace) {
     return t(`settings.options.${optionNamespace}.${value}`);
   }
@@ -238,8 +173,8 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
   const isSearchMode = normalizedSearch.length > 0;
 
   const visibleSettings = React.useMemo(() => {
-    const resolveCategoryLabel = (categoryId: SettingsCategoryId): string => {
-      return t(`settings.categories.${categoryId}`);
+    const resolveCategoryLabel = (category: SettingDefinition['category']): string => {
+      return t(category.labelI18nKey);
     };
 
     if (!normalizedSearch) {
@@ -247,13 +182,13 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
     }
 
     return SETTINGS_REGISTRY.filter((item) => {
-      const categoryLabel = resolveCategoryLabel(item.categoryId);
+      const categoryLabel = resolveCategoryLabel(item.category);
       return matchesSearch(item, categoryLabel, normalizedSearch);
     });
   }, [normalizedSearch]);
 
   const visibleCategoryIds = React.useMemo(() => {
-    return new Set(visibleSettings.map((item) => item.categoryId));
+    return getVisibleCategories(visibleSettings);
   }, [visibleSettings]);
 
   React.useEffect(() => {
@@ -262,14 +197,14 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
       return;
     }
 
-    if (visibleCategoryIds.size === 0) {
+    if (visibleCategoryIds.length === 0) {
       return;
     }
 
-    if (!visibleCategoryIds.has(activeCategoryId)) {
-      const firstVisible = SETTINGS_CATEGORIES.find((category) => visibleCategoryIds.has(category.id));
+    if (!visibleCategoryIds.includes(activeCategoryId)) {
+      const firstVisible = SETTINGS_CATEGORY_IDS.find((id) => visibleCategoryIds.includes(id));
       if (firstVisible) {
-        setActiveCategoryId(firstVisible.id);
+        setActiveCategoryId(firstVisible);
       }
     }
   }, [activeCategoryId, isSearchMode, visibleCategoryIds]);
@@ -341,7 +276,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
   const isAutoSaveEnabled = formState.autoSaveEnabled === 'true';
 
   const activeCategory = React.useMemo(() => {
-    return SETTINGS_CATEGORIES.find((item) => item.id === activeCategoryId) ?? SETTINGS_CATEGORIES[0];
+    return SETTINGS_CATEGORIES[activeCategoryId];
   }, [activeCategoryId]);
 
   const categorySettings = React.useMemo(() => {
@@ -349,7 +284,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
       return [] as SettingDefinition[];
     }
 
-    return visibleSettings.filter((item) => item.categoryId === activeCategoryId);
+    return paginateSettingsByCategory(visibleSettings, SETTINGS_CATEGORIES[activeCategoryId]);
   }, [activeCategoryId, visibleSettings]);
 
   const renderedSettings = React.useMemo(() => {
@@ -368,15 +303,15 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
     const grouped = new Map<string, SettingDefinition[]>();
 
     const resolveSectionTitle = (item: SettingDefinition): string => {
-      const sectionLabel = t(`settings.sections.${sectionKeyMap[item.sectionTitle] ?? 'runtime'}`);
+      const sectionLabel = t(item.section.labelI18nKey);
 
       if (!isSearchMode) {
         return sectionLabel;
       }
 
-      const category = SETTINGS_CATEGORIES.find((value) => value.id === item.categoryId);
-      const categoryLabel = t(`settings.categories.${category?.id ?? item.categoryId}`);
-      return `${categoryLabel} / ${sectionLabel}`;
+      const categoryId = resolveCategoryId(item.category);
+      const categoryLabel = t(item.category.labelI18nKey);
+      return categoryId ? `${categoryLabel} / ${sectionLabel}` : sectionLabel;
     };
 
     renderedSettings.forEach((item) => {
@@ -389,7 +324,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
     return [...grouped.entries()].map(([title, items]) => ({ title, items }));
   }, [isSearchMode, renderedSettings]);
 
-  const updateField = React.useCallback(<K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => {
+  const updateField = React.useCallback(<K extends SettingKey>(key: K, value: SettingsFormState[K]) => {
     setFormState((previous) => ({
       ...previous,
       [key]: value,
@@ -419,8 +354,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
         setScope(response.data.item.scope);
         setFormState(nextFormState);
         setSavedFormState(nextFormState);
-        await applyRuntimeSettings(response.data.item.values);
-        emitRuntimeSettingsUpdated(response.data.item.values);
+        await updateSettingsStoreValues(response.data.item.values);
         if (!options?.silent) {
           notifySuccess(t('settings.saveSuccess'));
         }
@@ -492,7 +426,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
           <Select
             value={value}
             onValueChange={(nextValue) => {
-              updateField(item.key as keyof SettingsFormState, nextValue);
+              updateField(item.key, nextValue);
             }}
           >
             <SelectTrigger>
@@ -504,7 +438,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
                   key={option.value}
                   value={option.value}
                 >
-                  {resolveLocalizedOptionLabel(item.key, option.value)}
+                  {resolveLocalizedOptionLabel(item, option.value)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -519,10 +453,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
             <Switch
               checked={value}
               onCheckedChange={(checkedState) => {
-                updateField(
-                  item.key as keyof SettingsFormState,
-                  checkedState as SettingsFormState[keyof SettingsFormState],
-                );
+                updateField(item.key, checkedState as SettingsFormState[SettingKey]);
               }}
             />
             <span className="text-sm text-form-text-muted">
@@ -537,9 +468,9 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
           <Textarea
             rows={4}
             value={String(formState[item.key])}
-            placeholder={t(`settings.items.${item.key}.placeholder`)}
+            placeholder={item.placeholderI18nKey ? t(item.placeholderI18nKey) : ''}
             onChange={(event) => {
-              updateField(item.key as keyof SettingsFormState, event.target.value);
+              updateField(item.key, event.target.value);
             }}
           />
         );
@@ -549,9 +480,9 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
         <Input
           value={String(formState[item.key])}
           inputMode={item.inputMode}
-          placeholder={t(`settings.items.${item.key}.placeholder`)}
+          placeholder={item.placeholderI18nKey ? t(item.placeholderI18nKey) : ''}
           onChange={(event) => {
-            updateField(item.key as keyof SettingsFormState, event.target.value);
+            updateField(item.key, event.target.value);
           }}
         />
       );
@@ -579,18 +510,19 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
 
           <div className="min-h-0 flex-1 overflow-auto pb-2">
             <div className="">
-              {SETTINGS_CATEGORIES.map((category) => {
-                const Icon = categoryIconMap[category.id];
+              {SETTINGS_CATEGORY_IDS.map((categoryId) => {
+                const category = SETTINGS_CATEGORIES[categoryId];
+                const Icon = categoryIconMap[categoryId];
 
                 return (
                   <Button
-                    key={category.id}
-                    variant={activeCategoryId === category.id ? 'default' : 'ghost'}
+                    key={categoryId}
+                    variant={activeCategoryId === categoryId ? 'default' : 'ghost'}
                     className="w-full !justify-start"
-                    onClick={() => setActiveCategoryId(category.id)}
+                    onClick={() => setActiveCategoryId(categoryId)}
                   >
                     <Icon className="h-4 w-4" />
-                    <span>{t(`settings.categories.${category.id}`)}</span>
+                    <span>{t(category.labelI18nKey)}</span>
                   </Button>
                 );
               })}
@@ -605,7 +537,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
             <div className="flex items-start justify-between gap-4 pb-1">
               <div className="grid gap-1">
                 <h1 className="text-home-text ps-2 text-[24px] font-semibold">
-                  {isSearchMode ? t('settings.searchResults') : t(`settings.categories.${activeCategory.id}`)}
+                  {isSearchMode ? t('settings.searchResults') : t(activeCategory.labelI18nKey)}
                 </h1>
                 {isSearchMode ? (
                   <p className="text-sm text-home-text-subtle">{`${t('settings.query')}: "${search.trim()}"`}</p>
@@ -719,9 +651,9 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
                     <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">{section.title}</div>
                     {section.items.map((item) => (
                       <FormField key={item.path}>
-                        <Label>{t(`settings.items.${item.key}.title`)}</Label>
+                        <Label>{t(item.nameI18nKey)}</Label>
                         {renderControl(item)}
-                        <div className={formStyles.helperText}>{t(`settings.items.${item.key}.description`)}</div>
+                        <div className={formStyles.helperText}>{t(item.descriptionI18nKey)}</div>
                       </FormField>
                     ))}
                   </section>

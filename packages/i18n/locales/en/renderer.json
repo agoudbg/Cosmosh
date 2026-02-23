@@ -235,7 +235,21 @@
       "synchronization": "Synchronization",
       "terminalSelection": "Orbit Bar"
     },
-    "title": "Settings"
+    "title": "Settings",
+    "validation": {
+      "booleanRequired": "{name} must be a boolean.",
+      "enumRequired": "{name} must be one of: {options}.",
+      "integerRange": "{name} must be an integer between {min} and {max}.",
+      "integerRequired": "{name} must be an integer.",
+      "invalid": "{key} is invalid.",
+      "maxLengthExceeded": "{name} must be {limit} characters or fewer.",
+      "missingKey": "{name} is required.",
+      "notObject": "Settings values must be a JSON object.",
+      "stringRequired": "{name} must be a string.",
+      "unknownKeys": "Settings contain unknown keys: {keys}.",
+      "unsupportedKey": "Unsupported setting key: {key}.",
+      "unsupportedType": "Unsupported setting value type for key: {key}."
+    }
   },
   "ssh": {
     "authTypeBoth": "Both",

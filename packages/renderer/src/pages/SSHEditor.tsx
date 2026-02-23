@@ -55,11 +55,9 @@ import { PasswordField } from '../components/ui/password-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
-import { DEFAULT_APP_SETTINGS_VALUES } from '../lib/app-settings';
 import {
   createSshServer,
   deleteSshServer,
-  getAppSettings,
   getSshServerCredentials,
   listSshFolders,
   listSshServers,
@@ -68,6 +66,7 @@ import {
 import { createFolder, normalizeFolderName } from '../lib/folder-actions';
 import { colorKeyToClassName, resolveHomeVisual } from '../lib/home-visuals';
 import { t } from '../lib/i18n';
+import { useSettingsValue } from '../lib/settings-store';
 import { consumeSshEditorCreateMode, getActiveSshServerId, setActiveSshServerId } from '../lib/ssh-target';
 import { useToast } from '../lib/toast-context';
 import { useDirectionalNavigation } from '../lib/use-directional-navigation';
@@ -164,6 +163,7 @@ const createIconNode = (colorClassName: string, label: string): React.ReactNode 
 
 const SSHEditor: React.FC = () => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
+  const defaultServerNoteTemplate = useSettingsValue('defaultServerNoteTemplate');
   const [servers, setServers] = React.useState<SshServerListItem[]>([]);
   const [folders, setFolders] = React.useState<SshFolder[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
@@ -171,11 +171,8 @@ const SSHEditor: React.FC = () => {
   const [search, setSearch] = React.useState<string>('');
   const [sortMode, setSortMode] = React.useState<SortMode>('default');
   const [activeServerId, setActiveServerId] = React.useState<string | null>(null);
-  const [defaultServerNoteTemplate, setDefaultServerNoteTemplate] = React.useState<string>(
-    DEFAULT_APP_SETTINGS_VALUES.defaultServerNoteTemplate,
-  );
   const [formState, setFormState] = React.useState<ServerEditorFormState>(
-    createInitialFormState(DEFAULT_APP_SETTINGS_VALUES.defaultServerNoteTemplate),
+    createInitialFormState(defaultServerNoteTemplate),
   );
   const [isCreateFolderDialogOpen, setIsCreateFolderDialogOpen] = React.useState<boolean>(false);
   const [newFolderName, setNewFolderName] = React.useState<string>('');
@@ -206,18 +203,13 @@ const SSHEditor: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [foldersResponse, serversResponse, settingsResponse] = await Promise.all([
-        listSshFolders(),
-        listSshServers(),
-        getAppSettings(),
-      ]);
+      const [foldersResponse, serversResponse] = await Promise.all([listSshFolders(), listSshServers()]);
       const nextFolders = foldersResponse.data.items;
       const nextServers = serversResponse.data.items;
-      const nextDefaultServerNoteTemplate = settingsResponse.data.item.values.defaultServerNoteTemplate;
+      const nextDefaultServerNoteTemplate = defaultServerNoteTemplate;
 
       setFolders(nextFolders);
       setServers(nextServers);
-      setDefaultServerNoteTemplate(nextDefaultServerNoteTemplate);
 
       if (consumeSshEditorCreateMode()) {
         preferCreateModeRef.current = true;
@@ -258,7 +250,7 @@ const SSHEditor: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [notifyError]);
+  }, [defaultServerNoteTemplate, notifyError]);
 
   React.useEffect(() => {
     void reloadData();

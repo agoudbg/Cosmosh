@@ -4,14 +4,14 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 
 import App from './App';
-import { initializeRuntimeSettings } from './lib/app-settings';
 import { initializeLocale } from './lib/i18n';
+import { initializeSettingsStore } from './lib/settings-store';
 
 document.documentElement.dataset.theme = 'dark';
 
 const bootstrap = async (): Promise<void> => {
   await initializeLocale();
-  await initializeRuntimeSettings();
+  await initializeSettingsStore();
 
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

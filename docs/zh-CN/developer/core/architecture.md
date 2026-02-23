@@ -97,6 +97,12 @@ sequenceDiagram
 - 默认作用域为本机（`deviceId=local-device`），并预留 account 作用域字段用于未来同步。
 - Renderer 启动阶段（`packages/renderer/src/main.tsx`）会加载并应用已保存的语言与主题。
 - 非视觉设置（如 SSH 运行时限制）当前仅做持久化与可发现，部分暂未绑定真实运行时行为。
+- 所有设置定义（类型、默认值、约束、枚举集、UI 元数据、分类）统一存放在单一注册表：`packages/api-contract/src/settings-registry.ts`。增删设置项仅需编辑此文件（加 i18n 语言文件）。
+- `packages/api-contract/src/settings.ts` 中的校验逻辑已改为通用的注册表驱动方式：每个 key 的规则（类型检查、枚举、范围、maxLength）在运行时从注册表派生，不再有手写的 switch/case。
+- OpenAPI 中的 `SettingsValues` schema 有意设为宽松模式（`type: object`）；严格的 TypeScript 类型与约束仅存在于代码注册表中。
+- Settings API 响应类型（`ApiSettingsGetResponse`、`ApiSettingsUpdateResponse`）在 `packages/api-contract/src/index.ts` 中手工定义，使用注册表中的严格 `SettingsValues`，不依赖 OpenAPI 生成类型。
+- 已存储设置的读取解析采用前向兼容策略：对缺失/新增字段按字段回填默认值，而不是整份设置回退默认值。
+- `PUT /api/v1/settings` 仍保持严格全量校验，确保持久化 payload 的结构稳定可预期。
 
 ```mermaid
 sequenceDiagram

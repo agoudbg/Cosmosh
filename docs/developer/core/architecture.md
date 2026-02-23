@@ -97,6 +97,12 @@ sequenceDiagram
 - Scope defaults to local device (`deviceId=local-device`) while keeping account scope field for future sync.
 - Renderer bootstrap (`packages/renderer/src/main.tsx`) applies persisted language/theme at startup.
 - Non-visual settings (for example SSH runtime limits) are persisted and discoverable, but some are intentionally not bound to runtime behavior yet.
+- All setting definitions (types, defaults, constraints, enum sets, UI metadata, categories) live in a single registry: `packages/api-contract/src/settings-registry.ts`. Adding or removing a setting only requires editing this file (plus i18n locale files).
+- Validation logic in `packages/api-contract/src/settings.ts` is now generic and registry-driven: per-key rules (type check, enum, range, maxLength) are derived from the registry at runtime — no manual switch/case per key.
+- The OpenAPI `SettingsValues` schema is intentionally loose (`type: object`); strict TypeScript types and constraints live exclusively in the code registry.
+- Settings API response types (`ApiSettingsGetResponse`, `ApiSettingsUpdateResponse`) are hand-crafted in `packages/api-contract/src/index.ts` using the strict `SettingsValues` from the registry rather than generated from OpenAPI.
+- Stored settings payload parsing is forward-compatible: missing/new fields are backfilled per-field from defaults instead of resetting the entire settings object.
+- Strict full-schema validation is still enforced for update requests (`PUT /api/v1/settings`) to keep persisted payload shape deterministic.
 
 ```mermaid
 sequenceDiagram

@@ -1,7 +1,7 @@
-import type { components } from '@cosmosh/api-contract';
+import type { SettingsValues } from '@cosmosh/api-contract';
 import React from 'react';
 
-type TerminalTextDropMode = components['schemas']['SettingsTerminalTextDropMode'];
+type TerminalTextDropMode = SettingsValues['terminalTextDropMode'];
 
 type UseTerminalTextDropZoneOptions = {
   mode: TerminalTextDropMode;

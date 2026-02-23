@@ -3,9 +3,8 @@ import classNames from 'classnames';
 import { Bug, Info, RefreshCcw, Settings } from 'lucide-react';
 import React from 'react';
 
-import { applyRuntimeSettings, DEFAULT_APP_SETTINGS_VALUES, onRuntimeSettingsUpdated } from '../../lib/app-settings';
-import { getAppSettings } from '../../lib/backend';
 import { t } from '../../lib/i18n';
+import { useSettingsValue } from '../../lib/settings-store';
 import { useToast } from '../../lib/toast-context';
 import type { TabItem } from '../../types/tabs';
 import {
@@ -42,8 +41,9 @@ const Header: React.FC<{
   onOpenSettingsTab,
   onOpenDebugTab,
 }) => {
-  const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
-  const [devToolsEnabled, setDevToolsEnabled] = React.useState<boolean>(DEFAULT_APP_SETTINGS_VALUES.devToolsEnabled);
+  const { success: notifySuccess, warning: notifyWarning } = useToast();
+  const devToolsEnabled = useSettingsValue('devToolsEnabled');
+  const accountSyncEnabled = useSettingsValue('accountSyncEnabled');
   // Margin for window controls on macOS/Windows/Linux
   const platform = window.electron?.platform;
 
@@ -63,38 +63,6 @@ const Header: React.FC<{
 
     void window.electron?.openDevTools();
   }, [devToolsEnabled]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    const loadDevToolsSetting = async () => {
-      try {
-        const response = await getAppSettings();
-        if (cancelled) {
-          return;
-        }
-
-        setDevToolsEnabled(response.data.item.values.devToolsEnabled);
-      } catch {
-        if (cancelled) {
-          return;
-        }
-
-        setDevToolsEnabled(DEFAULT_APP_SETTINGS_VALUES.devToolsEnabled);
-      }
-    };
-
-    void loadDevToolsSetting();
-
-    const disposeSettingsSubscription = onRuntimeSettingsUpdated((values) => {
-      setDevToolsEnabled(values.devToolsEnabled);
-    });
-
-    return () => {
-      cancelled = true;
-      disposeSettingsSubscription();
-    };
-  }, []);
 
   React.useEffect(() => {
     const handleDevToolsShortcut = (event: KeyboardEvent): void => {
@@ -118,19 +86,14 @@ const Header: React.FC<{
   }, [devToolsEnabled]);
 
   const onSyncSettings = React.useCallback(async () => {
-    try {
-      const response = await getAppSettings();
-      if (!response.data.item.values.accountSyncEnabled) {
-        notifyWarning(t('header.syncDisabled'));
-        return;
-      }
-
-      await applyRuntimeSettings(response.data.item.values);
-      notifySuccess(t('header.syncSuccess'));
-    } catch (error: unknown) {
-      notifyError(error instanceof Error ? error.message : t('header.syncFailed'));
+    if (!accountSyncEnabled) {
+      notifyWarning(t('header.syncDisabled'));
+      return;
     }
-  }, [notifyError, notifySuccess, notifyWarning]);
+
+    // Placeholder: actual remote sync logic to be implemented.
+    notifySuccess(t('header.syncSuccess'));
+  }, [accountSyncEnabled, notifySuccess, notifyWarning]);
 
   return (
     <header

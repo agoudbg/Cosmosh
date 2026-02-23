@@ -47,6 +47,9 @@ flowchart TB
 
 Shared protocol constants, request/response types, OpenAPI source, generated contracts.
 
+- `src/settings-registry.ts`: **single source of truth** for all settings definitions — types, defaults, constraints, enum sets, UI control metadata, categories, and helper functions. Adding/removing a setting only requires editing this file.
+- `src/settings.ts`: generic, registry-driven validation and normalization helpers (`normalizeSettingsValuesStrict`, `normalizeSettingsValuesWithDefaults`) shared by backend and renderer.
+
 ### `packages/i18n`
 
 Locale JSON source files and i18n runtime package for main/backend/renderer scopes.
@@ -98,3 +101,11 @@ flowchart TD
 3. Add validation/parser layer for input boundaries.
 4. Expose consumption path to renderer via main bridge.
 5. Sync architecture/runtime docs.
+
+### Add New Application Setting
+
+1. In `packages/api-contract/src/settings-registry.ts`:
+   - Add the key and its type to the `SettingsValues` interface.
+   - Add a `SettingDefinition` entry to the `SETTINGS_REGISTRY` array (default value, constraints, UI control, category, i18n keys, etc.).
+2. Add i18n keys in `packages/i18n/locales/en/*.json` and `zh-CN/*.json`.
+3. No other files need changes — validation, defaults, and UI rendering are derived from the registry automatically.
