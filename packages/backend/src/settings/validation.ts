@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS_VALUES: SettingsValues = {
   theme: 'dark',
   sshMaxRows: 10000,
   sshConnectionTimeoutSec: 45,
+  devToolsEnabled: false,
   autoSaveEnabled: true,
   accountSyncEnabled: false,
   defaultServerNoteTemplate: '',
@@ -89,6 +90,10 @@ const normalizeSettingsValues = (value: unknown): { value?: SettingsValues; erro
     return { error: 'values.sshConnectionTimeoutSec must be an integer between 5 and 180.' };
   }
 
+  if (typeof value.devToolsEnabled !== 'boolean') {
+    return { error: 'values.devToolsEnabled must be a boolean.' };
+  }
+
   if (typeof value.autoSaveEnabled !== 'boolean') {
     return { error: 'values.autoSaveEnabled must be a boolean.' };
   }
@@ -137,6 +142,7 @@ const normalizeSettingsValues = (value: unknown): { value?: SettingsValues; erro
       theme,
       sshMaxRows,
       sshConnectionTimeoutSec,
+      devToolsEnabled: value.devToolsEnabled,
       autoSaveEnabled: value.autoSaveEnabled,
       accountSyncEnabled: value.accountSyncEnabled,
       defaultServerNoteTemplate,

@@ -3,7 +3,7 @@ import classNames from 'classnames';
 import { Bug, Info, RefreshCcw, Settings } from 'lucide-react';
 import React from 'react';
 
-import { applyRuntimeSettings } from '../../lib/app-settings';
+import { applyRuntimeSettings, DEFAULT_APP_SETTINGS_VALUES, onRuntimeSettingsUpdated } from '../../lib/app-settings';
 import { getAppSettings } from '../../lib/backend';
 import { t } from '../../lib/i18n';
 import { useToast } from '../../lib/toast-context';
@@ -43,6 +43,7 @@ const Header: React.FC<{
   onOpenDebugTab,
 }) => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
+  const [devToolsEnabled, setDevToolsEnabled] = React.useState<boolean>(DEFAULT_APP_SETTINGS_VALUES.devToolsEnabled);
   // Margin for window controls on macOS/Windows/Linux
   const platform = window.electron?.platform;
 
@@ -56,8 +57,65 @@ const Header: React.FC<{
   const isDev = import.meta.env.DEV;
 
   const onOpenDevTools = React.useCallback(() => {
+    if (!devToolsEnabled) {
+      return;
+    }
+
     void window.electron?.openDevTools();
+  }, [devToolsEnabled]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadDevToolsSetting = async () => {
+      try {
+        const response = await getAppSettings();
+        if (cancelled) {
+          return;
+        }
+
+        setDevToolsEnabled(response.data.item.values.devToolsEnabled);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setDevToolsEnabled(DEFAULT_APP_SETTINGS_VALUES.devToolsEnabled);
+      }
+    };
+
+    void loadDevToolsSetting();
+
+    const disposeSettingsSubscription = onRuntimeSettingsUpdated((values) => {
+      setDevToolsEnabled(values.devToolsEnabled);
+    });
+
+    return () => {
+      cancelled = true;
+      disposeSettingsSubscription();
+    };
   }, []);
+
+  React.useEffect(() => {
+    const handleDevToolsShortcut = (event: KeyboardEvent): void => {
+      const isOpenDevToolsShortcut = event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'i';
+      if (!isOpenDevToolsShortcut) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (devToolsEnabled) {
+        void window.electron?.openDevTools();
+      }
+    };
+
+    window.addEventListener('keydown', handleDevToolsShortcut, true);
+    return () => {
+      window.removeEventListener('keydown', handleDevToolsShortcut, true);
+    };
+  }, [devToolsEnabled]);
 
   const onSyncSettings = React.useCallback(async () => {
     try {
@@ -169,12 +227,14 @@ const Header: React.FC<{
           >
             {t('header.syncSettings')}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            icon={Bug}
-            onSelect={onOpenDevTools}
-          >
-            {t('header.openDevTools')}
-          </DropdownMenuItem>
+          {devToolsEnabled ? (
+            <DropdownMenuItem
+              icon={Bug}
+              onSelect={onOpenDevTools}
+            >
+              {t('header.openDevTools')}
+            </DropdownMenuItem>
+          ) : null}
           {isDev ? (
             <DropdownMenuItem
               icon={Bug}

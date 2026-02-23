@@ -182,6 +182,23 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     ],
   },
   {
+    key: 'devToolsEnabled',
+    valueType: 'boolean',
+    defaultValue: false,
+    title: 'Enable DevTools',
+    description: 'Show Open DevTools in the user menu and allow Ctrl+Shift+I shortcut.',
+    categoryId: 'advanced',
+    sectionTitle: 'Runtime',
+    control: 'select',
+    path: 'advanced.runtime.devToolsEnabled',
+    commandActionId: 'settings.advanced.runtime.devTools.toggle',
+    searchTerms: ['devtools', 'developer tools', 'debug tools', 'ctrl+shift+i'],
+    options: [
+      { label: 'Enabled', value: 'true' },
+      { label: 'Disabled', value: 'false' },
+    ],
+  },
+  {
     key: 'defaultServerNoteTemplate',
     valueType: 'string',
     defaultValue: '',

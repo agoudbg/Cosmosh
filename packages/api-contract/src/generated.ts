@@ -268,6 +268,7 @@ export interface components {
             theme: components["schemas"]["SettingsTheme"];
             sshMaxRows: number;
             sshConnectionTimeoutSec: number;
+            devToolsEnabled: boolean;
             autoSaveEnabled: boolean;
             accountSyncEnabled: boolean;
             defaultServerNoteTemplate: string;

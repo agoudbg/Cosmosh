@@ -135,6 +135,11 @@
         "placeholder": "Example: owner=@ops env=prod",
         "title": "Default Server Note Template"
       },
+      "devToolsEnabled": {
+        "description": "Show Open DevTools in the user menu and allow Ctrl+Shift+I shortcut.",
+        "placeholder": "",
+        "title": "Enable DevTools"
+      },
       "language": {
         "description": "Controls UI language for the renderer and main process.",
         "placeholder": "",

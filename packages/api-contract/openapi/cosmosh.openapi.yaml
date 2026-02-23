@@ -707,6 +707,7 @@ components:
         - theme
         - sshMaxRows
         - sshConnectionTimeoutSec
+        - devToolsEnabled
         - autoSaveEnabled
         - accountSyncEnabled
         - defaultServerNoteTemplate
@@ -727,6 +728,8 @@ components:
           type: integer
           minimum: 5
           maximum: 180
+        devToolsEnabled:
+          type: boolean
         autoSaveEnabled:
           type: boolean
         accountSyncEnabled:

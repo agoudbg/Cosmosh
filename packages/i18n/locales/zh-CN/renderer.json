@@ -135,6 +135,11 @@
         "placeholder": "示例：owner=@ops env=prod",
         "title": "默认服务器备注模板"
       },
+      "devToolsEnabled": {
+        "description": "在用户菜单显示“打开 DevTools”，并允许 Ctrl+Shift+I 快捷键。",
+        "placeholder": "",
+        "title": "启用 DevTools"
+      },
       "language": {
         "description": "控制渲染层与主进程的界面语言。",
         "placeholder": "",

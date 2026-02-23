@@ -15,6 +15,7 @@ import {
   type AppSettingsScope,
   type AppSettingsValues,
   DEFAULT_APP_SETTINGS_VALUES,
+  emitRuntimeSettingsUpdated,
 } from '../lib/app-settings';
 import { getAppSettings, updateAppSettings } from '../lib/backend';
 import { onLocaleChange, t } from '../lib/i18n';
@@ -31,6 +32,7 @@ type SettingsFormState = {
   theme: string;
   sshMaxRows: string;
   sshConnectionTimeoutSec: string;
+  devToolsEnabled: string;
   autoSaveEnabled: string;
   accountSyncEnabled: string;
   defaultServerNoteTemplate: string;
@@ -80,6 +82,7 @@ const isTerminalSelectionSearchEngine = (
 const optionLabelNamespaceMap: Partial<Record<keyof SettingsFormState, string>> = {
   language: 'language',
   theme: 'theme',
+  devToolsEnabled: 'boolean',
   accountSyncEnabled: 'boolean',
   terminalTextDropMode: 'terminalTextDropMode',
   terminalSelectionSearchEngine: 'searchEngine',
@@ -91,6 +94,7 @@ const toFormState = (values: AppSettingsValues): SettingsFormState => {
     theme: values.theme,
     sshMaxRows: String(values.sshMaxRows),
     sshConnectionTimeoutSec: String(values.sshConnectionTimeoutSec),
+    devToolsEnabled: String(values.devToolsEnabled),
     autoSaveEnabled: String(values.autoSaveEnabled),
     accountSyncEnabled: String(values.accountSyncEnabled),
     defaultServerNoteTemplate: values.defaultServerNoteTemplate,
@@ -118,6 +122,10 @@ const parseFormState = (formState: SettingsFormState): { value?: AppSettingsValu
   const sshConnectionTimeoutSec = Number(formState.sshConnectionTimeoutSec);
   if (!Number.isInteger(sshConnectionTimeoutSec) || sshConnectionTimeoutSec < 5 || sshConnectionTimeoutSec > 180) {
     return { error: 'SSH Connection Timeout must be an integer between 5 and 180 seconds.' };
+  }
+
+  if (formState.devToolsEnabled !== 'true' && formState.devToolsEnabled !== 'false') {
+    return { error: 'Enable DevTools value is invalid.' };
   }
 
   if (formState.autoSaveEnabled !== 'true' && formState.autoSaveEnabled !== 'false') {
@@ -158,6 +166,7 @@ const parseFormState = (formState: SettingsFormState): { value?: AppSettingsValu
       theme: formState.theme,
       sshMaxRows,
       sshConnectionTimeoutSec,
+      devToolsEnabled: formState.devToolsEnabled === 'true',
       autoSaveEnabled: formState.autoSaveEnabled === 'true',
       accountSyncEnabled: formState.accountSyncEnabled === 'true',
       defaultServerNoteTemplate: formState.defaultServerNoteTemplate,
@@ -216,6 +225,7 @@ const parseJsonToFormState = (rawJson: string): { value?: SettingsFormState; err
     theme: typeof candidate.theme === 'string' ? candidate.theme : '',
     sshMaxRows: String(candidate.sshMaxRows ?? ''),
     sshConnectionTimeoutSec: String(candidate.sshConnectionTimeoutSec ?? ''),
+    devToolsEnabled: String(candidate.devToolsEnabled ?? false),
     autoSaveEnabled: String(candidate.autoSaveEnabled ?? true),
     accountSyncEnabled: String(candidate.accountSyncEnabled ?? false),
     defaultServerNoteTemplate:
@@ -460,6 +470,7 @@ const Settings: React.FC = () => {
         setSavedFormState(nextFormState);
         setRawJsonDraft(toSettingsJson(nextFormState));
         await applyRuntimeSettings(response.data.item.values);
+        emitRuntimeSettingsUpdated(response.data.item.values);
         if (!options?.silent) {
           notifySuccess(t('settings.saveSuccess'));
         }
