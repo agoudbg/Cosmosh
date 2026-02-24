@@ -26,6 +26,8 @@ export interface SettingsValues {
   defaultServerNoteTemplate: string;
   terminalSelectionBarEnabled: boolean;
   terminalTextDropMode: 'off' | 'always' | 'external';
+  terminalContextLaunchBehavior: 'openDefaultLocalTerminal' | 'openLocalTerminalList' | 'off';
+  defaultLocalTerminalProfile: string;
   terminalSelectionSearchEngine: 'google' | 'bing' | 'duckduckgo' | 'baidu' | 'custom';
   terminalSelectionSearchUrlTemplate: string;
 }
@@ -280,6 +282,38 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     commandActionId: 'settings.terminal.runtime.textDropMode.set',
     searchTerms: ['terminal', 'drag', 'drop', 'text drop', 'external drag'],
     options: [{ value: 'off' }, { value: 'always' }, { value: 'external' }],
+  },
+  {
+    key: 'terminalContextLaunchBehavior',
+    valueType: 'string',
+    defaultValue: 'openDefaultLocalTerminal',
+    nameI18nKey: 'settings.items.terminalContextLaunchBehavior.title',
+    descriptionI18nKey: 'settings.items.terminalContextLaunchBehavior.description',
+    optionI18nNamespace: 'terminalContextLaunchBehavior',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.runtime,
+    control: 'select',
+    path: 'terminal.runtime.contextLaunchBehavior',
+    commandActionId: 'settings.terminal.runtime.contextLaunchBehavior.set',
+    searchTerms: ['terminal', 'context menu', 'open in cosmosh', 'working directory', 'startup launch'],
+    options: [
+      { value: 'openDefaultLocalTerminal' },
+      { value: 'openLocalTerminalList' },
+      { value: 'off' },
+    ],
+  },
+  {
+    key: 'defaultLocalTerminalProfile',
+    valueType: 'string',
+    defaultValue: 'auto',
+    nameI18nKey: 'settings.items.defaultLocalTerminalProfile.title',
+    descriptionI18nKey: 'settings.items.defaultLocalTerminalProfile.description',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.runtime,
+    control: 'select',
+    path: 'terminal.runtime.defaultLocalTerminalProfile',
+    commandActionId: 'settings.terminal.runtime.defaultLocalTerminalProfile.set',
+    searchTerms: ['terminal', 'default profile', 'powershell', 'cmd', 'wsl'],
   },
   {
     key: 'terminalSelectionSearchEngine',

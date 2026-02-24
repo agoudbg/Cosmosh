@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -24,6 +24,7 @@ type CreateLocalTerminalSessionInput = {
   cols: number;
   rows: number;
   term: string;
+  cwd?: string;
 };
 
 type CreateLocalTerminalSessionResult =
@@ -108,6 +109,31 @@ const toShellSize = (value: number, fallback: number, min: number, max: number):
   }
 
   return Math.min(max, Math.max(min, Math.round(value)));
+};
+
+const resolveSessionWorkingDirectory = async (cwdCandidate?: string): Promise<string> => {
+  const requestedPath = cwdCandidate?.trim() || '';
+
+  if (!requestedPath) {
+    return os.homedir();
+  }
+
+  const normalizedPath = path.resolve(requestedPath);
+
+  try {
+    const stats = await stat(normalizedPath);
+    if (stats.isDirectory()) {
+      return normalizedPath;
+    }
+
+    if (stats.isFile()) {
+      return path.dirname(normalizedPath);
+    }
+  } catch {
+    // Ignore invalid cwd and fallback to home directory.
+  }
+
+  return os.homedir();
 };
 
 const normalizeMessage = (payload: RawData): ClientInboundMessage | null => {
@@ -309,13 +335,14 @@ export class LocalTerminalSessionService {
 
     const cols = toShellSize(input.cols, 120, 20, 400);
     const rows = toShellSize(input.rows, 32, 10, 200);
+    const workingDirectory = await resolveSessionWorkingDirectory(input.cwd);
 
     let pty: IPty;
 
     try {
       pty = spawnPty(targetProfile.command, targetProfile.args, {
         name: input.term?.trim() || 'xterm-256color',
-        cwd: os.homedir(),
+        cwd: workingDirectory,
         env: {
           ...process.env,
           TERM: input.term?.trim() || 'xterm-256color',

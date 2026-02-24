@@ -88,6 +88,24 @@ contextBridge.exposeInMainWorld('electron', {
       buildVersion: string;
     }>;
   },
+  getPendingLaunchWorkingDirectory: () => {
+    return ipcRenderer.invoke('app:get-pending-launch-working-directory') as Promise<string | null>;
+  },
+  onLaunchWorkingDirectory: (listener: (cwd: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, cwd: unknown) => {
+      if (typeof cwd !== 'string') {
+        return;
+      }
+
+      listener(cwd);
+    };
+
+    ipcRenderer.on('app:launch-working-directory', handler);
+
+    return () => {
+      ipcRenderer.removeListener('app:launch-working-directory', handler);
+    };
+  },
   openDevTools: () => {
     return ipcRenderer.invoke('app:open-devtools') as Promise<boolean>;
   },

@@ -137,6 +137,11 @@
         "placeholder": "",
         "title": "Auto Save"
       },
+      "defaultLocalTerminalProfile": {
+        "description": "Preferred local terminal profile for context-launch auto open (choices are loaded from current local terminal profiles).",
+        "placeholder": "",
+        "title": "Default Local Terminal"
+      },
       "defaultServerNoteTemplate": {
         "description": "Template text prefilled in Note when creating a new server profile.",
         "placeholder": "Example: owner=@ops env=prod",
@@ -161,6 +166,11 @@
         "description": "Maximum retained terminal lines for SSH sessions.",
         "placeholder": "10000",
         "title": "SSH Max Rows"
+      },
+      "terminalContextLaunchBehavior": {
+        "description": "Controls how Cosmosh reacts to 'Open terminal in Cosmosh' launch context.",
+        "placeholder": "",
+        "title": "Context Launch Behavior"
       },
       "terminalSelectionBarEnabled": {
         "description": "Show Orbit Bar when text is selected in terminal sessions.",
@@ -195,6 +205,10 @@
         "false": "Disabled",
         "true": "Enabled"
       },
+      "defaultLocalTerminalProfile": {
+        "auto": "Auto (first available)",
+        "unavailable": "unavailable"
+      },
       "language": {
         "en": "English",
         "zh-CN": "Chinese (Simplified)"
@@ -205,6 +219,11 @@
         "custom": "Custom",
         "duckduckgo": "DuckDuckGo",
         "google": "Google"
+      },
+      "terminalContextLaunchBehavior": {
+        "off": "Disabled",
+        "openDefaultLocalTerminal": "Auto open default local terminal",
+        "openLocalTerminalList": "Open Local Terminals list"
       },
       "terminalTextDropMode": {
         "always": "Always Enabled",

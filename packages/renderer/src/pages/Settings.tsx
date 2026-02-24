@@ -12,8 +12,9 @@ import { Menubar } from '../components/ui/menubar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
+import type { LocalTerminalProfile } from '../lib/api/transport';
 import { type AppSettingsScope, type AppSettingsValues, DEFAULT_APP_SETTINGS_VALUES } from '../lib/app-settings';
-import { getAppSettings, updateAppSettings } from '../lib/backend';
+import { getAppSettings, listLocalTerminalProfiles, updateAppSettings } from '../lib/backend';
 import { onLocaleChange, t } from '../lib/i18n';
 import { updateSettingsStoreValues } from '../lib/settings-store';
 import { useToast } from '../lib/toast-context';
@@ -153,6 +154,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
     toFormState(DEFAULT_APP_SETTINGS_VALUES),
   );
   const [appVersionInfo, setAppVersionInfo] = React.useState<AppVersionInfo>(DEFAULT_APP_VERSION_INFO);
+  const [localTerminalProfiles, setLocalTerminalProfiles] = React.useState<LocalTerminalProfile[]>([]);
 
   React.useEffect(() => {
     // Re-render translated labels when locale changes at runtime.
@@ -235,6 +237,31 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
       cancelled = true;
     };
   }, [notifyError]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadLocalTerminalProfiles = async () => {
+      try {
+        const response = await listLocalTerminalProfiles();
+        if (cancelled) {
+          return;
+        }
+
+        setLocalTerminalProfiles(response.data.items);
+      } catch {
+        if (!cancelled) {
+          setLocalTerminalProfiles([]);
+        }
+      }
+    };
+
+    void loadLocalTerminalProfiles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -414,6 +441,57 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
 
       if (item.control === 'select') {
         const value = formState[item.key] as string;
+
+        if (item.key === 'defaultLocalTerminalProfile') {
+          const fallbackOptionValue = value.trim();
+          const profileOptions = localTerminalProfiles.map((profile) => ({
+            value: profile.id,
+            label: `${profile.name} (${profile.id})`,
+          }));
+          const hasFallbackOption =
+            fallbackOptionValue.length > 0 &&
+            fallbackOptionValue !== 'auto' &&
+            profileOptions.every((option) => option.value !== fallbackOptionValue);
+          const dynamicOptions = [
+            {
+              value: 'auto',
+              label: t('settings.options.defaultLocalTerminalProfile.auto'),
+            },
+            ...profileOptions,
+            ...(hasFallbackOption
+              ? [
+                  {
+                    value: fallbackOptionValue,
+                    label: `${fallbackOptionValue} (${t('settings.options.defaultLocalTerminalProfile.unavailable')})`,
+                  },
+                ]
+              : []),
+          ];
+
+          return (
+            <Select
+              value={value}
+              onValueChange={(nextValue) => {
+                updateField(item.key, nextValue);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {dynamicOptions.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        }
+
         return (
           <Select
             value={value}
@@ -479,7 +557,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
         />
       );
     },
-    [formState, persistSettings, updateField],
+    [formState, localTerminalProfiles, persistSettings, updateField],
   );
 
   return (

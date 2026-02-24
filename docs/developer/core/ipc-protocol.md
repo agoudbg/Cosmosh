@@ -18,6 +18,8 @@ flowchart TB
 | `i18n:set-locale` | `invoke` | `locale: string` | `Promise<string>` | Resolves/persists in-memory locale and updates title |
 | `app:get-runtime-user-name` | `invoke` | none | `Promise<string>` | Returns OS username fallback chain |
 | `app:get-version-info` | `invoke` | none | `Promise<{ appName: string; version: string; buildVersion: string }>` | Returns app display name, version, and internal build version for About page |
+| `app:get-pending-launch-working-directory` | `invoke` | none | `Promise<string \| null>` | Returns current pending context-launch working directory parsed from CLI |
+| `app:launch-working-directory` | `event (main -> renderer)` | `cwd: string` | none | Pushes context-launch working directory when a second instance is invoked |
 | `app:open-devtools` | `invoke` | none | `Promise<boolean>` | Opens devtools when unpackaged |
 | `app:show-in-file-manager` | `invoke` | `targetPath?: string` | `Promise<boolean>` | Opens file/folder in OS file manager |
 | `app:open-external-url` | `invoke` | `targetUrl: string` | `Promise<boolean>` | Opens trusted HTTP(S) URL with system default browser |
@@ -39,7 +41,7 @@ flowchart TB
 | `backend:ssh-delete-server` | `invoke` | `serverId: string` | `Promise<{ success: boolean }>` | DELETE SSH server |
 | `backend:ssh-delete-folder` | `invoke` | `folderId: string` | `Promise<{ success: boolean }>` | DELETE SSH folder |
 | `backend:local-terminal-list-profiles` | `invoke` | none | `Promise<LocalTerminalListResponse \| ApiErrorResponse>` | GET local terminal profile list |
-| `backend:local-terminal-create-session` | `invoke` | `payload: LocalTerminalCreateSessionRequest` | `Promise<LocalTerminalCreateSessionResponse \| ApiErrorResponse>` | POST local terminal session |
+| `backend:local-terminal-create-session` | `invoke` | `payload: LocalTerminalCreateSessionRequest` | `Promise<LocalTerminalCreateSessionResponse \| ApiErrorResponse>` | POST local terminal session (Main may inject one-shot `cwd` from launch context) |
 | `backend:local-terminal-close-session` | `invoke` | `sessionId: string` | `Promise<{ success: boolean }>` | DELETE local terminal session |
 
 ## 3. Schema Sources

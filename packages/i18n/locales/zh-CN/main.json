@@ -11,6 +11,14 @@
     "uninstallPage": {
       "deleteData": "同时删除 AppData 中的用户数据（此操作无法撤销）(&D)",
       "description": "卸载 {productName} 将删除所有应用程序文件。\n\n您也可以选择同时删除保存在 AppData 中的个人数据（设置、已知主机、SSH 密钥等）。"
+    },
+    "windowsIntegrationPage": {
+      "contextMenu": "将“在 Cosmosh 中打开终端”添加到文件夹右键菜单",
+      "label": "Windows 集成（可选）：",
+      "terminalApp": "将 Cosmosh 注册为终端启动应用（App Paths）"
+    },
+    "windowsShell": {
+      "openTerminal": "在 Cosmosh 中打开终端"
     }
   }
 }

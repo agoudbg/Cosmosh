@@ -137,6 +137,11 @@
         "placeholder": "",
         "title": "自动保存"
       },
+      "defaultLocalTerminalProfile": {
+        "description": "通过上下文启动自动打开终端时，优先使用的本地终端配置（选项来自当前可用本地终端列表）。",
+        "placeholder": "",
+        "title": "默认本地终端"
+      },
       "defaultServerNoteTemplate": {
         "description": "新建服务器配置时，默认预填到备注字段的模板文本。",
         "placeholder": "示例：owner=@ops env=prod",
@@ -161,6 +166,11 @@
         "description": "SSH 会话保留的最大终端行数（xterm scrollback）。",
         "placeholder": "10000",
         "title": "SSH 最大行数"
+      },
+      "terminalContextLaunchBehavior": {
+        "description": "控制通过“在 Cosmosh 中打开终端”启动时的自动跳转行为。",
+        "placeholder": "",
+        "title": "上下文启动行为"
       },
       "terminalSelectionBarEnabled": {
         "description": "在终端中选中文本时显示 Orbit Bar。",
@@ -195,6 +205,10 @@
         "false": "已禁用",
         "true": "已启用"
       },
+      "defaultLocalTerminalProfile": {
+        "auto": "自动（首个可用）",
+        "unavailable": "不可用"
+      },
       "language": {
         "en": "English",
         "zh-CN": "简体中文"
@@ -205,6 +219,11 @@
         "custom": "自定义",
         "duckduckgo": "DuckDuckGo",
         "google": "Google"
+      },
+      "terminalContextLaunchBehavior": {
+        "off": "关闭",
+        "openDefaultLocalTerminal": "自动打开默认本地终端",
+        "openLocalTerminalList": "打开本地终端列表"
       },
       "terminalTextDropMode": {
         "always": "始终启用",

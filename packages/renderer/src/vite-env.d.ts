@@ -85,6 +85,8 @@ declare global {
         version: string;
         buildVersion: string;
       }>;
+      getPendingLaunchWorkingDirectory: () => Promise<string | null>;
+      onLaunchWorkingDirectory: (listener: (cwd: string) => void) => () => void;
       openDevTools: () => Promise<boolean>;
       showInFileManager: (targetPath?: string) => Promise<boolean>;
       openExternalUrl: (targetUrl: string) => Promise<boolean>;

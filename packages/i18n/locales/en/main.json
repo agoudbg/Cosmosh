@@ -11,6 +11,14 @@
     "uninstallPage": {
       "deleteData": "Also &delete user data from AppData (this action cannot be undone)",
       "description": "Uninstalling {productName} will remove all application files.\n\nYou can optionally also delete your personal data (settings, known hosts, SSH keys, etc.) stored in AppData."
+    },
+    "windowsIntegrationPage": {
+      "contextMenu": "Add Open terminal in Cosmosh to folder right-click menu",
+      "label": "Windows integration (optional):",
+      "terminalApp": "Register Cosmosh as a terminal launcher app (App Paths)"
+    },
+    "windowsShell": {
+      "openTerminal": "Open terminal in Cosmosh"
     }
   }
 }

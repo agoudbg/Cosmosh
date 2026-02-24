@@ -10,7 +10,14 @@
 
 1. 在最新 Release 下载 `.exe` 安装包。
 2. 运行安装程序并完成安装。
-3. 从桌面或开始菜单启动 Cosmosh。
+3. 在 **Windows 集成** 页面（可选）中，选择是否：
+	- 将 **在 Cosmosh 中打开终端** 添加到文件夹/磁盘右键菜单。
+	- 将 Cosmosh 注册为 Windows 终端启动应用（`App Paths`），并创建 `cosmosh` 终端命令启动 shim。
+4. 从桌面或开始菜单启动 Cosmosh。
+
+若启用右键菜单集成，资源管理器会将当前目录作为启动工作目录上下文传给 Cosmosh，并用于下一次本地终端会话创建。
+
+若启用终端启动应用注册，你可以在 PowerShell/CMD 中直接使用 `cosmosh` 启动 Cosmosh。
 
 ### macOS
 

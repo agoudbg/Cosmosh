@@ -10,7 +10,14 @@ Download packages from GitHub Releases:
 
 1. Download the `.exe` installer from the latest release.
 2. Run the installer and complete setup.
-3. Start Cosmosh from desktop or start menu.
+3. On the **Windows integration** page (optional), choose whether to:
+	- Add **Open terminal in Cosmosh** to the right-click menu for folders/drives.
+	- Register Cosmosh as a terminal launcher app in Windows (`App Paths`) and create a `cosmosh` terminal command shim.
+4. Start Cosmosh from desktop or start menu.
+
+If you enable right-click integration, Explorer passes the selected folder to Cosmosh as startup working directory context for the next local terminal session.
+
+If terminal-app registration is enabled, you can launch Cosmosh from terminal with `cosmosh` (PowerShell/CMD).
 
 ### macOS
 

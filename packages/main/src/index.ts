@@ -62,6 +62,7 @@ type LocalTerminalCreateSessionRequest = {
   cols: number;
   rows: number;
   term: string;
+  cwd?: string;
 };
 
 type LocalTerminalCreateSessionResponse = {
@@ -82,6 +83,7 @@ let backendProcess: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number | null = null;
 let backendToken: string | null = null;
 let disableI18nHotReload: (() => void) | null = null;
+let pendingLaunchWorkingDirectory: string | null = null;
 
 let appLocale = resolveLocale(process.env.COSMOSH_LOCALE, 'en');
 const DEFAULT_RENDERER_DEV_PORT = 2767;
@@ -97,6 +99,91 @@ const resolveRendererDevPort = (): number => {
 
 const getMainI18n = () => {
   return createI18n({ locale: appLocale, scope: 'main', fallbackLocale: 'en' });
+};
+
+const stripWrappingQuotes = (value: string): string => {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1);
+  }
+
+  return value;
+};
+
+const extractWorkingDirectoryCandidate = (argv: string[]): string | null => {
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]?.trim() ?? '';
+    if (!argument) {
+      continue;
+    }
+
+    if (argument.startsWith('--working-directory=')) {
+      return stripWrappingQuotes(argument.slice('--working-directory='.length));
+    }
+
+    if (argument.startsWith('--cwd=')) {
+      return stripWrappingQuotes(argument.slice('--cwd='.length));
+    }
+
+    if (argument === '--working-directory' || argument === '--cwd') {
+      const nextValue = argv[index + 1]?.trim();
+      if (!nextValue || nextValue.startsWith('--')) {
+        return null;
+      }
+
+      return stripWrappingQuotes(nextValue);
+    }
+  }
+
+  return null;
+};
+
+const resolveWorkingDirectoryFromArgv = async (
+  argv: string[],
+  fallbackWorkingDirectory?: string,
+): Promise<string | null> => {
+  const fallbackCandidate =
+    typeof fallbackWorkingDirectory === 'string' && fallbackWorkingDirectory.trim().length > 0
+      ? stripWrappingQuotes(fallbackWorkingDirectory.trim())
+      : null;
+  const candidate = extractWorkingDirectoryCandidate(argv) ?? fallbackCandidate;
+  if (!candidate) {
+    return null;
+  }
+
+  const normalizedPath = path.resolve(candidate);
+
+  try {
+    const stats = await fs.stat(normalizedPath);
+    if (stats.isDirectory()) {
+      return normalizedPath;
+    }
+
+    if (stats.isFile()) {
+      return path.dirname(normalizedPath);
+    }
+  } catch {
+    // Ignore invalid launch path and fallback to default terminal cwd.
+  }
+
+  return null;
+};
+
+const setPendingLaunchWorkingDirectory = (nextPath: string | null): void => {
+  pendingLaunchWorkingDirectory = nextPath;
+};
+
+const consumePendingLaunchWorkingDirectory = (): string | null => {
+  const current = pendingLaunchWorkingDirectory;
+  pendingLaunchWorkingDirectory = null;
+  return current;
+};
+
+const notifyRendererLaunchWorkingDirectory = (cwd: string): void => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  mainWindow.webContents.send('app:launch-working-directory', cwd);
 };
 
 const wait = (ms: number): Promise<void> => {
@@ -524,7 +611,18 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, commandLine, workingDirectory) => {
+    void resolveWorkingDirectoryFromArgv(commandLine, workingDirectory)
+      .then((cwd) => {
+        if (cwd) {
+          setPendingLaunchWorkingDirectory(cwd);
+          notifyRendererLaunchWorkingDirectory(cwd);
+        }
+      })
+      .catch(() => {
+        // Ignore malformed argv and keep current launch context.
+      });
+
     if (!mainWindow) {
       return;
     }
@@ -538,6 +636,8 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     try {
+      setPendingLaunchWorkingDirectory(await resolveWorkingDirectoryFromArgv(process.argv));
+
       if (!app.isPackaged) {
         disableI18nHotReload = await enableI18nDevHotReload({
           localeRootDir: path.join(resolveWorkspaceRoot(), 'packages', 'i18n', 'locales'),
@@ -600,6 +700,10 @@ ipcMain.handle('app:get-version-info', () => {
     version,
     buildVersion,
   };
+});
+
+ipcMain.handle('app:get-pending-launch-working-directory', () => {
+  return pendingLaunchWorkingDirectory;
 });
 
 ipcMain.handle('app:open-devtools', () => {
@@ -865,9 +969,13 @@ ipcMain.handle(
     _event,
     payload: LocalTerminalCreateSessionRequest,
   ): Promise<LocalTerminalCreateSessionResponse | ApiErrorResponse> => {
+    const launchWorkingDirectory = consumePendingLaunchWorkingDirectory();
     return requestBackend<LocalTerminalCreateSessionResponse>('/api/v1/local-terminals/sessions', {
       method: 'POST',
-      body: payload,
+      body: {
+        ...payload,
+        ...(launchWorkingDirectory ? { cwd: launchWorkingDirectory } : {}),
+      },
     });
   },
 );

@@ -1,19 +1,24 @@
 ; installer.nsh
 ; Custom NSIS hooks for Cosmosh installer.
-; Adds two user-controlled option pages to the assisted (multiUser) installer:
+; Adds three user-controlled option pages to the assisted (multiUser) installer:
 ;
 ;   1. Shortcuts       - desktop / start-menu checkboxes (default: both checked)
-;   2. Uninstall Data  - optionally wipe AppData on uninstall (default: unchecked)
+;   2. Windows Integr. - context menu / terminal app registration (default: checked)
+;   3. Uninstall Data  - optionally wipe AppData on uninstall (default: unchecked)
 ;
 ; Install-scope selection (current user vs. all users) is provided natively by
 ; the electron-builder MultiUser plugin and needs no extra page here.
 ;
 ; Locale strategy:
-;   All user-visible strings are defined in packages/i18n/locales/<lang>/installer.json
+;   All user-visible strings are defined in packages/i18n/locales/<lang>/main.json (installer key)
 ;   and compiled into installer-strings.nsh by scripts/generate-installer-strings.mjs.
 ;   At runtime, $LANGUAGE == 2052 selects Simplified Chinese; otherwise English is used.
 ;
 ; Register usage (no Var declarations, avoids two-pass uninstaller compilation issues):
+;   $R2  HWND of "Add context menu entry" checkbox
+;   $R3  state after page leave (BST_CHECKED / 0)
+;   $R4  HWND of "Register terminal launcher app" checkbox
+;   $R1  state after page leave (BST_CHECKED / 0)
 ;   $R5  HWND of "Create Desktop shortcut" checkbox
 ;   $R6  state after page leave (BST_CHECKED / 0)
 ;   $R7  HWND of "Create Start Menu shortcut" checkbox
@@ -32,6 +37,7 @@
 !macro customPageAfterChangeDir
 
   Page custom CosmoshShortcutPage CosmoshShortcutPageLeave
+  Page custom CosmoshWindowsIntegrationPage CosmoshWindowsIntegrationPageLeave
 
   Function CosmoshShortcutPage
     nsDialogs::Create 1018
@@ -71,6 +77,44 @@
     ${NSD_GetState} $R7 $R8
   FunctionEnd
 
+  Function CosmoshWindowsIntegrationPage
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $0 == error
+      Abort
+    ${EndIf}
+
+    ${If} $LANGUAGE == 2052
+      ${NSD_CreateLabel} 0 0 100% 16u "${COSMOSH_INST_WINDOWS_INTEGRATION_PAGE_LABEL_ZH}"
+    ${Else}
+      ${NSD_CreateLabel} 0 0 100% 16u "${COSMOSH_INST_WINDOWS_INTEGRATION_PAGE_LABEL_EN}"
+    ${EndIf}
+    Pop $0
+
+    ${If} $LANGUAGE == 2052
+      ${NSD_CreateCheckBox} 12u 22u 100% 12u "${COSMOSH_INST_WINDOWS_INTEGRATION_PAGE_CONTEXT_MENU_ZH}"
+    ${Else}
+      ${NSD_CreateCheckBox} 12u 22u 100% 12u "${COSMOSH_INST_WINDOWS_INTEGRATION_PAGE_CONTEXT_MENU_EN}"
+    ${EndIf}
+    Pop $R2
+    ${NSD_SetState} $R2 ${BST_CHECKED}
+
+    ${If} $LANGUAGE == 2052
+      ${NSD_CreateCheckBox} 12u 40u 100% 12u "${COSMOSH_INST_WINDOWS_INTEGRATION_PAGE_TERMINAL_APP_ZH}"
+    ${Else}
+      ${NSD_CreateCheckBox} 12u 40u 100% 12u "${COSMOSH_INST_WINDOWS_INTEGRATION_PAGE_TERMINAL_APP_EN}"
+    ${EndIf}
+    Pop $R4
+    ${NSD_SetState} $R4 ${BST_CHECKED}
+
+    nsDialogs::Show
+  FunctionEnd
+
+  Function CosmoshWindowsIntegrationPageLeave
+    ${NSD_GetState} $R2 $R3
+    ${NSD_GetState} $R4 $R1
+  FunctionEnd
+
 !macroend
 
 ; --------------------------------------------------------------------------
@@ -90,6 +134,53 @@
     Delete "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk"
     Delete "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall ${PRODUCT_NAME}.lnk"
     RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
+  ${EndIf}
+
+  ${If} $R3 == ${BST_CHECKED}
+    ${If} $LANGUAGE == 2052
+      WriteRegStr HKCU "Software\Classes\Directory\Background\shell\Cosmosh" "" "${COSMOSH_INST_WINDOWS_SHELL_OPEN_TERMINAL_ZH}"
+      WriteRegStr HKCU "Software\Classes\Directory\shell\Cosmosh" "" "${COSMOSH_INST_WINDOWS_SHELL_OPEN_TERMINAL_ZH}"
+      WriteRegStr HKCU "Software\Classes\Drive\shell\Cosmosh" "" "${COSMOSH_INST_WINDOWS_SHELL_OPEN_TERMINAL_ZH}"
+    ${Else}
+      WriteRegStr HKCU "Software\Classes\Directory\Background\shell\Cosmosh" "" "${COSMOSH_INST_WINDOWS_SHELL_OPEN_TERMINAL_EN}"
+      WriteRegStr HKCU "Software\Classes\Directory\shell\Cosmosh" "" "${COSMOSH_INST_WINDOWS_SHELL_OPEN_TERMINAL_EN}"
+      WriteRegStr HKCU "Software\Classes\Drive\shell\Cosmosh" "" "${COSMOSH_INST_WINDOWS_SHELL_OPEN_TERMINAL_EN}"
+    ${EndIf}
+
+    WriteRegStr HKCU "Software\Classes\Directory\Background\shell\Cosmosh" "Icon" "$INSTDIR\${PRODUCT_NAME}.exe"
+    WriteRegStr HKCU "Software\Classes\Directory\Background\shell\Cosmosh\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" --working-directory "%V"'
+
+    WriteRegStr HKCU "Software\Classes\Directory\shell\Cosmosh" "Icon" "$INSTDIR\${PRODUCT_NAME}.exe"
+    WriteRegStr HKCU "Software\Classes\Directory\shell\Cosmosh\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" --working-directory "%1"'
+
+    WriteRegStr HKCU "Software\Classes\Drive\shell\Cosmosh" "Icon" "$INSTDIR\${PRODUCT_NAME}.exe"
+    WriteRegStr HKCU "Software\Classes\Drive\shell\Cosmosh\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" --working-directory "%1"'
+  ${Else}
+    DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\Cosmosh"
+    DeleteRegKey HKCU "Software\Classes\Directory\shell\Cosmosh"
+    DeleteRegKey HKCU "Software\Classes\Drive\shell\Cosmosh"
+  ${EndIf}
+
+  ${If} $R1 == ${BST_CHECKED}
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\Cosmosh.exe" "" "$INSTDIR\${PRODUCT_NAME}.exe"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\Cosmosh.exe" "Path" "$INSTDIR"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\cosmosh.exe" "" "$INSTDIR\${PRODUCT_NAME}.exe"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\cosmosh.exe" "Path" "$INSTDIR"
+
+    WriteRegStr HKCU "Software\Classes\Applications\Cosmosh.exe" "FriendlyAppName" "${PRODUCT_NAME}"
+    WriteRegStr HKCU "Software\Classes\Applications\Cosmosh.exe\shell\open\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" "%1"'
+
+    ; Create a stable terminal launcher command for PowerShell/CMD (`cosmosh`).
+    CreateDirectory "$LOCALAPPDATA\Microsoft\WindowsApps"
+    FileOpen $0 "$LOCALAPPDATA\Microsoft\WindowsApps\cosmosh.cmd" w
+    FileWrite $0 "@echo off$\r$\n"
+    FileWrite $0 '"$INSTDIR\${PRODUCT_NAME}.exe" %*$\r$\n'
+    FileClose $0
+  ${Else}
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\Cosmosh.exe"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\cosmosh.exe"
+    DeleteRegKey HKCU "Software\Classes\Applications\Cosmosh.exe"
+    Delete "$LOCALAPPDATA\Microsoft\WindowsApps\cosmosh.cmd"
   ${EndIf}
 !macroend
 
@@ -139,6 +230,14 @@
 ; Custom uninstall: apply data cleanup selection
 ; --------------------------------------------------------------------------
 !macro customUnInstall
+  DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\Cosmosh"
+  DeleteRegKey HKCU "Software\Classes\Directory\shell\Cosmosh"
+  DeleteRegKey HKCU "Software\Classes\Drive\shell\Cosmosh"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\Cosmosh.exe"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\cosmosh.exe"
+  DeleteRegKey HKCU "Software\Classes\Applications\Cosmosh.exe"
+  Delete "$LOCALAPPDATA\Microsoft\WindowsApps\cosmosh.cmd"
+
   ${If} $R9 == ${BST_CHECKED}
     RMDir /r "$APPDATA\${PRODUCT_NAME}"
     RMDir /r "$LOCALAPPDATA\${PRODUCT_NAME}"

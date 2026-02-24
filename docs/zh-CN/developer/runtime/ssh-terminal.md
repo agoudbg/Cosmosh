@@ -134,3 +134,20 @@ flowchart LR
 3. WS attach token 与 sessionId 是否匹配。
 4. 数据流方向是否完整（`input` 写入与 `output` 回放）。
 5. 会话释放路径是否正确（API close、传输关闭或 SSH 错误触发）。
+
+## 8. Windows 右键启动与本地终端工作目录
+
+- 安装器集成选项可在资源管理器右键菜单注册“在 Cosmosh 中打开终端”。
+- 安装器会写入 shell verb 元数据（`MUIVerb`、图标）以兼容资源管理器右键菜单解析路径。
+- 资源管理器通过 `--working-directory <path>` 启动 Cosmosh。
+- 启用终端启动应用注册时，安装器还会生成 `%LOCALAPPDATA%\Microsoft\WindowsApps\cosmosh.cmd` 作为稳定 CLI 启动 shim。
+- Main 进程解析该参数并保存为一次性启动上下文。
+- 渲染层如何处理该上下文由设置项 `terminalContextLaunchBehavior` 控制：
+  - `openDefaultLocalTerminal`：自动打开 SSH 页签并使用默认本地终端配置。
+  - `openLocalTerminalList`：打开 Home 并聚焦到本地终端列表。
+  - `off`：忽略上下文启动自动跳转。
+- 当选择 `openDefaultLocalTerminal` 时，会优先使用设置项 `defaultLocalTerminalProfile`（`auto` 或来自当前本地终端列表的具体 profile id），若不可用则回退到首个可用配置。
+- 若 Cosmosh 已在运行，`second-instance` 会通过 IPC 事件把启动上下文推送到渲染层。
+- `second-instance` 在解析上下文时会同时使用 CLI 参数与 Electron 提供的 `workingDirectory` 兜底，降低仅聚焦不触发新终端的情况。
+- 在下一次创建本地终端会话（`POST /api/v1/local-terminals/sessions`）时，Main 会透传一次 `cwd`。
+- Backend 会校验 `cwd`，若路径不可用则回退到 `os.homedir()`。

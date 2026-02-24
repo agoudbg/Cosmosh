@@ -134,3 +134,20 @@ When SSH session behavior is wrong, verify in order:
 3. WS attach token/sessionId matching.
 4. Stream direction integrity (`input` write and `output` flush).
 5. Session disposal path (API close vs transport close vs SSH error).
+
+## 8. Windows Context-Launch to Local Terminal CWD
+
+- Installer integration can register `Open terminal in Cosmosh` in Explorer context menus.
+- Installer writes shell verb metadata (`MUIVerb`, icon) for Explorer context menu compatibility.
+- Explorer launches Cosmosh with `--working-directory <path>`.
+- When terminal-app registration is enabled, installer also generates `%LOCALAPPDATA%\Microsoft\WindowsApps\cosmosh.cmd` as a stable CLI launcher shim.
+- Main process parses this argument and keeps it as one-shot pending launch context.
+- Renderer launch behavior is controlled by Settings `terminalContextLaunchBehavior`:
+  - `openDefaultLocalTerminal`: auto-opens an SSH tab with the default local terminal profile.
+  - `openLocalTerminalList`: opens Home and focuses the Local Terminals group.
+  - `off`: ignores context-launch auto-navigation.
+- When `openDefaultLocalTerminal` is enabled, profile selection honors Settings `defaultLocalTerminalProfile` (`auto` or a concrete profile id loaded from current local terminal profiles) and falls back to first available profile.
+- If Cosmosh is already running, `second-instance` pushes launch context to renderer via IPC event.
+- `second-instance` resolution uses both CLI args and Electron `workingDirectory` as fallback, reducing context-loss cases where only focus happened.
+- On local terminal session creation (`POST /api/v1/local-terminals/sessions`), Main forwards `cwd` once.
+- Backend validates `cwd` and falls back to `os.homedir()` when path is invalid or inaccessible.

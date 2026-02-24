@@ -30,6 +30,7 @@ export const registerLocalTerminalRoutes = (app: Hono, context: BackendAppContex
           cols?: unknown;
           rows?: unknown;
           term?: unknown;
+          cwd?: unknown;
         }
       | undefined;
 
@@ -37,6 +38,7 @@ export const registerLocalTerminalRoutes = (app: Hono, context: BackendAppContex
     const cols = typeof payload?.cols === 'number' ? payload.cols : Number(payload?.cols ?? 120);
     const rows = typeof payload?.rows === 'number' ? payload.rows : Number(payload?.rows ?? 32);
     const term = typeof payload?.term === 'string' ? payload.term : 'xterm-256color';
+    const cwd = typeof payload?.cwd === 'string' ? payload.cwd : undefined;
 
     if (!profileId) {
       return c.json(buildErrorPayload(API_CODES.sshValidationFailed, 'profileId is required.'), 400);
@@ -61,6 +63,7 @@ export const registerLocalTerminalRoutes = (app: Hono, context: BackendAppContex
       cols,
       rows,
       term,
+      cwd,
     });
 
     if (result.type === 'not-found') {

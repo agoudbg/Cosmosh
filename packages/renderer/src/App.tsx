@@ -3,7 +3,11 @@ import React from 'react';
 
 import Header from './components/header/Header';
 import { InputContextMenuProvider } from './components/ui/input-context-menu';
+import { listLocalTerminalProfiles } from './lib/backend';
+import { requestOpenLocalTerminalList } from './lib/home-target';
+import { useSettingsValue } from './lib/settings-store';
 import { requestSshEditorCreateMode, setActiveSshServerId } from './lib/ssh-target';
+import { toLocalTerminalTargetId } from './lib/ssh-target';
 import { AppToastProvider } from './lib/toast';
 import { useTabs } from './lib/useTabs';
 import ComponentsField from './pages/ComponentsField';
@@ -14,6 +18,9 @@ import SSH from './pages/SSH';
 import SSHEditor from './pages/SSHEditor';
 
 const App: React.FC = () => {
+  const terminalContextLaunchBehavior = useSettingsValue('terminalContextLaunchBehavior');
+  const defaultLocalTerminalProfile = useSettingsValue('defaultLocalTerminalProfile');
+
   const handleLastTabClose = React.useCallback(() => {
     window.electron?.closeWindow();
   }, []);
@@ -32,6 +39,71 @@ const App: React.FC = () => {
   } = useTabs({
     onLastTabClose: handleLastTabClose,
   });
+
+  const handleOpenLocalTerminalList = React.useCallback(() => {
+    requestOpenLocalTerminalList();
+    addTab('home');
+  }, [addTab]);
+
+  const handleOpenDefaultLocalTerminal = React.useCallback(async () => {
+    try {
+      const response = await listLocalTerminalProfiles();
+      const availableProfiles = response.data.items;
+      const normalizedPreferredProfileId = defaultLocalTerminalProfile.trim();
+      const targetProfile =
+        normalizedPreferredProfileId.length === 0 || normalizedPreferredProfileId === 'auto'
+          ? availableProfiles[0]
+          : (availableProfiles.find((profile) => profile.id === normalizedPreferredProfileId) ?? availableProfiles[0]);
+
+      if (!targetProfile) {
+        handleOpenLocalTerminalList();
+        return;
+      }
+
+      const targetId = toLocalTerminalTargetId(targetProfile.id);
+      const tabId = addTab('ssh');
+      setActiveSshServerId(targetId);
+      updateTab(tabId, { title: targetProfile.name });
+    } catch {
+      handleOpenLocalTerminalList();
+    }
+  }, [addTab, defaultLocalTerminalProfile, handleOpenLocalTerminalList, updateTab]);
+
+  const handleLaunchWorkingDirectory = React.useCallback(async () => {
+    if (terminalContextLaunchBehavior === 'off') {
+      return;
+    }
+
+    if (terminalContextLaunchBehavior === 'openLocalTerminalList') {
+      handleOpenLocalTerminalList();
+      return;
+    }
+
+    await handleOpenDefaultLocalTerminal();
+  }, [handleOpenDefaultLocalTerminal, handleOpenLocalTerminalList, terminalContextLaunchBehavior]);
+
+  React.useEffect(() => {
+    const electronBridge = window.electron;
+    if (!electronBridge) {
+      return;
+    }
+
+    const unsubscribe = electronBridge.onLaunchWorkingDirectory(() => {
+      void handleLaunchWorkingDirectory();
+    });
+
+    void electronBridge.getPendingLaunchWorkingDirectory().then((cwd) => {
+      if (!cwd) {
+        return;
+      }
+
+      void handleLaunchWorkingDirectory();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [handleLaunchWorkingDirectory]);
 
   return (
     <AppToastProvider>

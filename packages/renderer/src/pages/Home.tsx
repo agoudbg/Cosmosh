@@ -84,6 +84,7 @@ import {
   updateSshServer,
 } from '../lib/backend';
 import { createFolder, normalizeFolderName, removeFolder, renameFolder } from '../lib/folder-actions';
+import { consumeOpenLocalTerminalListRequest } from '../lib/home-target';
 import { colorKeyToClassName, type HomeIconKey, resolveHomeVisual } from '../lib/home-visuals';
 import { getLocale, t } from '../lib/i18n';
 import { toLocalTerminalTargetId } from '../lib/ssh-target';
@@ -211,6 +212,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   React.useEffect(() => {
     const becameActive = !previousIsActiveRef.current && isActive;
     previousIsActiveRef.current = isActive;
+
+    if (isActive && consumeOpenLocalTerminalListRequest()) {
+      setActiveFolderId(LOCAL_TERMINAL_FOLDER_ID);
+    }
 
     if (becameActive) {
       void reloadHomeData();
