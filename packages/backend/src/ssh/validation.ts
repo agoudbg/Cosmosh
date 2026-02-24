@@ -48,6 +48,9 @@ const toOptionalUniqueIds = (ids: unknown): string[] | undefined => {
   return [...new Set(values)];
 };
 
+/**
+ * Parses and validates SSH folder creation payload.
+ */
 export const parseCreateFolderRequest = (payload: unknown): { value?: ApiSshCreateFolderRequest; error?: string } => {
   if (!isRecord(payload)) {
     return { error: 'Request body must be a JSON object.' };
@@ -71,6 +74,9 @@ export const parseCreateFolderRequest = (payload: unknown): { value?: ApiSshCrea
   };
 };
 
+/**
+ * Parses and validates SSH tag creation payload.
+ */
 export const parseCreateTagRequest = (payload: unknown): { value?: ApiSshCreateTagRequest; error?: string } => {
   if (!isRecord(payload)) {
     return { error: 'Request body must be a JSON object.' };
@@ -84,6 +90,9 @@ export const parseCreateTagRequest = (payload: unknown): { value?: ApiSshCreateT
   return { value: { name } };
 };
 
+/**
+ * Parses and validates SSH folder update payload.
+ */
 export const parseUpdateFolderRequest = (payload: unknown): { value?: ApiSshUpdateFolderRequest; error?: string } => {
   if (!isRecord(payload)) {
     return { error: 'Request body must be a JSON object.' };
@@ -107,6 +116,9 @@ export const parseUpdateFolderRequest = (payload: unknown): { value?: ApiSshUpda
   };
 };
 
+/**
+ * Parses and validates SSH server creation payload.
+ */
 export const parseCreateServerRequest = (payload: unknown): { value?: ApiSshCreateServerRequest; error?: string } => {
   if (!isRecord(payload)) {
     return { error: 'Request body must be a JSON object.' };
@@ -176,6 +188,9 @@ export const parseCreateServerRequest = (payload: unknown): { value?: ApiSshCrea
   };
 };
 
+/**
+ * Parses and validates SSH server update payload.
+ */
 export const parseUpdateServerRequest = (payload: unknown): { value?: ApiSshUpdateServerRequest; error?: string } => {
   if (!isRecord(payload)) {
     return { error: 'Request body must be a JSON object.' };
@@ -234,6 +249,9 @@ export const parseUpdateServerRequest = (payload: unknown): { value?: ApiSshUpda
   };
 };
 
+/**
+ * Parses and validates SSH session creation payload.
+ */
 export const parseCreateSessionRequest = (payload: unknown): { value?: ApiSshCreateSessionRequest; error?: string } => {
   if (!isRecord(payload)) {
     return { error: 'Request body must be a JSON object.' };
@@ -277,6 +295,9 @@ export const parseCreateSessionRequest = (payload: unknown): { value?: ApiSshCre
   };
 };
 
+/**
+ * Parses and validates trusted host fingerprint request payload.
+ */
 export const parseTrustFingerprintRequest = (
   payload: unknown,
 ): { value?: ApiSshTrustFingerprintRequest; error?: string } => {

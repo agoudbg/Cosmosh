@@ -8,6 +8,9 @@ const LOCAL_TERMINAL_LIST_PATH = '/api/v1/local-terminals/profiles';
 const LOCAL_TERMINAL_CREATE_SESSION_PATH = '/api/v1/local-terminals/sessions';
 const LOCAL_TERMINAL_CLOSE_SESSION_PATH = '/api/v1/local-terminals/sessions/{sessionId}';
 
+/**
+ * Registers local terminal profile and session management routes.
+ */
 export const registerLocalTerminalRoutes = (app: Hono, context: BackendAppContext): void => {
   app.get(LOCAL_TERMINAL_LIST_PATH, async (c) => {
     const items = await context.localTerminalSessionService.listProfiles();
@@ -24,6 +27,7 @@ export const registerLocalTerminalRoutes = (app: Hono, context: BackendAppContex
   });
 
   app.post(LOCAL_TERMINAL_CREATE_SESSION_PATH, async (c) => {
+    // Parse loosely typed body first, then normalize/validate each field explicitly.
     const payload = (await c.req.json().catch(() => undefined)) as
       | {
           profileId?: unknown;

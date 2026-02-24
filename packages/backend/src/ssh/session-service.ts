@@ -149,6 +149,9 @@ const TELEMETRY_INTERVAL_MS = 5_000;
 const TELEMETRY_COMMAND =
   ' sh -lc \'cpu=$(top -bn1 | awk -F"[, ]+" "/Cpu\\(s\\)|%Cpu\\(s\\)/ {for(i=1;i<=NF;i++){if($i==\\"id\\"){print 100-$(i-1); exit}}}"); if [ -z "$cpu" ]; then cpu=$(awk "/^cpu /{idle=$5;total=0;for(i=2;i<=NF;i++){total+=$i} if(total>0){print (total-idle)*100/total}else{print 0}}" /proc/stat); fi; mem=$(free -b | awk "/^Mem:/ {print \\$3 \\" \\" \\$2}"); net=$(awk "NR>2 {rx+=\\$2;tx+=\\$10} END {print rx \\" \\" tx}" /proc/net/dev); printf "%s\\n%s\\n%s\\n" "${cpu:-0}" "${mem:-0 0}" "${net:-0 0}"\'';
 
+/**
+ * Normalizes WebSocket payload into typed client message contract.
+ */
 const normalizeMessage = (payload: RawData): ClientInboundMessage | null => {
   try {
     const text = typeof payload === 'string' ? payload : payload.toString('utf8');
@@ -180,6 +183,9 @@ const normalizeMessage = (payload: RawData): ClientInboundMessage | null => {
   }
 };
 
+/**
+ * Clamps PTY size values to safe terminal bounds.
+ */
 const toShellSize = (value: number, fallback: number, min: number, max: number): number => {
   if (!Number.isFinite(value)) {
     return fallback;
@@ -188,6 +194,12 @@ const toShellSize = (value: number, fallback: number, min: number, max: number):
   return Math.min(max, Math.max(min, Math.round(value)));
 };
 
+/**
+ * SSH session orchestrator:
+ * - opens SSH shells
+ * - bridges WS <-> SSH stream messages
+ * - tracks telemetry and login audits
+ */
 export class SshSessionService {
   private readonly sessions = new Map<string, SshLiveSession>();
 

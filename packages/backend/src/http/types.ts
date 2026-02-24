@@ -4,6 +4,9 @@ import type { RuntimeMode } from '../db/prisma.js';
 import type { LocalTerminalSessionService } from '../local-terminal/session-service.js';
 import type { SshSessionService } from '../ssh/session-service.js';
 
+/**
+ * Shared runtime dependencies injected into HTTP route registration.
+ */
 export type BackendAppContext = {
   runtimeMode: RuntimeMode;
   isSecureLocalMode: boolean;

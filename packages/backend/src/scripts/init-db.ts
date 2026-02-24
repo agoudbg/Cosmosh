@@ -1,6 +1,9 @@
 import { DatabaseInitError, initializeDatabase, shutdownDatabase } from '../db/prisma.js';
 import { resolveRuntimeMode } from '../runtime.js';
 
+/**
+ * CLI entry for one-shot database initialization.
+ */
 const run = async (): Promise<void> => {
   const runtimeMode = resolveRuntimeMode(process.env.COSMOSH_RUNTIME_MODE);
 
@@ -23,4 +26,7 @@ const run = async (): Promise<void> => {
   }
 };
 
+/**
+ * Fire-and-forget script execution for Node.js CLI runtime.
+ */
 void run();

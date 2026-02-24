@@ -9,6 +9,9 @@ import {
 import { createI18n, resolveLocale } from '@cosmosh/i18n';
 import type { Hono } from 'hono';
 
+/**
+ * Registers public/system routes (root metadata, health, and connectivity test).
+ */
 export const registerSystemRoutes = (app: Hono): void => {
   app.get('/', (c) => {
     const requestLocale = resolveLocale(c.req.header(API_HEADERS.locale) ?? c.req.header('accept-language'), 'en');

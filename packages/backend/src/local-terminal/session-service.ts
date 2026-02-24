@@ -11,6 +11,9 @@ import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 const execFileAsync = promisify(execFile);
 const TELEMETRY_INTERVAL_MS = 5_000;
 
+/**
+ * Describes an available local shell profile that can be launched as PTY session.
+ */
 export type LocalTerminalProfile = {
   id: string;
   name: string;
@@ -103,6 +106,9 @@ type LocalLiveSession = {
   disposed: boolean;
 };
 
+/**
+ * Clamps PTY size values to safe terminal bounds.
+ */
 const toShellSize = (value: number, fallback: number, min: number, max: number): number => {
   if (!Number.isFinite(value)) {
     return fallback;
@@ -111,6 +117,10 @@ const toShellSize = (value: number, fallback: number, min: number, max: number):
   return Math.min(max, Math.max(min, Math.round(value)));
 };
 
+/**
+ * Resolves launch cwd for local terminal sessions.
+ * Accepts either directory or file path and falls back to user home when invalid.
+ */
 const resolveSessionWorkingDirectory = async (cwdCandidate?: string): Promise<string> => {
   const requestedPath = cwdCandidate?.trim() || '';
 
@@ -136,6 +146,9 @@ const resolveSessionWorkingDirectory = async (cwdCandidate?: string): Promise<st
   return os.homedir();
 };
 
+/**
+ * Normalizes WebSocket payload into typed client message contract.
+ */
 const normalizeMessage = (payload: RawData): ClientInboundMessage | null => {
   try {
     const text = typeof payload === 'string' ? payload : payload.toString('utf8');
@@ -253,6 +266,12 @@ const resolveUnixProfiles = async (): Promise<LocalTerminalProfile[]> => {
   return profiles;
 };
 
+/**
+ * Local terminal session orchestrator:
+ * - resolves available terminal profiles
+ * - manages PTY lifecycle
+ * - bridges WS <-> PTY streams
+ */
 export class LocalTerminalSessionService {
   private readonly sessions = new Map<string, LocalLiveSession>();
 

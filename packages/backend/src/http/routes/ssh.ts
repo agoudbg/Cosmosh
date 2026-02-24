@@ -36,6 +36,9 @@ import {
 import { buildErrorPayload } from '../errors.js';
 import type { BackendAppContext } from '../types.js';
 
+/**
+ * Registers SSH domain routes for folders, tags, servers, credentials, and sessions.
+ */
 export const registerSshRoutes = (app: Hono, context: BackendAppContext): void => {
   app.get(API_PATHS.sshListFolders, async (c) => {
     const db = context.getDbClient();

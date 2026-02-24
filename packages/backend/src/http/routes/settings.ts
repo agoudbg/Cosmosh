@@ -17,6 +17,9 @@ import {
 import { buildErrorPayload } from '../errors.js';
 import type { BackendAppContext } from '../types.js';
 
+/**
+ * Converts API scope object into flat DB key columns.
+ */
 const toScopeColumns = (scope: {
   accountId?: string;
   deviceId: string;
@@ -27,6 +30,9 @@ const toScopeColumns = (scope: {
   };
 };
 
+/**
+ * Converts DB scope columns back into API response shape.
+ */
 const toScopePayload = (scopeAccountId: string, scopeDeviceId: string): { accountId?: string; deviceId: string } => {
   return {
     accountId: scopeAccountId.length > 0 ? scopeAccountId : undefined,
@@ -42,6 +48,9 @@ type AppSettingsRow = {
   updatedAt: Date | string;
 };
 
+/**
+ * Loads one settings row for a specific scope.
+ */
 const findSettingsRow = async (
   context: BackendAppContext,
   scopeColumns: { scopeAccountId: string; scopeDeviceId: string },
@@ -58,6 +67,9 @@ const findSettingsRow = async (
   return rows[0] ?? null;
 };
 
+/**
+ * Normalizes Date/string values to ISO timestamp in responses.
+ */
 const toIsoTimestamp = (value: Date | string): string => {
   if (value instanceof Date) {
     return value.toISOString();
@@ -66,6 +78,9 @@ const toIsoTimestamp = (value: Date | string): string => {
   return new Date(value).toISOString();
 };
 
+/**
+ * Registers settings read/update routes.
+ */
 export const registerSettingsRoutes = (app: Hono, context: BackendAppContext): void => {
   app.get(API_PATHS.settingsGet, async (c) => {
     const scopeColumns = toScopeColumns(DEFAULT_SETTINGS_SCOPE);

@@ -12,6 +12,9 @@ type SettingsUpdateRequest = ApiSettingsUpdateRequest;
 
 const MAX_SCOPE_FIELD_LENGTH = 120;
 
+/**
+ * Default local settings scope used when caller does not provide explicit scope fields.
+ */
 export const DEFAULT_SETTINGS_SCOPE: SettingsScope = {
   deviceId: 'local-device',
 };
@@ -53,6 +56,9 @@ const normalizeScope = (scope: unknown): { value: SettingsScope; error?: string 
   };
 };
 
+/**
+ * Parses and validates settings update payload from API layer.
+ */
 export const parseSettingsUpdateRequest = (
   payload: unknown,
 ): { value?: SettingsUpdateRequest; error?: SettingValidationError } => {
@@ -96,6 +102,9 @@ export const parseSettingsUpdateRequest = (
   };
 };
 
+/**
+ * Parses persisted settings JSON with backward-compatible defaults fallback.
+ */
 export const parseStoredSettingsValues = (payloadJson: string | null | undefined): SettingsValues => {
   if (!payloadJson) {
     return { ...DEFAULT_SETTINGS_VALUES };
@@ -109,6 +118,9 @@ export const parseStoredSettingsValues = (payloadJson: string | null | undefined
   }
 };
 
+/**
+ * Normalizes arbitrary scope input into validated settings scope.
+ */
 export const normalizeSettingsScopeInput = (scope: unknown): { value?: SettingsScope; error?: string } => {
   const result = normalizeScope(scope);
   if (result.error) {

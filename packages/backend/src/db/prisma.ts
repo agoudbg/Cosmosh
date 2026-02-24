@@ -20,6 +20,9 @@ type BetterSqlite3LikeDatabase = {
 
 type BetterSqlite3LikeConstructor = new (filePath: string) => BetterSqlite3LikeDatabase;
 
+/**
+ * Backend runtime execution mode.
+ */
 export type RuntimeMode = 'standalone' | 'electron-main';
 
 type InitializeDatabaseOptions = {
@@ -40,6 +43,9 @@ type DatabaseErrorCode =
 
 type DatabaseErrorContext = Record<string, string>;
 
+/**
+ * Structured database initialization/runtime error with stable code and context.
+ */
 export class DatabaseInitError extends Error {
   public readonly code: DatabaseErrorCode;
   public readonly context: DatabaseErrorContext;
@@ -183,6 +189,9 @@ const backupUnreadableDatabaseFiles = async (databaseFilePath: string): Promise<
   }
 };
 
+/**
+ * Resolves database file path for current runtime mode.
+ */
 export const getDatabasePath = (): string => {
   if (isDevelopmentRuntime()) {
     return path.join(workspaceRootDir, '.dev_data', DB_FILE_NAME);
@@ -196,6 +205,9 @@ export const getDatabasePath = (): string => {
   return path.join(userDataPath, DB_FILE_NAME);
 };
 
+/**
+ * Resolves database encryption key from runtime mode/environment.
+ */
 export const getDatabaseEncryptionKey = (): string => {
   if (isDevelopmentRuntime()) {
     return DEV_DB_KEY;
@@ -463,6 +475,9 @@ const ensureSchema = async (client: PrismaClientType): Promise<void> => {
   }
 };
 
+/**
+ * Initializes Prisma client and database prerequisites with secure bootstrap flow.
+ */
 export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOptions): Promise<PrismaClientType> => {
   if (prismaClient) {
     return prismaClient;
@@ -637,6 +652,9 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
   }
 };
 
+/**
+ * Shuts down active Prisma client and releases DB resources.
+ */
 export const shutdownDatabase = async (): Promise<void> => {
   if (!prismaClient) {
     return;

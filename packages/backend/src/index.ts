@@ -63,6 +63,7 @@ const runtimeMode = resolveRuntimeMode(process.env.COSMOSH_RUNTIME_MODE);
 const port = resolvePort(process.env.COSMOSH_API_PORT);
 const internalToken = process.env.COSMOSH_INTERNAL_TOKEN;
 const isSecureLocalMode = runtimeMode === 'electron-main';
+// Hash source is normalized below to fixed-size key material.
 const credentialEncryptionKeySource = process.env.COSMOSH_SECRET_KEY ?? internalToken;
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = path.dirname(currentFilePath);
@@ -84,6 +85,9 @@ const credentialEncryptionKey = createHash('sha256').update(credentialEncryption
 
 let dbClient: PrismaClient | null = null;
 
+/**
+ * Returns initialized Prisma client or throws when bootstrap did not complete.
+ */
 const getDbClient = (): PrismaClient => {
   if (!dbClient) {
     throw new Error('Database service is not initialized.');
@@ -92,6 +96,9 @@ const getDbClient = (): PrismaClient => {
   return dbClient;
 };
 
+/**
+ * Registers process signal handlers that gracefully stop session services and DB resources.
+ */
 const registerShutdownHooks = (): void => {
   // Handle process termination so DB handles are released cleanly.
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -182,6 +189,9 @@ const bootstrap = async (): Promise<void> => {
   });
 };
 
+/**
+ * Centralized bootstrap failure path with best-effort cleanup.
+ */
 void bootstrap().catch(async (error: unknown) => {
   disableI18nHotReload?.();
   disableI18nHotReload = null;

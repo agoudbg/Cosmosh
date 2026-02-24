@@ -9,6 +9,9 @@ import { registerSshRoutes } from './routes/ssh.js';
 import { registerSystemRoutes } from './routes/system.js';
 import type { BackendAppContext } from './types.js';
 
+/**
+ * Composes the backend HTTP app by registering shared middleware and domain routes.
+ */
 export const createBackendApp = (context: BackendAppContext): Hono => {
   const app = new Hono();
 

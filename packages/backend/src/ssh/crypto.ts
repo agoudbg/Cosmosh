@@ -1,5 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
+/**
+ * Encrypts sensitive SSH credential text with AES-256-GCM and serializes iv/tag/ciphertext as hex tuple.
+ */
 export const encryptSensitiveValue = (input: string, key: Buffer): string => {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -9,6 +12,9 @@ export const encryptSensitiveValue = (input: string, key: Buffer): string => {
   return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
 };
 
+/**
+ * Decrypts payload produced by encryptSensitiveValue and returns UTF-8 plaintext.
+ */
 export const decryptSensitiveValue = (input: string, key: Buffer): string => {
   const parts = input.split(':');
   if (parts.length !== 3) {

@@ -10,6 +10,9 @@ import type { BackendAppContext } from './types.js';
 
 const DEFAULT_RENDERER_DEV_PORT = 2767;
 
+/**
+ * Resolves renderer dev origin port used by local CORS policy.
+ */
 const resolveRendererDevPort = (): number => {
   const candidate = Number(process.env.COSMOSH_RENDERER_DEV_PORT ?? DEFAULT_RENDERER_DEV_PORT);
   if (!Number.isInteger(candidate) || candidate < 1024 || candidate > 65535) {
@@ -19,6 +22,9 @@ const resolveRendererDevPort = (): number => {
   return candidate;
 };
 
+/**
+ * Verifies internal token using timing-safe comparison to reduce token oracle risks.
+ */
 const isValidInternalToken = (providedToken: string | undefined, expectedToken: string | undefined): boolean => {
   if (!providedToken || !expectedToken) {
     return false;
@@ -34,6 +40,9 @@ const isValidInternalToken = (providedToken: string | undefined, expectedToken: 
   return timingSafeEqual(providedBuffer, expectedBuffer);
 };
 
+/**
+ * Registers cross-cutting middleware: logging, CORS, and secure local auth guard.
+ */
 export const registerCommonMiddleware = (app: Hono, context: BackendAppContext): void => {
   const rendererDevOrigin = `http://localhost:${resolveRendererDevPort()}`;
 

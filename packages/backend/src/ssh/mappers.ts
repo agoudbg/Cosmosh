@@ -1,6 +1,9 @@
 import type { ApiSshListServersResponse } from '@cosmosh/api-contract';
 import type { Prisma } from '@prisma/client';
 
+/**
+ * Shared Prisma include shape used by SSH server list/read queries.
+ */
 export const serverQueryInclude = {
   folder: true,
   tags: {
@@ -19,6 +22,9 @@ export const serverQueryInclude = {
   },
 } as const;
 
+/**
+ * Maps Prisma SSH server entity graph into API list item DTO.
+ */
 export const mapServerToListItem = (
   server: Prisma.SshServerGetPayload<{ include: typeof serverQueryInclude }>,
 ): ApiSshListServersResponse['data']['items'][number] => {
