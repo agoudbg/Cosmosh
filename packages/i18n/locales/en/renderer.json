@@ -40,14 +40,14 @@
     "contextShowInFileManager": "Show in File Manager",
     "contextShowInFinder": "Show in Finder",
     "copySuccess": "Copied to clipboard.",
-    "dialogCreateFolderDescription": "Create a new folder for organizing SSH servers.",
+    "dialogCreateFolderDescription": "Create a folder to better organize servers.",
     "dialogDeleteFolderDescription": "Delete folder \"{name}\"?",
     "dialogDeleteServerDescription": "Delete server \"{name}\"?",
     "dialogDeleteServerTitle": "Delete Server",
-    "dialogEditFolderDescription": "Update folder name.",
-    "dragServerToFolderFailed": "Failed to move server into folder.",
+    "dialogEditFolderDescription": "Set a new name for the folder.",
+    "dragServerToFolderFailed": "Failed to add server to folder.",
     "dragServerToFolderSuccess": "Server added to folder.",
-    "empty": "No hosts match the current filter.",
+    "empty": "No matching servers found.",
     "fileAction": "Files",
     "filterAction": "Filter",
     "folderCreateFailed": "Failed to create folder.",
@@ -76,7 +76,7 @@
     "groupUntitled": "Group Name",
     "hostCount": "{count, plural, =0 {No hosts} one {# host} other {# hosts}}",
     "iconOptionsPending": "Icon customization is pending backend edit API support.",
-    "loading": "Loading home data...",
+    "loading": "Loading data...",
     "openInFileManagerFailed": "Failed to open file manager.",
     "openSshCurrentTab": "Open SSH In Current Tab",
     "quickAddFolder": "Add Folder",
@@ -130,37 +130,37 @@
     "enabled": "Enabled",
     "items": {
       "accountSyncEnabled": {
-        "description": "Controls whether the header Sync Settings action is enabled.",
+        "description": "Enable to sync settings across devices using the current account.",
         "placeholder": "",
         "title": "Account Sync"
       },
       "autoSaveEnabled": {
-        "description": "When enabled, settings changes are saved automatically and the save button is hidden.",
+        "description": "Automatically save settings changes.",
         "placeholder": "",
         "title": "Auto Save"
       },
       "defaultLocalTerminalProfile": {
-        "description": "Preferred local terminal profile for context-launch auto open (choices are loaded from current local terminal profiles).",
+        "description": "Default local terminal used when opening from context.",
         "placeholder": "",
         "title": "Default Local Terminal"
       },
       "defaultServerNoteTemplate": {
-        "description": "Template text prefilled in Note when creating a new server profile.",
+        "description": "Automatically prefills this note for newly created servers.",
         "placeholder": "Example: owner=@ops env=prod",
-        "title": "Default Server Note Template"
+        "title": "Default Server Note"
       },
       "devToolsEnabled": {
-        "description": "Show Open DevTools in the user menu and allow Ctrl+Shift+I shortcut.",
+        "description": "Allows UI debugging. This option is intended for advanced users and should be enabled with caution.",
         "placeholder": "",
         "title": "Enable DevTools"
       },
       "language": {
-        "description": "Controls UI language for the renderer and main process.",
+        "description": "Sets the UI language.",
         "placeholder": "",
         "title": "Language"
       },
       "sshConnectionTimeoutSec": {
-        "description": "SSH handshake timeout in seconds for session creation.",
+        "description": "Connection is automatically disconnected after timeout.",
         "placeholder": "45",
         "title": "SSH Connection Timeout (sec)"
       },
@@ -170,9 +170,9 @@
         "title": "SSH Max Rows"
       },
       "terminalContextLaunchBehavior": {
-        "description": "Controls how Cosmosh reacts to 'Open terminal in Cosmosh' launch context.",
+        "description": "Controls how terminals are opened from context launch or 'Open terminal in Cosmosh'.",
         "placeholder": "",
-        "title": "Context Launch Behavior"
+        "title": "Launch from Context"
       },
       "terminalSelectionBarEnabled": {
         "description": "Show Orbit Bar when text is selected in terminal sessions.",
@@ -180,12 +180,12 @@
         "title": "Orbit Bar"
       },
       "terminalSelectionSearchEngine": {
-        "description": "Defines the default search engine for quick search actions.",
+        "description": "Defines which search engine is used for web search.",
         "placeholder": "",
         "title": "Search Engine"
       },
       "terminalSelectionSearchUrlTemplate": {
-        "description": "Optional custom URL template for quick search actions. Use the query placeholder token in your template.",
+        "description": "Sets a custom search engine URL. Use QUERY_TOKEN as the search placeholder.",
         "placeholder": "https://www.google.com/search?q=QUERY_TOKEN",
         "title": "Custom Search URL"
       },
@@ -195,20 +195,20 @@
         "title": "Drag To Terminal"
       },
       "theme": {
-        "description": "Controls application visual theme.",
+        "description": "Controls the color theme used in the interface.",
         "placeholder": "",
         "title": "Theme"
       }
     },
     "loading": "Loading settings...",
-    "noMatches": "No settings matched your search.",
+    "noMatches": "No matching settings found.",
     "options": {
       "boolean": {
         "false": "Disabled",
         "true": "Enabled"
       },
       "defaultLocalTerminalProfile": {
-        "auto": "Auto (first available)",
+        "auto": "Auto (select first available local terminal)",
         "unavailable": "unavailable"
       },
       "language": {
@@ -248,7 +248,7 @@
     "sections": {
       "appearance": "Appearance",
       "connection": "Connection",
-      "editorDefaults": "Editor Defaults",
+      "editorDefaults": "Defaults",
       "localization": "Localization",
       "runtime": "Runtime",
       "search": "Search",
@@ -273,7 +273,7 @@
     }
   },
   "ssh": {
-    "authTypeBoth": "Both",
+    "authTypeBoth": "Password and Private Key",
     "authTypeKey": "Private Key",
     "authTypePassword": "Password",
     "authTypePlaceholder": "Select auth type",
@@ -380,9 +380,9 @@
     "validationPrivateKeyRequired": "Private key is required for selected authentication type.",
     "validationRequiredFields": "Name, host and username are required.",
     "validationServerNotFound": "Selected server was not found.",
-    "websocketClosed": "WebSocket closed.",
-    "websocketMalformedMessage": "Received malformed websocket message.",
-    "websocketTransportFailed": "WebSocket transport failed."
+    "websocketClosed": "Connection disconnected.",
+    "websocketMalformedMessage": "Received malformed connection message.",
+    "websocketTransportFailed": "Connection transport failed."
   },
   "tabs": {
     "closeCurrent": "Close Current Tab",
@@ -395,7 +395,7 @@
       "localTerminal": "Local Terminal",
       "settings": "Settings",
       "ssh": "SSH",
-      "sshEditor": "SSH Editor"
+      "sshEditor": "Edit Server"
     }
   }
 }

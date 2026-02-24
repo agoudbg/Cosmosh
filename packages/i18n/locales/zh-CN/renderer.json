@@ -40,14 +40,14 @@
     "contextShowInFileManager": "在文件管理器中显示",
     "contextShowInFinder": "在访达中显示",
     "copySuccess": "已复制到剪贴板。",
-    "dialogCreateFolderDescription": "创建一个用于组织 SSH 服务器的文件夹。",
+    "dialogCreateFolderDescription": "创建文件夹来更好的管理服务器。",
     "dialogDeleteFolderDescription": "确认删除文件夹“{name}”？",
     "dialogDeleteServerDescription": "确认删除服务器“{name}”？",
     "dialogDeleteServerTitle": "删除服务器",
-    "dialogEditFolderDescription": "更新文件夹名称。",
-    "dragServerToFolderFailed": "拖拽归档服务器失败。",
+    "dialogEditFolderDescription": "为文件夹设置新名称。",
+    "dragServerToFolderFailed": "添加服务器到文件夹失败。",
     "dragServerToFolderSuccess": "服务器已添加到文件夹。",
-    "empty": "当前筛选条件下没有主机。",
+    "empty": "未找到符合条件的服务器。",
     "fileAction": "文件",
     "filterAction": "筛选",
     "folderCreateFailed": "创建文件夹失败。",
@@ -56,9 +56,9 @@
     "folderNameRequired": "文件夹名称不能为空。",
     "folderUpdateFailed": "更新文件夹失败。",
     "greetingAfternoonPrimary": "下午好",
-    "greetingAfternoonSecondary": "午后好",
+    "greetingAfternoonSecondary": "下午好",
     "greetingEveningPrimary": "晚上好",
-    "greetingEveningSecondary": "夜间好",
+    "greetingEveningSecondary": "晚安",
     "greetingMorningPrimary": "早上好",
     "greetingMorningSecondary": "上午好",
     "greetingWithUser": "{greeting}，{name}。",
@@ -76,7 +76,7 @@
     "groupUntitled": "分组名称",
     "hostCount": "{count, plural, =0 {暂无主机} one {# 台主机} other {# 台主机}}",
     "iconOptionsPending": "图标自定义依赖后端编辑接口，当前为预留入口。",
-    "loading": "正在加载主页数据...",
+    "loading": "正在加载数据...",
     "openInFileManagerFailed": "打开文件管理器失败。",
     "openSshCurrentTab": "在当前标签打开 SSH",
     "quickAddFolder": "添加文件夹",
@@ -130,49 +130,49 @@
     "enabled": "已启用",
     "items": {
       "accountSyncEnabled": {
-        "description": "控制头部“同步设置”动作是否可用。",
+        "description": "启用来将设置在使用当前账号的多个设备间同步。",
         "placeholder": "",
         "title": "账号同步"
       },
       "autoSaveEnabled": {
-        "description": "启用后设置修改会自动保存，并隐藏保存按钮。",
+        "description": "自动保存对设置的更改。",
         "placeholder": "",
         "title": "自动保存"
       },
       "defaultLocalTerminalProfile": {
-        "description": "通过上下文启动自动打开终端时，优先使用的本地终端配置（选项来自当前可用本地终端列表）。",
+        "description": "通过上下文打开终端时使用的默认本地终端。",
         "placeholder": "",
         "title": "默认本地终端"
       },
       "defaultServerNoteTemplate": {
-        "description": "新建服务器配置时，默认预填到备注字段的模板文本。",
+        "description": "该备注将在新创建的服务器中自动填充。",
         "placeholder": "示例：owner=@ops env=prod",
-        "title": "默认服务器备注模板"
+        "title": "默认服务器备注"
       },
       "devToolsEnabled": {
-        "description": "在用户菜单显示“打开 DevTools”，并允许 Ctrl+Shift+I 快捷键。",
+        "description": "允许对程序界面进行调试。该选项仅适用于高级用户，请勿随意开启此选项。",
         "placeholder": "",
         "title": "启用 DevTools"
       },
       "language": {
-        "description": "控制渲染层与主进程的界面语言。",
+        "description": "设置使用的界面语言。",
         "placeholder": "",
         "title": "语言"
       },
       "sshConnectionTimeoutSec": {
-        "description": "会话创建时 SSH 握手超时秒数。",
+        "description": "超时后，连接将自动断开。",
         "placeholder": "45",
         "title": "SSH 连接超时（秒）"
       },
       "sshMaxRows": {
-        "description": "SSH 会话保留的最大终端行数（xterm scrollback）。",
+        "description": "SSH 会话保留的最大终端行数。",
         "placeholder": "10000",
         "title": "SSH 最大行数"
       },
       "terminalContextLaunchBehavior": {
-        "description": "控制通过“在 Cosmosh 中打开终端”启动时的自动跳转行为。",
+        "description": "控制通过“在 Cosmosh 中打开终端”或从上下文启动时如何打开终端。",
         "placeholder": "",
-        "title": "上下文启动行为"
+        "title": "从上下文启动"
       },
       "terminalSelectionBarEnabled": {
         "description": "在终端中选中文本时显示 Orbit Bar。",
@@ -180,12 +180,12 @@
         "title": "Orbit Bar"
       },
       "terminalSelectionSearchEngine": {
-        "description": "定义快速搜索动作使用的默认搜索引擎。",
+        "description": "定义搜索网页时使用的搜索引擎。",
         "placeholder": "",
         "title": "搜索引擎"
       },
       "terminalSelectionSearchUrlTemplate": {
-        "description": "可选的快速搜索动作 URL 模板，请在模板中放置查询占位标记。",
+        "description": "设置自定义的搜索引擎 URL。使用 QUERY_TOKEN 来代表搜索关键词。",
         "placeholder": "https://www.google.com/search?q=QUERY_TOKEN",
         "title": "自定义搜索 URL"
       },
@@ -195,29 +195,29 @@
         "title": "拖拽到终端"
       },
       "theme": {
-        "description": "控制应用视觉主题。",
+        "description": "控制在界面中使用的颜色主题。",
         "placeholder": "",
         "title": "主题"
       }
     },
     "loading": "正在加载设置...",
-    "noMatches": "没有匹配当前搜索的设置项。",
+    "noMatches": "未找到符合的设置项。",
     "options": {
       "boolean": {
         "false": "已禁用",
         "true": "已启用"
       },
       "defaultLocalTerminalProfile": {
-        "auto": "自动（首个可用）",
+        "auto": "自动（选取首个可用的本地终端）",
         "unavailable": "不可用"
       },
       "language": {
         "en": "English",
-        "zh-CN": "简体中文"
+        "zh-CN": "简体中文 (Chinese, Simplified)"
       },
       "searchEngine": {
         "baidu": "百度",
-        "bing": "Bing",
+        "bing": "必应",
         "custom": "自定义",
         "duckduckgo": "DuckDuckGo",
         "google": "Google"
@@ -248,7 +248,7 @@
     "sections": {
       "appearance": "外观",
       "connection": "连接",
-      "editorDefaults": "编辑器默认",
+      "editorDefaults": "默认值",
       "localization": "本地化",
       "runtime": "运行时",
       "search": "搜索",
@@ -258,22 +258,22 @@
     },
     "title": "设置",
     "validation": {
-      "booleanRequired": "{name}必须是布尔值。",
-      "enumRequired": "{name}必须是以下之一：{options}。",
-      "integerRange": "{name}必须是 {min} 到 {max} 之间的整数。",
-      "integerRequired": "{name}必须是整数。",
-      "invalid": "{key}无效。",
-      "maxLengthExceeded": "{name}不得超过 {limit} 个字符。",
-      "missingKey": "{name}为必填项。",
+      "booleanRequired": "“{name}”必须是布尔值。",
+      "enumRequired": "“{name}”必须是以下之一：{options}。",
+      "integerRange": "“{name}”必须是 {min} 到 {max} 之间的整数。",
+      "integerRequired": "“{name}”必须是整数。",
+      "invalid": "“{key}”无效。",
+      "maxLengthExceeded": "“{name}”不得超过 {limit} 个字符。",
+      "missingKey": "“{name}”为必填项。",
       "notObject": "设置值必须是 JSON 对象。",
-      "stringRequired": "{name}必须是字符串。",
-      "unknownKeys": "设置包含未知键：{keys}。",
-      "unsupportedKey": "不支持的设置键：{key}。",
-      "unsupportedType": "不支持的设置值类型，键：{key}。"
+      "stringRequired": "“{name}”必须是字符串。",
+      "unknownKeys": "设置包含未知键：“{keys}”。",
+      "unsupportedKey": "不支持的设置键：“{key}”。",
+      "unsupportedType": "不支持的设置值类型，键：“{key}”。"
     }
   },
   "ssh": {
-    "authTypeBoth": "密码 + 私钥",
+    "authTypeBoth": "密码和私钥",
     "authTypeKey": "私钥",
     "authTypePassword": "密码",
     "authTypePlaceholder": "选择认证方式",
@@ -313,10 +313,10 @@
     "editorLoadFailed": "加载服务器编辑资源失败。",
     "emptyServers": "暂无 SSH 服务器。",
     "folderNamePlaceholder": "文件夹名称",
-    "groupDay": "1日内",
-    "groupMonth": "1月内",
+    "groupDay": "1 天内",
+    "groupMonth": "1 个月内",
     "groupOlder": "更早",
-    "groupWeek": "1周内",
+    "groupWeek": "1 周内",
     "hostFingerprintDialogAlgorithm": "算法",
     "hostFingerprintDialogCancel": "取消",
     "hostFingerprintDialogDescription": "首次连接检测到未受信任指纹，请确认后再继续连接。",
@@ -334,7 +334,7 @@
     "passwordLabel": "密码",
     "passwordPlaceholder": "密码",
     "passwordSavedHint": "密码已保存，留空可保持不变。",
-    "passwordSavedPlaceholder": "已保存密码（留空则保持不变）",
+    "passwordSavedPlaceholder": "已保存密码（留空来保持不变）",
     "portPlaceholder": "端口",
     "privateKeyLabel": "私钥",
     "privateKeyPassphraseLabel": "私钥口令",
@@ -380,9 +380,9 @@
     "validationPrivateKeyRequired": "当前认证方式需要私钥。",
     "validationRequiredFields": "名称、主机和用户名不能为空。",
     "validationServerNotFound": "未找到已选择的服务器。",
-    "websocketClosed": "WebSocket 已关闭。",
-    "websocketMalformedMessage": "收到格式错误的 WebSocket 消息。",
-    "websocketTransportFailed": "WebSocket 传输失败。"
+    "websocketClosed": "连接已中断。",
+    "websocketMalformedMessage": "收到格式错误的连接消息。",
+    "websocketTransportFailed": "连接传输失败。"
   },
   "tabs": {
     "closeCurrent": "关闭当前标签页",
@@ -395,7 +395,7 @@
       "localTerminal": "本地终端",
       "settings": "设置",
       "ssh": "SSH",
-      "sshEditor": "SSH 编辑器"
+      "sshEditor": "编辑服务器"
     }
   }
 }
