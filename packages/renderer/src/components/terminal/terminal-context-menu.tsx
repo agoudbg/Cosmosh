@@ -120,6 +120,7 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
         <div
           ref={triggerHostRef}
           className="h-full w-full"
+          data-input-context-menu-ignore="true"
         >
           {children}
         </div>

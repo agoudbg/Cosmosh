@@ -29,13 +29,27 @@ const isSupportedInput = (element: Element): element is InputMenuTarget => {
   return textLikeTypes.has(element.type);
 };
 
+const INPUT_CONTEXT_MENU_IGNORE_SELECTOR = '[data-input-context-menu-ignore="true"]';
+
+const isInsideIgnoredInputContextMenuRegion = (node: Element): boolean => {
+  return node.closest(INPUT_CONTEXT_MENU_IGNORE_SELECTOR) !== null;
+};
+
 const getEditableTarget = (node: EventTarget | null): InputMenuTarget | null => {
   if (!(node instanceof Element)) {
     return null;
   }
 
+  if (isInsideIgnoredInputContextMenuRegion(node)) {
+    return null;
+  }
+
   const editable = node.closest('input, textarea');
   if (!editable || !isSupportedInput(editable)) {
+    return null;
+  }
+
+  if (isInsideIgnoredInputContextMenuRegion(editable)) {
     return null;
   }
 
