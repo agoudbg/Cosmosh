@@ -4,80 +4,21 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 
-import type {
-  ApiErrorResponse,
-  ApiSettingsGetResponse,
-  ApiSettingsUpdateRequest,
-  ApiSettingsUpdateResponse,
-  ApiSshCreateFolderRequest,
-  ApiSshCreateFolderResponse,
-  ApiSshCreateServerRequest,
-  ApiSshCreateServerResponse,
-  ApiSshCreateSessionHostVerificationRequiredResponse,
-  ApiSshCreateSessionRequest,
-  ApiSshCreateSessionResponse,
-  ApiSshCreateTagRequest,
-  ApiSshCreateTagResponse,
-  ApiSshGetServerCredentialsResponse,
-  ApiSshListFoldersResponse,
-  ApiSshListServersResponse,
-  ApiSshListTagsResponse,
-  ApiSshTrustFingerprintRequest,
-  ApiSshTrustFingerprintResponse,
-  ApiSshUpdateFolderRequest,
-  ApiSshUpdateFolderResponse,
-  ApiSshUpdateServerRequest,
-  ApiSshUpdateServerResponse,
-  ApiTestPingResponse,
-} from '@cosmosh/api-contract';
+import type { ApiErrorResponse } from '@cosmosh/api-contract';
 import { API_CODES, API_HEADERS, API_PATHS, createApiError } from '@cosmosh/api-contract';
 import { createI18n, enableI18nDevHotReload, resolveLocale } from '@cosmosh/i18n';
 import { spawn } from 'child_process';
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import path from 'path';
 
+import { registerAppUtilityIpcHandlers } from './ipc/register-app-utility-ipc';
+import { registerBackendIpcHandlers } from './ipc/register-backend-ipc';
 import { getDatabaseEncryptionKey, getDatabasePath, toPrismaSqliteUrl } from './security/database-encryption';
 
-type LocalTerminalProfile = {
-  id: string;
-  name: string;
-  command: string;
-  executablePath: string;
-  args: string[];
-};
-
-type LocalTerminalListResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    items: LocalTerminalProfile[];
-  };
-};
-
-type LocalTerminalCreateSessionRequest = {
-  profileId: string;
-  cols: number;
-  rows: number;
-  term: string;
-  cwd?: string;
-};
-
-type LocalTerminalCreateSessionResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    sessionId: string;
-    profileId: string;
-    websocketUrl: string;
-    websocketToken: string;
-  };
-};
+/**
+ * Main-process singleton runtime state.
+ * Electron runs a single privileged process, so this module keeps shared handles in memory.
+ */
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number | null = null;
@@ -90,6 +31,9 @@ const DEFAULT_RENDERER_DEV_PORT = 2767;
 const MACOS_CLI_COMMAND_NAME = 'cosmosh';
 const MACOS_CLI_PREFERRED_LINK_DIRS = ['/opt/homebrew/bin', '/usr/local/bin'] as const;
 
+/**
+ * Resolves renderer dev-server port from environment with strict numeric validation.
+ */
 const resolveRendererDevPort = (): number => {
   const candidate = Number(process.env.COSMOSH_RENDERER_DEV_PORT ?? DEFAULT_RENDERER_DEV_PORT);
   if (!Number.isInteger(candidate) || candidate < 1024 || candidate > 65535) {
@@ -99,10 +43,16 @@ const resolveRendererDevPort = (): number => {
   return candidate;
 };
 
+/**
+ * Creates the i18n instance used by main-process UI surfaces.
+ */
 const getMainI18n = () => {
   return createI18n({ locale: appLocale, scope: 'main', fallbackLocale: 'en' });
 };
 
+/**
+ * Removes one layer of wrapping double quotes from CLI argument values.
+ */
 const stripWrappingQuotes = (value: string): string => {
   if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
     return value.slice(1, -1);
@@ -111,6 +61,9 @@ const stripWrappingQuotes = (value: string): string => {
   return value;
 };
 
+/**
+ * Scans argv and extracts working-directory argument from supported option forms.
+ */
 const extractWorkingDirectoryCandidate = (argv: string[]): string | null => {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]?.trim() ?? '';
@@ -139,6 +92,10 @@ const extractWorkingDirectoryCandidate = (argv: string[]): string | null => {
   return null;
 };
 
+/**
+ * Resolves and validates launch working directory from command-line arguments.
+ * When a file path is provided, returns its parent directory.
+ */
 const resolveWorkingDirectoryFromArgv = async (
   argv: string[],
   fallbackWorkingDirectory?: string,
@@ -174,6 +131,9 @@ const setPendingLaunchWorkingDirectory = (nextPath: string | null): void => {
   pendingLaunchWorkingDirectory = nextPath;
 };
 
+/**
+ * Returns one-shot launch working-directory context and clears it immediately.
+ */
 const consumePendingLaunchWorkingDirectory = (): string | null => {
   const current = pendingLaunchWorkingDirectory;
   pendingLaunchWorkingDirectory = null;
@@ -191,6 +151,9 @@ const resolveBuildTime = async (): Promise<string> => {
   }
 };
 
+/**
+ * Forwards updated launch cwd to renderer when second-instance handoff happens.
+ */
 const notifyRendererLaunchWorkingDirectory = (cwd: string): void => {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
@@ -199,6 +162,9 @@ const notifyRendererLaunchWorkingDirectory = (cwd: string): void => {
   mainWindow.webContents.send('app:launch-working-directory', cwd);
 };
 
+/**
+ * Small async sleep utility used in startup polling loops.
+ */
 const wait = (ms: number): Promise<void> => {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -221,6 +187,9 @@ const formatStartupError = (error: unknown): string => {
   }
 };
 
+/**
+ * Displays a consistent fatal-startup dialog and lets users report actionable logs.
+ */
 const showStartupFailureDialog = (error: unknown): void => {
   const summary = formatStartupError(error);
   const message = [
@@ -290,10 +259,16 @@ const runCommand = async (
   });
 };
 
+/**
+ * Resolves workspace root from emitted main-process dist location.
+ */
 const resolveWorkspaceRoot = (): string => {
   return path.resolve(__dirname, '../../..');
 };
 
+/**
+ * Resolves platform-appropriate data root used for shared backend secrets.
+ */
 const resolveDataRootDir = (): string => {
   if (process.env.LOCALAPPDATA) {
     return process.env.LOCALAPPDATA;
@@ -306,6 +281,9 @@ const resolveDataRootDir = (): string => {
   return path.join(os.homedir(), '.local', 'share');
 };
 
+/**
+ * Escapes a value for safe interpolation into POSIX shell single-quoted strings.
+ */
 const quoteForShell = (value: string): string => {
   return `'${value.replace(/'/g, "'\"'\"'")}'`;
 };
@@ -322,6 +300,9 @@ const writeMacOsCliLauncherScript = async (launcherPath: string, executablePath:
   await fs.chmod(launcherPath, 0o755);
 };
 
+/**
+ * Prepares a best-effort `cosmosh` CLI entrypoint on packaged macOS builds.
+ */
 const ensureMacOsCliCommand = async (): Promise<void> => {
   if (process.platform !== 'darwin' || !app.isPackaged) {
     return;
@@ -382,6 +363,9 @@ const hardenSecretKeyPermissions = async (secretFilePath: string): Promise<void>
   await fs.chmod(secretFilePath, 0o600);
 };
 
+/**
+ * Loads or creates backend secret key used for internal cryptographic operations.
+ */
 const resolveBackendSecretKey = async (): Promise<string> => {
   const storageDirPath = path.join(resolveDataRootDir(), 'Cosmosh', 'backend', 'storage');
   const secretFilePath = path.join(storageDirPath, 'secret.key');
@@ -403,6 +387,9 @@ const resolveBackendSecretKey = async (): Promise<string> => {
   return generated;
 };
 
+/**
+ * Checks whether a file path is currently accessible.
+ */
 const fileExists = async (filePath: string): Promise<boolean> => {
   try {
     await fs.access(filePath);
@@ -412,6 +399,9 @@ const fileExists = async (filePath: string): Promise<boolean> => {
   }
 };
 
+/**
+ * Reserves and returns a free localhost TCP port for backend boot.
+ */
 const findAvailablePort = async (): Promise<number> => {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -466,6 +456,9 @@ const waitForBackendReady = async (port: number, isProcessAlive: () => boolean, 
   throw new Error(`Backend service startup timeout after ${timeoutMs}ms (port=${port}).`);
 };
 
+/**
+ * Starts backend runtime and blocks until health check becomes available.
+ */
 const startBackendService = async (): Promise<void> => {
   if (backendProcess && backendPort && backendToken) {
     return;
@@ -582,6 +575,9 @@ const stopBackendService = (): void => {
   backendToken = null;
 };
 
+/**
+ * Returns backend connection state and enforces ready-state contract.
+ */
 const requireBackendConfig = (): { port: number; token: string } => {
   if (!backendPort || !backendToken) {
     throw new Error('Backend service is not ready.');
@@ -593,6 +589,9 @@ const requireBackendConfig = (): { port: number; token: string } => {
   };
 };
 
+/**
+ * Sends typed backend requests through internal token-authenticated HTTP transport.
+ */
 const requestBackend = async <TSuccess>(
   path: string,
   options: {
@@ -642,6 +641,9 @@ const requestBackend = async <TSuccess>(
   }
 };
 
+/**
+ * Creates the primary desktop window and loads renderer entry according to runtime mode.
+ */
 const createWindow = async (): Promise<void> => {
   const isDev = !app.isPackaged;
   const preloadPath = path.join(__dirname, 'preload.js');
@@ -687,6 +689,9 @@ const createWindow = async (): Promise<void> => {
   });
 };
 
+// -----------------------------------------------------------------------------
+// App lifecycle and single-instance lock
+// -----------------------------------------------------------------------------
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -749,340 +754,31 @@ if (!hasSingleInstanceLock) {
   });
 }
 
-ipcMain.on('app:close-window', () => {
-  const targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;
-  targetWindow?.close();
-});
-
-ipcMain.handle('i18n:get-locale', () => {
-  return appLocale;
-});
-
-ipcMain.handle('i18n:set-locale', (_event, nextLocale: string) => {
-  // Persisted in-memory for now; renderer fetches/updates locale through preload bridge.
-  appLocale = resolveLocale(nextLocale, 'en');
-  mainWindow?.setTitle(getMainI18n().t('app.title'));
-  return appLocale;
-});
-
-ipcMain.handle('app:get-runtime-user-name', () => {
-  try {
-    return os.userInfo().username;
-  } catch {
-    return process.env.USERNAME ?? process.env.USER ?? 'user';
-  }
-});
-
-ipcMain.handle('app:get-version-info', async () => {
-  const fullVersion = app.getVersion();
-  const [version, buildVersion] = fullVersion.split('+');
-  const buildTime = await resolveBuildTime();
-
-  return {
-    appName: app.getName(),
-    version,
-    buildVersion,
-    buildTime,
-  };
-});
-
-ipcMain.handle('app:get-pending-launch-working-directory', () => {
-  return pendingLaunchWorkingDirectory;
-});
-
-ipcMain.handle('app:open-devtools', () => {
-  if (app.isPackaged) {
-    return false;
-  }
-
-  const targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;
-
-  if (!targetWindow || targetWindow.isDestroyed()) {
-    return false;
-  }
-
-  targetWindow.webContents.openDevTools({ mode: 'detach' });
-  return true;
-});
-
-ipcMain.handle('app:show-in-file-manager', async (_event, targetPath?: string): Promise<boolean> => {
-  const pathToOpen = typeof targetPath === 'string' && targetPath.trim().length > 0 ? targetPath.trim() : os.homedir();
-
-  try {
-    const stats = await fs.stat(pathToOpen);
-    if (stats.isFile()) {
-      shell.showItemInFolder(pathToOpen);
-      return true;
-    }
-
-    const result = await shell.openPath(pathToOpen);
-    return result.length === 0;
-  } catch {
-    return false;
-  }
-});
-
-ipcMain.handle('app:open-external-url', async (_event, targetUrl?: string): Promise<boolean> => {
-  if (typeof targetUrl !== 'string' || targetUrl.trim().length === 0) {
-    return false;
-  }
-
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(targetUrl.trim());
-  } catch {
-    return false;
-  }
-
-  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-    return false;
-  }
-
-  try {
-    await shell.openExternal(parsedUrl.toString());
-    return true;
-  } catch {
-    return false;
-  }
-});
-
-ipcMain.handle('backend:test-ping', async (): Promise<ApiTestPingResponse | ApiErrorResponse> => {
-  const { port, token } = requireBackendConfig();
-  const response = await fetch(`http://127.0.0.1:${port}${API_PATHS.testPing}`, {
-    method: 'GET',
-    headers: {
-      [API_HEADERS.internalToken]: token,
-      [API_HEADERS.locale]: appLocale,
-    },
-  });
-
-  const payload = (await response.json()) as ApiTestPingResponse | ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(payload.message);
-  }
-
-  return payload;
-});
-
-ipcMain.handle('backend:settings-get', async (): Promise<ApiSettingsGetResponse | ApiErrorResponse> => {
-  return requestBackend<ApiSettingsGetResponse>(API_PATHS.settingsGet, { method: 'GET' });
-});
-
-ipcMain.handle(
-  'backend:settings-update',
-  async (_event, payload: ApiSettingsUpdateRequest): Promise<ApiSettingsUpdateResponse | ApiErrorResponse> => {
-    return requestBackend<ApiSettingsUpdateResponse>(API_PATHS.settingsUpdate, {
-      method: 'PUT',
-      body: payload,
-    });
+// -----------------------------------------------------------------------------
+// IPC channel registration
+// -----------------------------------------------------------------------------
+registerAppUtilityIpcHandlers({
+  getMainWindow: () => mainWindow,
+  getLocale: () => appLocale,
+  setLocale: (nextLocale: string) => {
+    appLocale = resolveLocale(nextLocale, 'en');
+    mainWindow?.setTitle(getMainI18n().t('app.title'));
+    return appLocale;
   },
-);
-
-ipcMain.handle('backend:ssh-list-servers', async (): Promise<ApiSshListServersResponse | ApiErrorResponse> => {
-  return requestBackend<ApiSshListServersResponse>(API_PATHS.sshListServers, { method: 'GET' });
+  getPendingLaunchWorkingDirectory: () => pendingLaunchWorkingDirectory,
+  resolveBuildTime,
 });
 
-ipcMain.handle(
-  'backend:ssh-create-server',
-  async (_event, payload: ApiSshCreateServerRequest): Promise<ApiSshCreateServerResponse | ApiErrorResponse> => {
-    return requestBackend<ApiSshCreateServerResponse>(API_PATHS.sshCreateServer, {
-      method: 'POST',
-      body: payload,
-    });
-  },
-);
-
-ipcMain.handle(
-  'backend:ssh-update-server',
-  async (
-    _event,
-    serverId: string,
-    payload: ApiSshUpdateServerRequest,
-  ): Promise<ApiSshUpdateServerResponse | ApiErrorResponse> => {
-    const path = API_PATHS.sshUpdateServer.replace('{serverId}', encodeURIComponent(serverId));
-    return requestBackend<ApiSshUpdateServerResponse>(path, {
-      method: 'PUT',
-      body: payload,
-    });
-  },
-);
-
-ipcMain.handle(
-  'backend:ssh-get-server-credentials',
-  async (_event, serverId: string): Promise<ApiSshGetServerCredentialsResponse | ApiErrorResponse> => {
-    const path = API_PATHS.sshGetServerCredentials.replace('{serverId}', encodeURIComponent(serverId));
-    return requestBackend<ApiSshGetServerCredentialsResponse>(path, {
-      method: 'GET',
-    });
-  },
-);
-
-ipcMain.handle('backend:ssh-list-folders', async (): Promise<ApiSshListFoldersResponse | ApiErrorResponse> => {
-  return requestBackend<ApiSshListFoldersResponse>(API_PATHS.sshListFolders, { method: 'GET' });
+registerBackendIpcHandlers({
+  getLocale: () => appLocale,
+  requireBackendConfig,
+  requestBackend,
+  consumePendingLaunchWorkingDirectory,
 });
 
-ipcMain.handle(
-  'backend:ssh-create-folder',
-  async (_event, payload: ApiSshCreateFolderRequest): Promise<ApiSshCreateFolderResponse | ApiErrorResponse> => {
-    return requestBackend<ApiSshCreateFolderResponse>(API_PATHS.sshCreateFolder, {
-      method: 'POST',
-      body: payload,
-    });
-  },
-);
-
-ipcMain.handle(
-  'backend:ssh-update-folder',
-  async (
-    _event,
-    folderId: string,
-    payload: ApiSshUpdateFolderRequest,
-  ): Promise<ApiSshUpdateFolderResponse | ApiErrorResponse> => {
-    const path = API_PATHS.sshUpdateFolder.replace('{folderId}', encodeURIComponent(folderId));
-    return requestBackend<ApiSshUpdateFolderResponse>(path, {
-      method: 'PUT',
-      body: payload,
-    });
-  },
-);
-
-ipcMain.handle('backend:ssh-list-tags', async (): Promise<ApiSshListTagsResponse | ApiErrorResponse> => {
-  return requestBackend<ApiSshListTagsResponse>(API_PATHS.sshListTags, { method: 'GET' });
-});
-
-ipcMain.handle(
-  'backend:ssh-create-tag',
-  async (_event, payload: ApiSshCreateTagRequest): Promise<ApiSshCreateTagResponse | ApiErrorResponse> => {
-    return requestBackend<ApiSshCreateTagResponse>(API_PATHS.sshCreateTag, {
-      method: 'POST',
-      body: payload,
-    });
-  },
-);
-
-ipcMain.handle(
-  'backend:ssh-create-session',
-  async (
-    _event,
-    payload: ApiSshCreateSessionRequest,
-  ): Promise<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse | ApiErrorResponse> => {
-    return requestBackend<ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse>(
-      API_PATHS.sshCreateSession,
-      {
-        method: 'POST',
-        body: payload,
-      },
-    );
-  },
-);
-
-ipcMain.handle(
-  'backend:ssh-trust-fingerprint',
-  async (
-    _event,
-    payload: ApiSshTrustFingerprintRequest,
-  ): Promise<ApiSshTrustFingerprintResponse | ApiErrorResponse> => {
-    return requestBackend<ApiSshTrustFingerprintResponse>(API_PATHS.sshTrustFingerprint, {
-      method: 'POST',
-      body: payload,
-    });
-  },
-);
-
-ipcMain.handle('backend:ssh-close-session', async (_event, sessionId: string): Promise<{ success: boolean }> => {
-  const path = API_PATHS.sshCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));
-  const { port, token } = requireBackendConfig();
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-    method: 'DELETE',
-    headers: {
-      [API_HEADERS.internalToken]: token,
-      [API_HEADERS.locale]: appLocale,
-    },
-  });
-
-  return {
-    success: response.status === 204,
-  };
-});
-
-ipcMain.handle('backend:ssh-delete-server', async (_event, serverId: string): Promise<{ success: boolean }> => {
-  const path = API_PATHS.sshDeleteServer.replace('{serverId}', encodeURIComponent(serverId));
-  const { port, token } = requireBackendConfig();
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-    method: 'DELETE',
-    headers: {
-      [API_HEADERS.internalToken]: token,
-      [API_HEADERS.locale]: appLocale,
-    },
-  });
-
-  return {
-    success: response.status === 204,
-  };
-});
-
-ipcMain.handle('backend:ssh-delete-folder', async (_event, folderId: string): Promise<{ success: boolean }> => {
-  const path = API_PATHS.sshDeleteFolder.replace('{folderId}', encodeURIComponent(folderId));
-  const { port, token } = requireBackendConfig();
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-    method: 'DELETE',
-    headers: {
-      [API_HEADERS.internalToken]: token,
-      [API_HEADERS.locale]: appLocale,
-    },
-  });
-
-  return {
-    success: response.status === 204,
-  };
-});
-
-ipcMain.handle(
-  'backend:local-terminal-list-profiles',
-  async (): Promise<LocalTerminalListResponse | ApiErrorResponse> => {
-    return requestBackend<LocalTerminalListResponse>('/api/v1/local-terminals/profiles', {
-      method: 'GET',
-    });
-  },
-);
-
-ipcMain.handle(
-  'backend:local-terminal-create-session',
-  async (
-    _event,
-    payload: LocalTerminalCreateSessionRequest,
-  ): Promise<LocalTerminalCreateSessionResponse | ApiErrorResponse> => {
-    const launchWorkingDirectory = consumePendingLaunchWorkingDirectory();
-    return requestBackend<LocalTerminalCreateSessionResponse>('/api/v1/local-terminals/sessions', {
-      method: 'POST',
-      body: {
-        ...payload,
-        ...(launchWorkingDirectory ? { cwd: launchWorkingDirectory } : {}),
-      },
-    });
-  },
-);
-
-ipcMain.handle(
-  'backend:local-terminal-close-session',
-  async (_event, sessionId: string): Promise<{ success: boolean }> => {
-    const path = `/api/v1/local-terminals/sessions/${encodeURIComponent(sessionId)}`;
-    const { port, token } = requireBackendConfig();
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      method: 'DELETE',
-      headers: {
-        [API_HEADERS.internalToken]: token,
-        [API_HEADERS.locale]: appLocale,
-      },
-    });
-
-    return {
-      success: response.status === 204,
-    };
-  },
-);
-
+// -----------------------------------------------------------------------------
+// Shutdown hooks
+// -----------------------------------------------------------------------------
 app.on('before-quit', () => {
   disableI18nHotReload?.();
   disableI18nHotReload = null;

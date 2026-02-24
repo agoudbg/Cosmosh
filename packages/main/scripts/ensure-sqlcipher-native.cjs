@@ -8,6 +8,9 @@ const mainNodeModulesRoot = path.join(workspaceRoot, 'packages', 'main', 'node_m
 const packageName = 'better-sqlite3-multiple-ciphers';
 const mainPackageJsonPath = path.join(workspaceRoot, 'packages', 'main', 'package.json');
 
+/**
+ * Walks upward from a resolved module entry until it finds package.json with expected name.
+ */
 const findPackageRootFromEntry = async (entryPath, expectedPackageName) => {
   let cursor = path.dirname(entryPath);
 
@@ -34,6 +37,9 @@ const findPackageRootFromEntry = async (entryPath, expectedPackageName) => {
   }
 };
 
+/**
+ * Executes command and bubbles non-zero exits with contextual diagnostics.
+ */
 const runCommand = async (command, args, cwd, extraEnv = {}) => {
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -62,6 +68,9 @@ const runCommand = async (command, args, cwd, extraEnv = {}) => {
   });
 };
 
+/**
+ * Reads Electron semver from main package devDependencies and extracts normalized version.
+ */
 const resolveElectronVersion = async () => {
   const raw = await fs.readFile(mainPackageJsonPath, 'utf8');
   const parsed = JSON.parse(raw);
@@ -79,6 +88,9 @@ const resolveElectronVersion = async () => {
   return matched[0];
 };
 
+/**
+ * Resolves node-gyp CLI path across common installation layouts.
+ */
 const resolveNodeGypCliPath = async () => {
   const configuredNodeGyp = process.env.npm_config_node_gyp;
   if (configuredNodeGyp) {
@@ -117,6 +129,9 @@ const resolveNodeGypCliPath = async () => {
   throw new Error('Unable to locate node-gyp CLI. Install node-gyp or use a Node.js distribution that bundles npm/node-gyp.');
 };
 
+/**
+ * Rebuilds SQLCipher addon for current Electron ABI to prevent runtime native binding mismatch.
+ */
 const ensureSqlCipherNativeAddon = async () => {
   const packageEntry = require.resolve(packageName, {
     paths: [backendNodeModulesRoot, path.join(workspaceRoot, 'node_modules')],

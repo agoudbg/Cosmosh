@@ -20,6 +20,9 @@ const thirdPartyEntryPackages = [
 const workspaceRuntimePackages = ['backend', 'api-contract', 'i18n'];
 const builtInModuleNames = new Set([...builtinModules, ...builtinModules.map((moduleName) => `node:${moduleName}`)]);
 
+/**
+ * Resolves package root from any resolved entry path.
+ */
 const findPackageRootFromEntry = async (entryPath, expectedPackageName) => {
   let cursor = path.dirname(entryPath);
 
@@ -59,6 +62,9 @@ const hasExcludedPathSegment = (relativePath, excludedNames) => {
   return segments.some((segment) => excludedNames.has(segment.toLowerCase()));
 };
 
+/**
+ * Resolves runtime-specific prebuild folder prefixes for node-pty artifacts.
+ */
 const getNodePtyRuntimePrefixes = () => {
   const platform = process.platform;
   const arch = process.arch;
@@ -122,6 +128,9 @@ const excludedFileExtensions = new Set([
   '.yml',
 ]);
 
+/**
+ * Filters out development-only files to keep packaged runtime minimal and predictable.
+ */
 const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot) => {
   const relativePath = normalizeRelativePath(sourcePath, sourcePackageRoot);
 
@@ -195,6 +204,9 @@ const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot)
   return true;
 };
 
+/**
+ * Copies one npm package into runtime node_modules with packaging filter rules.
+ */
 const copyPackageToRuntime = async (packageName, sourcePackageRoot) => {
   const segments = packageName.split('/');
   const targetPackageRoot = path.join(runtimeNodeModulesRoot, ...segments);
@@ -212,6 +224,9 @@ const copyPackageToRuntime = async (packageName, sourcePackageRoot) => {
 
 const syncedThirdPartyPackages = new Set();
 
+/**
+ * Recursively syncs production dependencies while skipping built-ins and workspace packages.
+ */
 const syncPackageRecursively = async (packageName, resolvePaths) => {
   if (syncedThirdPartyPackages.has(packageName)) {
     return;
@@ -243,6 +258,9 @@ const syncPackageRecursively = async (packageName, resolvePaths) => {
   }
 };
 
+/**
+ * Starts recursion from a curated list of backend entry dependencies.
+ */
 const syncThirdPartyDependencies = async () => {
   const initialResolvePaths = [backendNodeModulesRoot, i18nNodeModulesRoot, path.join(workspaceRoot, 'node_modules')];
 
@@ -252,6 +270,9 @@ const syncThirdPartyDependencies = async () => {
   }
 };
 
+/**
+ * Copies built dist artifacts from workspace packages required by packaged backend runtime.
+ */
 const syncWorkspaceRuntimePackages = async () => {
   await fs.mkdir(runtimeCosmoshRoot, { recursive: true });
 
@@ -281,6 +302,9 @@ const syncWorkspaceRuntimePackages = async () => {
   }
 };
 
+/**
+ * Main orchestration entrypoint for runtime dependency sync.
+ */
 const syncBackendRuntime = async () => {
   await fs.mkdir(runtimeNodeModulesRoot, { recursive: true });
   await syncThirdPartyDependencies();

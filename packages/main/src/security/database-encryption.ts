@@ -4,6 +4,10 @@ import path from 'node:path';
 
 import { app, safeStorage } from 'electron';
 
+/**
+ * Persisted security config stored in userData.
+ * Only encrypted material or verification metadata is stored here.
+ */
 type DatabaseSecurityConfig = {
   encryptedDbMasterKey?: string;
   masterPasswordHash?: string;
@@ -14,6 +18,9 @@ const DATABASE_FILE_NAME = 'cosmosh.db';
 const DEV_MASTER_KEY = 'cosmosh_dev_key';
 const CONFIG_FILE_NAME = 'security.config.json';
 
+/**
+ * Resolves workspace root in development to keep local DB artifacts outside packaged runtime.
+ */
 const getProjectRootFromAppPath = (): string => {
   return path.resolve(app.getAppPath(), '../../..');
 };
@@ -50,6 +57,9 @@ const normalizeHashHex = (hash: string): Buffer => {
   return Buffer.from(hash.trim().toLowerCase(), 'hex');
 };
 
+/**
+ * Derives a deterministic password verification hash.
+ */
 const deriveMasterPasswordHash = (password: string, salt: string): string => {
   return createHash('sha256').update(`${salt}:${password}`).digest('hex');
 };
@@ -58,6 +68,10 @@ const deriveDatabaseKeyFromMasterPassword = (password: string, salt: string): st
   return scryptSync(password, salt, 32).toString('hex');
 };
 
+/**
+ * Fallback path when OS secure storage is unavailable.
+ * Production requires an externally provided master password and stored verifier metadata.
+ */
 const resolveDatabaseKeyFromMasterPasswordFallback = async (
   config: DatabaseSecurityConfig,
   isDev: boolean,
@@ -91,6 +105,10 @@ const resolveDatabaseKeyFromMasterPasswordFallback = async (
   return deriveDatabaseKeyFromMasterPassword(masterPassword, masterPasswordSalt);
 };
 
+/**
+ * Returns the SQLite file path used by backend runtime.
+ * Development and packaged modes intentionally use different storage roots.
+ */
 export const getDatabasePath = (): string => {
   const isDev = !app.isPackaged;
 
@@ -101,11 +119,18 @@ export const getDatabasePath = (): string => {
   return path.join(app.getPath('userData'), DATABASE_FILE_NAME);
 };
 
+/**
+ * Converts an absolute filesystem path to Prisma-compatible SQLite URL.
+ */
 export const toPrismaSqliteUrl = (databasePath: string): string => {
   const normalizedPath = databasePath.split(path.sep).join('/');
   return `file:${normalizedPath}`;
 };
 
+/**
+ * Resolves database encryption key with secure-storage-first strategy.
+ * In production, a random key is generated once and persisted as encrypted payload.
+ */
 export const getDatabaseEncryptionKey = async (): Promise<string> => {
   const isDev = !app.isPackaged;
 
@@ -138,6 +163,10 @@ export const getDatabaseEncryptionKey = async (): Promise<string> => {
   return resolveDatabaseKeyFromMasterPasswordFallback(config, isDev);
 };
 
+/**
+ * Exports plaintext key for controlled operational workflows.
+ * This should only be used in trusted code paths.
+ */
 export const exportPlainTextKey = async (): Promise<string> => {
   const isDev = !app.isPackaged;
   if (isDev) {

@@ -26,6 +26,9 @@ import type {
 } from '@cosmosh/api-contract';
 import { contextBridge, ipcRenderer } from 'electron';
 
+/**
+ * Runtime shape for local terminal presets returned by backend.
+ */
 type LocalTerminalProfile = {
   id: string;
   name: string;
@@ -66,9 +69,14 @@ type LocalTerminalCreateSessionResponse = {
   };
 };
 
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
+/**
+ * Exposes a minimal, allow-listed bridge API to renderer.
+ * Security boundary: renderer never gets direct access to raw `ipcRenderer`.
+ */
 contextBridge.exposeInMainWorld('electron', {
+  // ---------------------------------------------------------------------------
+  // App window and locale controls
+  // ---------------------------------------------------------------------------
   closeWindow: () => {
     ipcRenderer.send('app:close-window');
   },
@@ -92,6 +100,9 @@ contextBridge.exposeInMainWorld('electron', {
   getPendingLaunchWorkingDirectory: () => {
     return ipcRenderer.invoke('app:get-pending-launch-working-directory') as Promise<string | null>;
   },
+  /**
+   * Subscribes to launch cwd events emitted when a second instance forwards context.
+   */
   onLaunchWorkingDirectory: (listener: (cwd: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, cwd: unknown) => {
       if (typeof cwd !== 'string') {
@@ -116,6 +127,10 @@ contextBridge.exposeInMainWorld('electron', {
   openExternalUrl: (targetUrl: string) => {
     return ipcRenderer.invoke('app:open-external-url', targetUrl) as Promise<boolean>;
   },
+
+  // ---------------------------------------------------------------------------
+  // Backend settings and SSH channels
+  // ---------------------------------------------------------------------------
   backendTestPing: () => {
     return ipcRenderer.invoke('backend:test-ping') as Promise<ApiTestPingResponse | ApiErrorResponse>;
   },
@@ -183,6 +198,11 @@ contextBridge.exposeInMainWorld('electron', {
   backendSshDeleteFolder: (folderId: string) => {
     return ipcRenderer.invoke('backend:ssh-delete-folder', folderId) as Promise<{ success: boolean }>;
   },
+
+  // ---------------------------------------------------------------------------
+  // Local terminal channels
+  // ---------------------------------------------------------------------------
+  // Local terminal IPC proxy group.
   backendLocalTerminalListProfiles: () => {
     return ipcRenderer.invoke('backend:local-terminal-list-profiles') as Promise<
       LocalTerminalListResponse | ApiErrorResponse

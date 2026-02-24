@@ -7,6 +7,9 @@ const runtimeResourcesRoot = path.join(workspaceRoot, 'packages', 'main', 'resou
 const targetDir = path.join(runtimeResourcesRoot, '.prisma');
 const targetPrismaClientDir = path.join(runtimeResourcesRoot, '@prisma', 'client');
 
+/**
+ * Skips browser/WASM/typing artifacts that are unnecessary for Electron backend runtime.
+ */
 const shouldSkipPrismaArtifact = (sourcePath) => {
   const fileName = path.basename(sourcePath);
   const lowerFileName = fileName.toLowerCase();
@@ -49,6 +52,9 @@ const shouldSkipPrismaArtifact = (sourcePath) => {
   return false;
 };
 
+/**
+ * Locates prisma runtime directories from pnpm store layout.
+ */
 const findPrismaSourceDirs = async () => {
   const entries = await fs.readdir(pnpmStoreDir, { withFileTypes: true });
   const prismaClientPackageDir = entries.find(
@@ -68,6 +74,9 @@ const findPrismaSourceDirs = async () => {
   };
 };
 
+/**
+ * Synchronizes prisma runtime binaries and client package into packaged runtime node_modules.
+ */
 const syncPrismaClient = async () => {
   const { prismaRuntimeDir, prismaClientDir } = await findPrismaSourceDirs();
 

@@ -4,6 +4,9 @@ const path = require('node:path');
 const mainPackageRoot = path.resolve(__dirname, '..');
 const releaseDir = path.join(mainPackageRoot, 'release');
 
+/**
+ * Resets release output directory before packaging to avoid stale artifacts.
+ */
 const cleanupReleaseOutputDirectory = async () => {
   try {
     await fs.rm(releaseDir, { recursive: true, force: true });
@@ -15,6 +18,9 @@ const cleanupReleaseOutputDirectory = async () => {
   }
 };
 
+/**
+ * Removes legacy release directories from old build workflows.
+ */
 const cleanupLegacyReleaseArtifacts = async () => {
   const entries = await fs.readdir(mainPackageRoot, { withFileTypes: true });
 

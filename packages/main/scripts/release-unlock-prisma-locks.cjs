@@ -1,10 +1,12 @@
 const { spawnSync } = require('node:child_process');
 
+// This safeguard only applies to local Windows packaging workflows.
 if (process.platform !== 'win32') {
   console.log('[main:prebuild] Prisma lock preflight skipped on non-Windows platform.');
   process.exit(0);
 }
 
+// CI is expected to run in clean environments without lingering GUI lock holders.
 if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
   console.log('[main:prebuild] Prisma lock preflight skipped in CI environment.');
   process.exit(0);
@@ -12,6 +14,10 @@ if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
 
 const protectedPids = [process.pid, process.ppid];
 
+/**
+ * PowerShell script intentionally targets Cosmosh-related long-running processes
+ * that can keep Prisma/SQLite artifacts locked on Windows.
+ */
 const script = [
   `$protectedPids = @(${protectedPids.join(',')})`,
   "$targets = Get-CimInstance Win32_Process | Where-Object {",
