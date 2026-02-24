@@ -6,6 +6,10 @@
     "output": "release"
   },
   "npmRebuild": false,
+  "electronLanguages": [
+    "en-US",
+    "zh-CN"
+  ],
   "files": [
     "dist/**/*",
     "package.json"
