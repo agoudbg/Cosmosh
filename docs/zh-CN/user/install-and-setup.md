@@ -23,7 +23,10 @@
 
 1. 在最新 Release 下载适配芯片架构的 macOS 安装包。
 2. 将应用拖入 `Applications`。
-3. 从 Launchpad 或 Applications 启动 Cosmosh。
+3. 先从 Launchpad 或 Applications 启动一次 Cosmosh（用于初始化终端命令集成）。
+4. 在任意目录打开终端并执行 `cosmosh`，即可按该目录作为本地终端启动上下文拉起 Cosmosh。
+
+若终端仍无法识别 `cosmosh`，请手动将 `~/Library/Application Support/Cosmosh/bin` 加入 PATH，或在现有 PATH 目录中创建符号链接。
 
 ### Linux
 

@@ -23,7 +23,10 @@ If terminal-app registration is enabled, you can launch Cosmosh from terminal wi
 
 1. Download the macOS build from the latest release (for your chip architecture).
 2. Move the app to `Applications`.
-3. Start Cosmosh from Launchpad or Applications.
+3. Start Cosmosh once from Launchpad or Applications (this initializes terminal command integration).
+4. Open Terminal in any directory and run `cosmosh` to launch Cosmosh with that directory as local-terminal startup context.
+
+If your shell still cannot find `cosmosh`, manually add `~/Library/Application Support/Cosmosh/bin` to your PATH or create a symlink in a PATH directory.
 
 ### Linux
 

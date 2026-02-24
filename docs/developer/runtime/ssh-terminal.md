@@ -151,3 +151,11 @@ When SSH session behavior is wrong, verify in order:
 - `second-instance` resolution uses both CLI args and Electron `workingDirectory` as fallback, reducing context-loss cases where only focus happened.
 - On local terminal session creation (`POST /api/v1/local-terminals/sessions`), Main forwards `cwd` once.
 - Backend validates `cwd` and falls back to `os.homedir()` when path is invalid or inaccessible.
+
+## 9. macOS CLI Context-Launch to Local Terminal CWD
+
+- On packaged macOS builds, Main prepares a user-level launcher script at `~/Library/Application Support/Cosmosh/bin/cosmosh`.
+- The launcher invokes the app executable with `--working-directory "$PWD"`, so terminal launch context is inherited from the current shell directory.
+- Main tries to create a symlink to that launcher in common PATH locations (`/opt/homebrew/bin`, `/usr/local/bin`) without requiring runtime crashes on permission failures.
+- If symlink creation fails due to permission restrictions, app startup continues and warns in logs; users can add the launcher directory to PATH or create a symlink manually.
+- Once launched, context handling path is identical to Windows: Main resolves pending launch cwd and forwards it into the next local terminal session creation.

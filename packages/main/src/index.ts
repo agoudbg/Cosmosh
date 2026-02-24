@@ -87,6 +87,8 @@ let pendingLaunchWorkingDirectory: string | null = null;
 
 let appLocale = resolveLocale(process.env.COSMOSH_LOCALE, 'en');
 const DEFAULT_RENDERER_DEV_PORT = 2767;
+const MACOS_CLI_COMMAND_NAME = 'cosmosh';
+const MACOS_CLI_PREFERRED_LINK_DIRS = ['/opt/homebrew/bin', '/usr/local/bin'] as const;
 
 const resolveRendererDevPort = (): number => {
   const candidate = Number(process.env.COSMOSH_RENDERER_DEV_PORT ?? DEFAULT_RENDERER_DEV_PORT);
@@ -291,6 +293,74 @@ const resolveDataRootDir = (): string => {
   }
 
   return path.join(os.homedir(), '.local', 'share');
+};
+
+const quoteForShell = (value: string): string => {
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
+};
+
+const writeMacOsCliLauncherScript = async (launcherPath: string, executablePath: string): Promise<void> => {
+  const scriptLines = [
+    '#!/bin/sh',
+    'set -eu',
+    `exec ${quoteForShell(executablePath)} --working-directory "$PWD" "$@"`,
+    '',
+  ];
+
+  await fs.writeFile(launcherPath, scriptLines.join('\n'), { encoding: 'utf8', mode: 0o755 });
+  await fs.chmod(launcherPath, 0o755);
+};
+
+const ensureMacOsCliCommand = async (): Promise<void> => {
+  if (process.platform !== 'darwin' || !app.isPackaged) {
+    return;
+  }
+
+  const userLauncherDir = path.join(app.getPath('userData'), 'bin');
+  const launcherPath = path.join(userLauncherDir, MACOS_CLI_COMMAND_NAME);
+  const executablePath = app.getPath('exe');
+
+  try {
+    await fs.mkdir(userLauncherDir, { recursive: true });
+    await writeMacOsCliLauncherScript(launcherPath, executablePath);
+  } catch (error) {
+    console.warn('Failed to prepare macOS CLI launcher script.', error);
+    return;
+  }
+
+  for (const linkDir of MACOS_CLI_PREFERRED_LINK_DIRS) {
+    const linkPath = path.join(linkDir, MACOS_CLI_COMMAND_NAME);
+
+    try {
+      const existing = await fs.lstat(linkPath);
+      if (!existing.isSymbolicLink()) {
+        continue;
+      }
+
+      const linkTarget = await fs.readlink(linkPath);
+      const resolvedLinkTarget = path.resolve(linkDir, linkTarget);
+
+      if (resolvedLinkTarget === launcherPath) {
+        return;
+      }
+
+      continue;
+    } catch {
+      // Link does not exist or is inaccessible, continue and attempt to create it.
+    }
+
+    try {
+      await fs.symlink(launcherPath, linkPath);
+      return;
+    } catch {
+      // Skip directories requiring elevated permissions.
+    }
+  }
+
+  const currentPath = process.env.PATH ?? '';
+  if (!currentPath.split(':').includes(userLauncherDir)) {
+    console.warn(`macOS CLI command not linked to PATH. Add ${userLauncherDir} to PATH or create a symlink manually.`);
+  }
 };
 
 const hardenSecretKeyPermissions = async (secretFilePath: string): Promise<void> => {
@@ -636,6 +706,7 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     try {
+      await ensureMacOsCliCommand();
       setPendingLaunchWorkingDirectory(await resolveWorkingDirectoryFromArgv(process.argv));
 
       if (!app.isPackaged) {
