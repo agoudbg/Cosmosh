@@ -107,6 +107,8 @@
   "settings": {
     "about": {
       "appIconAlt": "Application Icon",
+      "buildTimeLabel": "Build Time",
+      "buildTimeUnknown": "Unknown",
       "copyright": "© 2026 agoudbg. All rights reserved.",
       "github": "GitHub",
       "openGithubFailed": "Failed to open GitHub link.",

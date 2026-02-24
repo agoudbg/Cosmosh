@@ -17,7 +17,7 @@ flowchart TB
 | `i18n:get-locale` | `invoke` | none | `Promise<string>` | Returns current resolved locale |
 | `i18n:set-locale` | `invoke` | `locale: string` | `Promise<string>` | Resolves/persists in-memory locale and updates title |
 | `app:get-runtime-user-name` | `invoke` | none | `Promise<string>` | Returns OS username fallback chain |
-| `app:get-version-info` | `invoke` | none | `Promise<{ appName: string; version: string; buildVersion: string }>` | 为关于页返回应用名称、版本号和内部版本号 |
+| `app:get-version-info` | `invoke` | none | `Promise<{ appName: string; version: string; buildVersion: string; buildTime: string }>` | 为关于页返回应用名称、版本号、内部版本号和构建时间 |
 | `app:get-pending-launch-working-directory` | `invoke` | none | `Promise<string \| null>` | 返回当前待消费的上下文启动工作目录（来自 CLI 参数） |
 | `app:launch-working-directory` | `event (main -> renderer)` | `cwd: string` | none | 当第二实例触发时，向渲染层推送上下文启动工作目录 |
 | `app:open-devtools` | `invoke` | none | `Promise<boolean>` | Opens devtools when unpackaged |

@@ -180,6 +180,17 @@ const consumePendingLaunchWorkingDirectory = (): string | null => {
   return current;
 };
 
+const resolveBuildTime = async (): Promise<string> => {
+  const buildTargetPath = app.isPackaged ? app.getPath('exe') : path.join(app.getAppPath(), 'package.json');
+
+  try {
+    const stats = await fs.stat(buildTargetPath);
+    return stats.mtime.toISOString();
+  } catch {
+    return '';
+  }
+};
+
 const notifyRendererLaunchWorkingDirectory = (cwd: string): void => {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
@@ -762,14 +773,16 @@ ipcMain.handle('app:get-runtime-user-name', () => {
   }
 });
 
-ipcMain.handle('app:get-version-info', () => {
+ipcMain.handle('app:get-version-info', async () => {
   const fullVersion = app.getVersion();
   const [version, buildVersion] = fullVersion.split('+');
+  const buildTime = await resolveBuildTime();
 
   return {
     appName: app.getName(),
     version,
     buildVersion,
+    buildTime,
   };
 });
 

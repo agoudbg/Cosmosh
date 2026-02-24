@@ -39,6 +39,7 @@ const DEFAULT_APP_VERSION_INFO: AppVersionInfo = {
   appName: 'Cosmosh',
   version: '0.0.0',
   buildVersion: '',
+  buildTime: '',
 };
 
 const categoryIconMap: Record<SettingsCategoryId, React.ComponentType<{ className?: string }>> = {

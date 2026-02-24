@@ -17,7 +17,7 @@ flowchart TB
 | `i18n:get-locale` | `invoke` | none | `Promise<string>` | Returns current resolved locale |
 | `i18n:set-locale` | `invoke` | `locale: string` | `Promise<string>` | Resolves/persists in-memory locale and updates title |
 | `app:get-runtime-user-name` | `invoke` | none | `Promise<string>` | Returns OS username fallback chain |
-| `app:get-version-info` | `invoke` | none | `Promise<{ appName: string; version: string; buildVersion: string }>` | Returns app display name, version, and internal build version for About page |
+| `app:get-version-info` | `invoke` | none | `Promise<{ appName: string; version: string; buildVersion: string; buildTime: string }>` | Returns app display name, version, internal build version, and build time for About page |
 | `app:get-pending-launch-working-directory` | `invoke` | none | `Promise<string \| null>` | Returns current pending context-launch working directory parsed from CLI |
 | `app:launch-working-directory` | `event (main -> renderer)` | `cwd: string` | none | Pushes context-launch working directory when a second instance is invoked |
 | `app:open-devtools` | `invoke` | none | `Promise<boolean>` | Opens devtools when unpackaged |

@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld('electron', {
       appName: string;
       version: string;
       buildVersion: string;
+      buildTime: string;
     }>;
   },
   getPendingLaunchWorkingDirectory: () => {

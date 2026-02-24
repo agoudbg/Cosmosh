@@ -7,6 +7,7 @@ export type AppVersionInfo = {
   appName: string;
   version: string;
   buildVersion: string;
+  buildTime: string;
 };
 
 type SettingsAboutSectionProps = {
@@ -15,6 +16,19 @@ type SettingsAboutSectionProps = {
 };
 
 const APP_LOGO_URL = new URL('../../assets/logo.svg', import.meta.url).href;
+
+const formatBuildTime = (buildTime: string): string => {
+  if (!buildTime) {
+    return t('settings.about.buildTimeUnknown');
+  }
+
+  const parsed = new Date(buildTime);
+  if (Number.isNaN(parsed.getTime())) {
+    return t('settings.about.buildTimeUnknown');
+  }
+
+  return parsed.toLocaleString();
+};
 
 const SettingsAboutSection: React.FC<SettingsAboutSectionProps> = ({ appVersionInfo, onOpenFailed }) => {
   const [iconLoadFailed, setIconLoadFailed] = React.useState<boolean>(false);
@@ -85,6 +99,10 @@ const SettingsAboutSection: React.FC<SettingsAboutSectionProps> = ({ appVersionI
             >
               https://cosmosh.pages.dev
             </button>
+          </div>
+          <div className="flex items-center justify-between py-1 text-sm">
+            <span className="text-home-text-subtle">{t('settings.about.buildTimeLabel')}</span>
+            <span className="text-home-text select-text">{formatBuildTime(appVersionInfo.buildTime)}</span>
           </div>
         </div>
 

@@ -84,6 +84,7 @@ declare global {
         appName: string;
         version: string;
         buildVersion: string;
+        buildTime: string;
       }>;
       getPendingLaunchWorkingDirectory: () => Promise<string | null>;
       onLaunchWorkingDirectory: (listener: (cwd: string) => void) => () => void;
