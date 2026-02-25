@@ -40,7 +40,7 @@
   "i18n-ally.disabled": false,
   "i18n-ally.extract.autoDetect": true,
   "i18n-ally.extract.keyMaxLength": 1000,
-  "i18n-ally.namespace": true,
+  "i18n-ally.namespace": false,
   "i18n-ally.autoDetection": true,
   "i18n-ally.localesPaths": [
     "packages/i18n/locales",
