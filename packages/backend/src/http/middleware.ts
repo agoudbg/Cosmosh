@@ -1,11 +1,11 @@
 import { timingSafeEqual } from 'node:crypto';
 
 import { API_CODES, API_HEADERS } from '@cosmosh/api-contract';
-import type { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 
 import { buildErrorPayload } from './errors.js';
+import { type BackendHttpApp, getTranslator, registerI18nMiddleware } from './i18n.js';
 import type { BackendAppContext } from './types.js';
 
 const DEFAULT_RENDERER_DEV_PORT = 2767;
@@ -43,9 +43,10 @@ const isValidInternalToken = (providedToken: string | undefined, expectedToken: 
 /**
  * Registers cross-cutting middleware: logging, CORS, and secure local auth guard.
  */
-export const registerCommonMiddleware = (app: Hono, context: BackendAppContext): void => {
+export const registerCommonMiddleware = (app: BackendHttpApp, context: BackendAppContext): void => {
   const rendererDevOrigin = `http://localhost:${resolveRendererDevPort()}`;
 
+  registerI18nMiddleware(app);
   app.use('*', logger());
   app.use(
     '*',
@@ -63,7 +64,10 @@ export const registerCommonMiddleware = (app: Hono, context: BackendAppContext):
 
     const providedToken = c.req.header(API_HEADERS.internalToken);
     if (!isValidInternalToken(providedToken, context.internalToken)) {
-      return c.json(buildErrorPayload(API_CODES.authInvalidToken, 'Invalid internal authentication token.'), 401);
+      return c.json(
+        buildErrorPayload(API_CODES.authInvalidToken, getTranslator(c)('errors.common.invalidInternalAuthToken')),
+        401,
+      );
     }
 
     await next();

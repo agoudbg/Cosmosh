@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { createI18n, type I18nInstance, type Locale } from '@cosmosh/i18n';
 import { type IPty, spawn as spawnPty } from 'node-pty';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 
@@ -23,6 +24,7 @@ export type LocalTerminalProfile = {
 };
 
 type CreateLocalTerminalSessionInput = {
+  locale: Locale;
   profileId: string;
   cols: number;
   rows: number;
@@ -102,6 +104,7 @@ type LocalLiveSession = {
   telemetryInterval: NodeJS.Timeout | null;
   commandBuffer: string;
   recentCommands: string[];
+  t: I18nInstance['t'];
   socket: WebSocket | null;
   disposed: boolean;
 };
@@ -288,11 +291,16 @@ export class LocalTerminalSessionService {
     this.websocketBaseUrl = `ws://${options.host}:${options.port}`;
 
     this.websocketServer.on('connection', (socket, request) => {
+      const requestTranslator = createI18n({
+        locale: String(request.headers['accept-language'] ?? 'en'),
+        scope: 'backend',
+        fallbackLocale: 'en',
+      }).t;
       const requestUrl = new URL(request.url ?? '', this.websocketBaseUrl);
       const pathPrefix = '/ws/local-terminal/';
 
       if (!requestUrl.pathname.startsWith(pathPrefix)) {
-        socket.close(1008, 'Invalid websocket path.');
+        socket.close(1008, requestTranslator('ws.invalidWebsocketPath'));
         return;
       }
 
@@ -301,12 +309,15 @@ export class LocalTerminalSessionService {
       const session = this.sessions.get(sessionId);
 
       if (!session || session.disposed || token !== session.websocketToken) {
-        socket.close(1008, 'Session is invalid or expired.');
+        socket.close(
+          1008,
+          session ? session.t('ws.sessionInvalidOrExpired') : requestTranslator('ws.sessionInvalidOrExpired'),
+        );
         return;
       }
 
       if (session.socket && session.socket.readyState === session.socket.OPEN) {
-        session.socket.close(1012, 'Session reconnected from a new client.');
+        session.socket.close(1012, session.t('ws.sessionReconnectedFromNewClient'));
       }
 
       session.socket = socket;
@@ -323,7 +334,7 @@ export class LocalTerminalSessionService {
           return;
         }
 
-        this.disposeSession(session.sessionId, 'WebSocket disconnected.');
+        this.disposeSession(session.sessionId, 'ws.websocketDisconnected');
       });
 
       socket.on('error', () => {
@@ -331,7 +342,7 @@ export class LocalTerminalSessionService {
           return;
         }
 
-        this.disposeSession(session.sessionId, 'WebSocket transport error.');
+        this.disposeSession(session.sessionId, 'ws.websocketTransportError');
       });
     });
   }
@@ -345,6 +356,7 @@ export class LocalTerminalSessionService {
   }
 
   public async createSession(input: CreateLocalTerminalSessionInput): Promise<CreateLocalTerminalSessionResult> {
+    const i18n = createI18n({ locale: input.locale, scope: 'backend', fallbackLocale: 'en' });
     const profiles = await this.listProfiles();
     const targetProfile = profiles.find((profile) => profile.id === input.profileId);
 
@@ -372,7 +384,7 @@ export class LocalTerminalSessionService {
     } catch (error: unknown) {
       return {
         type: 'failed',
-        message: error instanceof Error ? error.message : 'Failed to start local terminal process.',
+        message: error instanceof Error ? error.message : i18n.t('errors.localTerminal.processStartFailed'),
       };
     }
 
@@ -381,7 +393,7 @@ export class LocalTerminalSessionService {
     const pendingOutput: string[] = [];
 
     const attachTimeout = setTimeout(() => {
-      this.disposeSession(sessionId, 'WebSocket connection timeout.');
+      this.disposeSession(sessionId, 'ws.websocketConnectionTimeout');
     }, 30_000);
 
     const session: LocalLiveSession = {
@@ -394,6 +406,7 @@ export class LocalTerminalSessionService {
       telemetryInterval: null,
       commandBuffer: '',
       recentCommands: [],
+      t: i18n.t,
       socket: null,
       disposed: false,
     };
@@ -403,10 +416,12 @@ export class LocalTerminalSessionService {
     });
 
     pty.onExit(({ exitCode, signal }) => {
-      const reason = Number.isFinite(exitCode)
-        ? `Local terminal exited with code ${exitCode}.`
-        : `Local terminal exited (${String(signal)}).`;
-      this.disposeSession(sessionId, reason);
+      if (Number.isFinite(exitCode)) {
+        this.disposeSession(sessionId, 'ws.localTerminalExitedWithCode', { code: exitCode });
+        return;
+      }
+
+      this.disposeSession(sessionId, 'ws.localTerminalExitedWithSignal', { signal: String(signal) });
     });
 
     this.sessions.set(sessionId, session);
@@ -426,13 +441,13 @@ export class LocalTerminalSessionService {
       return false;
     }
 
-    this.disposeSession(sessionId, 'Session closed by API request.');
+    this.disposeSession(sessionId, 'ws.sessionClosedByApiRequest');
     return true;
   }
 
   public async stop(): Promise<void> {
     for (const sessionId of this.sessions.keys()) {
-      this.disposeSession(sessionId, 'Backend shutdown.');
+      this.disposeSession(sessionId, 'ws.backendShutdown');
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -478,7 +493,7 @@ export class LocalTerminalSessionService {
     if (!message) {
       this.sendServerMessage(session, {
         type: 'error',
-        message: 'Invalid websocket message format.',
+        message: session.t('ws.invalidWebsocketMessageFormat'),
       });
       return;
     }
@@ -501,14 +516,20 @@ export class LocalTerminalSessionService {
       return;
     }
 
-    this.disposeSession(session.sessionId, 'Client requested close.');
+    this.disposeSession(session.sessionId, 'ws.clientRequestedClose');
   }
 
-  private disposeSession(sessionId: string, reason: string): void {
+  private disposeSession(
+    sessionId: string,
+    reasonKey: string,
+    reasonParams?: Record<string, string | number | boolean>,
+  ): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.disposed) {
       return;
     }
+
+    const reason = session.t(reasonKey, reasonParams);
 
     session.disposed = true;
     this.sessions.delete(sessionId);

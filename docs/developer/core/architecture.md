@@ -78,6 +78,8 @@ sequenceDiagram
 - Backend is localhost-only and guarded by an internal runtime token (`COSMOSH_INTERNAL_TOKEN`) in electron-main mode.
 - Main process injects headers and never exposes internal token to renderer.
 - Credential encryption key is derived from `COSMOSH_SECRET_KEY`/internal token hash in backend bootstrap.
+- HTTP i18n is request-scoped: backend middleware resolves locale from `x-cosmosh-locale` (fallback `accept-language`), then injects a per-request translator used by all route response messages.
+- WS runtime i18n is session-scoped: session creation carries resolved locale into SSH/local terminal runtime so WS `error`/`exit` messages and close reasons are localized consistently.
 
 ### Session Channel Hardening
 

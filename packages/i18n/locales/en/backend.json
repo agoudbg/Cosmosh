@@ -1,5 +1,115 @@
 {
   "api": {
     "rootMessage": "Cosmosh Backend API"
+  },
+  "errors": {
+    "common": {
+      "internalServerError": "Internal server error.",
+      "invalidInternalAuthToken": "Invalid internal authentication token."
+    },
+    "localTerminal": {
+      "processStartFailed": "Failed to start local terminal process.",
+      "profileNotFound": "Local terminal profile was not found.",
+      "sessionCreateFailed": "Failed to create local terminal session: {reason}",
+      "sessionCreateFailedNoReason": "Failed to create local terminal session.",
+      "sessionNotFound": "Local terminal session was not found."
+    },
+    "settings": {
+      "invalidRequestPayload": "Invalid settings request payload.",
+      "rowNotPersisted": "Settings row was not persisted."
+    },
+    "ssh": {
+      "decryptCredentialsFailed": "Unable to decrypt SSH credentials. Please re-save this server credentials.",
+      "folderConflict": "A folder with this name already exists.",
+      "folderNotFound": "Folder was not found.",
+      "hostFingerprintUntrusted": "Host fingerprint is not trusted yet.",
+      "openShellFailed": "Failed to open SSH shell: {reason}",
+      "passwordNotConfigured": "Password is required but not configured for this server.",
+      "privateKeyNotConfigured": "Private key is required but not configured for this server.",
+      "serverConflict": "A server with the same host, port, and username already exists.",
+      "serverNotFound": "SSH server was not found.",
+      "sessionCreateFailed": "Failed to create SSH session: {reason}",
+      "sessionCreateFailedNoReason": "Failed to create SSH session.",
+      "sessionNotFound": "SSH session was not found.",
+      "tagConflict": "A tag with this name already exists.",
+      "tagsNotFound": "One or more tags were not found."
+    },
+    "validation": {
+      "algorithmLength": "algorithm must be 1-64 characters.",
+      "authTypeEnum": "Auth type must be one of: password, key, both.",
+      "colsRange": "cols must be an integer between 20 and 400.",
+      "connectTimeoutRange": "connectTimeoutSec must be an integer between 5 and 180.",
+      "fingerprintAlgorithmUnsupported": "Only sha256 host fingerprint algorithm is supported.",
+      "fingerprintLength": "fingerprintSha256 is required and must be 1-255 characters.",
+      "folderIdRequired": "folderId is required.",
+      "folderNameLength": "Folder name is required and must be 1-120 characters.",
+      "folderNoteLength": "Folder note must be 1000 characters or fewer.",
+      "hostLength": "Host is required and must be 1-255 characters.",
+      "invalidPayload": "Invalid request payload.",
+      "invalidPayloadDetail": "Invalid request payload: {reason}",
+      "noteLength": "Note must be 3000 characters or fewer.",
+      "passwordRequiredForAuthType": "Password is required for selected authentication type.",
+      "portRange": "Port must be an integer in range 1-65535.",
+      "privateKeyRequiredForAuthType": "Private key is required for selected authentication type.",
+      "profileIdRequired": "profileId is required.",
+      "requestBodyMustBeObject": "Request body must be a JSON object.",
+      "rowsRange": "rows must be an integer between 10 and 200.",
+      "scopeAccountIdLength": "scope.accountId must be 120 characters or fewer.",
+      "scopeDeviceIdLength": "scope.deviceId must be 120 characters or fewer.",
+      "serverIdRequired": "serverId is required.",
+      "serverNameLength": "Server name is required and must be 1-120 characters.",
+      "tagNameLength": "Tag name is required and must be 1-64 characters.",
+      "termLength": "term must be a string between 2 and 64 characters.",
+      "usernameLength": "Username is required and must be 1-120 characters."
+    }
+  },
+  "settings": {
+    "validation": {
+      "invalid": "Invalid setting field: {key}",
+      "notObject": "Request body must be a JSON object."
+    }
+  },
+  "success": {
+    "localTerminal": {
+      "profilesFetched": "Local terminal profiles fetched successfully.",
+      "sessionCreated": "Local terminal session created successfully."
+    },
+    "settings": {
+      "fetched": "Settings fetched successfully.",
+      "updated": "Settings updated successfully."
+    },
+    "ssh": {
+      "folderCreated": "SSH folder created successfully.",
+      "foldersFetched": "SSH folders fetched successfully.",
+      "folderUpdated": "SSH folder updated successfully.",
+      "hostFingerprintTrusted": "Host fingerprint trusted successfully.",
+      "serverCreated": "SSH server created successfully.",
+      "serverCredentialsFetched": "SSH server credentials fetched successfully.",
+      "serversFetched": "SSH servers fetched successfully.",
+      "serverUpdated": "SSH server updated successfully.",
+      "sessionCreated": "SSH session created successfully.",
+      "tagCreated": "SSH tag created successfully.",
+      "tagsFetched": "SSH tags fetched successfully."
+    },
+    "system": {
+      "backendConnectionHealthy": "Backend connection is healthy."
+    }
+  },
+  "ws": {
+    "backendShutdown": "Backend shutdown.",
+    "clientRequestedClose": "Client requested close.",
+    "invalidWebsocketMessageFormat": "Invalid websocket message format.",
+    "invalidWebsocketPath": "Invalid websocket path.",
+    "localTerminalExitedWithCode": "Local terminal exited with code {code}.",
+    "localTerminalExitedWithSignal": "Local terminal exited ({signal}).",
+    "sessionClosedByApiRequest": "Session closed by API request.",
+    "sessionInvalidOrExpired": "Session is invalid or expired.",
+    "sessionReconnectedFromNewClient": "Session reconnected from a new client.",
+    "sshConnectionClosed": "SSH connection closed.",
+    "sshConnectionError": "SSH connection error.",
+    "sshStreamClosed": "SSH stream closed.",
+    "websocketConnectionTimeout": "WebSocket connection timeout.",
+    "websocketDisconnected": "WebSocket disconnected.",
+    "websocketTransportError": "WebSocket transport error."
   }
 }

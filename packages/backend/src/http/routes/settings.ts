@@ -7,7 +7,6 @@ import {
   type ApiSettingsUpdateResponse,
   createApiSuccess,
 } from '@cosmosh/api-contract';
-import type { Hono } from 'hono';
 
 import {
   DEFAULT_SETTINGS_SCOPE,
@@ -15,6 +14,7 @@ import {
   parseStoredSettingsValues,
 } from '../../settings/validation.js';
 import { buildErrorPayload } from '../errors.js';
+import { type BackendHttpApp, getTranslator } from '../i18n.js';
 import type { BackendAppContext } from '../types.js';
 
 /**
@@ -81,14 +81,15 @@ const toIsoTimestamp = (value: Date | string): string => {
 /**
  * Registers settings read/update routes.
  */
-export const registerSettingsRoutes = (app: Hono, context: BackendAppContext): void => {
+export const registerSettingsRoutes = (app: BackendHttpApp, context: BackendAppContext): void => {
   app.get(API_PATHS.settingsGet, async (c) => {
+    const t = getTranslator(c);
     const scopeColumns = toScopeColumns(DEFAULT_SETTINGS_SCOPE);
     const row = await findSettingsRow(context, scopeColumns);
 
     const payload: ApiSettingsGetResponse = createApiSuccess({
       code: API_CODES.settingsGetOk,
-      message: 'Settings fetched successfully.',
+      message: t('success.settings.fetched'),
       data: {
         item: {
           scope: toScopePayload(scopeColumns.scopeAccountId, scopeColumns.scopeDeviceId),
@@ -103,12 +104,13 @@ export const registerSettingsRoutes = (app: Hono, context: BackendAppContext): v
   });
 
   app.put(API_PATHS.settingsUpdate, async (c) => {
+    const t = getTranslator(c);
     const parsed = parseSettingsUpdateRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
       return c.json(
         buildErrorPayload(
           API_CODES.settingsValidationFailed,
-          parsed.error?.fallbackMessage ?? 'Invalid settings request payload.',
+          parsed.error ? t(parsed.error.i18nKey, parsed.error.params) : t('errors.settings.invalidRequestPayload'),
         ),
         400,
       );
@@ -146,12 +148,12 @@ export const registerSettingsRoutes = (app: Hono, context: BackendAppContext): v
     const row = await findSettingsRow(context, scopeColumns);
 
     if (!row) {
-      return c.json(buildErrorPayload(API_CODES.settingsValidationFailed, 'Settings row was not persisted.'), 400);
+      return c.json(buildErrorPayload(API_CODES.settingsValidationFailed, t('errors.settings.rowNotPersisted')), 400);
     }
 
     const payload: ApiSettingsUpdateResponse = createApiSuccess({
       code: API_CODES.settingsUpdateOk,
-      message: 'Settings updated successfully.',
+      message: t('success.settings.updated'),
       data: {
         item: {
           scope: toScopePayload(row.scopeAccountId, row.scopeDeviceId),

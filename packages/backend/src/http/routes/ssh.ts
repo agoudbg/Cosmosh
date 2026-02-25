@@ -18,7 +18,6 @@ import {
   createApiSuccess,
 } from '@cosmosh/api-contract';
 import prismaClientPackage from '@prisma/client';
-import type { Hono } from 'hono';
 
 const { Prisma } = prismaClientPackage;
 
@@ -34,13 +33,15 @@ import {
   parseUpdateServerRequest,
 } from '../../ssh/validation.js';
 import { buildErrorPayload } from '../errors.js';
+import { type BackendHttpApp, getTranslator, translateValidationMessage } from '../i18n.js';
 import type { BackendAppContext } from '../types.js';
 
 /**
  * Registers SSH domain routes for folders, tags, servers, credentials, and sessions.
  */
-export const registerSshRoutes = (app: Hono, context: BackendAppContext): void => {
+export const registerSshRoutes = (app: BackendHttpApp, context: BackendAppContext): void => {
   app.get(API_PATHS.sshListFolders, async (c) => {
+    const t = getTranslator(c);
     const db = context.getDbClient();
     const folders = await db.sshFolder.findMany({
       orderBy: {
@@ -50,7 +51,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
     const payload: ApiSshListFoldersResponse = createApiSuccess({
       code: API_CODES.sshFolderListOk,
-      message: 'SSH folders fetched successfully.',
+      message: t('success.ssh.foldersFetched'),
       data: {
         items: folders.map((folder) => ({
           id: folder.id,
@@ -66,9 +67,16 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.post(API_PATHS.sshCreateFolder, async (c) => {
+    const t = getTranslator(c);
     const parsed = parseCreateFolderRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+      return c.json(
+        buildErrorPayload(
+          API_CODES.sshValidationFailed,
+          parsed.error ? t(parsed.error.i18nKey, parsed.error.params) : t('errors.validation.invalidPayload'),
+        ),
+        400,
+      );
     }
 
     try {
@@ -82,7 +90,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
       const payload: ApiSshCreateFolderResponse = createApiSuccess({
         code: API_CODES.sshFolderCreateOk,
-        message: 'SSH folder created successfully.',
+        message: t('success.ssh.folderCreated'),
         data: {
           item: {
             id: folder.id,
@@ -97,7 +105,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       return c.json(payload);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return c.json(buildErrorPayload(API_CODES.sshFolderConflict, 'A folder with this name already exists.'), 409);
+        return c.json(buildErrorPayload(API_CODES.sshFolderConflict, t('errors.ssh.folderConflict')), 409);
       }
 
       throw error;
@@ -105,15 +113,22 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.put(API_PATHS.sshUpdateFolder.replace('{folderId}', ':folderId'), async (c) => {
+    const t = getTranslator(c);
     const folderId = c.req.param('folderId');
 
     if (!folderId) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, 'folderId is required.'), 400);
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.folderIdRequired')), 400);
     }
 
     const parsed = parseUpdateFolderRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+      return c.json(
+        buildErrorPayload(
+          API_CODES.sshValidationFailed,
+          parsed.error ? t(parsed.error.i18nKey, parsed.error.params) : t('errors.validation.invalidPayload'),
+        ),
+        400,
+      );
     }
 
     try {
@@ -130,7 +145,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
       const payload: ApiSshUpdateFolderResponse = createApiSuccess({
         code: API_CODES.sshFolderUpdateOk,
-        message: 'SSH folder updated successfully.',
+        message: t('success.ssh.folderUpdated'),
         data: {
           item: {
             id: folder.id,
@@ -145,11 +160,11 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       return c.json(payload);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-        return c.json(buildErrorPayload(API_CODES.sshNotFound, 'Folder was not found.'), 404);
+        return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.folderNotFound')), 404);
       }
 
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return c.json(buildErrorPayload(API_CODES.sshFolderConflict, 'A folder with this name already exists.'), 409);
+        return c.json(buildErrorPayload(API_CODES.sshFolderConflict, t('errors.ssh.folderConflict')), 409);
       }
 
       throw error;
@@ -157,6 +172,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.get(API_PATHS.sshListTags, async (c) => {
+    const t = getTranslator(c);
     const db = context.getDbClient();
     const tags = await db.sshTag.findMany({
       orderBy: {
@@ -166,7 +182,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
     const payload: ApiSshListTagsResponse = createApiSuccess({
       code: API_CODES.sshTagListOk,
-      message: 'SSH tags fetched successfully.',
+      message: t('success.ssh.tagsFetched'),
       data: {
         items: tags.map((tag) => ({
           id: tag.id,
@@ -181,9 +197,16 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.post(API_PATHS.sshCreateTag, async (c) => {
+    const t = getTranslator(c);
     const parsed = parseCreateTagRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+      return c.json(
+        buildErrorPayload(
+          API_CODES.sshValidationFailed,
+          parsed.error ? t(parsed.error.i18nKey, parsed.error.params) : t('errors.validation.invalidPayload'),
+        ),
+        400,
+      );
     }
 
     try {
@@ -196,7 +219,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
       const payload: ApiSshCreateTagResponse = createApiSuccess({
         code: API_CODES.sshTagCreateOk,
-        message: 'SSH tag created successfully.',
+        message: t('success.ssh.tagCreated'),
         data: {
           item: {
             id: tag.id,
@@ -210,7 +233,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       return c.json(payload);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return c.json(buildErrorPayload(API_CODES.sshTagConflict, 'A tag with this name already exists.'), 409);
+        return c.json(buildErrorPayload(API_CODES.sshTagConflict, t('errors.ssh.tagConflict')), 409);
       }
 
       throw error;
@@ -218,6 +241,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.get(API_PATHS.sshListServers, async (c) => {
+    const t = getTranslator(c);
     const db = context.getDbClient();
     const servers = await db.sshServer.findMany({
       include: serverQueryInclude,
@@ -228,7 +252,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
     const payload: ApiSshListServersResponse = createApiSuccess({
       code: API_CODES.sshServerListOk,
-      message: 'SSH servers fetched successfully.',
+      message: t('success.ssh.serversFetched'),
       data: {
         items: servers.map(mapServerToListItem),
       },
@@ -238,9 +262,16 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.post(API_PATHS.sshCreateServer, async (c) => {
+    const t = getTranslator(c);
     const parsed = parseCreateServerRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+      return c.json(
+        buildErrorPayload(
+          API_CODES.sshValidationFailed,
+          parsed.error ? t(parsed.error.i18nKey, parsed.error.params) : t('errors.validation.invalidPayload'),
+        ),
+        400,
+      );
     }
 
     const db = context.getDbClient();
@@ -253,7 +284,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       });
 
       if (!folder) {
-        return c.json(buildErrorPayload(API_CODES.sshNotFound, 'Folder was not found.'), 400);
+        return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.folderNotFound')), 400);
       }
     }
 
@@ -270,7 +301,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       });
 
       if (existingTags.length !== tagIds.length) {
-        return c.json(buildErrorPayload(API_CODES.sshNotFound, 'One or more tags were not found.'), 400);
+        return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.tagsNotFound')), 400);
       }
     }
 
@@ -308,7 +339,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
       const payload: ApiSshCreateServerResponse = createApiSuccess({
         code: API_CODES.sshServerCreateOk,
-        message: 'SSH server created successfully.',
+        message: t('success.ssh.serverCreated'),
         data: {
           item: mapServerToListItem(server),
         },
@@ -317,13 +348,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       return c.json(payload);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return c.json(
-          buildErrorPayload(
-            API_CODES.sshServerConflict,
-            'A server with the same host, port, and username already exists.',
-          ),
-          409,
-        );
+        return c.json(buildErrorPayload(API_CODES.sshServerConflict, t('errors.ssh.serverConflict')), 409);
       }
 
       throw error;
@@ -331,14 +356,21 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.put(API_PATHS.sshUpdateServer.replace('{serverId}', ':serverId'), async (c) => {
+    const t = getTranslator(c);
     const serverId = c.req.param('serverId');
     if (!serverId) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, 'serverId is required.'), 400);
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.serverIdRequired')), 400);
     }
 
     const parsed = parseUpdateServerRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+      return c.json(
+        buildErrorPayload(
+          API_CODES.sshValidationFailed,
+          parsed.error ? t(parsed.error.i18nKey, parsed.error.params) : t('errors.validation.invalidPayload'),
+        ),
+        400,
+      );
     }
 
     const db = context.getDbClient();
@@ -357,7 +389,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
     });
 
     if (!existingServer) {
-      return c.json(buildErrorPayload(API_CODES.sshNotFound, 'SSH server was not found.'), 404);
+      return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.serverNotFound')), 404);
     }
 
     if (parsed.value.folderId) {
@@ -367,7 +399,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       });
 
       if (!folder) {
-        return c.json(buildErrorPayload(API_CODES.sshNotFound, 'Folder was not found.'), 400);
+        return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.folderNotFound')), 400);
       }
     }
 
@@ -384,7 +416,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       });
 
       if (existingTags.length !== tagIds.length) {
-        return c.json(buildErrorPayload(API_CODES.sshNotFound, 'One or more tags were not found.'), 400);
+        return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.tagsNotFound')), 400);
       }
     }
 
@@ -411,14 +443,14 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
     if (shouldUsePassword && !passwordEncrypted) {
       return c.json(
-        buildErrorPayload(API_CODES.sshValidationFailed, 'Password is required for selected authentication type.'),
+        buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.passwordRequiredForAuthType')),
         400,
       );
     }
 
     if (shouldUsePrivateKey && !privateKeyEncrypted) {
       return c.json(
-        buildErrorPayload(API_CODES.sshValidationFailed, 'Private key is required for selected authentication type.'),
+        buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.privateKeyRequiredForAuthType')),
         400,
       );
     }
@@ -459,7 +491,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
 
       const payload: ApiSshUpdateServerResponse = createApiSuccess({
         code: API_CODES.sshServerUpdateOk,
-        message: 'SSH server updated successfully.',
+        message: t('success.ssh.serverUpdated'),
         data: {
           item: mapServerToListItem(server),
         },
@@ -468,13 +500,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       return c.json(payload);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return c.json(
-          buildErrorPayload(
-            API_CODES.sshServerConflict,
-            'A server with the same host, port, and username already exists.',
-          ),
-          409,
-        );
+        return c.json(buildErrorPayload(API_CODES.sshServerConflict, t('errors.ssh.serverConflict')), 409);
       }
 
       throw error;
@@ -482,10 +508,11 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.delete(API_PATHS.sshDeleteServer.replace('{serverId}', ':serverId'), async (c) => {
+    const t = getTranslator(c);
     const serverId = c.req.param('serverId');
 
     if (!serverId) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, 'serverId is required.'), 400);
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.serverIdRequired')), 400);
     }
 
     const db = context.getDbClient();
@@ -500,7 +527,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       return c.body(null, 204);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-        return c.json(buildErrorPayload(API_CODES.sshNotFound, 'SSH server was not found.'), 404);
+        return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.serverNotFound')), 404);
       }
 
       throw error;
@@ -508,10 +535,11 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.get(API_PATHS.sshGetServerCredentials.replace('{serverId}', ':serverId'), async (c) => {
+    const t = getTranslator(c);
     const serverId = c.req.param('serverId');
 
     if (!serverId) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, 'serverId is required.'), 400);
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.serverIdRequired')), 400);
     }
 
     const db = context.getDbClient();
@@ -529,12 +557,12 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
     });
 
     if (!server) {
-      return c.json(buildErrorPayload(API_CODES.sshNotFound, 'SSH server was not found.'), 404);
+      return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.serverNotFound')), 404);
     }
 
     const payload: ApiSshGetServerCredentialsResponse = createApiSuccess({
       code: API_CODES.sshServerCredentialsOk,
-      message: 'SSH server credentials fetched successfully.',
+      message: t('success.ssh.serverCredentialsFetched'),
       data: {
         authType: server.authType,
         password: server.passwordEncrypted
@@ -553,10 +581,11 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.delete(API_PATHS.sshDeleteFolder.replace('{folderId}', ':folderId'), async (c) => {
+    const t = getTranslator(c);
     const folderId = c.req.param('folderId');
 
     if (!folderId) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, 'folderId is required.'), 400);
+      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.folderIdRequired')), 400);
     }
 
     const db = context.getDbClient();
@@ -571,7 +600,7 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
       return c.body(null, 204);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-        return c.json(buildErrorPayload(API_CODES.sshNotFound, 'Folder was not found.'), 404);
+        return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.folderNotFound')), 404);
       }
 
       throw error;
@@ -579,22 +608,32 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.post(API_PATHS.sshCreateSession, async (c) => {
+    const t = getTranslator(c);
     const parsed = parseCreateSessionRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+      return c.json(
+        buildErrorPayload(
+          API_CODES.sshValidationFailed,
+          parsed.error ? t(parsed.error.i18nKey, parsed.error.params) : t('errors.validation.invalidPayload'),
+        ),
+        400,
+      );
     }
 
-    const result = await context.sshSessionService.createSession(parsed.value);
+    const result = await context.sshSessionService.createSession({
+      ...parsed.value,
+      locale: c.get('locale'),
+    });
 
     if (result.type === 'not-found') {
-      return c.json(buildErrorPayload(API_CODES.sshNotFound, 'SSH server was not found.'), 404);
+      return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.serverNotFound')), 404);
     }
 
     if (result.type === 'host-untrusted') {
       const payload: ApiSshCreateSessionHostVerificationRequiredResponse = {
         success: false,
         code: API_CODES.sshHostUntrusted,
-        message: 'Host fingerprint is not trusted yet.',
+        message: t('errors.ssh.hostFingerprintUntrusted'),
         requestId: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
         data: {
@@ -610,12 +649,22 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
     }
 
     if (result.type === 'failed') {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, result.message), 400);
+      return c.json(
+        buildErrorPayload(
+          API_CODES.sshValidationFailed,
+          translateValidationMessage(
+            result.message,
+            t('errors.ssh.sessionCreateFailed', { reason: result.message }),
+            t('errors.ssh.sessionCreateFailedNoReason'),
+          ),
+        ),
+        400,
+      );
     }
 
     const payload: ApiSshCreateSessionResponse = createApiSuccess({
       code: API_CODES.sshSessionCreateOk,
-      message: 'SSH session created successfully.',
+      message: t('success.ssh.sessionCreated'),
       data: {
         sessionId: result.sessionId,
         serverId: result.serverId,
@@ -628,20 +677,27 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.post(API_PATHS.sshTrustFingerprint, async (c) => {
+    const t = getTranslator(c);
     const parsed = parseTrustFingerprintRequest(await c.req.json().catch(() => undefined));
     if (!parsed.value) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, parsed.error ?? 'Invalid request payload.'), 400);
+      return c.json(
+        buildErrorPayload(
+          API_CODES.sshValidationFailed,
+          parsed.error ? t(parsed.error.i18nKey, parsed.error.params) : t('errors.validation.invalidPayload'),
+        ),
+        400,
+      );
     }
 
     const result = await context.sshSessionService.trustFingerprint(parsed.value);
 
     if (result.type === 'not-found') {
-      return c.json(buildErrorPayload(API_CODES.sshNotFound, 'SSH server was not found.'), 404);
+      return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.ssh.serverNotFound')), 404);
     }
 
     const payload: ApiSshTrustFingerprintResponse = createApiSuccess({
       code: API_CODES.sshTrustFingerprintOk,
-      message: 'Host fingerprint trusted successfully.',
+      message: t('success.ssh.hostFingerprintTrusted'),
       data: {
         trusted: true,
       },
@@ -651,9 +707,10 @@ export const registerSshRoutes = (app: Hono, context: BackendAppContext): void =
   });
 
   app.delete(API_PATHS.sshCloseSession.replace('{sessionId}', ':sessionId'), async (c) => {
+    const t = getTranslator(c);
     const sessionId = c.req.param('sessionId');
     if (!sessionId || !context.sshSessionService.closeSession(sessionId)) {
-      return c.json(buildErrorPayload(API_CODES.sshSessionNotFound, 'SSH session was not found.'), 404);
+      return c.json(buildErrorPayload(API_CODES.sshSessionNotFound, t('errors.ssh.sessionNotFound')), 404);
     }
 
     return c.body(null, 204);

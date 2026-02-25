@@ -1,24 +1,22 @@
 import {
   API_CAPABILITIES,
   API_CODES,
-  API_HEADERS,
   API_PATHS,
   type ApiTestPingResponse,
   createApiSuccess,
 } from '@cosmosh/api-contract';
-import { createI18n, resolveLocale } from '@cosmosh/i18n';
-import type { Hono } from 'hono';
+
+import { type BackendHttpApp, getTranslator } from '../i18n.js';
 
 /**
  * Registers public/system routes (root metadata, health, and connectivity test).
  */
-export const registerSystemRoutes = (app: Hono): void => {
+export const registerSystemRoutes = (app: BackendHttpApp): void => {
   app.get('/', (c) => {
-    const requestLocale = resolveLocale(c.req.header(API_HEADERS.locale) ?? c.req.header('accept-language'), 'en');
-    const i18n = createI18n({ locale: requestLocale, scope: 'backend', fallbackLocale: 'en' });
+    const t = getTranslator(c);
 
     return c.json({
-      message: i18n.t('api.rootMessage'),
+      message: t('api.rootMessage'),
       version: '0.1.0',
       status: 'running',
     });
@@ -29,9 +27,11 @@ export const registerSystemRoutes = (app: Hono): void => {
   });
 
   app.get(API_PATHS.testPing, (c) => {
+    const t = getTranslator(c);
+
     const payload: ApiTestPingResponse = createApiSuccess({
       code: API_CODES.testPingOk,
-      message: 'Backend connection is healthy.',
+      message: t('success.system.backendConnectionHealthy'),
       data: {
         service: 'cosmosh-backend',
         mode: 'electron-main',

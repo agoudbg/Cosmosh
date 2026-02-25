@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
+import { createI18n, type I18nInstance, type Locale } from '@cosmosh/i18n';
 import type { PrismaClient, SshServer } from '@prisma/client';
 import { Client, type ClientChannel, type ConnectConfig } from 'ssh2';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
@@ -9,6 +10,7 @@ import { decryptSensitiveValue } from './crypto.js';
 type GetDbClient = () => PrismaClient;
 
 type CreateSshSessionInput = {
+  locale: Locale;
   serverId: string;
   cols: number;
   rows: number;
@@ -132,6 +134,7 @@ type SshLiveSession = {
   commandBuffer: string;
   commandCount: number;
   recentCommands: string[];
+  t: I18nInstance['t'];
   socket: WebSocket | null;
   disposed: boolean;
 };
@@ -222,11 +225,16 @@ export class SshSessionService {
     this.websocketBaseUrl = `ws://${options.host}:${options.port}`;
 
     this.websocketServer.on('connection', (socket, request) => {
+      const requestTranslator = createI18n({
+        locale: String(request.headers['accept-language'] ?? 'en'),
+        scope: 'backend',
+        fallbackLocale: 'en',
+      }).t;
       const requestUrl = new URL(request.url ?? '', this.websocketBaseUrl);
       const pathPrefix = '/ws/ssh/';
 
       if (!requestUrl.pathname.startsWith(pathPrefix)) {
-        socket.close(1008, 'Invalid websocket path.');
+        socket.close(1008, requestTranslator('ws.invalidWebsocketPath'));
         return;
       }
 
@@ -235,12 +243,15 @@ export class SshSessionService {
       const session = this.sessions.get(sessionId);
 
       if (!session || session.disposed || token !== session.websocketToken) {
-        socket.close(1008, 'Session is invalid or expired.');
+        socket.close(
+          1008,
+          session ? session.t('ws.sessionInvalidOrExpired') : requestTranslator('ws.sessionInvalidOrExpired'),
+        );
         return;
       }
 
       if (session.socket && session.socket.readyState === session.socket.OPEN) {
-        session.socket.close(1012, 'Session reconnected from a new client.');
+        session.socket.close(1012, session.t('ws.sessionReconnectedFromNewClient'));
       }
 
       session.socket = socket;
@@ -257,7 +268,7 @@ export class SshSessionService {
           return;
         }
 
-        this.disposeSession(session.sessionId, 'WebSocket disconnected.');
+        this.disposeSession(session.sessionId, 'ws.websocketDisconnected');
       });
 
       socket.on('error', () => {
@@ -265,7 +276,7 @@ export class SshSessionService {
           return;
         }
 
-        this.disposeSession(session.sessionId, 'WebSocket transport error.');
+        this.disposeSession(session.sessionId, 'ws.websocketTransportError');
       });
     });
   }
@@ -275,6 +286,7 @@ export class SshSessionService {
   }
 
   public async createSession(input: CreateSshSessionInput): Promise<CreateSshSessionResult> {
+    const i18n = createI18n({ locale: input.locale, scope: 'backend', fallbackLocale: 'en' });
     const db = this.getDbClient();
     const server = await db.sshServer.findUnique({
       where: {
@@ -307,6 +319,7 @@ export class SshSessionService {
       term: input.term,
       connectTimeoutSec: input.connectTimeoutSec,
       trustedFingerprintSet,
+      t: i18n.t,
       onOutput: (data) => {
         if (liveSession) {
           this.sendServerMessage(liveSession, {
@@ -354,7 +367,7 @@ export class SshSessionService {
     const websocketToken = randomBytes(24).toString('hex');
 
     const attachTimeout = setTimeout(() => {
-      this.disposeSession(sessionId, 'WebSocket connection timeout.');
+      this.disposeSession(sessionId, 'ws.websocketConnectionTimeout');
     }, 30_000);
 
     const loginAuditId = await this.createLoginAudit({
@@ -378,16 +391,17 @@ export class SshSessionService {
       commandBuffer: '',
       commandCount: 0,
       recentCommands: [],
+      t: i18n.t,
       socket: null,
       disposed: false,
     };
 
     shellResult.stream.on('close', () => {
-      this.disposeSession(sessionId, 'SSH stream closed.');
+      this.disposeSession(sessionId, 'ws.sshStreamClosed');
     });
 
     shellResult.client.on('close', () => {
-      this.disposeSession(sessionId, 'SSH connection closed.');
+      this.disposeSession(sessionId, 'ws.sshConnectionClosed');
     });
 
     shellResult.client.on('error', (error: Error) => {
@@ -395,7 +409,7 @@ export class SshSessionService {
         type: 'error',
         message: error.message,
       });
-      this.disposeSession(sessionId, 'SSH connection error.');
+      this.disposeSession(sessionId, 'ws.sshConnectionError');
     });
 
     this.sessions.set(sessionId, liveSession);
@@ -471,13 +485,13 @@ export class SshSessionService {
       return false;
     }
 
-    this.disposeSession(sessionId, 'Session closed by API request.');
+    this.disposeSession(sessionId, 'ws.sessionClosedByApiRequest');
     return true;
   }
 
   public async stop(): Promise<void> {
     for (const sessionId of this.sessions.keys()) {
-      this.disposeSession(sessionId, 'Backend shutdown.');
+      this.disposeSession(sessionId, 'ws.backendShutdown');
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -523,7 +537,7 @@ export class SshSessionService {
     if (!message) {
       this.sendServerMessage(session, {
         type: 'error',
-        message: 'Invalid websocket message format.',
+        message: session.t('ws.invalidWebsocketMessageFormat'),
       });
       return;
     }
@@ -546,14 +560,20 @@ export class SshSessionService {
       return;
     }
 
-    this.disposeSession(session.sessionId, 'Client requested close.');
+    this.disposeSession(session.sessionId, 'ws.clientRequestedClose');
   }
 
-  private disposeSession(sessionId: string, reason: string): void {
+  private disposeSession(
+    sessionId: string,
+    reasonKey: string,
+    reasonParams?: Record<string, string | number | boolean>,
+  ): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.disposed) {
       return;
     }
+
+    const reason = session.t(reasonKey, reasonParams);
 
     session.disposed = true;
     this.sessions.delete(sessionId);
@@ -826,6 +846,7 @@ export class SshSessionService {
       term: string;
       connectTimeoutSec: number;
       trustedFingerprintSet: Set<string>;
+      t: I18nInstance['t'];
       onOutput: (data: string) => void;
     },
   ): Promise<OpenShellResult> {
@@ -851,7 +872,7 @@ export class SshSessionService {
         if (!server.passwordEncrypted) {
           return {
             type: 'failed',
-            message: 'Password is required but not configured for this server.',
+            message: options.t('errors.ssh.passwordNotConfigured'),
           };
         }
 
@@ -862,7 +883,7 @@ export class SshSessionService {
         if (!server.privateKeyEncrypted) {
           return {
             type: 'failed',
-            message: 'Private key is required but not configured for this server.',
+            message: options.t('errors.ssh.privateKeyNotConfigured'),
           };
         }
 
@@ -875,13 +896,10 @@ export class SshSessionService {
           );
         }
       }
-    } catch (error: unknown) {
+    } catch {
       return {
         type: 'failed',
-        message:
-          error instanceof Error
-            ? `Unable to decrypt SSH credentials: ${error.message}. Please re-save this server credentials.`
-            : 'Unable to decrypt SSH credentials. Please re-save this server credentials.',
+        message: options.t('errors.ssh.decryptCredentialsFailed'),
       };
     }
 
@@ -907,7 +925,7 @@ export class SshSessionService {
             client.end();
             settle({
               type: 'failed',
-              message: `Failed to open SSH shell: ${error.message}`,
+              message: options.t('errors.ssh.openShellFailed', { reason: error.message }),
             });
             return;
           }

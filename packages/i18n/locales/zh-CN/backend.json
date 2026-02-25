@@ -1,5 +1,115 @@
 {
   "api": {
     "rootMessage": "Cosmosh 后端 API"
+  },
+  "errors": {
+    "common": {
+      "internalServerError": "服务器内部错误。",
+      "invalidInternalAuthToken": "内部鉴权令牌无效。"
+    },
+    "localTerminal": {
+      "processStartFailed": "本地终端进程启动失败。",
+      "profileNotFound": "未找到本地终端配置。",
+      "sessionCreateFailed": "本地终端会话创建失败：{reason}",
+      "sessionCreateFailedNoReason": "本地终端会话创建失败。",
+      "sessionNotFound": "未找到本地终端会话。"
+    },
+    "settings": {
+      "invalidRequestPayload": "设置请求载荷无效。",
+      "rowNotPersisted": "设置记录未持久化。"
+    },
+    "ssh": {
+      "decryptCredentialsFailed": "SSH 凭据解密失败，请重新保存该服务器凭据。",
+      "folderConflict": "已存在同名文件夹。",
+      "folderNotFound": "未找到文件夹。",
+      "hostFingerprintUntrusted": "主机指纹尚未被信任。",
+      "openShellFailed": "打开 SSH Shell 失败：{reason}",
+      "passwordNotConfigured": "该服务器需要密码认证，但未配置密码。",
+      "privateKeyNotConfigured": "该服务器需要私钥认证，但未配置私钥。",
+      "serverConflict": "已存在相同主机、端口和用户名的服务器。",
+      "serverNotFound": "未找到 SSH 服务器。",
+      "sessionCreateFailed": "SSH 会话创建失败：{reason}",
+      "sessionCreateFailedNoReason": "SSH 会话创建失败。",
+      "sessionNotFound": "未找到 SSH 会话。",
+      "tagConflict": "已存在同名标签。",
+      "tagsNotFound": "一个或多个标签未找到。"
+    },
+    "validation": {
+      "algorithmLength": "algorithm 长度需在 1-64 个字符之间。",
+      "authTypeEnum": "认证类型必须是 password、key 或 both 之一。",
+      "colsRange": "cols 必须是 20 到 400 之间的整数。",
+      "connectTimeoutRange": "connectTimeoutSec 必须是 5 到 180 之间的整数。",
+      "fingerprintAlgorithmUnsupported": "仅支持 sha256 主机指纹算法。",
+      "fingerprintLength": "fingerprintSha256 为必填，长度需在 1-255 个字符之间。",
+      "folderIdRequired": "folderId 为必填项。",
+      "folderNameLength": "文件夹名称为必填，长度需在 1-120 个字符之间。",
+      "folderNoteLength": "文件夹备注长度不能超过 1000 个字符。",
+      "hostLength": "主机地址为必填，长度需在 1-255 个字符之间。",
+      "invalidPayload": "请求载荷无效。",
+      "invalidPayloadDetail": "请求载荷无效：{reason}",
+      "noteLength": "备注长度不能超过 3000 个字符。",
+      "passwordRequiredForAuthType": "所选认证类型必须提供密码。",
+      "portRange": "端口必须是 1-65535 范围内的整数。",
+      "privateKeyRequiredForAuthType": "所选认证类型必须提供私钥。",
+      "profileIdRequired": "profileId 为必填项。",
+      "requestBodyMustBeObject": "请求体必须是 JSON 对象。",
+      "rowsRange": "rows 必须是 10 到 200 之间的整数。",
+      "scopeAccountIdLength": "scope.accountId 长度不能超过 120 个字符。",
+      "scopeDeviceIdLength": "scope.deviceId 长度不能超过 120 个字符。",
+      "serverIdRequired": "serverId 为必填项。",
+      "serverNameLength": "服务器名称为必填，长度需在 1-120 个字符之间。",
+      "tagNameLength": "标签名称为必填，长度需在 1-64 个字符之间。",
+      "termLength": "term 必须是长度 2 到 64 的字符串。",
+      "usernameLength": "用户名为必填，长度需在 1-120 个字符之间。"
+    }
+  },
+  "settings": {
+    "validation": {
+      "invalid": "无效的设置字段：{key}",
+      "notObject": "请求体必须是 JSON 对象。"
+    }
+  },
+  "success": {
+    "localTerminal": {
+      "profilesFetched": "本地终端配置获取成功。",
+      "sessionCreated": "本地终端会话创建成功。"
+    },
+    "settings": {
+      "fetched": "设置获取成功。",
+      "updated": "设置更新成功。"
+    },
+    "ssh": {
+      "folderCreated": "SSH 文件夹创建成功。",
+      "foldersFetched": "SSH 文件夹获取成功。",
+      "folderUpdated": "SSH 文件夹更新成功。",
+      "hostFingerprintTrusted": "主机指纹信任成功。",
+      "serverCreated": "SSH 服务器创建成功。",
+      "serverCredentialsFetched": "SSH 服务器凭据获取成功。",
+      "serversFetched": "SSH 服务器获取成功。",
+      "serverUpdated": "SSH 服务器更新成功。",
+      "sessionCreated": "SSH 会话创建成功。",
+      "tagCreated": "SSH 标签创建成功。",
+      "tagsFetched": "SSH 标签获取成功。"
+    },
+    "system": {
+      "backendConnectionHealthy": "后端连接正常。"
+    }
+  },
+  "ws": {
+    "backendShutdown": "后端已关闭。",
+    "clientRequestedClose": "客户端请求关闭。",
+    "invalidWebsocketMessageFormat": "无效的 WebSocket 消息格式。",
+    "invalidWebsocketPath": "无效的 WebSocket 路径。",
+    "localTerminalExitedWithCode": "本地终端已退出，退出码 {code}。",
+    "localTerminalExitedWithSignal": "本地终端已退出（{signal}）。",
+    "sessionClosedByApiRequest": "会话已由 API 请求关闭。",
+    "sessionInvalidOrExpired": "会话无效或已过期。",
+    "sessionReconnectedFromNewClient": "会话已从新客户端重新连接。",
+    "sshConnectionClosed": "SSH 连接已关闭。",
+    "sshConnectionError": "SSH 连接错误。",
+    "sshStreamClosed": "SSH 流已关闭。",
+    "websocketConnectionTimeout": "WebSocket 连接超时。",
+    "websocketDisconnected": "WebSocket 已断开。",
+    "websocketTransportError": "WebSocket 传输错误。"
   }
 }
