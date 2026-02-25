@@ -2,12 +2,27 @@ import { Info } from 'lucide-react';
 import React from 'react';
 
 import { t } from '../../lib/i18n';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogPrimaryButton,
+  DialogSecondaryButton,
+  DialogTitle,
+} from '../ui/dialog';
 
 export type AppVersionInfo = {
   appName: string;
   version: string;
   buildVersion: string;
   buildTime: string;
+  commit: string;
+  electron: string;
+  chromium: string;
+  node: string;
+  v8: string;
+  os: string;
 };
 
 type SettingsAboutSectionProps = {
@@ -30,8 +45,50 @@ const formatBuildTime = (buildTime: string): string => {
   return parsed.toLocaleString();
 };
 
+const formatTechnicalValue = (value: string): string => {
+  if (value.trim().length === 0) {
+    return t('settings.about.technicalInfoUnknown');
+  }
+
+  return value;
+};
+
 const SettingsAboutSection: React.FC<SettingsAboutSectionProps> = ({ appVersionInfo, onOpenFailed }) => {
   const [iconLoadFailed, setIconLoadFailed] = React.useState<boolean>(false);
+  const [isTechnicalInfoDialogOpen, setIsTechnicalInfoDialogOpen] = React.useState<boolean>(false);
+
+  const technicalInfoEntries = React.useMemo(
+    () => [
+      {
+        key: 'technicalVersion',
+        value: `${appVersionInfo.version || '0.0.0'} (build ${appVersionInfo.buildVersion || '0'})`,
+      },
+      { key: 'technicalCommit', value: appVersionInfo.commit },
+      { key: 'technicalDate', value: formatBuildTime(appVersionInfo.buildTime) },
+      { key: 'technicalElectron', value: appVersionInfo.electron },
+      { key: 'technicalChromium', value: appVersionInfo.chromium },
+      { key: 'technicalNode', value: appVersionInfo.node },
+      { key: 'technicalV8', value: appVersionInfo.v8 },
+      { key: 'technicalOs', value: appVersionInfo.os },
+    ],
+    [appVersionInfo],
+  );
+
+  const technicalInfoText = React.useMemo(() => {
+    return technicalInfoEntries
+      .map((entry) => {
+        const label = t(`settings.about.${entry.key}`);
+        const value = formatTechnicalValue(entry.value);
+        return `${label}: ${value}`;
+      })
+      .join('\n');
+  }, [technicalInfoEntries]);
+
+  const handleCopyTechnicalInfo = React.useCallback(() => {
+    void navigator.clipboard.writeText(technicalInfoText).catch(() => {
+      onOpenFailed('settings.about.copyTechnicalInfoFailed');
+    });
+  }, [onOpenFailed, technicalInfoText]);
 
   return (
     <div className="grid gap-4 pb-4">
@@ -104,10 +161,54 @@ const SettingsAboutSection: React.FC<SettingsAboutSectionProps> = ({ appVersionI
             <span className="text-home-text-subtle">{t('settings.about.buildTimeLabel')}</span>
             <span className="text-home-text select-text">{formatBuildTime(appVersionInfo.buildTime)}</span>
           </div>
+          <div className="flex items-center justify-between py-1 text-sm">
+            <span className="text-home-text-subtle">{t('settings.about.technicalInfo')}</span>
+            <button
+              type="button"
+              className="text-home-text select-text underline hover:text-home-text-subtle"
+              onClick={() => {
+                setIsTechnicalInfoDialogOpen(true);
+              }}
+            >
+              {t('settings.about.technicalInfoAction')}
+            </button>
+          </div>
         </div>
 
         <p className="px-2.5 text-xs text-home-text-subtle">{t('settings.about.copyright')}</p>
       </section>
+
+      <Dialog
+        open={isTechnicalInfoDialogOpen}
+        onOpenChange={setIsTechnicalInfoDialogOpen}
+      >
+        <DialogContent className="max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>{t('settings.about.technicalInfo')}</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-2 rounded-md border border-home-divider p-3 text-sm">
+            {technicalInfoEntries.map((entry) => (
+              <div
+                key={entry.key}
+                className="grid grid-cols-[auto,1fr] items-start gap-3"
+              >
+                <span className="text-home-text-subtle">{t(`settings.about.${entry.key}`)}</span>
+                <span className="text-home-text select-text break-all text-right">
+                  {formatTechnicalValue(entry.value)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <DialogSecondaryButton onClick={handleCopyTechnicalInfo}>{t('settings.about.copy')}</DialogSecondaryButton>
+            <DialogPrimaryButton onClick={() => setIsTechnicalInfoDialogOpen(false)}>
+              {t('settings.about.confirm')}
+            </DialogPrimaryButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

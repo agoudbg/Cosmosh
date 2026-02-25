@@ -40,6 +40,12 @@ const DEFAULT_APP_VERSION_INFO: AppVersionInfo = {
   version: '0.0.0',
   buildVersion: '',
   buildTime: '',
+  commit: '',
+  electron: '',
+  chromium: '',
+  node: '',
+  v8: '',
+  os: '',
 };
 
 const categoryIconMap: Record<SettingsCategoryId, React.ComponentType<{ className?: string }>> = {

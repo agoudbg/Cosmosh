@@ -85,6 +85,12 @@ declare global {
         version: string;
         buildVersion: string;
         buildTime: string;
+        commit: string;
+        electron: string;
+        chromium: string;
+        node: string;
+        v8: string;
+        os: string;
       }>;
       getPendingLaunchWorkingDirectory: () => Promise<string | null>;
       onLaunchWorkingDirectory: (listener: (cwd: string) => void) => () => void;
