@@ -145,17 +145,14 @@
     "items": {
       "accountSyncEnabled": {
         "description": "Enable to sync settings across devices using the current account.",
-        "placeholder": "",
         "title": "Account Sync"
       },
       "autoSaveEnabled": {
         "description": "Automatically save settings changes.",
-        "placeholder": "",
         "title": "Auto Save"
       },
       "defaultLocalTerminalProfile": {
         "description": "Default local terminal used when opening from context.",
-        "placeholder": "",
         "title": "Default Local Terminal"
       },
       "defaultServerNoteTemplate": {
@@ -165,12 +162,10 @@
       },
       "devToolsEnabled": {
         "description": "Allows UI debugging. This option is intended for advanced users and should be enabled with caution.",
-        "placeholder": "",
         "title": "Enable DevTools"
       },
       "language": {
         "description": "Sets the UI language.",
-        "placeholder": "",
         "title": "Language"
       },
       "sshConnectionTimeoutSec": {
@@ -185,42 +180,34 @@
       },
       "terminalAltClickMovesCursor": {
         "description": "Use Alt (Option on macOS) + click to move the cursor to the clicked position.",
-        "placeholder": "",
         "title": "Alt/Option Click Moves Cursor"
       },
       "terminalContextLaunchBehavior": {
         "description": "Controls how terminals are opened from context launch or 'Open terminal in Cosmosh'.",
-        "placeholder": "",
         "title": "Launch from Context"
       },
       "terminalCursorBlink": {
         "description": "Controls whether the cursor blinks.",
-        "placeholder": "",
         "title": "Cursor Blink"
       },
       "terminalCursorInactiveStyle": {
         "description": "Sets how the cursor appears when the terminal is unfocused.",
-        "placeholder": "",
         "title": "Cursor Inactive Style"
       },
       "terminalCursorStyle": {
         "description": "Sets the cursor shape when terminal is focused.",
-        "placeholder": "",
         "title": "Cursor Style"
       },
       "terminalCursorWidth": {
         "description": "Cursor width in CSS pixels when cursor style is Bar. Leave empty to use default behavior.",
-        "placeholder": "",
         "title": "Cursor Width"
       },
       "terminalCustomGlyphs": {
         "description": "Render box drawing and block glyphs with custom renderer for better alignment.",
-        "placeholder": "",
         "title": "Custom Glyphs"
       },
       "terminalDrawBoldTextInBrightColors": {
         "description": "Render bold text using bright ANSI colors.",
-        "placeholder": "",
         "title": "Bold Uses Bright ANSI Colors"
       },
       "terminalFastScrollSensitivity": {
@@ -265,12 +252,10 @@
       },
       "terminalScreenReaderMode": {
         "description": "Enable screen-reader support in the terminal.",
-        "placeholder": "",
         "title": "Screen Reader Mode"
       },
       "terminalScrollOnUserInput": {
         "description": "Auto-scroll to the bottom when user input is sent.",
-        "placeholder": "",
         "title": "Scroll On User Input"
       },
       "terminalScrollSensitivity": {
@@ -280,12 +265,10 @@
       },
       "terminalSelectionBarEnabled": {
         "description": "Show Orbit Bar when text is selected in terminal sessions.",
-        "placeholder": "",
         "title": "Orbit Bar"
       },
       "terminalSelectionSearchEngine": {
         "description": "Defines which search engine is used for web search.",
-        "placeholder": "",
         "title": "Search Engine"
       },
       "terminalSelectionSearchUrlTemplate": {
@@ -305,12 +288,10 @@
       },
       "terminalTextDropMode": {
         "description": "Controls when drag-and-drop text insertion into terminal is enabled.",
-        "placeholder": "",
         "title": "Drag To Terminal"
       },
       "theme": {
         "description": "Controls the color theme used in the interface.",
-        "placeholder": "",
         "title": "Theme"
       }
     },

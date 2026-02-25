@@ -130,17 +130,14 @@ type SettingControlType = 'select' | 'input' | 'textarea' | 'switch';
 type SettingValueType = 'string' | 'number' | 'boolean';
 type SettingSelectOption = { value: string };
 
-export type SettingDefinition = {
+type SettingDefinitionBase = {
   key: SettingKey;
   valueType: SettingValueType;
   defaultValue: string | number | boolean;
   nameI18nKey: string;
   descriptionI18nKey: string;
-  placeholderI18nKey?: string;
-  optionI18nNamespace?: string;
   category: SettingsCategory;
   section: SettingsSection;
-  control: SettingControlType;
   path: string;
   commandActionId: string;
   searchTerms: string[];
@@ -148,8 +145,30 @@ export type SettingDefinition = {
   min?: number;
   max?: number;
   maxLength?: number;
-  options?: SettingSelectOption[];
 };
+
+type SelectSettingDefinition = SettingDefinitionBase & {
+  control: 'select';
+  optionI18nNamespace?: string;
+  options?: SettingSelectOption[];
+  placeholderI18nKey?: never;
+};
+
+type InputLikeSettingDefinition = SettingDefinitionBase & {
+  control: 'input' | 'textarea';
+  placeholderI18nKey?: string;
+  optionI18nNamespace?: never;
+  options?: never;
+};
+
+type SwitchSettingDefinition = SettingDefinitionBase & {
+  control: 'switch';
+  optionI18nNamespace?: never;
+  options?: never;
+  placeholderI18nKey?: never;
+};
+
+export type SettingDefinition = SelectSettingDefinition | InputLikeSettingDefinition | SwitchSettingDefinition;
 
 // ── The Registry ─────────────────────────────────────────────
 
@@ -205,7 +224,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: true,
     nameI18nKey: 'settings.items.terminalAltClickMovesCursor.title',
     descriptionI18nKey: 'settings.items.terminalAltClickMovesCursor.description',
-    placeholderI18nKey: 'settings.items.terminalAltClickMovesCursor.placeholder',
     category: SETTINGS_CATEGORIES.theme,
     section: SETTINGS_CATEGORIES.theme.sections.sshStyle,
     control: 'switch',
@@ -219,7 +237,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: true,
     nameI18nKey: 'settings.items.terminalCursorBlink.title',
     descriptionI18nKey: 'settings.items.terminalCursorBlink.description',
-    placeholderI18nKey: 'settings.items.terminalCursorBlink.placeholder',
     category: SETTINGS_CATEGORIES.theme,
     section: SETTINGS_CATEGORIES.theme.sections.sshStyle,
     control: 'switch',
@@ -300,7 +317,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: 'outline',
     nameI18nKey: 'settings.items.terminalCursorInactiveStyle.title',
     descriptionI18nKey: 'settings.items.terminalCursorInactiveStyle.description',
-    placeholderI18nKey: 'settings.items.terminalCursorInactiveStyle.placeholder',
     optionI18nNamespace: 'terminalCursorInactiveStyle',
     category: SETTINGS_CATEGORIES.theme,
     section: SETTINGS_CATEGORIES.theme.sections.advancedStyle,
@@ -322,7 +338,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: 'block',
     nameI18nKey: 'settings.items.terminalCursorStyle.title',
     descriptionI18nKey: 'settings.items.terminalCursorStyle.description',
-    placeholderI18nKey: 'settings.items.terminalCursorStyle.placeholder',
     optionI18nNamespace: 'terminalCursorStyle',
     category: SETTINGS_CATEGORIES.theme,
     section: SETTINGS_CATEGORIES.theme.sections.advancedStyle,
@@ -338,7 +353,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: '',
     nameI18nKey: 'settings.items.terminalCursorWidth.title',
     descriptionI18nKey: 'settings.items.terminalCursorWidth.description',
-    placeholderI18nKey: 'settings.items.terminalCursorWidth.placeholder',
     category: SETTINGS_CATEGORIES.theme,
     section: SETTINGS_CATEGORIES.theme.sections.advancedStyle,
     control: 'input',
@@ -354,7 +368,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: true,
     nameI18nKey: 'settings.items.terminalCustomGlyphs.title',
     descriptionI18nKey: 'settings.items.terminalCustomGlyphs.description',
-    placeholderI18nKey: 'settings.items.terminalCustomGlyphs.placeholder',
     category: SETTINGS_CATEGORIES.theme,
     section: SETTINGS_CATEGORIES.theme.sections.advancedStyle,
     control: 'switch',
@@ -566,7 +579,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: true,
     nameI18nKey: 'settings.items.terminalDrawBoldTextInBrightColors.title',
     descriptionI18nKey: 'settings.items.terminalDrawBoldTextInBrightColors.description',
-    placeholderI18nKey: 'settings.items.terminalDrawBoldTextInBrightColors.placeholder',
     category: SETTINGS_CATEGORIES.terminal,
     section: SETTINGS_CATEGORIES.terminal.sections.advancedTerminal,
     control: 'switch',
@@ -628,7 +640,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: false,
     nameI18nKey: 'settings.items.terminalScreenReaderMode.title',
     descriptionI18nKey: 'settings.items.terminalScreenReaderMode.description',
-    placeholderI18nKey: 'settings.items.terminalScreenReaderMode.placeholder',
     category: SETTINGS_CATEGORIES.terminal,
     section: SETTINGS_CATEGORIES.terminal.sections.advancedTerminal,
     control: 'switch',
@@ -642,7 +653,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     defaultValue: true,
     nameI18nKey: 'settings.items.terminalScrollOnUserInput.title',
     descriptionI18nKey: 'settings.items.terminalScrollOnUserInput.description',
-    placeholderI18nKey: 'settings.items.terminalScrollOnUserInput.placeholder',
     category: SETTINGS_CATEGORIES.terminal,
     section: SETTINGS_CATEGORIES.terminal.sections.advancedTerminal,
     control: 'switch',

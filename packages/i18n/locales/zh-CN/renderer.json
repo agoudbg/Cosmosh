@@ -145,17 +145,14 @@
     "items": {
       "accountSyncEnabled": {
         "description": "启用来将设置在使用当前账号的多个设备间同步。",
-        "placeholder": "",
         "title": "账号同步"
       },
       "autoSaveEnabled": {
         "description": "自动保存对设置的更改。",
-        "placeholder": "",
         "title": "自动保存"
       },
       "defaultLocalTerminalProfile": {
         "description": "通过上下文打开终端时使用的默认本地终端。",
-        "placeholder": "",
         "title": "默认本地终端"
       },
       "defaultServerNoteTemplate": {
@@ -165,12 +162,10 @@
       },
       "devToolsEnabled": {
         "description": "允许对程序界面进行调试。该选项仅适用于高级用户，请勿随意开启此选项。",
-        "placeholder": "",
         "title": "启用 DevTools"
       },
       "language": {
         "description": "设置使用的界面语言。",
-        "placeholder": "",
         "title": "语言"
       },
       "sshConnectionTimeoutSec": {
@@ -185,42 +180,34 @@
       },
       "terminalAltClickMovesCursor": {
         "description": "按住 Alt（macOS 为 Option）并点击时，将光标移动到点击位置。",
-        "placeholder": "",
         "title": "Alt/Option 点击移动光标"
       },
       "terminalContextLaunchBehavior": {
         "description": "控制通过“在 Cosmosh 中打开终端”或从上下文启动时如何打开终端。",
-        "placeholder": "",
         "title": "从上下文启动"
       },
       "terminalCursorBlink": {
         "description": "控制光标是否闪烁。",
-        "placeholder": "",
         "title": "光标闪烁"
       },
       "terminalCursorInactiveStyle": {
         "description": "设置终端失焦时光标的样式。",
-        "placeholder": "",
         "title": "失焦光标样式"
       },
       "terminalCursorStyle": {
         "description": "设置终端聚焦时光标的形状。",
-        "placeholder": "",
         "title": "光标样式"
       },
       "terminalCursorWidth": {
         "description": "当光标样式为 Bar 时，设置其 CSS 像素宽度。留空则使用默认行为。",
-        "placeholder": "",
         "title": "光标宽度"
       },
       "terminalCustomGlyphs": {
         "description": "使用自定义字形渲染框线和块状字符，以获得更好的对齐效果。",
-        "placeholder": "",
         "title": "自定义字形"
       },
       "terminalDrawBoldTextInBrightColors": {
         "description": "使用 ANSI 高亮色渲染粗体文本。",
-        "placeholder": "",
         "title": "粗体使用高亮 ANSI 颜色"
       },
       "terminalFastScrollSensitivity": {
@@ -265,12 +252,10 @@
       },
       "terminalScreenReaderMode": {
         "description": "启用终端屏幕阅读器支持。",
-        "placeholder": "",
         "title": "屏幕阅读器模式"
       },
       "terminalScrollOnUserInput": {
         "description": "用户输入时自动滚动到底部。",
-        "placeholder": "",
         "title": "输入时自动滚动"
       },
       "terminalScrollSensitivity": {
@@ -280,12 +265,10 @@
       },
       "terminalSelectionBarEnabled": {
         "description": "在终端中选中文本时显示 Orbit Bar。",
-        "placeholder": "",
         "title": "Orbit Bar"
       },
       "terminalSelectionSearchEngine": {
         "description": "定义搜索网页时使用的搜索引擎。",
-        "placeholder": "",
         "title": "搜索引擎"
       },
       "terminalSelectionSearchUrlTemplate": {
@@ -305,12 +288,10 @@
       },
       "terminalTextDropMode": {
         "description": "控制何时允许通过拖拽将文本插入终端。",
-        "placeholder": "",
         "title": "拖拽到终端"
       },
       "theme": {
         "description": "控制在界面中使用的颜色主题。",
-        "placeholder": "",
         "title": "主题"
       }
     },

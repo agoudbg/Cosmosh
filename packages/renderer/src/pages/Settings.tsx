@@ -551,7 +551,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
           <Textarea
             rows={4}
             value={String(formState[item.key])}
-            placeholder={item.placeholderI18nKey ? t(item.placeholderI18nKey) : ''}
+            placeholder={item.placeholderI18nKey ? t(item.placeholderI18nKey) : undefined}
             onChange={(event) => {
               updateField(item.key, event.target.value);
             }}
@@ -563,7 +563,7 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
         <Input
           value={String(formState[item.key])}
           inputMode={item.inputMode}
-          placeholder={item.placeholderI18nKey ? t(item.placeholderI18nKey) : ''}
+          placeholder={item.placeholderI18nKey ? t(item.placeholderI18nKey) : undefined}
           onChange={(event) => {
             updateField(item.key, event.target.value);
           }}
