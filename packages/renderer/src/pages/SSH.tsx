@@ -2,7 +2,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import type { components, SettingsValues } from '@cosmosh/api-contract';
 import { FitAddon } from '@xterm/addon-fit';
-import { Terminal } from '@xterm/xterm';
+import { type ITerminalOptions, Terminal } from '@xterm/xterm';
 import classNames from 'classnames';
 import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles } from 'lucide-react';
 import React from 'react';
@@ -310,6 +310,63 @@ const resolveSearchUrl = (
   return `${baseUrl}${encodedQuery}`;
 };
 
+const parseOptionalNumberSetting = (
+  value: string,
+  constraints?: { min?: number; max?: number },
+): number | undefined => {
+  const normalizedValue = value.trim();
+  if (!normalizedValue) {
+    return undefined;
+  }
+
+  const parsedValue = Number(normalizedValue);
+  if (!Number.isFinite(parsedValue)) {
+    return undefined;
+  }
+
+  if (constraints?.min !== undefined && parsedValue < constraints.min) {
+    return undefined;
+  }
+
+  if (constraints?.max !== undefined && parsedValue > constraints.max) {
+    return undefined;
+  }
+
+  return parsedValue;
+};
+
+const resolveTerminalFontWeightSetting = (
+  value: string,
+  fallback: NonNullable<ITerminalOptions['fontWeight']>,
+): ITerminalOptions['fontWeight'] => {
+  const normalizedValue = value.trim();
+  if (!normalizedValue) {
+    return fallback;
+  }
+
+  if (/^\d+$/.test(normalizedValue)) {
+    return Number(normalizedValue);
+  }
+
+  const literalWeightValues: Array<Exclude<NonNullable<ITerminalOptions['fontWeight']>, number>> = [
+    'normal',
+    'bold',
+    '100',
+    '200',
+    '300',
+    '400',
+    '500',
+    '600',
+    '700',
+    '800',
+    '900',
+  ];
+
+  return literalWeightValues.includes(normalizedValue as (typeof literalWeightValues)[number])
+    ? (normalizedValue as (typeof literalWeightValues)[number])
+    : fallback;
+};
+
 type SSHProps = {
   onTabTitleChange?: (title: string) => void;
 };
@@ -338,6 +395,75 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const sshMaxRows = settingsValues.sshMaxRows;
   const sshConnectionTimeoutSec = settingsValues.sshConnectionTimeoutSec;
   const terminalTextDropMode = settingsValues.terminalTextDropMode;
+  const terminalInitOptions = React.useMemo<ITerminalOptions>(() => {
+    const terminalBackground =
+      getComputedStyle(document.documentElement).getPropertyValue('--color-ssh-card-bg-terminal').trim() || '#000000';
+    const cursorWidth = parseOptionalNumberSetting(settingsValues.terminalCursorWidth, { min: 1, max: 32 });
+    const lineHeight = parseOptionalNumberSetting(settingsValues.terminalLineHeight, { min: 0.5, max: 3 });
+    const scrollSensitivity = parseOptionalNumberSetting(settingsValues.terminalScrollSensitivity, {
+      min: 0.1,
+      max: 50,
+    });
+    const fastScrollSensitivity = parseOptionalNumberSetting(settingsValues.terminalFastScrollSensitivity, {
+      min: 0.1,
+      max: 200,
+    });
+    const minimumContrastRatio = parseOptionalNumberSetting(settingsValues.terminalMinimumContrastRatio, {
+      min: 1,
+      max: 21,
+    });
+
+    return {
+      convertEol: true,
+      altClickMovesCursor: settingsValues.terminalAltClickMovesCursor,
+      cursorBlink: settingsValues.terminalCursorBlink,
+      cursorInactiveStyle: settingsValues.terminalCursorInactiveStyle,
+      cursorStyle: settingsValues.terminalCursorStyle,
+      cursorWidth,
+      customGlyphs: settingsValues.terminalCustomGlyphs,
+      drawBoldTextInBrightColors: settingsValues.terminalDrawBoldTextInBrightColors,
+      fastScrollSensitivity,
+      fontFamily: settingsValues.terminalFontFamily,
+      fontSize: settingsValues.terminalFontSize,
+      fontWeight: resolveTerminalFontWeightSetting(settingsValues.terminalFontWeight, 'normal'),
+      fontWeightBold: resolveTerminalFontWeightSetting(settingsValues.terminalFontWeightBold, 'bold'),
+      letterSpacing: settingsValues.terminalLetterSpacing,
+      lineHeight: lineHeight ?? 1,
+      minimumContrastRatio,
+      reflowCursorLine: true,
+      screenReaderMode: settingsValues.terminalScreenReaderMode,
+      scrollback: sshMaxRows,
+      scrollOnUserInput: settingsValues.terminalScrollOnUserInput,
+      scrollSensitivity,
+      smoothScrollDuration: settingsValues.terminalSmoothScrollDuration,
+      tabStopWidth: settingsValues.terminalTabStopWidth,
+      theme: {
+        background: terminalBackground,
+      },
+    };
+  }, [
+    settingsValues.terminalAltClickMovesCursor,
+    settingsValues.terminalCursorBlink,
+    settingsValues.terminalCursorInactiveStyle,
+    settingsValues.terminalCursorStyle,
+    settingsValues.terminalCursorWidth,
+    settingsValues.terminalCustomGlyphs,
+    settingsValues.terminalDrawBoldTextInBrightColors,
+    settingsValues.terminalFastScrollSensitivity,
+    settingsValues.terminalFontFamily,
+    settingsValues.terminalFontSize,
+    settingsValues.terminalFontWeight,
+    settingsValues.terminalFontWeightBold,
+    settingsValues.terminalLetterSpacing,
+    settingsValues.terminalLineHeight,
+    settingsValues.terminalMinimumContrastRatio,
+    settingsValues.terminalScreenReaderMode,
+    settingsValues.terminalScrollOnUserInput,
+    settingsValues.terminalScrollSensitivity,
+    settingsValues.terminalSmoothScrollDuration,
+    settingsValues.terminalTabStopWidth,
+    sshMaxRows,
+  ]);
   const terminalSelectionSettings: TerminalSelectionSettings = React.useMemo(
     () => ({
       enabled: settingsValues.terminalSelectionBarEnabled,
@@ -774,20 +900,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   });
 
   React.useEffect(() => {
-    const terminal = new Terminal({
-      convertEol: true,
-      cursorBlink: true,
-      reflowCursorLine: true,
-      scrollback: sshMaxRows,
-      fontSize: 15,
-      fontFamily: '"JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace',
-      letterSpacing: 0,
-      lineHeight: 1,
-      theme: {
-        background:
-          getComputedStyle(document.documentElement).getPropertyValue('--color-ssh-card-bg-terminal') || '#000000',
-      },
-    });
+    const terminal = new Terminal(terminalInitOptions);
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
 
@@ -1227,7 +1340,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       disposeResize();
       terminal.dispose();
     };
-  }, [refreshSelectionAnchor, requestHostFingerprintTrust, sshConnectionTimeoutSec, sshMaxRows]);
+  }, [refreshSelectionAnchor, requestHostFingerprintTrust, sshConnectionTimeoutSec, terminalInitOptions]);
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 rounded-[18px] p-1';

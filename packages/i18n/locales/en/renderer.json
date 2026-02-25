@@ -169,10 +169,100 @@
         "placeholder": "10000",
         "title": "SSH Max Rows"
       },
+      "terminalAltClickMovesCursor": {
+        "description": "Use Alt (Option on macOS) + click to move the cursor to the clicked position.",
+        "placeholder": "",
+        "title": "Alt/Option Click Moves Cursor"
+      },
       "terminalContextLaunchBehavior": {
         "description": "Controls how terminals are opened from context launch or 'Open terminal in Cosmosh'.",
         "placeholder": "",
         "title": "Launch from Context"
+      },
+      "terminalCursorBlink": {
+        "description": "Controls whether the cursor blinks.",
+        "placeholder": "",
+        "title": "Cursor Blink"
+      },
+      "terminalCursorInactiveStyle": {
+        "description": "Sets how the cursor appears when the terminal is unfocused.",
+        "placeholder": "",
+        "title": "Cursor Inactive Style"
+      },
+      "terminalCursorStyle": {
+        "description": "Sets the cursor shape when terminal is focused.",
+        "placeholder": "",
+        "title": "Cursor Style"
+      },
+      "terminalCursorWidth": {
+        "description": "Cursor width in CSS pixels when cursor style is Bar. Leave empty to use default behavior.",
+        "placeholder": "",
+        "title": "Cursor Width"
+      },
+      "terminalCustomGlyphs": {
+        "description": "Render box drawing and block glyphs with custom renderer for better alignment.",
+        "placeholder": "",
+        "title": "Custom Glyphs"
+      },
+      "terminalDrawBoldTextInBrightColors": {
+        "description": "Render bold text using bright ANSI colors.",
+        "placeholder": "",
+        "title": "Bold Uses Bright ANSI Colors"
+      },
+      "terminalFastScrollSensitivity": {
+        "description": "Scrolling speed multiplier when fast scrolling is active (for example while holding Alt, or Option on macOS).",
+        "placeholder": "5",
+        "title": "Fast Scroll Sensitivity"
+      },
+      "terminalFontFamily": {
+        "description": "Terminal font family fallback list.",
+        "placeholder": "Consolas, \"JetBrains Mono\", \"Liberation Mono\", \"Microsoft YaHei\", \"SFMono-Regular\", \"PingFang SC\", monospace",
+        "title": "Terminal Font Family"
+      },
+      "terminalFontSize": {
+        "description": "Terminal font size in pixels.",
+        "placeholder": "15",
+        "title": "Terminal Font Size"
+      },
+      "terminalFontWeight": {
+        "description": "Font weight for regular terminal text, such as normal or 400.",
+        "placeholder": "normal",
+        "title": "Terminal Font Weight"
+      },
+      "terminalFontWeightBold": {
+        "description": "Font weight for bold terminal text, such as bold or 700.",
+        "placeholder": "bold",
+        "title": "Terminal Bold Font Weight"
+      },
+      "terminalLetterSpacing": {
+        "description": "Additional spacing between terminal characters (px).",
+        "placeholder": "0",
+        "title": "Terminal Letter Spacing"
+      },
+      "terminalLineHeight": {
+        "description": "Line height multiplier used by terminal rendering.",
+        "placeholder": "1",
+        "title": "Terminal Line Height"
+      },
+      "terminalMinimumContrastRatio": {
+        "description": "Minimum text contrast ratio. Use 1 to disable dynamic adjustment.",
+        "placeholder": "1",
+        "title": "Minimum Contrast Ratio"
+      },
+      "terminalScreenReaderMode": {
+        "description": "Enable screen-reader support in the terminal.",
+        "placeholder": "",
+        "title": "Screen Reader Mode"
+      },
+      "terminalScrollOnUserInput": {
+        "description": "Auto-scroll to the bottom when user input is sent.",
+        "placeholder": "",
+        "title": "Scroll On User Input"
+      },
+      "terminalScrollSensitivity": {
+        "description": "Base scrolling speed multiplier for wheel scrolling.",
+        "placeholder": "1",
+        "title": "Scroll Sensitivity"
       },
       "terminalSelectionBarEnabled": {
         "description": "Show Orbit Bar when text is selected in terminal sessions.",
@@ -188,6 +278,16 @@
         "description": "Sets a custom search engine URL. Use QUERY_TOKEN as the search placeholder.",
         "placeholder": "https://www.google.com/search?q=QUERY_TOKEN",
         "title": "Custom Search URL"
+      },
+      "terminalSmoothScrollDuration": {
+        "description": "Smooth scrolling duration in milliseconds. Set 0 to disable.",
+        "placeholder": "0",
+        "title": "Smooth Scroll Duration"
+      },
+      "terminalTabStopWidth": {
+        "description": "Tab stop width in terminal cells.",
+        "placeholder": "8",
+        "title": "Tab Stop Width"
       },
       "terminalTextDropMode": {
         "description": "Controls when drag-and-drop text insertion into terminal is enabled.",
@@ -206,6 +306,11 @@
       "boolean": {
         "false": "Disabled",
         "true": "Enabled"
+      },
+      "cursorStyle": {
+        "bar": "Bar",
+        "block": "Block",
+        "underline": "Underline"
       },
       "defaultLocalTerminalProfile": {
         "auto": "Auto (select first available local terminal)",
@@ -227,6 +332,18 @@
         "openDefaultLocalTerminal": "Auto open default local terminal",
         "openLocalTerminalList": "Open Local Terminals list"
       },
+      "terminalCursorInactiveStyle": {
+        "bar": "Bar",
+        "block": "Block",
+        "none": "None",
+        "outline": "Outline",
+        "underline": "Underline"
+      },
+      "terminalCursorStyle": {
+        "bar": "Bar",
+        "block": "Block",
+        "underline": "Underline"
+      },
       "terminalTextDropMode": {
         "always": "Always Enabled",
         "external": "Enable on External Drag",
@@ -246,6 +363,8 @@
     "searchPlaceholder": "Search settings",
     "searchResults": "Search Results",
     "sections": {
+      "advancedStyle": "Advanced Style",
+      "advancedTerminal": "Advanced Terminal",
       "appearance": "Appearance",
       "connection": "Connection",
       "editorDefaults": "Defaults",
@@ -253,6 +372,7 @@
       "runtime": "Runtime",
       "search": "Search",
       "sshRuntime": "SSH Runtime",
+      "sshStyle": "SSH Style",
       "synchronization": "Synchronization",
       "terminalSelection": "Orbit Bar"
     },

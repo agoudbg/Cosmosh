@@ -125,6 +125,26 @@ flowchart LR
 - 遥测采用 5 秒定时采样 + 轻量文本解析，降低帧级开销。
 - 命令捕获使用有界输入缓冲（每活动行 512 字符）。
 
+## 6.1 渲染层可配置的 xterm 选项（设置驱动）
+
+渲染层现在会在 `SSH.tsx` 初始化 `Terminal` 时，将设置项映射到 `ITerminalOptions`，用于控制终端运行时行为。
+
+- **主题 / SSH 样式**：
+  - `altClickMovesCursor`、`cursorBlink`
+  - `fontFamily`、`fontSize`
+- **主题 / 高级样式**：
+  - `cursorInactiveStyle`、`cursorStyle`、可选 `cursorWidth`
+  - `customGlyphs`、`fontWeight`、`fontWeightBold`、`letterSpacing`、`lineHeight`
+- **终端 / 高级终端配置**：
+  - `drawBoldTextInBrightColors`
+  - `scrollSensitivity`、`fastScrollSensitivity`、`minimumContrastRatio`
+  - `screenReaderMode`、`scrollOnUserInput`、`smoothScrollDuration`、`tabStopWidth`
+
+说明：
+
+- 对可选数值（如 `cursorWidth`）采用防御式解析；为空或不合法时回退到 xterm 默认行为。
+- 原有 `sshMaxRows` 仍保持映射到 xterm `scrollback`。
+
 ## 7. 开发排查清单
 
 当 SSH 会话行为异常时，按以下顺序检查：

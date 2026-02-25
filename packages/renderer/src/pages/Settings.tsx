@@ -116,10 +116,15 @@ const parseFormState = (formState: SettingsFormState): { value?: AppSettingsValu
   return { value: normalized.value };
 };
 
-const matchesSearch = (item: SettingDefinition, categoryLabel: string, query: string): boolean => {
+const matchesSearch = (
+  item: SettingDefinition,
+  categoryLabel: string,
+  descriptionText: string,
+  query: string,
+): boolean => {
   const haystack = [
     t(item.nameI18nKey),
-    t(item.descriptionI18nKey),
+    descriptionText,
     t(item.section.labelI18nKey),
     item.path,
     categoryLabel,
@@ -178,7 +183,8 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
 
     return SETTINGS_REGISTRY.filter((item) => {
       const categoryLabel = resolveCategoryLabel(item.category);
-      return matchesSearch(item, categoryLabel, normalizedSearch);
+      const descriptionText = t(item.descriptionI18nKey);
+      return matchesSearch(item, categoryLabel, descriptionText, normalizedSearch);
     });
   }, [normalizedSearch]);
 

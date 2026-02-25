@@ -169,10 +169,100 @@
         "placeholder": "10000",
         "title": "SSH 最大行数"
       },
+      "terminalAltClickMovesCursor": {
+        "description": "按住 Alt（macOS 为 Option）并点击时，将光标移动到点击位置。",
+        "placeholder": "",
+        "title": "Alt/Option 点击移动光标"
+      },
       "terminalContextLaunchBehavior": {
         "description": "控制通过“在 Cosmosh 中打开终端”或从上下文启动时如何打开终端。",
         "placeholder": "",
         "title": "从上下文启动"
+      },
+      "terminalCursorBlink": {
+        "description": "控制光标是否闪烁。",
+        "placeholder": "",
+        "title": "光标闪烁"
+      },
+      "terminalCursorInactiveStyle": {
+        "description": "设置终端失焦时光标的样式。",
+        "placeholder": "",
+        "title": "失焦光标样式"
+      },
+      "terminalCursorStyle": {
+        "description": "设置终端聚焦时光标的形状。",
+        "placeholder": "",
+        "title": "光标样式"
+      },
+      "terminalCursorWidth": {
+        "description": "当光标样式为 Bar 时，设置其 CSS 像素宽度。留空则使用默认行为。",
+        "placeholder": "",
+        "title": "光标宽度"
+      },
+      "terminalCustomGlyphs": {
+        "description": "使用自定义字形渲染框线和块状字符，以获得更好的对齐效果。",
+        "placeholder": "",
+        "title": "自定义字形"
+      },
+      "terminalDrawBoldTextInBrightColors": {
+        "description": "使用 ANSI 高亮色渲染粗体文本。",
+        "placeholder": "",
+        "title": "粗体使用高亮 ANSI 颜色"
+      },
+      "terminalFastScrollSensitivity": {
+        "description": "快速滚动模式（如按住 Alt，macOS 为 Option）下的滚动速度倍率。",
+        "placeholder": "5",
+        "title": "快速滚动灵敏度"
+      },
+      "terminalFontFamily": {
+        "description": "终端字体族回退列表。",
+        "placeholder": "Consolas, \"JetBrains Mono\", \"Liberation Mono\", \"Microsoft YaHei\", \"SFMono-Regular\", \"PingFang SC\", monospace",
+        "title": "终端字体族"
+      },
+      "terminalFontSize": {
+        "description": "终端字体大小（像素）。",
+        "placeholder": "15",
+        "title": "终端字号"
+      },
+      "terminalFontWeight": {
+        "description": "终端常规文本字重，例如 normal 或 400。",
+        "placeholder": "normal",
+        "title": "终端常规字重"
+      },
+      "terminalFontWeightBold": {
+        "description": "终端粗体文本字重，例如 bold 或 700。",
+        "placeholder": "bold",
+        "title": "终端粗体字重"
+      },
+      "terminalLetterSpacing": {
+        "description": "终端字符额外字间距（像素）。",
+        "placeholder": "0",
+        "title": "终端字间距"
+      },
+      "terminalLineHeight": {
+        "description": "终端渲染使用的行高倍率。",
+        "placeholder": "1",
+        "title": "终端行高"
+      },
+      "terminalMinimumContrastRatio": {
+        "description": "最小文字对比度。设为 1 可禁用动态对比调整。",
+        "placeholder": "1",
+        "title": "最小对比度"
+      },
+      "terminalScreenReaderMode": {
+        "description": "启用终端屏幕阅读器支持。",
+        "placeholder": "",
+        "title": "屏幕阅读器模式"
+      },
+      "terminalScrollOnUserInput": {
+        "description": "用户输入时自动滚动到底部。",
+        "placeholder": "",
+        "title": "输入时自动滚动"
+      },
+      "terminalScrollSensitivity": {
+        "description": "滚轮滚动的基础速度倍率。",
+        "placeholder": "1",
+        "title": "滚动灵敏度"
       },
       "terminalSelectionBarEnabled": {
         "description": "在终端中选中文本时显示 Orbit Bar。",
@@ -188,6 +278,16 @@
         "description": "设置自定义的搜索引擎 URL。使用 QUERY_TOKEN 来代表搜索关键词。",
         "placeholder": "https://www.google.com/search?q=QUERY_TOKEN",
         "title": "自定义搜索 URL"
+      },
+      "terminalSmoothScrollDuration": {
+        "description": "平滑滚动持续时间（毫秒）。设为 0 表示关闭。",
+        "placeholder": "0",
+        "title": "平滑滚动时长"
+      },
+      "terminalTabStopWidth": {
+        "description": "终端中一个 Tab 的字符宽度。",
+        "placeholder": "8",
+        "title": "Tab 停靠宽度"
       },
       "terminalTextDropMode": {
         "description": "控制何时允许通过拖拽将文本插入终端。",
@@ -206,6 +306,11 @@
       "boolean": {
         "false": "已禁用",
         "true": "已启用"
+      },
+      "cursorStyle": {
+        "bar": "竖条",
+        "block": "方块",
+        "underline": "下划线"
       },
       "defaultLocalTerminalProfile": {
         "auto": "自动（选取首个可用的本地终端）",
@@ -227,6 +332,18 @@
         "openDefaultLocalTerminal": "自动打开默认本地终端",
         "openLocalTerminalList": "打开本地终端列表"
       },
+      "terminalCursorInactiveStyle": {
+        "bar": "竖条",
+        "block": "方块",
+        "none": "隐藏",
+        "outline": "轮廓",
+        "underline": "下划线"
+      },
+      "terminalCursorStyle": {
+        "bar": "竖条",
+        "block": "方块",
+        "underline": "下划线"
+      },
       "terminalTextDropMode": {
         "always": "始终启用",
         "external": "从外部拖拽到终端时启用",
@@ -246,6 +363,8 @@
     "searchPlaceholder": "搜索设置",
     "searchResults": "搜索结果",
     "sections": {
+      "advancedStyle": "高级样式",
+      "advancedTerminal": "高级终端配置",
       "appearance": "外观",
       "connection": "连接",
       "editorDefaults": "默认值",
@@ -253,6 +372,7 @@
       "runtime": "运行时",
       "search": "搜索",
       "sshRuntime": "SSH 运行时",
+      "sshStyle": "SSH 样式",
       "synchronization": "同步",
       "terminalSelection": "Orbit Bar"
     },

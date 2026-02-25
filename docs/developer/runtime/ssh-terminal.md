@@ -125,6 +125,26 @@ flowchart LR
 - Telemetry sampling is interval-based (5s) and lightweight text parsing to reduce per-frame cost.
 - Command capture keeps bounded input buffer (512 chars per active line).
 
+## 6.1 Renderer-Configurable xterm Options (Settings-Driven)
+
+Renderer now maps terminal runtime behavior from Settings to `ITerminalOptions` during `Terminal` initialization in `SSH.tsx`.
+
+- **Theme / SSH Style**:
+  - `altClickMovesCursor`, `cursorBlink`
+  - `fontFamily`, `fontSize`
+- **Theme / Advanced Style**:
+  - `cursorInactiveStyle`, `cursorStyle`, optional `cursorWidth`
+  - `customGlyphs`, `fontWeight`, `fontWeightBold`, `letterSpacing`, `lineHeight`
+- **Terminal / Advanced Terminal**:
+  - `drawBoldTextInBrightColors`
+  - `scrollSensitivity`, `fastScrollSensitivity`, `minimumContrastRatio`
+  - `screenReaderMode`, `scrollOnUserInput`, `smoothScrollDuration`, `tabStopWidth`
+
+Notes:
+
+- Optional numeric values (for example `cursorWidth`) are parsed defensively; invalid or empty input falls back to xterm defaults.
+- Existing `sshMaxRows` remains bound to xterm `scrollback`.
+
 ## 7. Developer Debug Checklist
 
 When SSH session behavior is wrong, verify in order:
