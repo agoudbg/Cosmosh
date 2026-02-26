@@ -367,6 +367,32 @@ const resolveTerminalFontWeightSetting = (
     : fallback;
 };
 
+const applyTerminalRuntimeOptions = (terminal: Terminal, options: ITerminalOptions): void => {
+  terminal.options.convertEol = options.convertEol;
+  terminal.options.altClickMovesCursor = options.altClickMovesCursor;
+  terminal.options.cursorBlink = options.cursorBlink;
+  terminal.options.cursorInactiveStyle = options.cursorInactiveStyle;
+  terminal.options.cursorStyle = options.cursorStyle;
+  terminal.options.cursorWidth = options.cursorWidth;
+  terminal.options.customGlyphs = options.customGlyphs;
+  terminal.options.drawBoldTextInBrightColors = options.drawBoldTextInBrightColors;
+  terminal.options.fastScrollSensitivity = options.fastScrollSensitivity;
+  terminal.options.fontFamily = options.fontFamily;
+  terminal.options.fontSize = options.fontSize;
+  terminal.options.fontWeight = options.fontWeight;
+  terminal.options.fontWeightBold = options.fontWeightBold;
+  terminal.options.letterSpacing = options.letterSpacing;
+  terminal.options.lineHeight = options.lineHeight;
+  terminal.options.minimumContrastRatio = options.minimumContrastRatio;
+  terminal.options.screenReaderMode = options.screenReaderMode;
+  terminal.options.scrollback = options.scrollback;
+  terminal.options.scrollOnUserInput = options.scrollOnUserInput;
+  terminal.options.scrollSensitivity = options.scrollSensitivity;
+  terminal.options.smoothScrollDuration = options.smoothScrollDuration;
+  terminal.options.tabStopWidth = options.tabStopWidth;
+  terminal.options.theme = options.theme;
+};
+
 type SSHProps = {
   onTabTitleChange?: (title: string) => void;
 };
@@ -380,6 +406,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const selectionPointerClientXRef = React.useRef<number | null>(null);
   const terminalRef = React.useRef<Terminal | null>(null);
   const socketRef = React.useRef<WebSocket | null>(null);
+  const scheduleFitAndResizeSyncRef = React.useRef<(() => void) | null>(null);
   const selectionBarRef = React.useRef<HTMLDivElement | null>(null);
   const connectSessionRef = React.useRef<(() => void) | null>(null);
   const fingerprintPromptResolverRef = React.useRef<((accepted: boolean) => void) | null>(null);
@@ -430,7 +457,6 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       letterSpacing: settingsValues.terminalLetterSpacing,
       lineHeight: lineHeight ?? 1,
       minimumContrastRatio,
-      reflowCursorLine: true,
       screenReaderMode: settingsValues.terminalScreenReaderMode,
       scrollback: sshMaxRows,
       scrollOnUserInput: settingsValues.terminalScrollOnUserInput,
@@ -480,6 +506,13 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   React.useEffect(() => {
     onTabTitleChangeRef.current = onTabTitleChange;
   }, [onTabTitleChange]);
+
+  const terminalInitOptionsRef = React.useRef<ITerminalOptions>(terminalInitOptions);
+  const sshConnectionTimeoutSecRef = React.useRef<number>(sshConnectionTimeoutSec);
+
+  React.useEffect(() => {
+    sshConnectionTimeoutSecRef.current = sshConnectionTimeoutSec;
+  }, [sshConnectionTimeoutSec]);
 
   const resolveHostFingerprintPrompt = React.useCallback((accepted: boolean) => {
     const resolver = fingerprintPromptResolverRef.current;
@@ -606,6 +639,19 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       pointerClientX: selectionPointerClientXRef.current,
     });
   }, [resolveSelectionBounds]);
+
+  React.useEffect(() => {
+    terminalInitOptionsRef.current = terminalInitOptions;
+
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+
+    applyTerminalRuntimeOptions(terminal, terminalInitOptions);
+    scheduleFitAndResizeSyncRef.current?.();
+    refreshSelectionAnchor();
+  }, [refreshSelectionAnchor, terminalInitOptions]);
 
   React.useLayoutEffect(() => {
     if (
@@ -900,7 +946,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   });
 
   React.useEffect(() => {
-    const terminal = new Terminal(terminalInitOptions);
+    const terminal = new Terminal(terminalInitOptionsRef.current);
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
 
@@ -996,6 +1042,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         refreshSelectionAnchor();
       });
     };
+    scheduleFitAndResizeSyncRef.current = scheduleFitAndResizeSync;
 
     void document.fonts.ready.then(() => {
       if (disposed) {
@@ -1146,7 +1193,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
           cols: terminal.cols,
           rows: terminal.rows,
           term: 'xterm-256color',
-          connectTimeoutSec: sshConnectionTimeoutSec,
+          connectTimeoutSec: sshConnectionTimeoutSecRef.current,
         });
 
         let createResult = createPayload;
@@ -1187,7 +1234,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
             cols: terminal.cols,
             rows: terminal.rows,
             term: 'xterm-256color',
-            connectTimeoutSec: sshConnectionTimeoutSec,
+            connectTimeoutSec: sshConnectionTimeoutSecRef.current,
           });
 
           if (disposed) {
@@ -1326,6 +1373,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       }
 
       connectSessionRef.current = null;
+      scheduleFitAndResizeSyncRef.current = null;
       terminalRef.current = null;
       selectionPointerClientXRef.current = null;
       setSelectionAnchor(null);
@@ -1340,7 +1388,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       disposeResize();
       terminal.dispose();
     };
-  }, [refreshSelectionAnchor, requestHostFingerprintTrust, sshConnectionTimeoutSec, terminalInitOptions]);
+  }, [requestHostFingerprintTrust, refreshSelectionAnchor]);
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 rounded-[18px] p-1';
