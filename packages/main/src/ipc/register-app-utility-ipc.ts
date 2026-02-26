@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, shell } from 'electron';
 
 /**
  * Dependency contract for registering app-level utility IPC handlers.
@@ -155,6 +155,45 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
       return true;
     } catch {
       return false;
+    }
+  });
+
+  ipcMain.handle('app:import-private-key', async (): Promise<{ canceled: boolean; content?: string }> => {
+    const targetWindow = BrowserWindow.getFocusedWindow() ?? options.getMainWindow();
+
+    const dialogOptions: OpenDialogOptions = {
+      title: 'Import Private Key',
+      buttonLabel: 'Import',
+      properties: ['openFile'],
+      filters: [
+        {
+          name: 'Private Key Files',
+          extensions: ['pem', 'key', 'ppk', 'txt'],
+        },
+        {
+          name: 'All Files',
+          extensions: ['*'],
+        },
+      ],
+    };
+
+    try {
+      const selection = targetWindow
+        ? await dialog.showOpenDialog(targetWindow, dialogOptions)
+        : await dialog.showOpenDialog(dialogOptions);
+
+      if (selection.canceled || selection.filePaths.length === 0) {
+        return { canceled: true };
+      }
+
+      const selectedPath = selection.filePaths[0];
+      const content = await fs.readFile(selectedPath, 'utf8');
+      return {
+        canceled: false,
+        content,
+      };
+    } catch {
+      return { canceled: false };
     }
   });
 };

@@ -97,6 +97,7 @@ declare global {
       openDevTools: () => Promise<boolean>;
       showInFileManager: (targetPath?: string) => Promise<boolean>;
       openExternalUrl: (targetUrl: string) => Promise<boolean>;
+      importPrivateKeyFromFile: () => Promise<{ canceled: boolean; content?: string }>;
       backendTestPing: () => Promise<ApiTestPingResponse | ApiErrorResponse>;
       backendSettingsGet: () => Promise<ApiSettingsGetResponse | ApiErrorResponse>;
       backendSettingsUpdate: (

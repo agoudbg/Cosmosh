@@ -5,6 +5,7 @@ import {
   ArrowUpAZ,
   ArrowUpDown,
   CalendarPlus,
+  FileUp,
   Folder,
   FolderPlus,
   Plus,
@@ -48,6 +49,7 @@ import {
 import { Form, FormControl, FormField, FormLabel, FormMessage } from '../components/ui/form';
 import { formStyles } from '../components/ui/form-styles';
 import { Input } from '../components/ui/input';
+import type { InputContextMenuItem } from '../components/ui/input-context-menu-registry';
 import { Label } from '../components/ui/label';
 import { menuStyles } from '../components/ui/menu-styles';
 import { Menubar, MenubarSeparator } from '../components/ui/menubar';
@@ -493,6 +495,38 @@ const SSHEditor: React.FC = () => {
     },
     [],
   );
+
+  const importPrivateKeyFromFile = React.useCallback(async () => {
+    try {
+      const result = await window.electron?.importPrivateKeyFromFile?.();
+      if (!result || result.canceled) {
+        return;
+      }
+
+      if (typeof result.content !== 'string') {
+        notifyError(t('ssh.privateKeyImportFailed'));
+        return;
+      }
+
+      onChangeForm('privateKey', result.content);
+      notifySuccess(t('ssh.privateKeyImportSuccess'));
+    } catch (error: unknown) {
+      notifyError(error instanceof Error ? error.message : t('ssh.privateKeyImportFailed'));
+    }
+  }, [notifyError, notifySuccess, onChangeForm]);
+
+  const privateKeyContextMenuItems = React.useMemo<InputContextMenuItem[]>(() => {
+    return [
+      {
+        key: 'import-private-key',
+        label: t('ssh.privateKeyImportAction'),
+        icon: FileUp,
+        onSelect: () => {
+          void importPrivateKeyFromFile();
+        },
+      },
+    ];
+  }, [importPrivateKeyFromFile]);
 
   const onAddServer = React.useCallback(() => {
     preferCreateModeRef.current = true;
@@ -1001,6 +1035,7 @@ const SSHEditor: React.FC = () => {
                               : t('ssh.privateKeyPlaceholder')
                           }
                           rows={5}
+                          contextMenuItems={privateKeyContextMenuItems}
                           onChange={(event) => onChangeForm('privateKey', event.target.value)}
                         />
                       </FormControl>

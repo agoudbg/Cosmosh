@@ -133,6 +133,9 @@ contextBridge.exposeInMainWorld('electron', {
   openExternalUrl: (targetUrl: string) => {
     return ipcRenderer.invoke('app:open-external-url', targetUrl) as Promise<boolean>;
   },
+  importPrivateKeyFromFile: () => {
+    return ipcRenderer.invoke('app:import-private-key') as Promise<{ canceled: boolean; content?: string }>;
+  },
 
   // ---------------------------------------------------------------------------
   // Backend settings and SSH channels
