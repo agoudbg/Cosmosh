@@ -628,15 +628,17 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
               </div>
 
               {!isAutoSaveEnabled ? (
-                <Button
-                  disabled={isLoading || isSaving || !hasChanges}
-                  onClick={() => {
-                    void saveSettings();
-                  }}
-                >
-                  <Save className="h-4 w-4" />
-                  {isSaving ? t('settings.saving') : t('settings.saveChanges')}
-                </Button>
+                <Menubar>
+                  <Button
+                    disabled={isLoading || isSaving || !hasChanges}
+                    onClick={() => {
+                      void saveSettings();
+                    }}
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSaving ? t('settings.saving') : t('settings.saveChanges')}
+                  </Button>
+                </Menubar>
               ) : null}
             </div>
           </div>
