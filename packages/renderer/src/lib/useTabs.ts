@@ -74,11 +74,18 @@ export const useTabs = (options?: UseTabsOptions) => {
   const addTab = React.useCallback(
     (page: TabPage, overrides?: Partial<TabItem>) => {
       const nextTab = buildTab(page, overrides);
-      setTabs((current) => [...current, nextTab]);
+      setTabs((current) => {
+        const activeIndex = current.findIndex((tab) => tab.id === activeTabId);
+        if (activeIndex === -1 || activeIndex >= current.length - 1) {
+          return [...current, nextTab];
+        }
+
+        return [...current.slice(0, activeIndex + 1), nextTab, ...current.slice(activeIndex + 1)];
+      });
       setActiveTabId(nextTab.id);
       return nextTab.id;
     },
-    [buildTab],
+    [activeTabId, buildTab],
   );
 
   const updateTab = React.useCallback((id: string, updates: Partial<TabItem>) => {
