@@ -11,12 +11,14 @@ type TextareaProps = React.ComponentPropsWithoutRef<'textarea'> & {
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, contextMenuItems, ...props }, ref) => {
     const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+    const [menuTarget, setMenuTarget] = React.useState<HTMLTextAreaElement | null>(null);
 
-    useRegisterInputContextMenuItems(textareaRef.current, contextMenuItems);
+    useRegisterInputContextMenuItems(menuTarget, contextMenuItems);
 
     const setRefs = React.useCallback(
       (node: HTMLTextAreaElement | null) => {
         textareaRef.current = node;
+        setMenuTarget(node);
 
         if (typeof ref === 'function') {
           ref(node);

@@ -10,12 +10,14 @@ type InputProps = React.ComponentPropsWithoutRef<'input'> & {
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, contextMenuItems, ...props }, ref) => {
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const [menuTarget, setMenuTarget] = React.useState<HTMLInputElement | null>(null);
 
-  useRegisterInputContextMenuItems(inputRef.current, contextMenuItems);
+  useRegisterInputContextMenuItems(menuTarget, contextMenuItems);
 
   const setRefs = React.useCallback(
     (node: HTMLInputElement | null) => {
       inputRef.current = node;
+      setMenuTarget(node);
 
       if (typeof ref === 'function') {
         ref(node);
