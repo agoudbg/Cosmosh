@@ -25,11 +25,11 @@
     }
   },
   "dependencies": {
-    "intl-messageformat": "^10.7.16"
+    "intl-messageformat": "^11.1.2"
   },
   "devDependencies": {
-    "tsup": "^8.5.0",
-    "typescript": "^5.7.2",
-    "vitest": "^3.2.4"
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

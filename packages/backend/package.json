@@ -21,28 +21,28 @@
   "dependencies": {
     "@cosmosh/api-contract": "workspace:*",
     "@cosmosh/i18n": "workspace:*",
-    "@hono/node-server": "^1.13.7",
-    "@prisma/client": "^6.4.1",
-    "better-sqlite3-multiple-ciphers": "^12.4.1",
-    "hono": "^4.11.10",
+    "@hono/node-server": "^1.19.9",
+    "@prisma/client": "^6.19.2",
+    "better-sqlite3-multiple-ciphers": "^12.6.2",
+    "hono": "^4.12.2",
     "node-pty": "1.2.0-beta.11",
     "ssh2": "^1.17.0",
-    "ws": "^8.18.3"
+    "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.17.0",
-    "@types/node": "^22.10.2",
+    "@eslint/js": "^9.39.3",
+    "@types/node": "^25.3.1",
     "@types/ssh2": "^1.15.5",
     "@types/ws": "^8.18.1",
-    "eslint": "^9.17.0",
-    "eslint-plugin-import": "^2.31.0",
-    "eslint-plugin-prettier": "^5.2.1",
+    "eslint": "^9.39.3",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-simple-import-sort": "^12.1.1",
-    "globals": "^15.13.0",
-    "prettier": "^3.4.2",
-    "prisma": "^6.4.1",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "typescript-eslint": "^8.19.1"
+    "globals": "^17.3.0",
+    "prettier": "^3.8.1",
+    "prisma": "^6.19.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
   }
 }

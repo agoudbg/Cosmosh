@@ -6,8 +6,8 @@ type TerminalTextDropMode = SettingsValues['terminalTextDropMode'];
 type UseTerminalTextDropZoneOptions = {
   mode: TerminalTextDropMode;
   isConnected: boolean;
-  wrapperRef: React.RefObject<HTMLDivElement>;
-  terminalContainerRef: React.RefObject<HTMLDivElement>;
+  wrapperRef: React.RefObject<HTMLDivElement | null>;
+  terminalContainerRef: React.RefObject<HTMLDivElement | null>;
   internalDragMimeType: string;
   onDropText: (text: string) => void;
 };
