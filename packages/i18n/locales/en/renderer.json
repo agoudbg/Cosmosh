@@ -142,6 +142,11 @@
     },
     "disabled": "Disabled",
     "enabled": "Enabled",
+    "itemActions": {
+      "editInSettingsEditor": "Edit in Settings Editor",
+      "openMenu": "Open setting actions",
+      "resetToDefault": "Reset to Default"
+    },
     "items": {
       "accountSyncEnabled": {
         "description": "Enable to sync settings across devices using the current account.",

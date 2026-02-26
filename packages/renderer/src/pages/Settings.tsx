@@ -1,9 +1,27 @@
 import { normalizeSettingsValuesStrict, type SettingValidationError } from '@cosmosh/api-contract';
-import { Cloud, Info, Link2, Palette, Save, Search, Settings2, Terminal, Wrench } from 'lucide-react';
+import {
+  Cloud,
+  Info,
+  Link2,
+  Palette,
+  RotateCcw,
+  Save,
+  Search,
+  Settings2,
+  SettingsIcon,
+  Terminal,
+  Wrench,
+} from 'lucide-react';
 import React from 'react';
 
 import SettingsAboutSection, { type AppVersionInfo } from '../components/settings/SettingsAboutSection';
 import { Button } from '../components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
 import { FormField } from '../components/ui/form';
 import { formStyles } from '../components/ui/form-styles';
 import { Input } from '../components/ui/input';
@@ -151,7 +169,18 @@ const resolveLocalizedOptionLabel = (item: SettingDefinition, value: string): st
   return value;
 };
 
-const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId }) => {
+const toDefaultFormValue = (item: SettingDefinition): string | boolean => {
+  if (item.control === 'switch') {
+    return Boolean(item.defaultValue);
+  }
+
+  return String(item.defaultValue);
+};
+
+const Settings: React.FC<{ initialCategoryId?: string; onOpenSettingInEditor?: (settingKey: SettingKey) => void }> = ({
+  initialCategoryId,
+  onOpenSettingInEditor,
+}) => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const [, setLocaleTick] = React.useState<number>(0);
   const [activeCategoryId, setActiveCategoryId] = React.useState<SettingsCategoryId>(() => {
@@ -360,6 +389,14 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
     setFormState((previous) => ({
       ...previous,
       [key]: value,
+    }));
+  }, []);
+
+  const resetSettingToDefault = React.useCallback((item: SettingDefinition) => {
+    const defaultValue = toDefaultFormValue(item);
+    setFormState((previous) => ({
+      ...previous,
+      [item.key]: defaultValue,
     }));
   }, []);
 
@@ -668,8 +705,38 @@ const Settings: React.FC<{ initialCategoryId?: string }> = ({ initialCategoryId 
                   >
                     <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">{section.title}</div>
                     {section.items.map((item) => (
-                      <FormField key={item.path}>
-                        <Label>{t(item.nameI18nKey)}</Label>
+                      <FormField
+                        key={item.path}
+                        className="group/setting"
+                      >
+                        <div className="flex items-center">
+                          <Label>{t(item.nameI18nKey)}</Label>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label={t('settings.itemActions.openMenu')}
+                                className="flex h-5 w-5 items-center justify-center rounded-md text-home-text-subtle opacity-0 outline-none transition-opacity focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-outline group-focus-within/setting:opacity-100 group-hover/setting:opacity-100"
+                              >
+                                <SettingsIcon className="h-3.5 w-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              <DropdownMenuItem
+                                icon={RotateCcw}
+                                onSelect={() => resetSettingToDefault(item)}
+                              >
+                                {t('settings.itemActions.resetToDefault')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                icon={Settings2}
+                                onSelect={() => onOpenSettingInEditor?.(item.key)}
+                              >
+                                {t('settings.itemActions.editInSettingsEditor')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                         {renderControl(item)}
                         <div className={formStyles.helperText}>{t(item.descriptionI18nKey)}</div>
                       </FormField>

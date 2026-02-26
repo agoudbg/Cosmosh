@@ -161,10 +161,11 @@ const parseSettingsJson = (rawJson: string): { value?: SettingsValues; error?: s
   return { value: normalized.value };
 };
 
-const SettingsEditor: React.FC = () => {
+const SettingsEditor: React.FC<{ initialSettingKey?: string }> = ({ initialSettingKey }) => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const [, setLocaleTick] = React.useState<number>(0);
   const monacoRef = React.useRef<Monaco | null>(null);
+  const editorRef = React.useRef<monacoEditor.editor.IStandaloneCodeEditor | null>(null);
 
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [isSaving, setIsSaving] = React.useState<boolean>(false);
@@ -257,6 +258,49 @@ const SettingsEditor: React.FC = () => {
 
   const hasChanges = rawJson !== savedJson;
 
+  const revealSettingKey = React.useCallback((settingKey: string): void => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    const model = editor.getModel();
+    if (!model) {
+      return;
+    }
+
+    const keyToken = `"${settingKey}"`;
+    const offset = model.getValue().indexOf(keyToken);
+    if (offset < 0) {
+      return;
+    }
+
+    const start = model.getPositionAt(offset + 1);
+    const end = model.getPositionAt(offset + 1 + settingKey.length);
+    editor.setSelection({
+      startLineNumber: start.lineNumber,
+      startColumn: start.column,
+      endLineNumber: end.lineNumber,
+      endColumn: end.column,
+    });
+    editor.revealLineInCenter(start.lineNumber);
+    editor.focus();
+  }, []);
+
+  React.useEffect(() => {
+    if (!initialSettingKey || isLoading) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      revealSettingKey(initialSettingKey);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [initialSettingKey, isLoading, rawJson, revealSettingKey]);
+
   const handleSave = React.useCallback(async (): Promise<void> => {
     if (isSaving) {
       return;
@@ -333,6 +377,9 @@ const SettingsEditor: React.FC = () => {
               beforeMount={(monaco: Monaco) => {
                 monacoRef.current = monaco;
                 configureJsonLanguage(monaco, schema);
+              }}
+              onMount={(editor) => {
+                editorRef.current = editor;
               }}
               onChange={(value: string | undefined) => {
                 setRawJson(value ?? '');

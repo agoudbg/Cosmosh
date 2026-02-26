@@ -10,5 +10,6 @@ export type TabItem = {
   closable?: boolean;
   state?: {
     settingsCategory?: string;
+    settingsEditorSettingKey?: string;
   };
 };

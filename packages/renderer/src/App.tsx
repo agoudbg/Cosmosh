@@ -175,8 +175,21 @@ const App: React.FC = () => {
                   />
                 )}
                 {tab.page === 'ssh-editor' && <SSHEditor />}
-                {tab.page === 'settings' && <Settings initialCategoryId={tab.state?.settingsCategory} />}
-                {tab.page === 'settings-editor' && <SettingsEditor />}
+                {tab.page === 'settings' && (
+                  <Settings
+                    initialCategoryId={tab.state?.settingsCategory}
+                    onOpenSettingInEditor={(settingKey) =>
+                      addTab('settings-editor', {
+                        state: {
+                          settingsEditorSettingKey: settingKey,
+                        },
+                      })
+                    }
+                  />
+                )}
+                {tab.page === 'settings-editor' && (
+                  <SettingsEditor initialSettingKey={tab.state?.settingsEditorSettingKey} />
+                )}
                 {tab.page === 'components-field' && <ComponentsField />}
                 {tab.page === 'debug' && (
                   <Debug

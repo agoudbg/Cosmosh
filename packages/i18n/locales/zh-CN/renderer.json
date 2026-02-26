@@ -142,6 +142,11 @@
     },
     "disabled": "已禁用",
     "enabled": "已启用",
+    "itemActions": {
+      "editInSettingsEditor": "在设置编辑器中编辑",
+      "openMenu": "打开设置项操作菜单",
+      "resetToDefault": "重置为默认"
+    },
     "items": {
       "accountSyncEnabled": {
         "description": "启用来将设置在使用当前账号的多个设备间同步。",
