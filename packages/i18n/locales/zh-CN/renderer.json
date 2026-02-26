@@ -1,4 +1,7 @@
 {
+  "common": {
+    "click": "点击"
+  },
   "componentsPlayground": {
     "title": "Components Playground"
   },
@@ -79,6 +82,7 @@
     "loading": "正在加载数据...",
     "openInFileManagerFailed": "打开文件管理器失败。",
     "openSshCurrentTab": "在当前标签打开 SSH",
+    "openSshNewTab": "在新标签页中打开",
     "quickAddFolder": "添加文件夹",
     "quickAddServer": "添加服务器",
     "searchPlaceholder": "搜索...",

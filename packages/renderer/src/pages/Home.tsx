@@ -48,6 +48,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
@@ -92,7 +93,7 @@ import { useToast } from '../lib/toast-context';
 import { useDirectionalNavigation } from '../lib/use-directional-navigation';
 
 type HomeProps = {
-  onOpenSSH: (serverId: string, tabTitle?: string) => void;
+  onOpenSSH: (serverId: string, tabTitle?: string, options?: { openInNewTab?: boolean }) => void;
   onOpenSshEditor: (serverId: string) => void;
   isActive: boolean;
 };
@@ -684,6 +685,23 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     return t('home.contextShowInFileManager');
   }, []);
 
+  const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
+
+  const openInNewTabShortcutLabel = React.useMemo(() => {
+    const clickLabel = t('common.click');
+    return isMacPlatform ? `⌘+${clickLabel}` : `Ctrl+${clickLabel}`;
+  }, [isMacPlatform]);
+
+  const openServerFromCard = React.useCallback(
+    (server: SshServerListItem, event?: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) => {
+      const isModifierPressed = isMacPlatform ? event?.metaKey : event?.ctrlKey;
+      const shouldOpenInNewTab = event?.type === 'click' && Boolean(isModifierPressed);
+
+      onOpenSSH(server.id, server.name, { openInNewTab: shouldOpenInNewTab });
+    },
+    [isMacPlatform, onOpenSSH],
+  );
+
   const handleCopyToClipboard = React.useCallback(
     async (value: string) => {
       try {
@@ -1250,7 +1268,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                                   setDraggingServerId(null);
                                   setDragOverFolderId(null);
                                 }}
-                                onClick={() => onOpenSSH(server.id, server.name)}
+                                onClick={(event) => openServerFromCard(server, event)}
                               />
                             </ContextMenuTrigger>
                             <ContextMenuContent>
@@ -1259,6 +1277,12 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                                 onSelect={() => onOpenSSH(server.id, server.name)}
                               >
                                 {t('home.contextConnect')}
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onSelect={() => onOpenSSH(server.id, server.name, { openInNewTab: true })}
+                              >
+                                {t('home.openSshNewTab')}
+                                <ContextMenuShortcut>{openInNewTabShortcutLabel}</ContextMenuShortcut>
                               </ContextMenuItem>
                               {/* TODO(home): SFTP connect entry is pending dedicated SFTP page/session wiring. */}
                               <ContextMenuItem

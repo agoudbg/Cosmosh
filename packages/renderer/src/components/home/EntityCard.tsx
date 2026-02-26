@@ -11,7 +11,7 @@ type EntityCardProps = {
   layout?: 'list' | 'grid';
   tone?: 'flat' | 'filled';
   className?: string;
-  onClick?: () => void;
+  onClick?: (event?: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) => void;
   draggable?: boolean;
   onDragStart?: React.DragEventHandler<HTMLDivElement>;
   onDragEnd?: React.DragEventHandler<HTMLDivElement>;
@@ -62,7 +62,7 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
 
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          onClick();
+          onClick(event);
         }
       },
       [onClick, onKeyDown],
@@ -115,7 +115,9 @@ const EntityCard = React.forwardRef<HTMLDivElement, EntityCardProps>(
           className,
         )}
         draggable={draggable}
-        onClick={onClick}
+        onClick={(event) => {
+          onClick?.(event);
+        }}
         onKeyDown={handleKeyDown}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}

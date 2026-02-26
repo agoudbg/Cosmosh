@@ -1,4 +1,7 @@
 {
+  "common": {
+    "click": "Click"
+  },
   "componentsPlayground": {
     "title": "Components Playground"
   },
@@ -79,6 +82,7 @@
     "loading": "Loading data...",
     "openInFileManagerFailed": "Failed to open file manager.",
     "openSshCurrentTab": "Open SSH In Current Tab",
+    "openSshNewTab": "Open in New Tab",
     "quickAddFolder": "Add Folder",
     "quickAddServer": "Add Server",
     "searchPlaceholder": "Search...",

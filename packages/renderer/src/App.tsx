@@ -150,8 +150,16 @@ const App: React.FC = () => {
                 {tab.page === 'home' && (
                   <Home
                     isActive={tab.id === activeTabId}
-                    onOpenSSH={(serverId, tabTitle) => {
+                    onOpenSSH={(serverId, tabTitle, options) => {
                       setActiveSshServerId(serverId);
+                      if (options?.openInNewTab) {
+                        const newTabId = addTab('ssh');
+                        if (tabTitle) {
+                          updateTab(newTabId, { title: tabTitle });
+                        }
+                        return;
+                      }
+
                       openPageInTab(tab.id, 'ssh');
                       if (tabTitle) {
                         updateTab(tab.id, { title: tabTitle });
