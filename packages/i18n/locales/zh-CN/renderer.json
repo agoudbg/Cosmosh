@@ -217,7 +217,7 @@
       },
       "terminalFontFamily": {
         "description": "终端字体族回退列表。",
-        "placeholder": "Consolas, \"JetBrains Mono\", \"Liberation Mono\", \"Microsoft YaHei\", \"SFMono-Regular\", \"PingFang SC\", monospace",
+        "placeholder": "monospace, Consolas, \"JetBrains Mono\", \"Liberation Mono\", \"Microsoft YaHei\", \"SFMono-Regular\", \"PingFang SC\"",
         "title": "终端字体族"
       },
       "terminalFontSize": {
