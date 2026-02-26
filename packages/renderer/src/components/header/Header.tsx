@@ -27,6 +27,7 @@ const Header: React.FC<{
   onCloseOtherTabs?: (id: string) => void;
   onReorderTabs?: (nextTabs: TabItem[]) => void;
   onOpenSettingsTab?: (options?: { categoryId?: 'about' }) => void;
+  onOpenSettingsEditorTab?: () => void;
   onOpenDebugTab?: () => void;
 }> = ({
   className,
@@ -39,9 +40,11 @@ const Header: React.FC<{
   onCloseOtherTabs,
   onReorderTabs,
   onOpenSettingsTab,
+  onOpenSettingsEditorTab,
   onOpenDebugTab,
 }) => {
   const { success: notifySuccess, warning: notifyWarning } = useToast();
+  const openSettingsEditorByAltClickRef = React.useRef<boolean>(false);
   const devToolsEnabled = useSettingsValue('devToolsEnabled');
   const accountSyncEnabled = useSettingsValue('accountSyncEnabled');
   // Margin for window controls on macOS/Windows/Linux
@@ -208,7 +211,20 @@ const Header: React.FC<{
           ) : null}
           <DropdownMenuItem
             icon={Settings}
-            onSelect={() => onOpenSettingsTab?.()}
+            onPointerDown={(event) => {
+              openSettingsEditorByAltClickRef.current = event.altKey;
+            }}
+            onSelect={() => {
+              const openEditor = openSettingsEditorByAltClickRef.current;
+              openSettingsEditorByAltClickRef.current = false;
+
+              if (openEditor) {
+                onOpenSettingsEditorTab?.();
+                return;
+              }
+
+              onOpenSettingsTab?.();
+            }}
           >
             {t('header.settings')}
           </DropdownMenuItem>

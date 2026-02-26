@@ -25,6 +25,10 @@ const resolvePageDefaults = (page: TabPage): { title: string; iconKey: TabIconKe
     return { title: t('tabs.page.settings'), iconKey: 'settings' };
   }
 
+  if (page === 'settings-editor') {
+    return { title: t('tabs.page.settingsEditor'), iconKey: 'settings' };
+  }
+
   if (page === 'components-field') {
     return { title: t('tabs.page.componentsField'), iconKey: 'file' };
   }

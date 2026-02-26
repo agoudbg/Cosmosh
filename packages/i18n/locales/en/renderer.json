@@ -387,6 +387,18 @@
       "unsupportedType": "Unsupported setting value type for key: {key}."
     }
   },
+  "settingsEditor": {
+    "invalidJson": "Settings JSON is invalid.",
+    "loadFailed": "Failed to load settings editor data.",
+    "loading": "Loading settings JSON...",
+    "save": "Save",
+    "saveFailed": "Failed to save settings.",
+    "saveSuccess": "Settings saved successfully.",
+    "saving": "Saving...",
+    "schemaTitle": "Cosmosh Settings",
+    "title": "Settings Editor",
+    "validationFailed": "Settings validation failed."
+  },
   "ssh": {
     "authTypeBoth": "Password and Private Key",
     "authTypeKey": "Private Key",
@@ -509,6 +521,7 @@
       "home": "Home",
       "localTerminal": "Local Terminal",
       "settings": "Settings",
+      "settingsEditor": "Settings Editor",
       "ssh": "SSH",
       "sshEditor": "Edit Server"
     }

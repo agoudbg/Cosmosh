@@ -28,7 +28,7 @@ flowchart TB
 
 - **角色**：React UI 层。
 - **关键目录**：
-  - `src/pages`：功能页面（`Home`、`SSH`、`SSHEditor` 等）。
+  - `src/pages`：功能页面（`Home`、`SSH`、`SSHEditor`、`Settings`、`SettingsEditor`等）。
   - `src/components/ui`：基于 Radix 的原子组件封装与样式契约。
   - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）与工具抽象。
   - `theme`：生成 CSS Variables 的令牌源。

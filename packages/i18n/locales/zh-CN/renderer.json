@@ -387,6 +387,18 @@
       "unsupportedType": "不支持的设置值类型，键：“{key}”。"
     }
   },
+  "settingsEditor": {
+    "invalidJson": "设置 JSON 格式无效。",
+    "loadFailed": "加载设置编辑器数据失败。",
+    "loading": "正在加载设置 JSON...",
+    "save": "保存",
+    "saveFailed": "保存设置失败。",
+    "saveSuccess": "设置已保存。",
+    "saving": "保存中...",
+    "schemaTitle": "Cosmosh 设置",
+    "title": "设置编辑器",
+    "validationFailed": "设置校验失败。"
+  },
   "ssh": {
     "authTypeBoth": "密码和私钥",
     "authTypeKey": "私钥",
@@ -509,6 +521,7 @@
       "home": "主页",
       "localTerminal": "本地终端",
       "settings": "设置",
+      "settingsEditor": "设置编辑器",
       "ssh": "SSH",
       "sshEditor": "编辑服务器"
     }

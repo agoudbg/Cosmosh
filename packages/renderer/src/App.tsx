@@ -14,6 +14,7 @@ import ComponentsField from './pages/ComponentsField';
 import Debug from './pages/Debug';
 import Home from './pages/Home';
 import Settings from './pages/Settings';
+import SettingsEditor from './pages/SettingsEditor';
 import SSH from './pages/SSH';
 import SSHEditor from './pages/SSHEditor';
 
@@ -132,6 +133,7 @@ const App: React.FC = () => {
                   },
                 })
               }
+              onOpenSettingsEditorTab={() => addTab('settings-editor')}
               onOpenDebugTab={() => addTab('debug')}
             />
           </div>
@@ -174,6 +176,7 @@ const App: React.FC = () => {
                 )}
                 {tab.page === 'ssh-editor' && <SSHEditor />}
                 {tab.page === 'settings' && <Settings initialCategoryId={tab.state?.settingsCategory} />}
+                {tab.page === 'settings-editor' && <SettingsEditor />}
                 {tab.page === 'components-field' && <ComponentsField />}
                 {tab.page === 'debug' && (
                   <Debug
@@ -182,6 +185,9 @@ const App: React.FC = () => {
                     onOpenSSH={(openInNewTab) => (openInNewTab ? addTab('ssh') : openPageInTab(tab.id, 'ssh'))}
                     onOpenSettings={(openInNewTab) =>
                       openInNewTab ? addTab('settings') : openPageInTab(tab.id, 'settings')
+                    }
+                    onOpenSettingsEditor={(openInNewTab) =>
+                      openInNewTab ? addTab('settings-editor') : openPageInTab(tab.id, 'settings-editor')
                     }
                     onOpenComponentsField={(openInNewTab) =>
                       openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')

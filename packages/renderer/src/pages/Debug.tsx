@@ -14,6 +14,7 @@ type BackendPingState =
 type DebugProps = {
   onOpenSSH: (openInNewTab: boolean) => void;
   onOpenSettings: (openInNewTab: boolean) => void;
+  onOpenSettingsEditor: (openInNewTab: boolean) => void;
   onOpenComponentsField: (openInNewTab: boolean) => void;
   onOpenSshEditor: (openInNewTab: boolean) => void;
   onRenameTab: (title: string) => void;
@@ -39,6 +40,7 @@ type NavigationEntry = {
 const Debug: React.FC<DebugProps> = ({
   onOpenSSH,
   onOpenSettings,
+  onOpenSettingsEditor,
   onOpenComponentsField,
   onOpenSshEditor,
   onRenameTab,
@@ -58,6 +60,7 @@ const Debug: React.FC<DebugProps> = ({
     { id: 'ssh', pageName: 'SSH', onClick: onOpenSSH },
     { id: 'ssh-editor', pageName: 'SSH Editor', onClick: onOpenSshEditor },
     { id: 'settings', pageName: 'Settings', onClick: onOpenSettings },
+    { id: 'settings-editor', pageName: 'Settings Editor', onClick: onOpenSettingsEditor },
     {
       id: 'components-playground',
       pageName: 'Components Playground',

@@ -28,7 +28,7 @@ flowchart TB
 
 - **Role**: React UI layer.
 - **Key folders**:
-  - `src/pages`: feature pages (`Home`, `SSH`, `SSHEditor`, etc.).
+  - `src/pages`: feature pages (`Home`, `SSH`, `SSHEditor`, `Settings`, `SettingsEditor`, etc.).
   - `src/components/ui`: Radix-based primitive wrappers and styling contracts.
   - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), utility abstractions.
   - `theme`: token source used to generate CSS variable system.
