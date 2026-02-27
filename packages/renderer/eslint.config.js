@@ -77,7 +77,12 @@ export default tseslint.config(
           noSortAlphabetically: true,
         },
       ],
-      'tailwindcss/classnames-order': 'error',
+      // Disabled: prettier-plugin-tailwindcss (via prettier/prettier rule) is the
+      // canonical class-order enforcer. Keeping both active causes conflicts because
+      // eslint-plugin-tailwindcss places unknown tokens at the end while
+      // prettier-plugin-tailwindcss places them at the start, making --fix and
+      // VS Code format produce divergent results.
+      'tailwindcss/classnames-order': 'off',
       semi: ['error', 'always'],
       'comma-dangle': ['error', 'always-multiline'],
       'no-trailing-spaces': 'error',
