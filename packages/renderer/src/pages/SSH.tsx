@@ -4,7 +4,7 @@ import type { components, SettingsValues } from '@cosmosh/api-contract';
 import { FitAddon } from '@xterm/addon-fit';
 import { type ITerminalOptions, Terminal } from '@xterm/xterm';
 import classNames from 'classnames';
-import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles } from 'lucide-react';
+import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles, X } from 'lucide-react';
 import React from 'react';
 
 import { TerminalContextMenu } from '../components/terminal/terminal-context-menu';
@@ -55,6 +55,10 @@ type ClientOutboundMessage =
     }
   | {
       type: 'ping';
+    }
+  | {
+      type: 'history-delete';
+      command: string;
     };
 
 type ServerInboundMessage =
@@ -83,6 +87,10 @@ type ServerInboundMessage =
       memoryTotalBytes: number | null;
       networkRxBytesPerSec: number | null;
       networkTxBytesPerSec: number | null;
+      recentCommands: string[];
+    }
+  | {
+      type: 'history';
       recentCommands: string[];
     };
 
@@ -869,6 +877,36 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     terminalRef.current?.focus();
   }, []);
 
+  const handleDeleteRecentCommand = React.useCallback((command: string) => {
+    const normalizedCommand = command.trim();
+    if (!normalizedCommand) {
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    sendClientMessage(socket, {
+      type: 'history-delete',
+      command: normalizedCommand,
+    });
+  }, []);
+
+  const handleInsertRecentCommand = React.useCallback((command: string) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    sendClientMessage(socket, {
+      type: 'input',
+      data: command,
+    });
+    terminalRef.current?.focus();
+  }, []);
+
   const handleSelectionBarDragStart = React.useCallback(
     (event: React.DragEvent<HTMLButtonElement>) => {
       if (!selectionAnchor?.selectionText) {
@@ -1102,6 +1140,14 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
             // Backend already caps and de-duplicates commands; keep latest at top in the view layer.
             recentCommands: payload.recentCommands,
           });
+          return;
+        }
+
+        if (payload.type === 'history') {
+          setTelemetryState((previous) => ({
+            ...previous,
+            recentCommands: payload.recentCommands,
+          }));
           return;
         }
       } catch {
@@ -1517,7 +1563,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         {/* Recent commands */}
         <div className={classNames(sidebarCardStyle, cardHiddenArea)}>
           <div className={classNames(hiddenHeaderStyle, 'flex flex-shrink-0 items-center justify-between')}>
-            <Button>Commands</Button>
+            <Button>{t('ssh.historyCommandsTitle')}</Button>
             <div className="flex">
               <Button
                 aria-label="Search"
@@ -1529,15 +1575,35 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
           </div>
           <div className="flex h-[178px] flex-col overflow-auto">
             {telemetryState.recentCommands.length === 0 ? (
-              <div className="text-muted-text flex h-full items-center justify-center text-xs">No recent commands</div>
+              <div className="text-muted-text flex h-full items-center justify-center text-xs">
+                {t('ssh.historyCommandsEmpty')}
+              </div>
             ) : (
               [...telemetryState.recentCommands].reverse().map((command, index) => (
-                <Button
+                <div
                   key={`${command}-${index}`}
-                  className={commandButtonStyle}
+                  className="group relative"
                 >
-                  {command}
-                </Button>
+                  <Button
+                    className={classNames(commandButtonStyle, 'min-w-0 flex-1')}
+                    title={command}
+                    onClick={() => handleInsertRecentCommand(command)}
+                  >
+                    <span className="block w-full truncate pr-8">{command}</span>
+                  </Button>
+                  <button
+                    aria-label={t('ssh.historyDeleteLabel')}
+                    title={t('ssh.historyDeleteLabel')}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleDeleteRecentCommand(command);
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               ))
             )}
           </div>

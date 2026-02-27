@@ -22,8 +22,8 @@ sequenceDiagram
   SSH-->>API: sessionId + wsUrl + wsToken
   API-->>UI: create-session response
   UI->>SSH: WebSocket /ws/ssh/{sessionId}?token=...
-  UI-->>SSH: input/resize/ping
-  SSH-->>UI: output/telemetry/pong/exit
+  UI-->>SSH: input/resize/ping/history-delete
+  SSH-->>UI: output/telemetry/history/pong/exit
 ```
 
 ## 2. 后端会话生命周期
@@ -73,15 +73,27 @@ sequenceDiagram
 - `resize`：带边界归一化的 cols/rows。
 - `ping`：心跳。
 - `close`：显式断开请求。
+- `history-delete`：请求后端删除远端 shell 历史中的选中命令。
 
 ### Server → Client
 
 - `ready`：附加确认。
 - `output`：shell stdout/stderr 输出。
 - `telemetry`：CPU/内存/网络 + 命令历史快照。
+- `history`：仅历史快照推送，用于即时 UI 同步。
 - `pong`：ping 响应。
 - `error`：协议/运行时错误。
 - `exit`：会话关闭与原因。
+
+### 3.1 History 同步模型
+
+- 后端命令历史来源于远端 history 探测与 shell 历史解析结果。
+- 每次 SSH 会话建立后，后端都会执行远端 history 探测并解析为标准化命令列表。
+- 远端历史来源按兼容顺序探测（shell 内建 + 常见历史文件），覆盖 Bash/Zsh/Fish/Ksh/Ash 等格式，并在可用时兼容 PowerShell PSReadLine 历史。
+- 运行时 REPL 专用历史（例如 `.node_repl_history`）会被排除，不作为 shell 命令历史聚合来源。
+- 当渲染层发送的 `input` 包含提交字符（`\r` / `\n`）时，后端会以“延迟 + 节流”策略触发 history 刷新，避免过度抓取。
+- history 与 telemetry 解耦：telemetry 仍为定时采样，history 可通过 `history` 事件即时推送。
+- `SSH.tsx` 的删除操作会发送 `history-delete`，后端会以 best-effort 方式清理远端历史文件后再执行同步。
 
 ```mermaid
 flowchart LR
@@ -123,7 +135,7 @@ flowchart LR
 - Backend 对终端尺寸做归一化限制（`20-400 cols`、`10-200 rows`）。
 - 通过 pending output queue 避免 attach 前早期输出丢失。
 - 遥测采用 5 秒定时采样 + 轻量文本解析，降低帧级开销。
-- 命令捕获使用有界输入缓冲（每活动行 512 字符）。
+- history 刷新使用防抖 + 节流策略，平衡实时性与远端执行开销。
 
 ## 6.1 渲染层可配置的 xterm 选项（设置驱动）
 

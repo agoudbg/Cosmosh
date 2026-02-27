@@ -22,8 +22,8 @@ sequenceDiagram
   SSH-->>API: sessionId + wsUrl + wsToken
   API-->>UI: create-session response
   UI->>SSH: WebSocket /ws/ssh/{sessionId}?token=...
-  UI-->>SSH: input/resize/ping
-  SSH-->>UI: output/telemetry/pong/exit
+  UI-->>SSH: input/resize/ping/history-delete
+  SSH-->>UI: output/telemetry/history/pong/exit
 ```
 
 ## 2. Backend Session Lifecycle
@@ -73,15 +73,28 @@ sequenceDiagram
 - `resize`: terminal cols/rows with bounded normalization.
 - `ping`: heartbeat.
 - `close`: explicit disconnect request.
+- `history-delete`: request backend to delete a selected command from remote shell history.
 
 ### Server → Client
 
 - `ready`: attach acknowledged.
 - `output`: shell stdout/stderr output.
 - `telemetry`: CPU/memory/network + command history snapshot.
+- `history`: history-only snapshot push for immediate UI sync.
 - `pong`: ping response.
 - `error`: protocol/runtime error.
 - `exit`: terminal session closed with reason.
+
+### 3.1 History Synchronization Model
+
+- Backend command history is sourced from remote history probes and parsed shell history entries.
+- On every SSH session creation, backend executes remote history probes and parses shell history into normalized commands.
+- Remote history sources are probed in a compatibility order (shell builtin + common files), including Bash/Zsh/Fish/Ksh/Ash-style files and optional PowerShell PSReadLine history when available.
+- Runtime-specific REPL stores (for example `.node_repl_history`) are intentionally excluded from shell command history aggregation.
+- When renderer sends `input` containing line-submit characters (`\r` / `\n`), backend schedules a delayed + throttled history refresh to avoid over-fetching.
+- History refresh and telemetry are decoupled: telemetry stays interval-based, while history can be pushed immediately through `history` events.
+- Delete action in `SSH.tsx` sends `history-delete`; backend performs best-effort remote history file cleanup, applies session tombstone filtering, and then re-syncs history.
+- Delete action in `SSH.tsx` sends `history-delete`; backend performs best-effort remote history file cleanup and then re-syncs history.
 
 ```mermaid
 flowchart LR
@@ -123,7 +136,7 @@ flowchart LR
 - Backend normalizes terminal sizes to prevent extreme allocations (`20-400 cols`, `10-200 rows`).
 - Pending output queue avoids losing early SSH output before WS attach.
 - Telemetry sampling is interval-based (5s) and lightweight text parsing to reduce per-frame cost.
-- Command capture keeps bounded input buffer (512 chars per active line).
+- History refresh uses debounce + throttle to balance freshness and remote execution overhead.
 
 ## 6.1 Renderer-Configurable xterm Options (Settings-Driven)
 

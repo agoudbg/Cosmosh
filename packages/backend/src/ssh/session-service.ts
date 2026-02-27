@@ -85,6 +85,10 @@ type ClientInboundMessage =
     }
   | {
       type: 'ping';
+    }
+  | {
+      type: 'history-delete';
+      command: string;
     };
 
 type ServerOutboundMessage =
@@ -114,6 +118,10 @@ type ServerOutboundMessage =
       networkRxBytesPerSec: number | null;
       networkTxBytesPerSec: number | null;
       recentCommands: string[];
+    }
+  | {
+      type: 'history';
+      recentCommands: string[];
     };
 
 type SshLiveSession = {
@@ -131,7 +139,10 @@ type SshLiveSession = {
     txBytesTotal: number;
     timestampMs: number;
   } | null;
-  commandBuffer: string;
+  historySyncTimeout: NodeJS.Timeout | null;
+  historySyncInFlight: boolean;
+  historySyncPending: boolean;
+  lastHistorySyncStartedAtMs: number;
   commandCount: number;
   recentCommands: string[];
   t: I18nInstance['t'];
@@ -148,9 +159,14 @@ type ParsedRemoteTelemetry = {
 };
 
 const TELEMETRY_INTERVAL_MS = 5_000;
+const HISTORY_REFRESH_DEBOUNCE_MS = 120;
+const HISTORY_REFRESH_THROTTLE_MS = 450;
+const HISTORY_MAX_ENTRIES = 200;
 // Leading whitespace intentionally avoids writing this command into shell history on most shells.
 const TELEMETRY_COMMAND =
   ' sh -lc \'cpu=$(top -bn1 | awk -F"[, ]+" "/Cpu\\(s\\)|%Cpu\\(s\\)/ {for(i=1;i<=NF;i++){if($i==\\"id\\"){print 100-$(i-1); exit}}}"); if [ -z "$cpu" ]; then cpu=$(awk "/^cpu /{idle=$5;total=0;for(i=2;i<=NF;i++){total+=$i} if(total>0){print (total-idle)*100/total}else{print 0}}" /proc/stat); fi; mem=$(free -b | awk "/^Mem:/ {print \\$3 \\" \\" \\$2}"); net=$(awk "NR>2 {rx+=\\$2;tx+=\\$10} END {print rx \\" \\" tx}" /proc/net/dev); printf "%s\\n%s\\n%s\\n" "${cpu:-0}" "${mem:-0 0}" "${net:-0 0}"\'';
+const REMOTE_HISTORY_FETCH_COMMAND =
+  ' sh -lc \'set +e; if command -v history >/dev/null 2>&1; then history 2>/dev/null; fi; for file in "$HISTFILE" "$HOME/.bash_history" "$HOME/.zsh_history" "$HOME/.ash_history" "$HOME/.sh_history" "$HOME/.mksh_history" "$HOME/.ksh_history" "$HOME/.local/share/fish/fish_history" "$HOME/.python_history" "$HOME/.sqlite_history" "$HOME/.mysql_history" "$HOME/.lesshst"; do if [ -n "$file" ] && [ -f "$file" ]; then cat "$file" 2>/dev/null; fi; done; if command -v pwsh >/dev/null 2>&1; then pwsh -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi; if command -v powershell >/dev/null 2>&1; then powershell -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi\'';
 
 /**
  * Normalizes WebSocket payload into typed client message contract.
@@ -178,6 +194,13 @@ const normalizeMessage = (payload: RawData): ClientInboundMessage | null => {
 
     if (parsed.type === 'ping') {
       return { type: 'ping' };
+    }
+
+    if (parsed.type === 'history-delete' && typeof parsed.command === 'string') {
+      return {
+        type: 'history-delete',
+        command: parsed.command,
+      };
     }
 
     return null;
@@ -388,7 +411,10 @@ export class SshSessionService {
       attachTimeout,
       telemetryInterval: null,
       lastNetworkSample: null,
-      commandBuffer: '',
+      historySyncTimeout: null,
+      historySyncInFlight: false,
+      historySyncPending: false,
+      lastHistorySyncStartedAtMs: 0,
       commandCount: 0,
       recentCommands: [],
       t: i18n.t,
@@ -414,6 +440,7 @@ export class SshSessionService {
 
     this.sessions.set(sessionId, liveSession);
     this.startSessionTelemetry(sessionId);
+    this.scheduleHistorySync(sessionId, { immediate: true });
 
     return {
       type: 'success',
@@ -543,7 +570,11 @@ export class SshSessionService {
     }
 
     if (message.type === 'input') {
-      this.captureCommandInput(session, message.data);
+      if (/\r|\n/.test(message.data)) {
+        const submittedInputCount = message.data.split(/\r\n|[\r\n]/).length - 1;
+        session.commandCount += Math.max(1, submittedInputCount);
+        this.scheduleHistorySync(session.sessionId);
+      }
       session.stream.write(message.data);
       return;
     }
@@ -557,6 +588,11 @@ export class SshSessionService {
 
     if (message.type === 'ping') {
       this.sendServerMessage(session, { type: 'pong' });
+      return;
+    }
+
+    if (message.type === 'history-delete') {
+      void this.deleteRemoteHistoryEntry(session, message.command);
       return;
     }
 
@@ -582,6 +618,11 @@ export class SshSessionService {
     if (session.telemetryInterval) {
       clearInterval(session.telemetryInterval);
       session.telemetryInterval = null;
+    }
+
+    if (session.historySyncTimeout) {
+      clearTimeout(session.historySyncTimeout);
+      session.historySyncTimeout = null;
     }
 
     void this.finalizeLoginAudit(session);
@@ -659,6 +700,65 @@ export class SshSessionService {
     });
   }
 
+  private scheduleHistorySync(sessionId: string, options?: { immediate?: boolean }): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.disposed) {
+      return;
+    }
+
+    if (session.historySyncTimeout) {
+      clearTimeout(session.historySyncTimeout);
+      session.historySyncTimeout = null;
+    }
+
+    const now = Date.now();
+    // Keep remote history refresh responsive while preventing bursty exec calls.
+    const throttleRemaining = Math.max(0, HISTORY_REFRESH_THROTTLE_MS - (now - session.lastHistorySyncStartedAtMs));
+    const baseDelayMs = options?.immediate ? 0 : HISTORY_REFRESH_DEBOUNCE_MS;
+    const delayMs = Math.max(baseDelayMs, throttleRemaining);
+
+    session.historySyncTimeout = setTimeout(() => {
+      session.historySyncTimeout = null;
+      void this.syncRemoteHistory(sessionId);
+    }, delayMs);
+  }
+
+  private async syncRemoteHistory(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.disposed) {
+      return;
+    }
+
+    if (session.historySyncInFlight) {
+      session.historySyncPending = true;
+      return;
+    }
+
+    session.historySyncInFlight = true;
+    session.lastHistorySyncStartedAtMs = Date.now();
+
+    try {
+      const commands = await this.readRemoteHistory(session);
+      if (!commands) {
+        return;
+      }
+
+      // Remote history is the source of truth for the commands sidebar.
+      session.recentCommands = commands;
+      this.sendServerMessage(session, {
+        type: 'history',
+        recentCommands: [...session.recentCommands],
+      });
+    } finally {
+      session.historySyncInFlight = false;
+
+      if (session.historySyncPending) {
+        session.historySyncPending = false;
+        this.scheduleHistorySync(sessionId);
+      }
+    }
+  }
+
   private computeNetworkRates(
     session: SshLiveSession,
     currentRxBytesTotal: number,
@@ -689,10 +789,123 @@ export class SshSessionService {
   }
 
   private async readRemoteTelemetry(session: SshLiveSession): Promise<ParsedRemoteTelemetry | null> {
-    return await new Promise<ParsedRemoteTelemetry | null>((resolve) => {
+    const stdout = await this.executeRemoteCommand(session, TELEMETRY_COMMAND);
+    if (stdout === null) {
+      return null;
+    }
+
+    return this.parseTelemetryOutput(stdout);
+  }
+
+  private async readRemoteHistory(session: SshLiveSession): Promise<string[] | null> {
+    const stdout = await this.executeRemoteCommand(session, REMOTE_HISTORY_FETCH_COMMAND);
+    if (stdout === null) {
+      return null;
+    }
+
+    return this.parseHistoryOutput(stdout);
+  }
+
+  private parseHistoryOutput(output: string): string[] {
+    const rawLines = output.split(/\r?\n/);
+    const parsedCommands: string[] = [];
+
+    for (const line of rawLines) {
+      const parsed = this.parseHistoryLine(line);
+      if (!parsed) {
+        continue;
+      }
+
+      parsedCommands.push(parsed);
+    }
+
+    const deduplicated: string[] = [];
+    const seen = new Set<string>();
+    for (let index = parsedCommands.length - 1; index >= 0; index -= 1) {
+      const command = parsedCommands[index];
+      if (seen.has(command)) {
+        continue;
+      }
+
+      seen.add(command);
+      deduplicated.push(command);
+
+      if (deduplicated.length >= HISTORY_MAX_ENTRIES) {
+        break;
+      }
+    }
+
+    return deduplicated.reverse();
+  }
+
+  private parseHistoryLine(line: string): string | null {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+
+    if (/^#[0-9]{9,}$/.test(trimmed)) {
+      return null;
+    }
+
+    if (trimmed.startsWith('- cmd: ')) {
+      const fishCommand = trimmed.slice(7).replace(/\\n/g, '\n').trim();
+      return fishCommand.length > 0 ? fishCommand : null;
+    }
+
+    const zshExtendedMatch = /^:\s*\d+:\d+;(.*)$/.exec(trimmed);
+    if (zshExtendedMatch) {
+      const zshCommand = zshExtendedMatch[1]?.trim() ?? '';
+      return zshCommand.length > 0 ? zshCommand : null;
+    }
+
+    const numberedHistoryMatch = /^\s*\d+\*?\s+(.*)$/.exec(trimmed);
+    if (numberedHistoryMatch) {
+      const command = numberedHistoryMatch[1]?.trim() ?? '';
+      return command.length > 0 ? command : null;
+    }
+
+    if (/^(when|paths?|exit|cwd):\s*/i.test(trimmed)) {
+      return null;
+    }
+
+    return trimmed;
+  }
+
+  private async deleteRemoteHistoryEntry(session: SshLiveSession, command: string): Promise<void> {
+    const normalizedCommand = command.trim();
+    if (normalizedCommand.length === 0) {
+      return;
+    }
+
+    const escapedCommand = this.escapeShellSingleQuote(normalizedCommand);
+    // Best-effort delete across common POSIX shell history file formats.
+    const deleteCommand =
+      ' sh -lc \\' +
+      `set +e; target='${escapedCommand}'; ` +
+      'cleanup_plain(){ file="$1"; if [ -f "$file" ]; then tmp="$file.cosmosh.$$"; grep -Fvx -- "$target" "$file" > "$tmp" 2>/dev/null && mv "$tmp" "$file"; fi; }; ' +
+      'cleanup_zsh(){ file="$1"; if [ -f "$file" ]; then tmp="$file.cosmosh.$$"; awk -v target="$target" "{line=$0;cmd=line; if (match(line,/^: [0-9]+:[0-9]+;/)) {cmd=substr(line,RSTART+RLENGTH)} if (cmd==target) {next} print line}" "$file" > "$tmp" 2>/dev/null && mv "$tmp" "$file"; fi; }; ' +
+      'cleanup_plain "$HISTFILE"; cleanup_plain "$HOME/.bash_history"; cleanup_plain "$HOME/.ash_history"; cleanup_plain "$HOME/.sh_history"; cleanup_plain "$HOME/.mksh_history"; cleanup_plain "$HOME/.ksh_history"; cleanup_zsh "$HOME/.zsh_history";\'';
+
+    await this.executeRemoteCommand(session, deleteCommand);
+
+    session.recentCommands = session.recentCommands.filter((entry) => entry !== normalizedCommand);
+    this.sendServerMessage(session, {
+      type: 'history',
+      recentCommands: [...session.recentCommands],
+    });
+    this.scheduleHistorySync(session.sessionId, { immediate: true });
+  }
+
+  private escapeShellSingleQuote(value: string): string {
+    return value.replace(/'/g, "'\"'\"'");
+  }
+
+  private async executeRemoteCommand(session: SshLiveSession, command: string): Promise<string | null> {
+    return await new Promise<string | null>((resolve) => {
       let stdout = '';
 
-      session.client.exec(TELEMETRY_COMMAND, (error, channel) => {
+      session.client.exec(command, (error, channel) => {
         if (error) {
           resolve(null);
           return;
@@ -703,7 +916,7 @@ export class SshSessionService {
         });
 
         channel.on('close', () => {
-          resolve(this.parseTelemetryOutput(stdout));
+          resolve(stdout);
         });
       });
     });
@@ -745,46 +958,6 @@ export class SshSessionService {
       networkRxBytesTotal: Math.max(0, networkRxBytesTotal),
       networkTxBytesTotal: Math.max(0, networkTxBytesTotal),
     };
-  }
-
-  private captureCommandInput(session: SshLiveSession, inputData: string): void {
-    for (const character of inputData) {
-      if (character === '\r' || character === '\n') {
-        const submitted = session.commandBuffer;
-        session.commandBuffer = '';
-
-        const command = submitted.trim();
-        if (command.length > 0) {
-          this.pushRecentCommand(session, command);
-        }
-        continue;
-      }
-
-      if (character === '\u007f') {
-        session.commandBuffer = session.commandBuffer.slice(0, -1);
-        continue;
-      }
-
-      if (character === '\u0015') {
-        session.commandBuffer = '';
-        continue;
-      }
-
-      // Ignore control keys (arrow keys, ctrl combinations, etc.) and only keep printable text.
-      if (character >= ' ' && character !== '\u007f') {
-        session.commandBuffer += character;
-
-        if (session.commandBuffer.length > 512) {
-          session.commandBuffer = session.commandBuffer.slice(-512);
-        }
-      }
-    }
-  }
-
-  private pushRecentCommand(session: SshLiveSession, command: string): void {
-    session.commandCount += 1;
-    // Keep all submitted commands for this session to match full-history UX expectations.
-    session.recentCommands.push(command);
   }
 
   private async createLoginAudit(input: {
