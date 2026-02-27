@@ -41,6 +41,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from '../ui/context-menu';
 
@@ -206,6 +207,8 @@ export const Tabs: React.FC<TabsProps> = ({
   const [dragPreviewTabs, setDragPreviewTabs] = React.useState<TabItem[] | null>(null);
   const dragPreviewTabsRef = React.useRef<TabItem[] | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
+  const closeCurrentTabShortcutLabel = React.useMemo(() => (isMacPlatform ? '⌘W' : 'Ctrl+W'), [isMacPlatform]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -270,6 +273,49 @@ export const Tabs: React.FC<TabsProps> = ({
       resizeObserver?.disconnect();
     };
   }, [tabs.length, minTabWidth, maxTabWidth, updateScrollState]);
+
+  React.useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+
+      return (
+        target.isContentEditable ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      );
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.repeat || isEditableTarget(event.target)) {
+        return;
+      }
+
+      const isCloseShortcut = isMacPlatform
+        ? event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+        : event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+
+      if (!isCloseShortcut || event.key.toLowerCase() !== 'w') {
+        return;
+      }
+
+      const currentActiveTab = tabs.find((tab) => tab.id === activeTab);
+      if (!currentActiveTab?.closable) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseTab?.(currentActiveTab.id);
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [activeTab, isMacPlatform, onCloseTab, tabs]);
 
   const scrollByOffset = (direction: 'left' | 'right') => {
     const el = scrollContainerRef.current;
@@ -494,6 +540,7 @@ export const Tabs: React.FC<TabsProps> = ({
                               onSelect={() => contextTab && onCloseTab?.(contextTab.id)}
                             >
                               {t('tabs.closeCurrent')}
+                              <ContextMenuShortcut>{closeCurrentTabShortcutLabel}</ContextMenuShortcut>
                             </ContextMenuItem>
                             <ContextMenuItem
                               icon={ChevronRight}
