@@ -121,6 +121,7 @@ const ComponentsField: React.FC = () => {
   const [connectionTimeout, setConnectionTimeout] = React.useState<number[]>([45]);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState<boolean>(true);
   const [commandQuery, setCommandQuery] = React.useState<string>('ssh');
+  const [commandShowInput, setCommandShowInput] = React.useState<boolean>(true);
   const [commandInputIconMode, setCommandInputIconMode] = React.useState<'search' | 'terminal' | 'server'>('search');
   const [commandMetadataLayout, setCommandMetadataLayout] = React.useState<'stacked' | 'inline'>('stacked');
   const [commandCloseOnEsc, setCommandCloseOnEsc] = React.useState<boolean>(false);
@@ -346,6 +347,26 @@ const ComponentsField: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <Switch
+                id="command-show-input"
+                checked={commandShowInput}
+                onCheckedChange={(checkedState) => {
+                  setCommandShowInput(checkedState);
+
+                  if (!checkedState) {
+                    setCommandQuery('');
+                  }
+                }}
+              />
+              <Label
+                htmlFor="command-show-input"
+                className={formStyles.inlineLabel}
+              >
+                Show Input
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
               <Checkbox
                 id="command-mixed-icons"
                 checked={commandMixedIcons}
@@ -460,6 +481,7 @@ const ComponentsField: React.FC = () => {
         placeholder="Type a command or search by keyword"
         items={filteredCommandItems}
         emptyText="No commands found"
+        showInput={commandShowInput}
         inputLeadingIcon={commandInputLeadingIcon}
         metadataLayout={commandMetadataLayout}
         closeOnEsc={commandCloseOnEsc}

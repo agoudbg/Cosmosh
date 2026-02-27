@@ -27,6 +27,7 @@ type CommandPaletteProps = {
   placeholder?: string;
   items: CommandPaletteItem[];
   emptyText?: string;
+  showInput?: boolean;
   open?: boolean;
   topOffset?: number;
   inputLeadingIcon?: React.ReactNode;
@@ -46,6 +47,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
   placeholder = 'Type a command',
   items,
   emptyText = 'No matching commands',
+  showInput = true,
   open = true,
   topOffset = 50,
   inputLeadingIcon,
@@ -101,13 +103,24 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
 
     const frameId = window.requestAnimationFrame(() => {
-      inputRef.current?.focus({ preventScroll: true });
+      if (showInput) {
+        inputRef.current?.focus({ preventScroll: true });
+        return;
+      }
+
+      const activeButtons = getActiveActionButtons();
+      if (activeButtons.length > 0) {
+        activeButtons[0]?.focus({ preventScroll: true });
+        return;
+      }
+
+      panelRef.current?.focus({ preventScroll: true });
     });
 
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [open, rendered]);
+  }, [getActiveActionButtons, open, rendered, showInput]);
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -175,7 +188,12 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
 
       if (event.shiftKey) {
         if (actionIndex <= 0) {
-          inputRef.current?.focus({ preventScroll: true });
+          if (showInput) {
+            inputRef.current?.focus({ preventScroll: true });
+            return;
+          }
+
+          activeButtons[activeButtons.length - 1]?.focus({ preventScroll: true });
           return;
         }
 
@@ -184,13 +202,18 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
       }
 
       if (actionIndex >= activeButtons.length - 1) {
-        inputRef.current?.focus({ preventScroll: true });
+        if (showInput) {
+          inputRef.current?.focus({ preventScroll: true });
+          return;
+        }
+
+        activeButtons[0]?.focus({ preventScroll: true });
         return;
       }
 
       activeButtons[actionIndex + 1]?.focus({ preventScroll: true });
     },
-    [getActiveActionButtons],
+    [getActiveActionButtons, showInput],
   );
 
   if (!rendered) {
@@ -209,25 +232,33 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
     >
       <div
         ref={panelRef}
+        tabIndex={showInput ? undefined : -1}
         data-state={open ? 'open' : 'closed'}
         className="flex flex-col overflow-hidden rounded-[20px] border border-command-border bg-command-surface shadow-menu-content backdrop-blur-[4px] data-[state=closed]:animate-out data-[state=closed]:fade-out-10 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-top-1"
       >
-        <div className="border-b border-command-divider p-[6px]">
-          <div className="flex items-center gap-2 rounded-[14px] bg-command-input px-2.5 focus-within:ring-2 focus-within:ring-outline">
-            {resolvedLeadingIcon}
-            <Input
-              ref={inputRef}
-              value={query}
-              placeholder={placeholder}
-              className="placeholder:!text-command-text-muted/80 h-[34px] !rounded-none !bg-transparent !px-0 !text-command-text hover:!bg-transparent focus-visible:!outline-none"
-              onChange={(event) => onQueryChange(event.target.value)}
-              onKeyDown={handleKeyDown}
-            />
+        {showInput ? (
+          <div className="border-b border-command-divider p-[6px]">
+            <div className="flex items-center gap-2 rounded-[14px] bg-command-input px-2.5 focus-within:ring-2 focus-within:ring-outline">
+              {resolvedLeadingIcon}
+              <Input
+                ref={inputRef}
+                value={query}
+                placeholder={placeholder}
+                className="placeholder:!text-command-text-muted/80 h-[34px] !rounded-none !bg-transparent !px-0 !text-command-text hover:!bg-transparent focus-visible:!outline-none"
+                onChange={(event) => onQueryChange(event.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <TooltipProvider delayDuration={180}>
-          <div className="max-h-[min(420px,calc(100vh-180px))] overflow-y-auto p-1.5">
+          <div
+            className={classNames(
+              'overflow-y-auto',
+              showInput ? 'max-h-[min(420px,calc(100vh-180px))] p-1.5' : 'max-h-[min(480px,calc(100vh-140px))] p-2',
+            )}
+          >
             {items.length === 0 ? (
               <div className="rounded-[10px] px-2.5 py-2 text-sm text-command-text-muted">{emptyText}</div>
             ) : (
