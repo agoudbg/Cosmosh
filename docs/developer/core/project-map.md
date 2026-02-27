@@ -41,6 +41,7 @@ flowchart TB
   - `src/ssh`: SSH auth/session logic (`ssh2`, known-host trust, telemetry).
   - `src/settings`: settings payload defaults and validation parsers.
   - `src/local-terminal`: local PTY session logic (`node-pty`).
+  - `src/terminal`: shared terminal session primitives (WebSocket message normalization, history parsing, size clamping, history sync timing helpers).
   - `src/db`: Prisma initialization and DB lifecycle.
 
 ### `packages/api-contract`

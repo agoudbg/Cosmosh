@@ -41,6 +41,7 @@ flowchart TB
   - `src/ssh`：SSH 认证/会话逻辑（`ssh2`、known-host 信任、遥测）。
   - `src/settings`：设置默认值与请求校验解析。
   - `src/local-terminal`：本地 PTY 会话逻辑（`node-pty`）。
+  - `src/terminal`：终端会话共享原语（WebSocket 消息规范化、历史命令解析、尺寸收敛、历史同步时序辅助）。
   - `src/db`：Prisma 初始化与数据库生命周期。
 
 ### `packages/api-contract`

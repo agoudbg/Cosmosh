@@ -5,16 +5,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import { createI18n, type I18nInstance, type Locale } from '@cosmosh/i18n';
+import { createI18n, type Locale } from '@cosmosh/i18n';
 import { type IPty, spawn as spawnPty } from 'node-pty';
-import { type RawData, type WebSocket, WebSocketServer } from 'ws';
+import { type RawData } from 'ws';
+
+import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
+import {
+  clampTerminalSize,
+  computeHistorySyncDelayMs,
+  normalizeTerminalClientMessage,
+  parseTerminalHistoryOutput,
+  TERMINAL_TELEMETRY_INTERVAL_MS,
+} from '../terminal/shared.js';
 
 const execFileAsync = promisify(execFile);
-const TELEMETRY_INTERVAL_MS = 5_000;
-const HISTORY_REFRESH_DEBOUNCE_MS = 120;
-const HISTORY_REFRESH_THROTTLE_MS = 450;
-const HISTORY_MAX_ENTRIES = 200;
-
 /**
  * Describes an available local shell profile that can be launched as PTY session.
  */
@@ -51,27 +55,6 @@ type CreateLocalTerminalSessionResult =
       message: string;
     };
 
-type ClientInboundMessage =
-  | {
-      type: 'input';
-      data: string;
-    }
-  | {
-      type: 'resize';
-      cols: number;
-      rows: number;
-    }
-  | {
-      type: 'close';
-    }
-  | {
-      type: 'ping';
-    }
-  | {
-      type: 'history-delete';
-      command: string;
-    };
-
 type ServerOutboundMessage =
   | {
       type: 'ready';
@@ -101,33 +84,15 @@ type ServerOutboundMessage =
       recentCommands: string[];
     };
 
-type LocalLiveSession = {
-  sessionId: string;
+type LocalLiveSession = TerminalManagedSessionBase & {
   profileId: string;
-  websocketToken: string;
   pty: IPty;
-  pendingOutput: string[];
-  attachTimeout: NodeJS.Timeout;
   telemetryInterval: NodeJS.Timeout | null;
   historySyncTimeout: NodeJS.Timeout | null;
   historySyncInFlight: boolean;
   historySyncPending: boolean;
   lastHistorySyncStartedAtMs: number;
   recentCommands: string[];
-  t: I18nInstance['t'];
-  socket: WebSocket | null;
-  disposed: boolean;
-};
-
-/**
- * Clamps PTY size values to safe terminal bounds.
- */
-const toShellSize = (value: number, fallback: number, min: number, max: number): number => {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-
-  return Math.min(max, Math.max(min, Math.round(value)));
 };
 
 /**
@@ -157,47 +122,6 @@ const resolveSessionWorkingDirectory = async (cwdCandidate?: string): Promise<st
   }
 
   return os.homedir();
-};
-
-/**
- * Normalizes WebSocket payload into typed client message contract.
- */
-const normalizeMessage = (payload: RawData): ClientInboundMessage | null => {
-  try {
-    const text = typeof payload === 'string' ? payload : payload.toString('utf8');
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-
-    if (parsed.type === 'input' && typeof parsed.data === 'string') {
-      return { type: 'input', data: parsed.data };
-    }
-
-    if (parsed.type === 'resize' && typeof parsed.cols === 'number' && typeof parsed.rows === 'number') {
-      return {
-        type: 'resize',
-        cols: parsed.cols,
-        rows: parsed.rows,
-      };
-    }
-
-    if (parsed.type === 'close') {
-      return { type: 'close' };
-    }
-
-    if (parsed.type === 'ping') {
-      return { type: 'ping' };
-    }
-
-    if (parsed.type === 'history-delete' && typeof parsed.command === 'string') {
-      return {
-        type: 'history-delete',
-        command: parsed.command,
-      };
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
 };
 
 const resolveWindowsProfiles = async (): Promise<LocalTerminalProfile[]> => {
@@ -291,76 +215,17 @@ const resolveUnixProfiles = async (): Promise<LocalTerminalProfile[]> => {
  * - resolves available terminal profiles
  * - manages PTY lifecycle
  * - bridges WS <-> PTY streams
+ *
+ * Layering note:
+ * - BaseTerminalSessionService handles generic socket lifecycle.
+ * - This class owns host-local responsibilities (profile discovery, cwd resolution, history file edits).
  */
-export class LocalTerminalSessionService {
-  private readonly sessions = new Map<string, LocalLiveSession>();
-
-  private readonly websocketServer: WebSocketServer;
-
-  private readonly websocketBaseUrl: string;
-
+export class LocalTerminalSessionService extends BaseTerminalSessionService<LocalLiveSession, ServerOutboundMessage> {
   constructor(options: { host: string; port: number }) {
-    this.websocketServer = new WebSocketServer({
+    super({
       host: options.host,
       port: options.port,
-    });
-
-    this.websocketBaseUrl = `ws://${options.host}:${options.port}`;
-
-    this.websocketServer.on('connection', (socket, request) => {
-      const requestTranslator = createI18n({
-        locale: String(request.headers['accept-language'] ?? 'en'),
-        scope: 'backend',
-        fallbackLocale: 'en',
-      }).t;
-      const requestUrl = new URL(request.url ?? '', this.websocketBaseUrl);
-      const pathPrefix = '/ws/local-terminal/';
-
-      if (!requestUrl.pathname.startsWith(pathPrefix)) {
-        socket.close(1008, requestTranslator('ws.invalidWebsocketPath'));
-        return;
-      }
-
-      const sessionId = decodeURIComponent(requestUrl.pathname.slice(pathPrefix.length));
-      const token = requestUrl.searchParams.get('token') ?? '';
-      const session = this.sessions.get(sessionId);
-
-      if (!session || session.disposed || token !== session.websocketToken) {
-        socket.close(
-          1008,
-          session ? session.t('ws.sessionInvalidOrExpired') : requestTranslator('ws.sessionInvalidOrExpired'),
-        );
-        return;
-      }
-
-      if (session.socket && session.socket.readyState === session.socket.OPEN) {
-        session.socket.close(1012, session.t('ws.sessionReconnectedFromNewClient'));
-      }
-
-      session.socket = socket;
-      clearTimeout(session.attachTimeout);
-      this.sendServerMessage(session, { type: 'ready' });
-      this.flushPendingOutput(session);
-
-      socket.on('message', (payload) => {
-        this.handleClientMessage(session, payload);
-      });
-
-      socket.on('close', () => {
-        if (session.disposed) {
-          return;
-        }
-
-        this.disposeSession(session.sessionId, 'ws.websocketDisconnected');
-      });
-
-      socket.on('error', () => {
-        if (session.disposed) {
-          return;
-        }
-
-        this.disposeSession(session.sessionId, 'ws.websocketTransportError');
-      });
+      pathPrefix: '/ws/local-terminal/',
     });
   }
 
@@ -381,8 +246,8 @@ export class LocalTerminalSessionService {
       return { type: 'not-found' };
     }
 
-    const cols = toShellSize(input.cols, 120, 20, 400);
-    const rows = toShellSize(input.rows, 32, 10, 200);
+    const cols = clampTerminalSize(input.cols, 120, 20, 400);
+    const rows = clampTerminalSize(input.rows, 32, 10, 200);
     const workingDirectory = await resolveSessionWorkingDirectory(input.cwd);
 
     let pty: IPty;
@@ -444,7 +309,7 @@ export class LocalTerminalSessionService {
       this.disposeSession(sessionId, 'ws.localTerminalExitedWithSignal', { signal: String(signal) });
     });
 
-    this.sessions.set(sessionId, session);
+    this.registerSession(session);
     this.startSessionTelemetry(sessionId);
 
     return {
@@ -456,59 +321,17 @@ export class LocalTerminalSessionService {
     };
   }
 
-  public closeSession(sessionId: string): boolean {
-    if (!this.sessions.has(sessionId)) {
-      return false;
-    }
-
-    this.disposeSession(sessionId, 'ws.sessionClosedByApiRequest');
-    return true;
+  protected onSessionAttached(session: LocalLiveSession): void {
+    // Reattached clients must receive ready signal first, then buffered PTY output.
+    this.sendServerMessage(session, { type: 'ready' });
+    this.flushPendingOutput(session, (data) => ({
+      type: 'output',
+      data,
+    }));
   }
 
-  public async stop(): Promise<void> {
-    for (const sessionId of this.sessions.keys()) {
-      this.disposeSession(sessionId, 'ws.backendShutdown');
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      this.websocketServer.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve();
-      });
-    });
-  }
-
-  private sendServerMessage(session: LocalLiveSession, payload: ServerOutboundMessage): void {
-    if (!session.socket || session.socket.readyState !== session.socket.OPEN) {
-      if (payload.type === 'output') {
-        session.pendingOutput.push(payload.data);
-      }
-      return;
-    }
-
-    session.socket.send(JSON.stringify(payload));
-  }
-
-  private flushPendingOutput(session: LocalLiveSession): void {
-    while (session.pendingOutput.length > 0) {
-      const data = session.pendingOutput.shift();
-      if (!data) {
-        continue;
-      }
-
-      this.sendServerMessage(session, {
-        type: 'output',
-        data,
-      });
-    }
-  }
-
-  private handleClientMessage(session: LocalLiveSession, rawPayload: RawData): void {
-    const message = normalizeMessage(rawPayload);
+  protected handleClientMessage(session: LocalLiveSession, rawPayload: RawData): void {
+    const message = normalizeTerminalClientMessage(rawPayload);
 
     if (!message) {
       this.sendServerMessage(session, {
@@ -527,8 +350,8 @@ export class LocalTerminalSessionService {
     }
 
     if (message.type === 'resize') {
-      const cols = toShellSize(message.cols, 120, 20, 400);
-      const rows = toShellSize(message.rows, 32, 10, 200);
+      const cols = clampTerminalSize(message.cols, 120, 20, 400);
+      const rows = clampTerminalSize(message.rows, 32, 10, 200);
       session.pty.resize(cols, rows);
       return;
     }
@@ -551,48 +374,25 @@ export class LocalTerminalSessionService {
     this.disposeSession(session.sessionId, 'ws.clientRequestedClose');
   }
 
-  private disposeSession(
+  protected disposeSession(
     sessionId: string,
     reasonKey: string,
     reasonParams?: Record<string, string | number | boolean>,
   ): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.disposed) {
-      return;
-    }
-
-    const reason = session.t(reasonKey, reasonParams);
-
-    session.disposed = true;
-    this.sessions.delete(sessionId);
-    clearTimeout(session.attachTimeout);
-
-    if (session.telemetryInterval) {
-      clearInterval(session.telemetryInterval);
-      session.telemetryInterval = null;
-    }
-
-    if (session.historySyncTimeout) {
-      clearTimeout(session.historySyncTimeout);
-      session.historySyncTimeout = null;
-    }
-
-    this.sendServerMessage(session, {
-      type: 'exit',
-      reason,
+    this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
+      createExitMessage: (reason) => ({
+        type: 'exit',
+        reason,
+      }),
+      disposeTransport: (session) => {
+        // Emit exit to frontend before killing PTY so UI receives terminal reason reliably.
+        try {
+          session.pty.kill();
+        } catch {
+          // Ignore PTY close race errors.
+        }
+      },
     });
-
-    try {
-      session.pty.kill();
-    } catch {
-      // Ignore PTY close race errors.
-    }
-
-    if (session.socket && session.socket.readyState === session.socket.OPEN) {
-      session.socket.close(1000, reason);
-    }
-
-    session.socket = null;
   }
 
   private startSessionTelemetry(sessionId: string): void {
@@ -603,7 +403,7 @@ export class LocalTerminalSessionService {
 
     session.telemetryInterval = setInterval(() => {
       this.sendTelemetry(sessionId);
-    }, TELEMETRY_INTERVAL_MS);
+    }, TERMINAL_TELEMETRY_INTERVAL_MS);
 
     this.sendTelemetry(sessionId);
     this.scheduleHistorySync(sessionId, { immediate: true });
@@ -638,9 +438,8 @@ export class LocalTerminalSessionService {
     }
 
     const now = Date.now();
-    const throttleRemaining = Math.max(0, HISTORY_REFRESH_THROTTLE_MS - (now - session.lastHistorySyncStartedAtMs));
-    const baseDelayMs = options?.immediate ? 0 : HISTORY_REFRESH_DEBOUNCE_MS;
-    const delayMs = Math.max(baseDelayMs, throttleRemaining);
+    // Debounce avoids refresh per keystroke, while throttle avoids repeated filesystem scans.
+    const delayMs = computeHistorySyncDelayMs(session.lastHistorySyncStartedAtMs, now, options);
 
     session.historySyncTimeout = setTimeout(() => {
       session.historySyncTimeout = null;
@@ -720,70 +519,7 @@ export class LocalTerminalSessionService {
   }
 
   private parseHistoryOutput(output: string): string[] {
-    const lines = output.split(/\r?\n/);
-    const parsedCommands: string[] = [];
-
-    for (const line of lines) {
-      const command = this.parseHistoryLine(line);
-      if (!command) {
-        continue;
-      }
-
-      parsedCommands.push(command);
-    }
-
-    const deduplicated: string[] = [];
-    const seen = new Set<string>();
-
-    for (let index = parsedCommands.length - 1; index >= 0; index -= 1) {
-      const command = parsedCommands[index];
-      if (seen.has(command)) {
-        continue;
-      }
-
-      seen.add(command);
-      deduplicated.push(command);
-
-      if (deduplicated.length >= HISTORY_MAX_ENTRIES) {
-        break;
-      }
-    }
-
-    return deduplicated.reverse();
-  }
-
-  private parseHistoryLine(line: string): string | null {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (/^#[0-9]{9,}$/.test(trimmed)) {
-      return null;
-    }
-
-    if (trimmed.startsWith('- cmd: ')) {
-      const fishCommand = trimmed.slice(7).replace(/\\n/g, '\n').trim();
-      return fishCommand.length > 0 ? fishCommand : null;
-    }
-
-    const zshExtendedMatch = /^:\s*\d+:\d+;(.*)$/.exec(trimmed);
-    if (zshExtendedMatch) {
-      const zshCommand = zshExtendedMatch[1]?.trim() ?? '';
-      return zshCommand.length > 0 ? zshCommand : null;
-    }
-
-    const numberedHistoryMatch = /^\s*\d+\*?\s+(.*)$/.exec(trimmed);
-    if (numberedHistoryMatch) {
-      const command = numberedHistoryMatch[1]?.trim() ?? '';
-      return command.length > 0 ? command : null;
-    }
-
-    if (/^(when|paths?|exit|cwd):\s*/i.test(trimmed)) {
-      return null;
-    }
-
-    return trimmed;
+    return parseTerminalHistoryOutput(output);
   }
 
   private async deleteLocalHistoryEntry(session: LocalLiveSession, command: string): Promise<void> {
