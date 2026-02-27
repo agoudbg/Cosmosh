@@ -1,5 +1,17 @@
 import classNames from 'classnames';
-import { Folder, FolderOpen, HardDrive, PlugZap, Server, Terminal } from 'lucide-react';
+import {
+  Clock3,
+  FileText,
+  Folder,
+  FolderOpen,
+  HardDrive,
+  Link2,
+  Pin,
+  PlugZap,
+  RefreshCw,
+  Server,
+  Terminal,
+} from 'lucide-react';
 import React from 'react';
 
 import {
@@ -15,6 +27,7 @@ import {
 } from '../components/ui/alert-dialog';
 import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
+import { CommandPalette, CommandPaletteItem } from '../components/ui/command-palette';
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -106,6 +119,14 @@ const ComponentsField: React.FC = () => {
   const [strictHostKey, setStrictHostKey] = React.useState<boolean>(true);
   const [enableCompression, setEnableCompression] = React.useState<boolean>(false);
   const [connectionTimeout, setConnectionTimeout] = React.useState<number[]>([45]);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState<boolean>(true);
+  const [commandQuery, setCommandQuery] = React.useState<string>('ssh');
+  const [commandInputIconMode, setCommandInputIconMode] = React.useState<'search' | 'terminal' | 'server'>('search');
+  const [commandMetadataLayout, setCommandMetadataLayout] = React.useState<'stacked' | 'inline'>('stacked');
+  const [commandCloseOnEsc, setCommandCloseOnEsc] = React.useState<boolean>(false);
+  const [commandMixedIcons, setCommandMixedIcons] = React.useState<boolean>(true);
+  const [commandAllNoIcons, setCommandAllNoIcons] = React.useState<boolean>(false);
+  const [commandEnableManyItems, setCommandEnableManyItems] = React.useState<boolean>(false);
 
   const handleToggleLocale = React.useCallback(async () => {
     const nextLocale = locale === 'en' ? 'zh-CN' : 'en';
@@ -167,9 +188,284 @@ const ComponentsField: React.FC = () => {
     t('home.pluralSessions', { count: 3 }),
   ];
 
+  const commandItems = React.useMemo<CommandPaletteItem[]>(() => {
+    const resolveItemIcon = (icon: React.ReactNode, allowMixedWithoutIcon = false): React.ReactNode | undefined => {
+      if (commandAllNoIcons) {
+        return undefined;
+      }
+
+      if (allowMixedWithoutIcon && commandMixedIcons) {
+        return undefined;
+      }
+
+      return icon;
+    };
+
+    const baseItems: CommandPaletteItem[] = [
+      {
+        key: 'connect-current-host',
+        icon: resolveItemIcon(<Server className="h-4 w-4" />),
+        title: 'Connect: node-a.prod',
+        titleTooltip: 'Connect to node-a.prod via SSH using the saved profile.',
+        subtitle: 'SSH Session',
+        onSelect: () => notifySuccess('Connecting to node-a.prod...'),
+        actions: [
+          {
+            key: 'pin-connect-current-host',
+            icon: <Pin className="h-3.5 w-3.5" />,
+            tooltip: 'Pin command',
+            onSelect: () => notifyInfo('Pinned command: Connect node-a.prod'),
+          },
+        ],
+      },
+      {
+        key: 'open-sftp-current-host',
+        icon: resolveItemIcon(<HardDrive className="h-4 w-4" />),
+        title: 'Open SFTP: node-a.prod',
+        subtitle: 'File Transfer',
+        onSelect: () => notifyInfo('Opening SFTP panel for node-a.prod.'),
+        actions: [
+          {
+            key: 'copy-sftp-path',
+            icon: <Link2 className="h-3.5 w-3.5" />,
+            tooltip: 'Copy remote path',
+            onSelect: () => notifySuccess('Copied remote path /var/www to clipboard.'),
+          },
+        ],
+      },
+      {
+        key: 'reconnect-last-session',
+        icon: resolveItemIcon(<RefreshCw className="h-4 w-4" />, true),
+        title: 'Reconnect Last Session',
+        subtitle: 'Recent Command',
+        onSelect: () => notifyInfo('Reconnecting to the last active session.'),
+      },
+      {
+        key: 'open-session-log',
+        icon: resolveItemIcon(<FileText className="h-4 w-4" />),
+        title: 'Open Session Log',
+        subtitle: 'Diagnostics',
+        onSelect: () => notifyInfo('Opening session log viewer.'),
+        actions: [
+          {
+            key: 'pin-open-session-log',
+            icon: <Pin className="h-3.5 w-3.5" />,
+            tooltip: 'Pin command',
+            onSelect: () => notifyInfo('Pinned command: Open Session Log'),
+          },
+        ],
+      },
+      {
+        key: 'switch-profile-prod',
+        icon: resolveItemIcon(<Clock3 className="h-4 w-4" />),
+        title: 'Switch Profile: prod',
+        subtitle: 'Workspace Profile',
+        onSelect: () => notifySuccess('Switched active profile to prod.'),
+      },
+    ];
+
+    if (!commandEnableManyItems) {
+      return baseItems;
+    }
+
+    const bulkItems: CommandPaletteItem[] = Array.from({ length: 28 }, (_, index) => {
+      const itemIndex = index + 1;
+
+      return {
+        key: `bulk-command-${itemIndex}`,
+        icon: resolveItemIcon(<Terminal className="h-4 w-4" />),
+        title: `Bulk Command ${itemIndex}`,
+        subtitle: `Scroll Test Item ${itemIndex}`,
+        onSelect: () => notifyInfo(`Executed bulk command ${itemIndex}.`),
+      };
+    });
+
+    return [...baseItems, ...bulkItems];
+  }, [commandAllNoIcons, commandEnableManyItems, commandMixedIcons, notifyInfo, notifySuccess]);
+
+  const commandInputLeadingIcon = React.useMemo<React.ReactNode>(() => {
+    if (commandInputIconMode === 'terminal') {
+      return <Terminal className="h-4 w-4 shrink-0 text-command-text-muted" />;
+    }
+
+    if (commandInputIconMode === 'server') {
+      return <Server className="h-4 w-4 shrink-0 text-command-text-muted" />;
+    }
+
+    return undefined;
+  }, [commandInputIconMode]);
+
+  const filteredCommandItems = React.useMemo<CommandPaletteItem[]>(() => {
+    const normalizedQuery = commandQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return commandItems;
+    }
+
+    return commandItems.filter((item) => {
+      const haystack = `${item.title} ${item.subtitle ?? ''}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [commandItems, commandQuery]);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="text-lg font-semibold">{t('componentsPlayground.title')}</div>
+
+      <div className="rounded-md bg-bg-subtle p-3 shadow-soft backdrop-blur-[4px]">
+        <div className="mb-1 text-sm font-semibold">Command Palette Playground</div>
+        <div className="text-xs text-header-text-muted">Fixed center on x-axis, top offset locked at 50px.</div>
+
+        <div className="mt-3 grid gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="command-palette-open"
+                checked={isCommandPaletteOpen}
+                onCheckedChange={setIsCommandPaletteOpen}
+              />
+              <Label
+                htmlFor="command-palette-open"
+                className={formStyles.inlineLabel}
+              >
+                Open State
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="command-close-on-esc"
+                checked={commandCloseOnEsc}
+                onCheckedChange={setCommandCloseOnEsc}
+              />
+              <Label
+                htmlFor="command-close-on-esc"
+                className={formStyles.inlineLabel}
+              >
+                Close on Esc
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="command-mixed-icons"
+                checked={commandMixedIcons}
+                onCheckedChange={(checkedState) => setCommandMixedIcons(checkedState === true)}
+              />
+              <Label
+                htmlFor="command-mixed-icons"
+                className={formStyles.inlineLabel}
+              >
+                Mixed Item Icons
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="command-all-no-icons"
+                checked={commandAllNoIcons}
+                onCheckedChange={(checkedState) => setCommandAllNoIcons(checkedState === true)}
+              />
+              <Label
+                htmlFor="command-all-no-icons"
+                className={formStyles.inlineLabel}
+              >
+                All Items Without Icons
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="command-many-items"
+                checked={commandEnableManyItems}
+                onCheckedChange={(checkedState) => setCommandEnableManyItems(checkedState === true)}
+              />
+              <Label
+                htmlFor="command-many-items"
+                className={formStyles.inlineLabel}
+              >
+                More Items (Scroll Test)
+              </Label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField className="gap-1.5">
+              <FormLabel className={formStyles.inlineLabel}>Input Leading Icon</FormLabel>
+              <Select
+                value={commandInputIconMode}
+                onValueChange={(value) => setCommandInputIconMode(value as 'search' | 'terminal' | 'server')}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select icon" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    value="search"
+                    icon={Terminal}
+                  >
+                    Search (Default)
+                  </SelectItem>
+                  <SelectItem
+                    value="terminal"
+                    icon={Terminal}
+                  >
+                    Terminal
+                  </SelectItem>
+                  <SelectItem
+                    value="server"
+                    icon={Server}
+                  >
+                    Server
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+
+            <FormField className="gap-1.5">
+              <FormLabel className={formStyles.inlineLabel}>Title + Description Layout</FormLabel>
+              <Select
+                value={commandMetadataLayout}
+                onValueChange={(value) => setCommandMetadataLayout(value as 'stacked' | 'inline')}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select layout" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    value="stacked"
+                    icon={Terminal}
+                  >
+                    Stacked
+                  </SelectItem>
+                  <SelectItem
+                    value="inline"
+                    icon={Terminal}
+                  >
+                    Inline (Horizontal)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+
+          <div className="rounded-[14px] bg-form-control px-2.5 py-2 text-xs text-form-text-muted">
+            Palette row/input baseline: height 34px, radius 14px (aligned with Input controls).
+          </div>
+        </div>
+      </div>
+
+      <CommandPalette
+        open={isCommandPaletteOpen}
+        query={commandQuery}
+        placeholder="Type a command or search by keyword"
+        items={filteredCommandItems}
+        emptyText="No commands found"
+        inputLeadingIcon={commandInputLeadingIcon}
+        metadataLayout={commandMetadataLayout}
+        closeOnEsc={commandCloseOnEsc}
+        onOpenChange={setIsCommandPaletteOpen}
+        onQueryChange={setCommandQuery}
+      />
 
       <Form
         className="grid gap-3"

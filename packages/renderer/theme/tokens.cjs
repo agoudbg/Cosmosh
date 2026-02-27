@@ -81,6 +81,23 @@ const base = {
       divider: '#333333',
       'selection-bar-border': '#ffffff1f',
     },
+    command: {
+      surface: '#0f0f0ff2',
+      border: '#3a3a3a66',
+      divider: '#33333399',
+      input: '#1a1a1ad9',
+      text: {
+        DEFAULT: '#ffffff',
+        muted: '#a7b0bd',
+      },
+      item: {
+        hover: '#242424e6',
+        active: '#2e2e2ee6',
+      },
+      action: {
+        hover: '#333333cc',
+      },
+    },
     dialog: {
       overlay: '#000000aa',
       surface: '#0e0e0ee6',
@@ -238,6 +255,23 @@ const light = {
       },
       divider: '#e2e2e8',
       'selection-bar-border': '#d4d8e180',
+    },
+    command: {
+      surface: '#ffffffed',
+      border: '#d6d8e199',
+      divider: '#e2e2e8',
+      input: '#f4f5f8',
+      text: {
+        DEFAULT: '#111827',
+        muted: '#6e6e73',
+      },
+      item: {
+        hover: '#eff1f6',
+        active: '#e8ebf2',
+      },
+      action: {
+        hover: '#dde2ec',
+      },
     },
     dialog: {
       overlay: '#0f172a4d',
