@@ -539,6 +539,8 @@
       "settingsEditor": "Settings Editor",
       "ssh": "SSH",
       "sshEditor": "Edit Server"
-    }
+    },
+    "switcherEmpty": "No matching tabs",
+    "switcherPlaceholder": "Switch tabs"
   }
 }

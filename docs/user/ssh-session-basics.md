@@ -21,6 +21,15 @@
 - Search behavior follows the Settings search engine configuration.
 - If Orbit Bar is not needed, disable it from Settings > Terminal.
 
+## Tab Switching
+
+- Press Ctrl+Tab (Control+Tab on macOS) to open the tab switcher.
+- Keep holding Ctrl/Control and press Tab repeatedly to move forward through tabs.
+- Hold Shift while pressing Tab to move backward.
+- While the switcher is open, use ArrowUp/ArrowDown to preview targets.
+- Release Ctrl/Control to confirm and jump to the selected tab.
+- Mouse click on a tab in the switcher jumps immediately, even if Ctrl/Control is still held.
+
 ## Trust and Verification
 
 - Review host fingerprint prompts carefully.

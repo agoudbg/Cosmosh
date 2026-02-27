@@ -26,6 +26,7 @@ type CommandPaletteProps = {
   query: string;
   placeholder?: string;
   items: CommandPaletteItem[];
+  activeIndex?: number;
   emptyText?: string;
   showInput?: boolean;
   open?: boolean;
@@ -33,6 +34,7 @@ type CommandPaletteProps = {
   inputLeadingIcon?: React.ReactNode;
   metadataLayout?: 'stacked' | 'inline';
   closeOnEsc?: boolean;
+  onActiveIndexChange?: (index: number) => void;
   onOpenChange?: (open: boolean) => void;
   className?: string;
   onQueryChange: (query: string) => void;
@@ -46,6 +48,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
   query,
   placeholder = 'Type a command',
   items,
+  activeIndex: activeIndexProp,
   emptyText = 'No matching commands',
   showInput = true,
   open = true,
@@ -53,14 +56,39 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
   inputLeadingIcon,
   metadataLayout = 'stacked',
   closeOnEsc = false,
+  onActiveIndexChange,
   onOpenChange,
   className,
   onQueryChange,
 }) => {
-  const [activeIndex, setActiveIndex] = React.useState<number>(0);
+  const [internalActiveIndex, setInternalActiveIndex] = React.useState<number>(0);
   const [rendered, setRendered] = React.useState<boolean>(open);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const activeIndex = React.useMemo(() => {
+    const base = typeof activeIndexProp === 'number' ? activeIndexProp : internalActiveIndex;
+
+    if (items.length === 0) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(base, items.length - 1));
+  }, [activeIndexProp, internalActiveIndex, items.length]);
+
+  const setActiveIndex = React.useCallback(
+    (next: number | ((previous: number) => number)) => {
+      const nextValue = typeof next === 'function' ? next(activeIndex) : next;
+      const resolved = items.length === 0 ? 0 : Math.max(0, Math.min(nextValue, items.length - 1));
+
+      if (typeof activeIndexProp !== 'number') {
+        setInternalActiveIndex(resolved);
+      }
+
+      onActiveIndexChange?.(resolved);
+    },
+    [activeIndex, activeIndexProp, items.length, onActiveIndexChange],
+  );
 
   const getActiveActionButtons = React.useCallback((): HTMLButtonElement[] => {
     const panelNode = panelRef.current;
@@ -95,7 +123,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
 
     setActiveIndex((previous) => Math.min(previous, items.length - 1));
-  }, [items]);
+  }, [items, setActiveIndex]);
 
   React.useEffect(() => {
     if (!open || !rendered) {
@@ -105,12 +133,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
     const frameId = window.requestAnimationFrame(() => {
       if (showInput) {
         inputRef.current?.focus({ preventScroll: true });
-        return;
-      }
-
-      const activeButtons = getActiveActionButtons();
-      if (activeButtons.length > 0) {
-        activeButtons[0]?.focus({ preventScroll: true });
         return;
       }
 
@@ -169,7 +191,73 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         onOpenChange?.(false);
       }
     },
-    [activeIndex, closeOnEsc, getActiveActionButtons, items, onOpenChange],
+    [activeIndex, closeOnEsc, getActiveActionButtons, items, onOpenChange, setActiveIndex],
+  );
+
+  const handlePanelKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (items.length === 0) {
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActiveIndex((previous) => (previous + 1) % items.length);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActiveIndex((previous) => (previous - 1 + items.length) % items.length);
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        items[activeIndex]?.onSelect();
+        return;
+      }
+
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        const activeButtons = getActiveActionButtons();
+
+        if (activeButtons.length === 0) {
+          panelRef.current?.focus({ preventScroll: true });
+          return;
+        }
+
+        const focusedButtonIndex = activeButtons.findIndex((button) => button === document.activeElement);
+        if (event.shiftKey) {
+          if (focusedButtonIndex <= 0) {
+            panelRef.current?.focus({ preventScroll: true });
+            return;
+          }
+
+          activeButtons[focusedButtonIndex - 1]?.focus({ preventScroll: true });
+          return;
+        }
+
+        if (focusedButtonIndex === -1) {
+          activeButtons[0]?.focus({ preventScroll: true });
+          return;
+        }
+
+        if (focusedButtonIndex >= activeButtons.length - 1) {
+          panelRef.current?.focus({ preventScroll: true });
+          return;
+        }
+
+        activeButtons[focusedButtonIndex + 1]?.focus({ preventScroll: true });
+        return;
+      }
+
+      if (event.key === 'Escape' && closeOnEsc) {
+        event.preventDefault();
+        onOpenChange?.(false);
+      }
+    },
+    [activeIndex, closeOnEsc, getActiveActionButtons, items, onOpenChange, setActiveIndex],
   );
 
   const handleActionButtonKeyDown = React.useCallback(
@@ -235,6 +323,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         tabIndex={showInput ? undefined : -1}
         data-state={open ? 'open' : 'closed'}
         className="flex flex-col overflow-hidden rounded-[20px] border border-command-border bg-command-surface shadow-menu-content backdrop-blur-[4px] data-[state=closed]:animate-out data-[state=closed]:fade-out-10 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-top-1"
+        onKeyDown={showInput ? undefined : handlePanelKeyDown}
       >
         {showInput ? (
           <div className="border-b border-command-divider p-[6px]">

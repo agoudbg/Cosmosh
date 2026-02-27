@@ -539,6 +539,8 @@
       "settingsEditor": "设置编辑器",
       "ssh": "SSH",
       "sshEditor": "编辑服务器"
-    }
+    },
+    "switcherEmpty": "未找到匹配的标签页",
+    "switcherPlaceholder": "切换标签页"
   }
 }
