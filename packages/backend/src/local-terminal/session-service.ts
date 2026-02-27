@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, readFile, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -11,6 +11,9 @@ import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 
 const execFileAsync = promisify(execFile);
 const TELEMETRY_INTERVAL_MS = 5_000;
+const HISTORY_REFRESH_DEBOUNCE_MS = 120;
+const HISTORY_REFRESH_THROTTLE_MS = 450;
+const HISTORY_MAX_ENTRIES = 200;
 
 /**
  * Describes an available local shell profile that can be launched as PTY session.
@@ -63,6 +66,10 @@ type ClientInboundMessage =
     }
   | {
       type: 'ping';
+    }
+  | {
+      type: 'history-delete';
+      command: string;
     };
 
 type ServerOutboundMessage =
@@ -102,7 +109,10 @@ type LocalLiveSession = {
   pendingOutput: string[];
   attachTimeout: NodeJS.Timeout;
   telemetryInterval: NodeJS.Timeout | null;
-  commandBuffer: string;
+  historySyncTimeout: NodeJS.Timeout | null;
+  historySyncInFlight: boolean;
+  historySyncPending: boolean;
+  lastHistorySyncStartedAtMs: number;
   recentCommands: string[];
   t: I18nInstance['t'];
   socket: WebSocket | null;
@@ -175,6 +185,13 @@ const normalizeMessage = (payload: RawData): ClientInboundMessage | null => {
 
     if (parsed.type === 'ping') {
       return { type: 'ping' };
+    }
+
+    if (parsed.type === 'history-delete' && typeof parsed.command === 'string') {
+      return {
+        type: 'history-delete',
+        command: parsed.command,
+      };
     }
 
     return null;
@@ -404,7 +421,10 @@ export class LocalTerminalSessionService {
       pendingOutput,
       attachTimeout,
       telemetryInterval: null,
-      commandBuffer: '',
+      historySyncTimeout: null,
+      historySyncInFlight: false,
+      historySyncPending: false,
+      lastHistorySyncStartedAtMs: 0,
       recentCommands: [],
       t: i18n.t,
       socket: null,
@@ -499,7 +519,9 @@ export class LocalTerminalSessionService {
     }
 
     if (message.type === 'input') {
-      this.captureCommandInput(session, message.data);
+      if (/\r|\n/.test(message.data)) {
+        this.scheduleHistorySync(session.sessionId);
+      }
       session.pty.write(message.data);
       return;
     }
@@ -513,6 +535,16 @@ export class LocalTerminalSessionService {
 
     if (message.type === 'ping') {
       this.sendServerMessage(session, { type: 'pong' });
+      return;
+    }
+
+    if (message.type === 'history-delete') {
+      const command = message.command.trim();
+      if (!command) {
+        return;
+      }
+
+      void this.deleteLocalHistoryEntry(session, command);
       return;
     }
 
@@ -538,6 +570,11 @@ export class LocalTerminalSessionService {
     if (session.telemetryInterval) {
       clearInterval(session.telemetryInterval);
       session.telemetryInterval = null;
+    }
+
+    if (session.historySyncTimeout) {
+      clearTimeout(session.historySyncTimeout);
+      session.historySyncTimeout = null;
     }
 
     this.sendServerMessage(session, {
@@ -569,6 +606,7 @@ export class LocalTerminalSessionService {
     }, TELEMETRY_INTERVAL_MS);
 
     this.sendTelemetry(sessionId);
+    this.scheduleHistorySync(sessionId, { immediate: true });
   }
 
   private sendTelemetry(sessionId: string): void {
@@ -588,36 +626,204 @@ export class LocalTerminalSessionService {
     });
   }
 
-  private captureCommandInput(session: LocalLiveSession, inputData: string): void {
-    for (const character of inputData) {
-      if (character === '\r' || character === '\n') {
-        const submitted = session.commandBuffer;
-        session.commandBuffer = '';
+  private scheduleHistorySync(sessionId: string, options?: { immediate?: boolean }): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.disposed) {
+      return;
+    }
 
-        const command = submitted.trim();
-        if (command.length > 0) {
-          session.recentCommands.push(command);
+    if (session.historySyncTimeout) {
+      clearTimeout(session.historySyncTimeout);
+      session.historySyncTimeout = null;
+    }
+
+    const now = Date.now();
+    const throttleRemaining = Math.max(0, HISTORY_REFRESH_THROTTLE_MS - (now - session.lastHistorySyncStartedAtMs));
+    const baseDelayMs = options?.immediate ? 0 : HISTORY_REFRESH_DEBOUNCE_MS;
+    const delayMs = Math.max(baseDelayMs, throttleRemaining);
+
+    session.historySyncTimeout = setTimeout(() => {
+      session.historySyncTimeout = null;
+      void this.syncLocalHistory(sessionId);
+    }, delayMs);
+  }
+
+  private async syncLocalHistory(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.disposed) {
+      return;
+    }
+
+    if (session.historySyncInFlight) {
+      session.historySyncPending = true;
+      return;
+    }
+
+    session.historySyncInFlight = true;
+    session.lastHistorySyncStartedAtMs = Date.now();
+
+    try {
+      session.recentCommands = await this.readLocalHistory(session);
+      this.sendTelemetry(sessionId);
+    } finally {
+      session.historySyncInFlight = false;
+
+      if (session.historySyncPending) {
+        session.historySyncPending = false;
+        this.scheduleHistorySync(sessionId);
+      }
+    }
+  }
+
+  private async readLocalHistory(session: LocalLiveSession): Promise<string[]> {
+    const candidateFiles = this.resolveLocalHistoryFiles(session.profileId);
+    const chunks: string[] = [];
+
+    for (const filePath of candidateFiles) {
+      if (!filePath) {
+        continue;
+      }
+
+      try {
+        const content = await readFile(filePath, 'utf8');
+        chunks.push(content);
+      } catch {
+        // Ignore missing or inaccessible history files.
+      }
+    }
+
+    if (chunks.length === 0) {
+      return [];
+    }
+
+    return this.parseHistoryOutput(chunks.join('\n'));
+  }
+
+  private resolveLocalHistoryFiles(profileId: string): string[] {
+    const homeDirectory = os.homedir();
+    const appData = process.env.APPDATA || '';
+    const candidates = new Set<string>();
+
+    candidates.add(path.join(homeDirectory, '.bash_history'));
+    candidates.add(path.join(homeDirectory, '.zsh_history'));
+    candidates.add(path.join(homeDirectory, '.ash_history'));
+    candidates.add(path.join(homeDirectory, '.sh_history'));
+    candidates.add(path.join(homeDirectory, '.mksh_history'));
+    candidates.add(path.join(homeDirectory, '.ksh_history'));
+    candidates.add(path.join(homeDirectory, '.local', 'share', 'fish', 'fish_history'));
+
+    if (profileId === 'pwsh' || profileId === 'windows-powershell') {
+      candidates.add(path.join(appData, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt'));
+    }
+
+    return [...candidates];
+  }
+
+  private parseHistoryOutput(output: string): string[] {
+    const lines = output.split(/\r?\n/);
+    const parsedCommands: string[] = [];
+
+    for (const line of lines) {
+      const command = this.parseHistoryLine(line);
+      if (!command) {
+        continue;
+      }
+
+      parsedCommands.push(command);
+    }
+
+    const deduplicated: string[] = [];
+    const seen = new Set<string>();
+
+    for (let index = parsedCommands.length - 1; index >= 0; index -= 1) {
+      const command = parsedCommands[index];
+      if (seen.has(command)) {
+        continue;
+      }
+
+      seen.add(command);
+      deduplicated.push(command);
+
+      if (deduplicated.length >= HISTORY_MAX_ENTRIES) {
+        break;
+      }
+    }
+
+    return deduplicated.reverse();
+  }
+
+  private parseHistoryLine(line: string): string | null {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (/^#[0-9]{9,}$/.test(trimmed)) {
+      return null;
+    }
+
+    if (trimmed.startsWith('- cmd: ')) {
+      const fishCommand = trimmed.slice(7).replace(/\\n/g, '\n').trim();
+      return fishCommand.length > 0 ? fishCommand : null;
+    }
+
+    const zshExtendedMatch = /^:\s*\d+:\d+;(.*)$/.exec(trimmed);
+    if (zshExtendedMatch) {
+      const zshCommand = zshExtendedMatch[1]?.trim() ?? '';
+      return zshCommand.length > 0 ? zshCommand : null;
+    }
+
+    const numberedHistoryMatch = /^\s*\d+\*?\s+(.*)$/.exec(trimmed);
+    if (numberedHistoryMatch) {
+      const command = numberedHistoryMatch[1]?.trim() ?? '';
+      return command.length > 0 ? command : null;
+    }
+
+    if (/^(when|paths?|exit|cwd):\s*/i.test(trimmed)) {
+      return null;
+    }
+
+    return trimmed;
+  }
+
+  private async deleteLocalHistoryEntry(session: LocalLiveSession, command: string): Promise<void> {
+    const candidateFiles = this.resolveLocalHistoryFiles(session.profileId);
+    await Promise.all(candidateFiles.map(async (filePath) => this.deleteFromHistoryFile(filePath, command)));
+
+    session.recentCommands = session.recentCommands.filter((entry) => entry !== command);
+    this.sendTelemetry(session.sessionId);
+    this.scheduleHistorySync(session.sessionId, { immediate: true });
+  }
+
+  private async deleteFromHistoryFile(filePath: string, command: string): Promise<void> {
+    if (!filePath) {
+      return;
+    }
+
+    try {
+      const original = await readFile(filePath, 'utf8');
+      const lines = original.split(/\r?\n/);
+      const keptLines = lines.filter((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return true;
         }
-        continue;
-      }
 
-      if (character === '\u007f') {
-        session.commandBuffer = session.commandBuffer.slice(0, -1);
-        continue;
-      }
-
-      if (character === '\u0015') {
-        session.commandBuffer = '';
-        continue;
-      }
-
-      if (character >= ' ' && character !== '\u007f') {
-        session.commandBuffer += character;
-
-        if (session.commandBuffer.length > 512) {
-          session.commandBuffer = session.commandBuffer.slice(-512);
+        if (trimmed === command) {
+          return false;
         }
-      }
+
+        const zshExtendedMatch = /^:\s*\d+:\d+;(.*)$/.exec(trimmed);
+        if (zshExtendedMatch) {
+          return (zshExtendedMatch[1]?.trim() ?? '') !== command;
+        }
+
+        return true;
+      });
+
+      await writeFile(filePath, keptLines.join('\n'), 'utf8');
+    } catch {
+      // Ignore files that cannot be edited on current platform/profile.
     }
   }
 }
