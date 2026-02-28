@@ -24,6 +24,8 @@ import {
   Plus,
   Search,
   Server,
+  Star,
+  StarOff,
   Tags,
   Terminal,
   Trash2,
@@ -78,10 +80,12 @@ import { Menubar, MenubarSeparator, MenuToggleGroup, MenuToggleGroupItem } from 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import type { LocalTerminalProfile } from '../lib/api/transport';
 import {
+  createSshTag,
   deleteSshServer,
   listLocalTerminalProfiles,
   listSshFolders,
   listSshServers,
+  listSshTags,
   updateSshServer,
 } from '../lib/backend';
 import { createFolder, normalizeFolderName, removeFolder, renameFolder } from '../lib/folder-actions';
@@ -134,6 +138,13 @@ const iconMap: Record<HomeIconKey, React.ComponentType<{ className?: string }>> 
   Server,
   HardDrive,
 };
+
+/**
+ * Checks whether a tag is the internal "favorite" tag.
+ * This tag is used behind the scenes to power the favorites feature
+ * and should never be displayed in user-facing tag lists or groups.
+ */
+const isFavoriteTag = (tagName: string): boolean => tagName.toLowerCase().includes('favorite');
 
 const resolveGreetingPeriod = (now: Date): 'morning' | 'afternoon' | 'evening' => {
   const hour = now.getHours();
@@ -252,8 +263,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
   }, [runtimeUserName]);
 
   const favoriteCount = React.useMemo(() => {
-    return servers.filter((server) => (server.tags ?? []).some((tag) => tag.name.toLowerCase().includes('favorite')))
-      .length;
+    return servers.filter((server) => (server.tags ?? []).some((tag) => isFavoriteTag(tag.name))).length;
   }, [servers]);
 
   const recentCount = React.useMemo(() => {
@@ -275,7 +285,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       }
 
       if (quickFilter === 'favorite') {
-        return (server.tags ?? []).some((tag) => tag.name.toLowerCase().includes('favorite'));
+        return (server.tags ?? []).some((tag) => isFavoriteTag(tag.name));
       }
 
       return true;
@@ -289,7 +299,12 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
 
     const nameSet = new Set<string>();
     tagSourceServers.forEach((server) => {
-      (server.tags ?? []).forEach((tag) => nameSet.add(tag.name));
+      (server.tags ?? []).forEach((tag) => {
+        /* Hide the internal "favorite" tag from user-facing tag filters */
+        if (!isFavoriteTag(tag.name)) {
+          nameSet.add(tag.name);
+        }
+      });
     });
 
     return ['all', ...Array.from(nameSet)];
@@ -316,7 +331,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
       }
 
       if (quickFilter === 'favorite') {
-        const isFavorite = (server.tags ?? []).some((tag) => tag.name.toLowerCase().includes('favorite'));
+        const isFavorite = (server.tags ?? []).some((tag) => isFavoriteTag(tag.name));
         if (!isFavorite) {
           return false;
         }
@@ -399,7 +414,12 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     if (groupMode === 'tag') {
       const tagNameSet = new Set<string>();
       filteredServers.forEach((server) => {
-        (server.tags ?? []).forEach((tag) => tagNameSet.add(tag.name));
+        (server.tags ?? []).forEach((tag) => {
+          /* Exclude the internal "favorite" tag from visible tag groups */
+          if (!isFavoriteTag(tag.name)) {
+            tagNameSet.add(tag.name);
+          }
+        });
       });
 
       const tagGroups = Array.from(tagNameSet)
@@ -415,7 +435,13 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
         })
         .filter((group) => group.items.length > 0);
 
-      const untaggedItems = sortServers(filteredServers.filter((server) => (server.tags ?? []).length === 0));
+      /* Servers whose only tag is the hidden "favorite" tag are treated as untagged */
+      const untaggedItems = sortServers(
+        filteredServers.filter((server) => {
+          const visibleTags = (server.tags ?? []).filter((tag) => !isFavoriteTag(tag.name));
+          return visibleTags.length === 0;
+        }),
+      );
 
       if (untaggedItems.length > 0) {
         tagGroups.push({
@@ -875,6 +901,62 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
     [notifyError, notifySuccess, reloadHomeData, servers],
   );
 
+  /**
+   * Checks whether a server is marked as favorite based on its tags.
+   * A server is considered favorite when any of its tags contains "favorite" (case-insensitive).
+   */
+  const isServerFavorite = React.useCallback((server: SshServerListItem): boolean => {
+    return (server.tags ?? []).some((tag) => isFavoriteTag(tag.name));
+  }, []);
+
+  /**
+   * Toggles the favorite status of a server.
+   * - If the server is not favorited, finds or creates a "favorite" tag and assigns it.
+   * - If the server is already favorited, removes the favorite tag from the server.
+   */
+  const handleToggleFavorite = React.useCallback(
+    async (server: SshServerListItem) => {
+      try {
+        const currentTags = server.tags ?? [];
+        const isFavorite = isServerFavorite(server);
+
+        let newTagIds: string[];
+
+        if (isFavorite) {
+          /* Remove all tags whose name matches the favorite pattern */
+          newTagIds = currentTags.filter((tag) => !isFavoriteTag(tag.name)).map((tag) => tag.id);
+        } else {
+          /* Resolve or create the "favorite" tag, then append its ID */
+          const tagsResponse = await listSshTags();
+          let favoriteTag = tagsResponse.data.items.find((tag) => tag.name.toLowerCase() === 'favorite');
+
+          if (!favoriteTag) {
+            const createResponse = await createSshTag({ name: 'favorite' });
+            favoriteTag = createResponse.data.item;
+          }
+
+          newTagIds = [...currentTags.map((tag) => tag.id), favoriteTag.id];
+        }
+
+        await updateSshServer(server.id, {
+          name: server.name,
+          host: server.host,
+          port: server.port,
+          username: server.username,
+          authType: server.authType,
+          note: server.note ?? undefined,
+          folderId: server.folder?.id,
+          tagIds: newTagIds,
+        });
+
+        await reloadHomeData();
+      } catch (error: unknown) {
+        notifyError(error instanceof Error ? error.message : t('home.contextFavoriteFailed'));
+      }
+    },
+    [isServerFavorite, notifyError, reloadHomeData],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-2">
       <h1 className="px-2 pb-2 text-[28px] font-semibold text-header-text">
@@ -1290,6 +1372,15 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSshEditor, isActive }) => 
                                 icon={File}
                               >
                                 {t('home.contextConnectSftp')}
+                              </ContextMenuItem>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                icon={isServerFavorite(server) ? StarOff : Star}
+                                onSelect={() => {
+                                  void handleToggleFavorite(server);
+                                }}
+                              >
+                                {isServerFavorite(server) ? t('home.contextUnfavorite') : t('home.contextFavorite')}
                               </ContextMenuItem>
                               <ContextMenuSeparator />
                               <ContextMenuSub>
