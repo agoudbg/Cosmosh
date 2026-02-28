@@ -516,7 +516,7 @@ const startBackendService = async (): Promise<void> => {
       );
     }
 
-    command = 'pnpm --filter @cosmosh/backend exec tsx src/index.ts';
+    command = 'pnpm --filter @cosmosh/backend run dev';
     args = [];
     shell = true;
   } else {
