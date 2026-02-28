@@ -1,6 +1,7 @@
 {
   "appId": "com.cosmosh.app",
   "productName": "Cosmosh",
+  "compression": "maximum",
   "directories": {
     "buildResources": "resources",
     "output": "release"
