@@ -19,6 +19,12 @@
 3. Keep high-risk and low-risk hosts visually distinct.
 4. Move recently changed hosts into a review group for short-term validation.
 
+### Tag Behavior Notes
+
+- When viewing a specific folder on Home, tag chips remain visible and only include tags used by that folder.
+- Unused custom SSH tags are removed automatically after server/tag updates.
+- The reserved `favorite` tag is never auto-deleted.
+
 ## Update or Remove Profiles
 
 1. Update profile fields immediately after host/user/auth changes.

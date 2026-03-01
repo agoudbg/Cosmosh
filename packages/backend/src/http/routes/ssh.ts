@@ -36,6 +36,40 @@ import { buildErrorPayload } from '../errors.js';
 import { type BackendHttpApp, getTranslator, translateValidationMessage } from '../i18n.js';
 import type { BackendAppContext } from '../types.js';
 
+const RESERVED_FAVORITE_TAG_NAME = 'favorite';
+
+const isReservedSshTagName = (name: string): boolean => {
+  return name.trim().toLowerCase() === RESERVED_FAVORITE_TAG_NAME;
+};
+
+const cleanupUnusedSshTags = async (db: ReturnType<BackendAppContext['getDbClient']>): Promise<void> => {
+  const orphanTags = await db.sshTag.findMany({
+    where: {
+      servers: {
+        none: {},
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  const removableTagIds = orphanTags.filter((tag) => !isReservedSshTagName(tag.name)).map((tag) => tag.id);
+
+  if (removableTagIds.length === 0) {
+    return;
+  }
+
+  await db.sshTag.deleteMany({
+    where: {
+      id: {
+        in: removableTagIds,
+      },
+    },
+  });
+};
+
 /**
  * Registers SSH domain routes for folders, tags, servers, credentials, and sessions.
  */
@@ -174,6 +208,7 @@ export const registerSshRoutes = (app: BackendHttpApp, context: BackendAppContex
   app.get(API_PATHS.sshListTags, async (c) => {
     const t = getTranslator(c);
     const db = context.getDbClient();
+    await cleanupUnusedSshTags(db);
     const tags = await db.sshTag.findMany({
       orderBy: {
         updatedAt: 'desc',
@@ -497,6 +532,10 @@ export const registerSshRoutes = (app: BackendHttpApp, context: BackendAppContex
         },
       });
 
+      if (tagIds) {
+        await cleanupUnusedSshTags(db);
+      }
+
       return c.json(payload);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -523,6 +562,8 @@ export const registerSshRoutes = (app: BackendHttpApp, context: BackendAppContex
           id: serverId,
         },
       });
+
+      await cleanupUnusedSshTags(db);
 
       return c.body(null, 204);
     } catch (error: unknown) {
