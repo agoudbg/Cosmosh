@@ -56,13 +56,16 @@ import { Menubar, MenubarSeparator } from '../components/ui/menubar';
 import { PasswordField } from '../components/ui/password-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
+import { TagInput } from '../components/ui/tag-input';
 import { Textarea } from '../components/ui/textarea';
 import {
   createSshServer,
+  createSshTag,
   deleteSshServer,
   getSshServerCredentials,
   listSshFolders,
   listSshServers,
+  listSshTags,
   updateSshServer,
 } from '../lib/backend';
 import { createFolder, normalizeFolderName } from '../lib/folder-actions';
@@ -75,6 +78,7 @@ import { useDirectionalNavigation } from '../lib/use-directional-navigation';
 
 type SshServerListItem = components['schemas']['SshServerListItem'];
 type SshFolder = components['schemas']['SshFolder'];
+type SshTag = components['schemas']['SshTag'];
 type SshAuthType = components['schemas']['SshAuthType'];
 
 type SortMode = 'default' | 'nameAsc' | 'nameDesc' | 'lastUsed' | 'createdAt';
@@ -90,6 +94,7 @@ type ServerEditorFormState = {
   privateKey: string;
   privateKeyPassphrase: string;
   folderId: string;
+  tagIds: string[];
   strictHostKey: boolean;
 };
 
@@ -114,6 +119,7 @@ const createInitialFormState = (defaultServerNoteTemplate = ''): ServerEditorFor
     privateKey: '',
     privateKeyPassphrase: '',
     folderId: '',
+    tagIds: [],
     strictHostKey: true,
   };
 };
@@ -147,6 +153,7 @@ const mapServerToFormState = (server: SshServerListItem): ServerEditorFormState 
     privateKey: '',
     privateKeyPassphrase: '',
     folderId: server.folder?.id ?? '',
+    tagIds: (server.tags ?? []).map((tag) => tag.id),
     strictHostKey: true,
   };
 };
@@ -168,6 +175,7 @@ const SSHEditor: React.FC = () => {
   const defaultServerNoteTemplate = useSettingsValue('defaultServerNoteTemplate');
   const [servers, setServers] = React.useState<SshServerListItem[]>([]);
   const [folders, setFolders] = React.useState<SshFolder[]>([]);
+  const [tags, setTags] = React.useState<SshTag[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [search, setSearch] = React.useState<string>('');
@@ -205,13 +213,19 @@ const SSHEditor: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [foldersResponse, serversResponse] = await Promise.all([listSshFolders(), listSshServers()]);
+      const [foldersResponse, serversResponse, tagsResponse] = await Promise.all([
+        listSshFolders(),
+        listSshServers(),
+        listSshTags(),
+      ]);
       const nextFolders = foldersResponse.data.items;
       const nextServers = serversResponse.data.items;
+      const nextTags = tagsResponse.data.items;
       const nextDefaultServerNoteTemplate = defaultServerNoteTemplate;
 
       setFolders(nextFolders);
       setServers(nextServers);
+      setTags(nextTags);
 
       if (consumeSshEditorCreateMode()) {
         preferCreateModeRef.current = true;
@@ -496,6 +510,32 @@ const SSHEditor: React.FC = () => {
     [],
   );
 
+  const onCreateTag = React.useCallback(
+    async (name: string): Promise<SshTag | null> => {
+      const normalizedName = name.trim();
+      if (!normalizedName) {
+        return null;
+      }
+
+      const existingTag = tags.find((tag) => tag.name.toLowerCase() === normalizedName.toLowerCase());
+      if (existingTag) {
+        return existingTag;
+      }
+
+      try {
+        const createdResponse = await createSshTag({ name: normalizedName });
+        const createdTag = createdResponse.data.item;
+
+        setTags((previous) => [...previous, createdTag]);
+        return createdTag;
+      } catch (error: unknown) {
+        notifyError(error instanceof Error ? error.message : t('ssh.createTagFailed'));
+        return null;
+      }
+    },
+    [notifyError, tags],
+  );
+
   const importPrivateKeyFromFile = React.useCallback(async () => {
     try {
       const result = await window.electron?.importPrivateKeyFromFile?.();
@@ -646,6 +686,7 @@ const SSHEditor: React.FC = () => {
             privateKey: formState.privateKey.trim() || undefined,
             privateKeyPassphrase: formState.privateKeyPassphrase.trim() || undefined,
             folderId: formState.folderId || undefined,
+            tagIds: formState.tagIds,
             note: formState.note.trim() || undefined,
           });
           setActiveSshServerId(activeServerId);
@@ -661,6 +702,7 @@ const SSHEditor: React.FC = () => {
             privateKey: formState.privateKey.trim() || undefined,
             privateKeyPassphrase: formState.privateKeyPassphrase.trim() || undefined,
             folderId: formState.folderId || undefined,
+            tagIds: formState.tagIds,
             note: formState.note.trim() || undefined,
           });
 
@@ -1086,6 +1128,22 @@ const SSHEditor: React.FC = () => {
                 <div className="px-2 pb-1 text-[15px] font-medium text-home-text-subtle">
                   {t('ssh.sectionSettings')}
                 </div>
+
+                <FormField>
+                  <FormLabel>{t('ssh.tagsLegend')}</FormLabel>
+                  <FormControl>
+                    <TagInput
+                      tags={tags}
+                      selectedTagIds={formState.tagIds}
+                      menuTitle={t('ssh.tagsLegend')}
+                      inputPlaceholder={t('ssh.tagNamePlaceholder')}
+                      emptyText={t('ssh.emptyTags')}
+                      disabled={isSubmitting}
+                      onSelectedTagIdsChange={(nextTagIds) => onChangeForm('tagIds', nextTagIds)}
+                      onCreateTag={onCreateTag}
+                    />
+                  </FormControl>
+                </FormField>
 
                 <FormField>
                   <FormLabel htmlFor="ssh-editor-note">{t('ssh.noteLabel')}</FormLabel>
