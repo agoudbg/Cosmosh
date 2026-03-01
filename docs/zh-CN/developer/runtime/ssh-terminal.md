@@ -22,8 +22,8 @@ sequenceDiagram
   SSH-->>API: sessionId + wsUrl + wsToken
   API-->>UI: create-session response
   UI->>SSH: WebSocket /ws/ssh/{sessionId}?token=...
-  UI-->>SSH: input/resize/ping/history-delete
-  SSH-->>UI: output/telemetry/history/pong/exit
+  UI-->>SSH: input/resize/ping/history-delete/completion-request
+  SSH-->>UI: output/telemetry/history/completion-response/pong/exit
 ```
 
 ## 2. 后端会话生命周期
@@ -74,6 +74,7 @@ sequenceDiagram
 - `ping`：心跳。
 - `close`：显式断开请求。
 - `history-delete`：请求后端删除远端 shell 历史中的选中命令。
+- `completion-request`：基于当前命令前缀与光标位置请求排序后的补全候选。
 
 ### Server → Client
 
@@ -81,6 +82,7 @@ sequenceDiagram
 - `output`：shell stdout/stderr 输出。
 - `telemetry`：CPU/内存/网络 + 命令历史快照。
 - `history`：仅历史快照推送，用于即时 UI 同步。
+- `completion-response`：当前命令 token 的排序补全候选。
 - `pong`：ping 响应。
 - `error`：协议/运行时错误。
 - `exit`：会话关闭与原因。
@@ -94,6 +96,43 @@ sequenceDiagram
 - 当渲染层发送的 `input` 包含提交字符（`\r` / `\n`）时，后端会以“延迟 + 节流”策略触发 history 刷新，避免过度抓取。
 - history 与 telemetry 解耦：telemetry 仍为定时采样，history 可通过 `history` 事件即时推送。
 - `SSH.tsx` 的删除操作会发送 `history-delete`，后端会以 best-effort 方式清理远端历史文件后再执行同步。
+
+### 3.2 自动补全模型
+
+- 渲染层会在输入过程中以短延迟去抖触发 `completion-request`，并在用户手动按下 `Tab` 时主动立即触发一次。
+- 后端补全引擎由 SSH 与本地终端会话服务共享，候选来源合并为：
+  - 当前会话实时输入流提取的交互命令（历史信号，按会话隔离），
+  - 同步得到的 shell 历史快照会合并进补全历史缓存，保证在会话初期也能提供历史补全，
+  - 来自 inshellisense/Fig 资源的命令元数据（规范信号，按完整命令路径索引生成，而非仅根命令子集）。
+- `packages/backend/scripts/generate-inshellisense.mjs` 会生成规范数据与按语言策略处理的补全说明资源：
+  - `packages/backend/src/terminal/completion/generated-inshellisense.ts` 仅保留命令结构与 `descriptionI18nKey`（不再冗余内嵌原始英文说明文本）。
+  - `packages/i18n/locales/en/backend-inshellisense.json` 会根据上游说明全量重建。
+  - `packages/i18n/locales/zh-CN/backend-inshellisense.json` 仅保留“英文源文本未变化”的手工翻译键；新键不会自动回填，英文源变化或删除时会自动清理对应中文键。
+- backend 作用域 i18n 会将 `backend-inshellisense.json` 合并到 `backend.json`，从而支持补全说明翻译，同时保持基础 backend 语料与生成语料分离。
+- 生成器会清理 LS/PS Unicode 分隔符（`U+2028`/`U+2029`），避免生成 TypeScript 文件触发异常行终止符警告。
+- 当前排序策略：
+  - 先做命令路径感知匹配（例如 `git push -` 优先解析 `git push` 规范，再回退到根命令 `git`），
+  - 前缀匹配优先，其次可选模糊子序列匹配，
+  - 内置命令规范候选优先于通用 history 命中，
+  - history 候选会在命令结构相关前提下按“距离最近一次执行的距离”动态加权。
+- 候选展示为完整命令路径（例如 `git push --force`）。
+- 选项解析具备参数语义感知：
+  - 支持多选项连续组合输入且保持命令上下文稳定，
+  - 对已知“需要参数值”的选项（来自 Fig `args` 元数据）可返回参数值候选，
+  - 同一条命令中已使用的选项会被降噪过滤，减少重复干扰。
+- 接受补全时仅替换光标前的当前 token 片段（`replacePrefixLength`），不会清空整行命令，因此可稳定支持多参数连续组合输入。
+- `completion-response` 返回 `replacePrefixLength` 与候选项（`label`、`insertText`、`detail`、`source`、`kind`、`score`）。
+- `detail` 会在后端会话服务发送响应前完成本地化，回退顺序为：翻译后的 `detailI18nKey` → 本地化来源标签（`历史记录` / `命令规范`）。
+- 候选可见时的键盘规则：
+  - `ArrowUp/ArrowDown` 切换当前候选，并由补全导航独占消费，
+  - `Tab` 接受当前候选，
+  - `Escape` 关闭候选面板，
+  - `Enter` 仍保持 shell 提交语义。
+- 候选面板布局约束：
+  - 面板锚点会在终端可视区域内进行夹取，
+  - 面板宽度会适度扩大以容纳高信息密度说明，并保持视口夹取，
+  - 面板内容区使用最大高度与纵向滚动（`max-h`）保证长候选列表可完整访问，
+  - 长命令与说明文本使用截断，避免横向溢出。
 
 ```mermaid
 flowchart LR

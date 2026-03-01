@@ -53,6 +53,21 @@ flowchart TB
   - `packages/renderer/src/vite-env.d.ts`
   - `packages/renderer/src/lib/api/transport.ts`
 
+## 3.1 Terminal WebSocket Contract (Renderer ↔ Backend)
+
+Although terminal stream messages are not Electron IPC channels, they are part of the same cross-process contract surface and must be versioned together.
+
+- Client to server (`/ws/ssh/{sessionId}` and `/ws/local-terminal/{sessionId}`):
+  - `input`, `resize`, `ping`, `close`, `history-delete`
+  - `completion-request` with `requestId`, `linePrefix`, `cursorIndex`, optional `limit`, optional `fuzzyMatch`, and `trigger` (`typing` or `manual`)
+- Server to client:
+  - `ready`, `output`, `telemetry`, `history`, `pong`, `error`, `exit`
+  - `completion-response` with `requestId`, `replacePrefixLength`, and ranked completion `items`
+
+Current implementation note:
+
+- Completion messages are handled in `SshSessionService` and `LocalTerminalSessionService` via shared normalization in `terminal/shared.ts` and shared ranking engine in `terminal/completion/engine.ts`.
+
 ## 4. Change Rules
 
 When adding/modifying a channel, update in one commit:

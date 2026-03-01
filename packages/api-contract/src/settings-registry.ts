@@ -50,6 +50,10 @@ export interface SettingsValues {
   defaultLocalTerminalProfile: string;
   terminalSelectionSearchEngine: 'google' | 'bing' | 'duckduckgo' | 'baidu' | 'custom';
   terminalSelectionSearchUrlTemplate: string;
+  terminalAutoCompleteEnabled: boolean;
+  terminalAutoCompleteMinChars: number;
+  terminalAutoCompleteMaxItems: number;
+  terminalAutoCompleteFuzzyMatch: boolean;
 }
 
 export type SettingKey = keyof SettingsValues;
@@ -572,6 +576,64 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     commandActionId: 'settings.ssh.searchUrlTemplate.set',
     searchTerms: ['search url', 'template', '%s', 'browser'],
     maxLength: 1000,
+  },
+  {
+    key: 'terminalAutoCompleteEnabled',
+    valueType: 'boolean',
+    defaultValue: true,
+    nameI18nKey: 'settings.items.terminalAutoCompleteEnabled.title',
+    descriptionI18nKey: 'settings.items.terminalAutoCompleteEnabled.description',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.runtime,
+    control: 'switch',
+    path: 'terminal.runtime.autoComplete.enabled',
+    commandActionId: 'settings.terminal.runtime.autoComplete.enabled.toggle',
+    searchTerms: ['terminal', 'autocomplete', 'auto complete', 'command suggestions'],
+  },
+  {
+    key: 'terminalAutoCompleteMinChars',
+    valueType: 'number',
+    defaultValue: 1,
+    nameI18nKey: 'settings.items.terminalAutoCompleteMinChars.title',
+    descriptionI18nKey: 'settings.items.terminalAutoCompleteMinChars.description',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.runtime,
+    control: 'input',
+    path: 'terminal.runtime.autoComplete.minChars',
+    commandActionId: 'settings.terminal.runtime.autoComplete.minChars.set',
+    searchTerms: ['terminal', 'autocomplete', 'minimum chars', 'trigger'],
+    inputMode: 'numeric',
+    min: 1,
+    max: 8,
+  },
+  {
+    key: 'terminalAutoCompleteMaxItems',
+    valueType: 'number',
+    defaultValue: 8,
+    nameI18nKey: 'settings.items.terminalAutoCompleteMaxItems.title',
+    descriptionI18nKey: 'settings.items.terminalAutoCompleteMaxItems.description',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.runtime,
+    control: 'input',
+    path: 'terminal.runtime.autoComplete.maxItems',
+    commandActionId: 'settings.terminal.runtime.autoComplete.maxItems.set',
+    searchTerms: ['terminal', 'autocomplete', 'max items', 'suggestions limit'],
+    inputMode: 'numeric',
+    min: 3,
+    max: 20,
+  },
+  {
+    key: 'terminalAutoCompleteFuzzyMatch',
+    valueType: 'boolean',
+    defaultValue: true,
+    nameI18nKey: 'settings.items.terminalAutoCompleteFuzzyMatch.title',
+    descriptionI18nKey: 'settings.items.terminalAutoCompleteFuzzyMatch.description',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.advancedTerminal,
+    control: 'switch',
+    path: 'terminal.advanced.autoComplete.fuzzyMatch',
+    commandActionId: 'settings.terminal.advanced.autoComplete.fuzzyMatch.toggle',
+    searchTerms: ['terminal', 'autocomplete', 'fuzzy', 'fuzzy match'],
   },
   {
     key: 'terminalDrawBoldTextInBrightColors',

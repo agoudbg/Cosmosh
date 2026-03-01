@@ -42,6 +42,15 @@ export type TerminalClientInboundMessage =
   | {
       type: 'history-delete';
       command: string;
+    }
+  | {
+      type: 'completion-request';
+      requestId: string;
+      linePrefix: string;
+      cursorIndex: number;
+      limit?: number;
+      fuzzyMatch?: boolean;
+      trigger: 'typing' | 'manual';
     };
 
 /**
@@ -76,6 +85,26 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
       return {
         type: 'history-delete',
         command: parsed.command,
+      };
+    }
+
+    if (
+      parsed.type === 'completion-request' &&
+      typeof parsed.requestId === 'string' &&
+      typeof parsed.linePrefix === 'string' &&
+      typeof parsed.cursorIndex === 'number' &&
+      (parsed.limit === undefined || typeof parsed.limit === 'number') &&
+      (parsed.fuzzyMatch === undefined || typeof parsed.fuzzyMatch === 'boolean') &&
+      (parsed.trigger === 'typing' || parsed.trigger === 'manual')
+    ) {
+      return {
+        type: 'completion-request',
+        requestId: parsed.requestId,
+        linePrefix: parsed.linePrefix,
+        cursorIndex: parsed.cursorIndex,
+        limit: parsed.limit,
+        fuzzyMatch: parsed.fuzzyMatch,
+        trigger: parsed.trigger,
       };
     }
 
@@ -133,6 +162,40 @@ export const parseTerminalHistoryOutput = (output: string, maxEntries = TERMINAL
 };
 
 /**
+ * Merges prioritized and fallback command lists while preserving order and uniqueness.
+ */
+export const mergeTerminalRecentCommands = (
+  prioritized: readonly string[],
+  fallback: readonly string[],
+  maxEntries = TERMINAL_HISTORY_MAX_ENTRIES,
+): string[] => {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+
+  const append = (commands: readonly string[]): void => {
+    for (const command of commands) {
+      const normalized = command.trim();
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+
+      seen.add(normalized);
+      merged.push(normalized);
+      if (merged.length >= maxEntries) {
+        return;
+      }
+    }
+  };
+
+  append(prioritized);
+  if (merged.length < maxEntries) {
+    append(fallback);
+  }
+
+  return merged;
+};
+
+/**
  * Computes effective delay for history refresh with debounce + throttle semantics.
  */
 export const computeHistorySyncDelayMs = (
@@ -143,6 +206,76 @@ export const computeHistorySyncDelayMs = (
   const throttleRemaining = Math.max(0, TERMINAL_HISTORY_REFRESH_THROTTLE_MS - (nowMs - lastHistorySyncStartedAtMs));
   const baseDelayMs = options?.immediate ? 0 : TERMINAL_HISTORY_REFRESH_DEBOUNCE_MS;
   return Math.max(baseDelayMs, throttleRemaining);
+};
+
+export type TerminalInteractiveCompletionState = {
+  lineBuffer: string;
+  recentCommands: string[];
+};
+
+/**
+ * Updates session-scoped interactive completion state from raw terminal input stream.
+ * This parser intentionally tracks only commands typed in the current live session.
+ */
+export const updateInteractiveCompletionState = (
+  state: TerminalInteractiveCompletionState,
+  inputData: string,
+  options?: { maxEntries?: number },
+): void => {
+  const maxEntries = Math.max(1, options?.maxEntries ?? TERMINAL_HISTORY_MAX_ENTRIES);
+  let lineBuffer = state.lineBuffer;
+  let recentCommands = state.recentCommands;
+
+  const commitCurrentBuffer = (): void => {
+    const normalizedCommand = lineBuffer.trim();
+    if (!normalizedCommand) {
+      lineBuffer = '';
+      return;
+    }
+
+    recentCommands = [normalizedCommand, ...recentCommands.filter((entry) => entry !== normalizedCommand)].slice(
+      0,
+      maxEntries,
+    );
+
+    lineBuffer = '';
+  };
+
+  for (let index = 0; index < inputData.length; index += 1) {
+    const char = inputData[index] ?? '';
+
+    if (char === '\x1b') {
+      break;
+    }
+
+    if (char === '\r' || char === '\n') {
+      commitCurrentBuffer();
+      continue;
+    }
+
+    if (char === '\u0003') {
+      lineBuffer = '';
+      continue;
+    }
+
+    if (char === '\x7f' || char === '\b') {
+      if (lineBuffer.length > 0) {
+        lineBuffer = lineBuffer.slice(0, -1);
+      }
+      continue;
+    }
+
+    if (char === '\t' || char === '\u0000') {
+      continue;
+    }
+
+    if (char >= ' ') {
+      lineBuffer += char;
+    }
+  }
+
+  state.lineBuffer = lineBuffer;
+  state.recentCommands = recentCommands;
 };
 
 const parseTerminalHistoryLine = (line: string): string | null => {

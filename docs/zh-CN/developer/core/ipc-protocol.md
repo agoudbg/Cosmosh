@@ -53,6 +53,21 @@ flowchart TB
   - `packages/renderer/src/vite-env.d.ts`
   - `packages/renderer/src/lib/api/transport.ts`
 
+## 3.1 终端 WebSocket 契约（Renderer ↔ Backend）
+
+终端流式消息虽然不属于 Electron IPC channel，但同样属于跨进程契约面，必须与 IPC 变更一起维护版本一致性。
+
+- 客户端到服务端（`/ws/ssh/{sessionId}` 与 `/ws/local-terminal/{sessionId}`）：
+  - `input`、`resize`、`ping`、`close`、`history-delete`
+  - `completion-request`，包含 `requestId`、`linePrefix`、`cursorIndex`、可选 `limit`、可选 `fuzzyMatch`、`trigger`（`typing` 或 `manual`）
+- 服务端到客户端：
+  - `ready`、`output`、`telemetry`、`history`、`pong`、`error`、`exit`
+  - `completion-response`，包含 `requestId`、`replacePrefixLength` 与排序后的候选 `items`
+
+当前实现说明：
+
+- 补全消息在 `SshSessionService` 与 `LocalTerminalSessionService` 中处理，输入规范化由 `terminal/shared.ts` 统一，排序引擎由 `terminal/completion/engine.ts` 共享。
+
 ## 4. 变更规则
 
 当新增/修改 channel 时，必须在一个变更中同步更新：

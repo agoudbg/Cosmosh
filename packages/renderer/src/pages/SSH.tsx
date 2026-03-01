@@ -7,6 +7,11 @@ import classNames from 'classnames';
 import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles, X } from 'lucide-react';
 import React from 'react';
 
+import {
+  type TerminalAutocompleteItem,
+  TerminalAutocompleteMenu,
+  type TerminalAutocompleteMenuHandle,
+} from '../components/terminal/terminal-autocomplete-menu';
 import { TerminalContextMenu } from '../components/terminal/terminal-context-menu';
 import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
 import { TerminalTextDropZone } from '../components/terminal/terminal-text-drop-zone';
@@ -59,6 +64,15 @@ type ClientOutboundMessage =
   | {
       type: 'history-delete';
       command: string;
+    }
+  | {
+      type: 'completion-request';
+      requestId: string;
+      linePrefix: string;
+      cursorIndex: number;
+      limit?: number;
+      fuzzyMatch?: boolean;
+      trigger: 'typing' | 'manual';
     };
 
 type ServerInboundMessage =
@@ -92,6 +106,12 @@ type ServerInboundMessage =
   | {
       type: 'history';
       recentCommands: string[];
+    }
+  | {
+      type: 'completion-response';
+      requestId: string;
+      replacePrefixLength: number;
+      items: TerminalAutocompleteItem[];
     };
 
 type SshTelemetryState = {
@@ -248,6 +268,12 @@ type TerminalSelectionBarPosition = {
   left: number;
 };
 
+type TerminalAutocompleteAnchor = {
+  top: number;
+  left: number;
+  renderAbove: boolean;
+};
+
 type TerminalSelectionSettings = {
   enabled: boolean;
   searchEngine: SettingsValues['terminalSelectionSearchEngine'];
@@ -260,6 +286,63 @@ type TerminalSelectionBounds = Pick<
 >;
 
 const INTERNAL_TERMINAL_TEXT_DRAG_MIME = 'application/x-cosmosh-terminal-text';
+const AUTOCOMPLETE_PANEL_ESTIMATED_WIDTH = 520;
+const AUTOCOMPLETE_PANEL_EDGE_PADDING = 8;
+const AUTOCOMPLETE_TYPING_DEBOUNCE_MS = 180;
+
+const COMMAND_START_TOKENS = ['> ', '$ ', '# ', '❯ ', '➜ ', 'λ '];
+
+const resolveCommandStartOffset = (linePrefix: string): number => {
+  let bestIndex = -1;
+  let bestTokenLength = 0;
+
+  for (const token of COMMAND_START_TOKENS) {
+    const index = linePrefix.lastIndexOf(token);
+    if (index < 0) {
+      continue;
+    }
+
+    if (index > bestIndex) {
+      bestIndex = index;
+      bestTokenLength = token.length;
+    }
+  }
+
+  if (bestIndex < 0) {
+    return 0;
+  }
+
+  return Math.max(0, bestIndex + bestTokenLength);
+};
+
+const resolveTerminalCurrentLinePrefix = (
+  terminal: Terminal,
+): {
+  fullLinePrefix: string;
+  commandPrefix: string;
+  commandStartColumn: number;
+  cursorRow: number;
+} | null => {
+  const activeBuffer = terminal.buffer.active;
+  const cursorY = activeBuffer.cursorY;
+  const cursorX = activeBuffer.cursorX;
+  const absoluteLineIndex = activeBuffer.baseY + cursorY;
+  const line = activeBuffer.getLine(absoluteLineIndex);
+
+  if (!line) {
+    return null;
+  }
+
+  const fullLinePrefix = line.translateToString(true, 0, cursorX);
+  const commandStartColumn = resolveCommandStartOffset(fullLinePrefix);
+
+  return {
+    fullLinePrefix,
+    commandPrefix: fullLinePrefix.slice(commandStartColumn),
+    commandStartColumn,
+    cursorRow: cursorY,
+  };
+};
 
 const SEARCH_URL_BY_ENGINE: Partial<Record<TerminalSelectionSettings['searchEngine'], string>> = {
   google: 'https://www.google.com/search?q=',
@@ -418,6 +501,14 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const selectionBarRef = React.useRef<HTMLDivElement | null>(null);
   const connectSessionRef = React.useRef<(() => void) | null>(null);
   const fingerprintPromptResolverRef = React.useRef<((accepted: boolean) => void) | null>(null);
+  const autocompleteRequestSequenceRef = React.useRef<number>(0);
+  const autocompleteRequestTimeoutRef = React.useRef<number | null>(null);
+  const latestAutocompleteRequestKeyRef = React.useRef<string>('');
+  const latestAutocompleteRequestIdRef = React.useRef<string>('');
+  const autocompleteReplacePrefixLengthRef = React.useRef<number>(0);
+  const latestAutocompleteCommandStartColumnRef = React.useRef<number>(0);
+  const latestAutocompleteCursorRowRef = React.useRef<number>(0);
+  const autocompleteMenuRef = React.useRef<TerminalAutocompleteMenuHandle | null>(null);
   const [connectionState, setConnectionState] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [connectionError, setConnectionError] = React.useState<string>('');
   const [telemetryState, setTelemetryState] = React.useState<SshTelemetryState>(DEFAULT_TELEMETRY_STATE);
@@ -425,11 +516,17 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const [selectionAnchor, setSelectionAnchor] = React.useState<TerminalSelectionAnchor | null>(null);
   const [selectionBarPosition, setSelectionBarPosition] = React.useState<TerminalSelectionBarPosition | null>(null);
   const [dismissedSelectionText, setDismissedSelectionText] = React.useState<string | null>(null);
+  const [autocompleteItems, setAutocompleteItems] = React.useState<TerminalAutocompleteItem[]>([]);
+  const [autocompleteAnchor, setAutocompleteAnchor] = React.useState<TerminalAutocompleteAnchor | null>(null);
 
   // Derive terminal-relevant settings from the centralized store.
   const sshMaxRows = settingsValues.sshMaxRows;
   const sshConnectionTimeoutSec = settingsValues.sshConnectionTimeoutSec;
   const terminalTextDropMode = settingsValues.terminalTextDropMode;
+  const terminalAutoCompleteEnabled = settingsValues.terminalAutoCompleteEnabled;
+  const terminalAutoCompleteMinChars = settingsValues.terminalAutoCompleteMinChars;
+  const terminalAutoCompleteMaxItems = settingsValues.terminalAutoCompleteMaxItems;
+  const terminalAutoCompleteFuzzyMatch = settingsValues.terminalAutoCompleteFuzzyMatch;
   const terminalInitOptions = React.useMemo<ITerminalOptions>(() => {
     const terminalBackground =
       getComputedStyle(document.documentElement).getPropertyValue('--color-ssh-card-bg-terminal').trim() || '#000000';
@@ -514,6 +611,19 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   React.useEffect(() => {
     onTabTitleChangeRef.current = onTabTitleChange;
   }, [onTabTitleChange]);
+
+  const clearScheduledAutocompleteRequest = React.useCallback(() => {
+    if (autocompleteRequestTimeoutRef.current !== null) {
+      window.clearTimeout(autocompleteRequestTimeoutRef.current);
+      autocompleteRequestTimeoutRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      clearScheduledAutocompleteRequest();
+    };
+  }, [clearScheduledAutocompleteRequest]);
 
   const terminalInitOptionsRef = React.useRef<ITerminalOptions>(terminalInitOptions);
   const sshConnectionTimeoutSecRef = React.useRef<number>(sshConnectionTimeoutSec);
@@ -732,6 +842,17 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     }
   }, [dismissedSelectionText, selectionAnchor]);
 
+  React.useEffect(() => {
+    if (connectionState !== 'connected' || !terminalAutoCompleteEnabled) {
+      setAutocompleteItems([]);
+      autocompleteMenuRef.current?.reset();
+      setAutocompleteAnchor(null);
+      autocompleteReplacePrefixLengthRef.current = 0;
+      latestAutocompleteRequestIdRef.current = '';
+      latestAutocompleteRequestKeyRef.current = '';
+    }
+  }, [connectionState, terminalAutoCompleteEnabled]);
+
   // ---------------------------------------------------------------------------
   // Shared terminal action helpers — used by both the Orbit Bar and the context
   // menu so that behaviour is consistent across interaction surfaces.
@@ -906,6 +1027,271 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     });
     terminalRef.current?.focus();
   }, []);
+
+  const closeAutocomplete = React.useCallback(() => {
+    clearScheduledAutocompleteRequest();
+    setAutocompleteItems([]);
+    autocompleteMenuRef.current?.reset();
+    setAutocompleteAnchor(null);
+    autocompleteReplacePrefixLengthRef.current = 0;
+    latestAutocompleteRequestIdRef.current = '';
+    latestAutocompleteRequestKeyRef.current = '';
+  }, [clearScheduledAutocompleteRequest]);
+
+  const resolveAutocompleteAnchor = React.useCallback(
+    (commandStartColumn: number, cursorRow: number): TerminalAutocompleteAnchor | null => {
+      const wrapperElement = wrapperRef.current;
+      const containerElement = terminalContainerRef.current;
+      const terminal = terminalRef.current;
+
+      if (!wrapperElement || !containerElement || !terminal) {
+        return null;
+      }
+
+      const containerRect = containerElement.getBoundingClientRect();
+      const wrapperRect = wrapperElement.getBoundingClientRect();
+
+      const internalTerminal = terminal as unknown as {
+        _core?: {
+          _renderService?: {
+            dimensions?: {
+              css?: {
+                cell?: {
+                  width?: number;
+                  height?: number;
+                };
+              };
+            };
+          };
+        };
+      };
+
+      const cellWidth = internalTerminal._core?._renderService?.dimensions?.css?.cell?.width ?? 9;
+      const cellHeight = internalTerminal._core?._renderService?.dimensions?.css?.cell?.height ?? 18;
+      const left = containerRect.left - wrapperRect.left + commandStartColumn * cellWidth;
+      const maxLeft = Math.max(
+        AUTOCOMPLETE_PANEL_EDGE_PADDING,
+        wrapperRect.width - AUTOCOMPLETE_PANEL_ESTIMATED_WIDTH - AUTOCOMPLETE_PANEL_EDGE_PADDING,
+      );
+      const cursorBaselineTop = containerRect.top - wrapperRect.top + cursorRow * cellHeight;
+      const estimatedPanelHeight = 280;
+      const renderAbove = cursorBaselineTop - estimatedPanelHeight - 8 >= 8;
+
+      return {
+        left: Math.max(AUTOCOMPLETE_PANEL_EDGE_PADDING, Math.min(left, maxLeft)),
+        top: renderAbove ? cursorBaselineTop - 8 : cursorBaselineTop + cellHeight + 8,
+        renderAbove,
+      };
+    },
+    [],
+  );
+
+  const requestAutocomplete = React.useCallback(
+    (trigger: 'typing' | 'manual') => {
+      const socket = socketRef.current;
+      const terminal = terminalRef.current;
+
+      if (
+        !terminalAutoCompleteEnabled ||
+        !socket ||
+        socket.readyState !== WebSocket.OPEN ||
+        !terminal ||
+        connectionState !== 'connected'
+      ) {
+        closeAutocomplete();
+        return;
+      }
+
+      const lineContext = resolveTerminalCurrentLinePrefix(terminal);
+      if (!lineContext) {
+        closeAutocomplete();
+        return;
+      }
+
+      const commandPrefix = lineContext.commandPrefix;
+      if (!commandPrefix.trim()) {
+        closeAutocomplete();
+        return;
+      }
+
+      if (commandPrefix.trim().length < terminalAutoCompleteMinChars) {
+        closeAutocomplete();
+        return;
+      }
+
+      latestAutocompleteCommandStartColumnRef.current = lineContext.commandStartColumn;
+      latestAutocompleteCursorRowRef.current = lineContext.cursorRow;
+
+      const requestKey = `${lineContext.cursorRow}:${commandPrefix}`;
+      if (trigger === 'typing' && requestKey === latestAutocompleteRequestKeyRef.current) {
+        return;
+      }
+      latestAutocompleteRequestKeyRef.current = requestKey;
+
+      const requestId = `cmp-${Date.now()}-${(autocompleteRequestSequenceRef.current += 1)}`;
+      latestAutocompleteRequestIdRef.current = requestId;
+
+      sendClientMessage(socket, {
+        type: 'completion-request',
+        requestId,
+        linePrefix: commandPrefix,
+        cursorIndex: commandPrefix.length,
+        limit: terminalAutoCompleteMaxItems,
+        fuzzyMatch: terminalAutoCompleteFuzzyMatch,
+        trigger,
+      });
+    },
+    [
+      closeAutocomplete,
+      connectionState,
+      terminalAutoCompleteEnabled,
+      terminalAutoCompleteFuzzyMatch,
+      terminalAutoCompleteMaxItems,
+      terminalAutoCompleteMinChars,
+    ],
+  );
+
+  const scheduleAutocompleteRequest = React.useCallback(
+    (trigger: 'typing' | 'manual') => {
+      if (trigger === 'manual') {
+        clearScheduledAutocompleteRequest();
+        requestAutocomplete(trigger);
+        return;
+      }
+
+      clearScheduledAutocompleteRequest();
+      autocompleteRequestTimeoutRef.current = window.setTimeout(() => {
+        autocompleteRequestTimeoutRef.current = null;
+        requestAutocomplete('typing');
+      }, AUTOCOMPLETE_TYPING_DEBOUNCE_MS);
+    },
+    [clearScheduledAutocompleteRequest, requestAutocomplete],
+  );
+
+  const acceptAutocompleteAtIndex = React.useCallback(
+    (index: number) => {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        closeAutocomplete();
+        return;
+      }
+
+      const targetItem = autocompleteItems[index];
+      if (!targetItem) {
+        return;
+      }
+
+      const terminal = terminalRef.current;
+      const deleteCount = Math.max(0, autocompleteReplacePrefixLengthRef.current);
+      const deletePrefix = '\x7f'.repeat(Math.max(0, deleteCount));
+      sendClientMessage(socket, {
+        type: 'input',
+        data: `${deletePrefix}${targetItem.insertText}`,
+      });
+      terminal?.focus();
+      closeAutocomplete();
+    },
+    [autocompleteItems, closeAutocomplete],
+  );
+
+  const applyAutocompleteInputData = React.useCallback(
+    (data: string): { shouldRequest: boolean; shouldClose: boolean } => {
+      let shouldRequest = false;
+      let shouldClose = false;
+
+      for (let index = 0; index < data.length; index += 1) {
+        const char = data[index] ?? '';
+
+        if (char === '\x1b') {
+          return {
+            shouldRequest: false,
+            shouldClose: true,
+          };
+        }
+
+        if (char === '\r' || char === '\n' || char === '\u0003') {
+          shouldRequest = false;
+          shouldClose = true;
+          continue;
+        }
+
+        if (char === '\x7f' || char === '\b') {
+          shouldRequest = true;
+          continue;
+        }
+
+        if (char === '\t' || char === '\u0000') {
+          continue;
+        }
+
+        if (char >= ' ') {
+          shouldRequest = true;
+        }
+      }
+
+      return {
+        shouldRequest: shouldRequest && !shouldClose,
+        shouldClose,
+      };
+    },
+    [],
+  );
+
+  const handleAutocompleteTerminalKeyDown = React.useCallback(
+    (event: KeyboardEvent) => {
+      if (event.isComposing || event.key === 'Process') {
+        return;
+      }
+
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (autocompleteItems.length > 0) {
+          acceptAutocompleteAtIndex(autocompleteMenuRef.current?.getActiveIndex() ?? 0);
+        } else {
+          scheduleAutocompleteRequest('manual');
+        }
+        return;
+      }
+
+      if (autocompleteItems.length === 0) {
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        event.stopPropagation();
+        autocompleteMenuRef.current?.moveNext();
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        event.stopPropagation();
+        autocompleteMenuRef.current?.movePrevious();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeAutocomplete();
+      }
+    },
+    [acceptAutocompleteAtIndex, autocompleteItems, closeAutocomplete, scheduleAutocompleteRequest],
+  );
+
+  const closeAutocompleteRef = React.useRef(closeAutocomplete);
+  const resolveAutocompleteAnchorRef = React.useRef(resolveAutocompleteAnchor);
+  const scheduleAutocompleteRequestRef = React.useRef(scheduleAutocompleteRequest);
+  const handleAutocompleteTerminalKeyDownRef = React.useRef(handleAutocompleteTerminalKeyDown);
+
+  React.useEffect(() => {
+    closeAutocompleteRef.current = closeAutocomplete;
+    resolveAutocompleteAnchorRef.current = resolveAutocompleteAnchor;
+    scheduleAutocompleteRequestRef.current = scheduleAutocompleteRequest;
+    handleAutocompleteTerminalKeyDownRef.current = handleAutocompleteTerminalKeyDown;
+  }, [closeAutocomplete, resolveAutocompleteAnchor, scheduleAutocompleteRequest, handleAutocompleteTerminalKeyDown]);
 
   const handleSelectionBarDragStart = React.useCallback(
     (event: React.DragEvent<HTMLButtonElement>) => {
@@ -1150,6 +1536,32 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
           }));
           return;
         }
+
+        if (payload.type === 'completion-response') {
+          if (payload.requestId !== latestAutocompleteRequestIdRef.current) {
+            return;
+          }
+
+          if (payload.items.length === 0) {
+            closeAutocompleteRef.current();
+            return;
+          }
+
+          const anchor = resolveAutocompleteAnchorRef.current(
+            latestAutocompleteCommandStartColumnRef.current,
+            latestAutocompleteCursorRowRef.current,
+          );
+          if (!anchor) {
+            closeAutocompleteRef.current();
+            return;
+          }
+
+          setAutocompleteItems(payload.items);
+          autocompleteMenuRef.current?.reset();
+          setAutocompleteAnchor(anchor);
+          autocompleteReplacePrefixLengthRef.current = payload.replacePrefixLength;
+          return;
+        }
       } catch {
         setConnectionState('failed');
         setConnectionError(t('ssh.websocketMalformedMessage'));
@@ -1357,6 +1769,15 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         return;
       }
 
+      const autocompleteInputState = applyAutocompleteInputData(data);
+      if (autocompleteInputState.shouldClose) {
+        closeAutocompleteRef.current();
+      }
+
+      if (autocompleteInputState.shouldRequest) {
+        scheduleAutocompleteRequestRef.current('typing');
+      }
+
       if (socket) {
         sendClientMessage(socket, {
           type: 'input',
@@ -1364,6 +1785,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         });
       }
     });
+    const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {
+      handleAutocompleteTerminalKeyDownRef.current(event);
+    };
+    containerElement.addEventListener('keydown', handleAutocompleteKeyDown, true);
     const disposeSelectionChange = terminal.onSelectionChange(() => {
       refreshSelectionAnchor();
     });
@@ -1430,11 +1855,12 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       disposeSelectionRender.dispose();
       containerElement.removeEventListener('pointerup', trackPointerPosition);
       containerElement.removeEventListener('mouseup', trackPointerPosition);
+      containerElement.removeEventListener('keydown', handleAutocompleteKeyDown, true);
       window.removeEventListener('resize', handleWindowResize);
       disposeResize();
       terminal.dispose();
     };
-  }, [requestHostFingerprintTrust, refreshSelectionAnchor]);
+  }, [applyAutocompleteInputData, requestHostFingerprintTrust, refreshSelectionAnchor]);
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 rounded-[18px] p-1';
@@ -1479,6 +1905,21 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
           />
         </TerminalContextMenu>
       </div>
+
+      <TerminalAutocompleteMenu
+        ref={autocompleteMenuRef}
+        open={
+          connectionState === 'connected' &&
+          terminalAutoCompleteEnabled &&
+          autocompleteItems.length > 0 &&
+          autocompleteAnchor !== null
+        }
+        anchorTop={autocompleteAnchor?.top ?? 0}
+        anchorLeft={autocompleteAnchor?.left ?? 0}
+        renderAbove={autocompleteAnchor?.renderAbove ?? false}
+        items={autocompleteItems}
+        onItemSelect={acceptAutocompleteAtIndex}
+      />
 
       {connectionState === 'connected' &&
       terminalSelectionSettings.enabled &&

@@ -194,6 +194,24 @@
         "description": "Use Alt (Option on macOS) + click to move the cursor to the clicked position.",
         "title": "Alt/Option Click Moves Cursor"
       },
+      "terminalAutoCompleteEnabled": {
+        "description": "Enable terminal command auto-complete suggestions while typing.",
+        "title": "Terminal Auto Complete"
+      },
+      "terminalAutoCompleteFuzzyMatch": {
+        "description": "Allow fuzzy matching in addition to strict prefix matching.",
+        "title": "Auto Complete Fuzzy Match"
+      },
+      "terminalAutoCompleteMaxItems": {
+        "description": "Maximum number of suggestions shown in the auto-complete menu.",
+        "placeholder": "8",
+        "title": "Auto Complete Suggestion Limit"
+      },
+      "terminalAutoCompleteMinChars": {
+        "description": "Minimum number of typed characters before auto-complete is triggered.",
+        "placeholder": "1",
+        "title": "Auto Complete Trigger Length"
+      },
       "terminalContextLaunchBehavior": {
         "description": "Controls how terminals are opened from context launch or 'Open terminal in Cosmosh'.",
         "title": "Launch from Context"

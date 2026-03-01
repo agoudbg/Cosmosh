@@ -16,6 +16,9 @@ import type {
 const supportedLocales: Locale[] = ['en', 'zh-CN'];
 const formatterCache = new Map<string, IntlMessageFormat>();
 const supportedScopes: Scope[] = ['main', 'renderer', 'backend'];
+const additionalScopeLocaleFiles: Partial<Record<Scope, string[]>> = {
+  backend: ['backend-inshellisense.json'],
+};
 
 type NodeFsModule = typeof import('node:fs');
 type NodePathModule = typeof import('node:path');
@@ -51,6 +54,31 @@ const tryReloadMessagesFromDisk = (localeRootDir: string, fs: NodeFsModule, path
   };
 
   try {
+    const mergeTranslationTrees = (baseTree: TranslationTree, extensionTree: TranslationTree): TranslationTree => {
+      const mergedTree: TranslationTree = {
+        ...baseTree,
+      };
+
+      Object.entries(extensionTree).forEach(([key, value]) => {
+        const currentValue = mergedTree[key];
+        if (
+          currentValue &&
+          typeof currentValue === 'object' &&
+          !Array.isArray(currentValue) &&
+          value &&
+          typeof value === 'object' &&
+          !Array.isArray(value)
+        ) {
+          mergedTree[key] = mergeTranslationTrees(currentValue as TranslationTree, value as TranslationTree);
+          return;
+        }
+
+        mergedTree[key] = value;
+      });
+
+      return mergedTree;
+    };
+
     for (const locale of supportedLocales) {
       for (const scope of supportedScopes) {
         const filePath = path.resolve(localeRootDir, locale, `${scope}.json`);
@@ -61,7 +89,19 @@ const tryReloadMessagesFromDisk = (localeRootDir: string, fs: NodeFsModule, path
 
         const raw = fs.readFileSync(filePath, 'utf8');
         const parsed = JSON.parse(raw) as TranslationTree;
-        nextMessages[locale][scope] = parsed;
+        const extensionFiles = additionalScopeLocaleFiles[scope] ?? [];
+        const merged = extensionFiles.reduce<TranslationTree>((acc, extensionFileName) => {
+          const extensionPath = path.resolve(localeRootDir, locale, extensionFileName);
+          if (!fs.existsSync(extensionPath)) {
+            return acc;
+          }
+
+          const extensionRaw = fs.readFileSync(extensionPath, 'utf8');
+          const extensionParsed = JSON.parse(extensionRaw) as TranslationTree;
+          return mergeTranslationTrees(acc, extensionParsed);
+        }, parsed);
+
+        nextMessages[locale][scope] = merged;
       }
     }
   } catch (error) {

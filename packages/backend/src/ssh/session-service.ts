@@ -6,12 +6,16 @@ import { Client, type ClientChannel, type ConnectConfig } from 'ssh2';
 import { type RawData } from 'ws';
 
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
+import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
+  mergeTerminalRecentCommands,
   normalizeTerminalClientMessage,
   parseTerminalHistoryOutput,
+  TERMINAL_HISTORY_MAX_ENTRIES,
   TERMINAL_TELEMETRY_INTERVAL_MS,
+  updateInteractiveCompletionState,
 } from '../terminal/shared.js';
 import { decryptSensitiveValue } from './crypto.js';
 
@@ -109,6 +113,20 @@ type ServerOutboundMessage =
   | {
       type: 'history';
       recentCommands: string[];
+    }
+  | {
+      type: 'completion-response';
+      requestId: string;
+      replacePrefixLength: number;
+      items: Array<{
+        id: string;
+        label: string;
+        insertText: string;
+        detail: string | null;
+        source: 'history' | 'inshellisense';
+        kind: 'command' | 'subcommand' | 'option' | 'history';
+        score: number;
+      }>;
     };
 
 type SshLiveSession = TerminalManagedSessionBase & {
@@ -128,6 +146,8 @@ type SshLiveSession = TerminalManagedSessionBase & {
   lastHistorySyncStartedAtMs: number;
   commandCount: number;
   recentCommands: string[];
+  completionLineBuffer: string;
+  completionRecentCommands: string[];
 };
 
 type ParsedRemoteTelemetry = {
@@ -279,6 +299,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       lastHistorySyncStartedAtMs: 0,
       commandCount: 0,
       recentCommands: [],
+      completionLineBuffer: '',
+      completionRecentCommands: [],
       t: i18n.t,
       socket: null,
       disposed: false,
@@ -390,6 +412,16 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
+      const interactiveState = {
+        lineBuffer: session.completionLineBuffer,
+        recentCommands: session.completionRecentCommands,
+      };
+      updateInteractiveCompletionState(interactiveState, message.data, {
+        maxEntries: TERMINAL_HISTORY_MAX_ENTRIES,
+      });
+      session.completionLineBuffer = interactiveState.lineBuffer;
+      session.completionRecentCommands = interactiveState.recentCommands;
+
       if (/\r|\n/.test(message.data)) {
         const submittedInputCount = message.data.split(/\r\n|[\r\n]/).length - 1;
         session.commandCount += Math.max(1, submittedInputCount);
@@ -413,6 +445,29 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
 
     if (message.type === 'history-delete') {
       void this.deleteRemoteHistoryEntry(session, message.command);
+      return;
+    }
+
+    if (message.type === 'completion-request') {
+      const completionResult = resolveTerminalCompletions(
+        {
+          linePrefix: message.linePrefix,
+          cursorIndex: message.cursorIndex,
+          limit: message.limit,
+          fuzzyMatch: message.fuzzyMatch,
+          trigger: message.trigger,
+        },
+        {
+          recentCommands: session.completionRecentCommands,
+        },
+      );
+
+      this.sendServerMessage(session, {
+        type: 'completion-response',
+        requestId: message.requestId,
+        replacePrefixLength: completionResult.replacePrefixLength,
+        items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+      });
       return;
     }
 
@@ -542,6 +597,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
 
       // Remote history is the source of truth for the commands sidebar.
       session.recentCommands = commands;
+      session.completionRecentCommands = mergeTerminalRecentCommands(
+        session.recentCommands,
+        session.completionRecentCommands,
+      );
       this.sendServerMessage(session, {
         type: 'history',
         recentCommands: [...session.recentCommands],
@@ -625,6 +684,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     await this.executeRemoteCommand(session, deleteCommand);
 
     session.recentCommands = session.recentCommands.filter((entry) => entry !== normalizedCommand);
+    session.completionRecentCommands = session.completionRecentCommands.filter((entry) => entry !== normalizedCommand);
     this.sendServerMessage(session, {
       type: 'history',
       recentCommands: [...session.recentCommands],

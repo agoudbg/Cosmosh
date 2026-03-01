@@ -72,6 +72,8 @@ const i18nLocaleRootDir = path.join(workspaceRoot, 'packages', 'i18n', 'locales'
 let disableI18nHotReload: (() => void) | null = null;
 let sshSessionService: SshSessionService | null = null;
 let localTerminalSessionService: LocalTerminalSessionService | null = null;
+let httpServer: ReturnType<typeof serve> | null = null;
+let shutdownPromise: Promise<void> | null = null;
 
 if (isSecureLocalMode && !internalToken) {
   throw new Error('COSMOSH_INTERNAL_TOKEN is required when COSMOSH_RUNTIME_MODE is electron-main.');
@@ -100,46 +102,92 @@ const getDbClient = (): PrismaClient => {
  * Registers process signal handlers that gracefully stop session services and DB resources.
  */
 const registerShutdownHooks = (): void => {
-  // Handle process termination so DB handles are released cleanly.
-  const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
-    console.log(`\n[shutdown] Received ${signal}. Shutting down backend...`);
-    disableI18nHotReload?.();
-    disableI18nHotReload = null;
+  const stopHttpServer = async (): Promise<void> => {
+    if (!httpServer) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      httpServer?.close(() => {
+        resolve();
+      });
+    });
+
+    httpServer = null;
+  };
+
+  const shutdown = async (origin: string, exitCode?: number): Promise<void> => {
+    if (!shutdownPromise) {
+      shutdownPromise = (async () => {
+        console.log(`\n[shutdown] Triggered by ${origin}. Shutting down backend...`);
+        disableI18nHotReload?.();
+        disableI18nHotReload = null;
+
+        if (sshSessionService) {
+          await sshSessionService.stop();
+          sshSessionService = null;
+        }
+
+        if (localTerminalSessionService) {
+          await localTerminalSessionService.stop();
+          localTerminalSessionService = null;
+        }
+
+        await stopHttpServer();
+        await shutdownDatabase();
+      })();
+    }
 
     try {
-      if (sshSessionService) {
-        await sshSessionService.stop();
-        sshSessionService = null;
+      await shutdownPromise;
+      if (typeof exitCode === 'number') {
+        process.exit(exitCode);
       }
-
-      if (localTerminalSessionService) {
-        await localTerminalSessionService.stop();
-        localTerminalSessionService = null;
-      }
-
-      await shutdownDatabase();
-      process.exit(0);
     } catch (error: unknown) {
       if (error instanceof DatabaseInitError) {
         console.error(`[shutdown][${error.code}] ${error.message}`, {
-          signal,
+          origin,
           context: error.context,
           cause: error.cause,
         });
       } else {
-        console.error('[shutdown][UNKNOWN] Failed to disconnect database during shutdown.', { signal, error });
+        console.error('[shutdown][UNKNOWN] Failed during graceful shutdown.', { origin, error });
       }
 
-      process.exit(1);
+      if (typeof exitCode === 'number') {
+        process.exit(1);
+      }
     }
   };
 
   process.once('SIGINT', () => {
-    void shutdown('SIGINT');
+    void shutdown('SIGINT', 0);
   });
 
   process.once('SIGTERM', () => {
-    void shutdown('SIGTERM');
+    void shutdown('SIGTERM', 0);
+  });
+
+  process.once('SIGBREAK', () => {
+    void shutdown('SIGBREAK', 0);
+  });
+
+  process.once('SIGHUP', () => {
+    void shutdown('SIGHUP', 0);
+  });
+
+  process.once('beforeExit', (code) => {
+    void shutdown(`beforeExit:${code}`);
+  });
+
+  process.once('uncaughtException', (error: Error) => {
+    console.error('[runtime][uncaughtException] Backend crashed unexpectedly.', error);
+    void shutdown('uncaughtException', 1);
+  });
+
+  process.once('unhandledRejection', (reason: unknown) => {
+    console.error('[runtime][unhandledRejection] Unhandled promise rejection in backend.', reason);
+    void shutdown('unhandledRejection', 1);
   });
 };
 
@@ -183,7 +231,7 @@ const bootstrap = async (): Promise<void> => {
   console.log(`🚀 Cosmosh Backend starting on http://127.0.0.1:${port} (${runtimeMode})`);
   registerShutdownHooks();
 
-  serve({
+  httpServer = serve({
     fetch: app.fetch,
     port,
   });

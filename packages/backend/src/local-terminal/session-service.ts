@@ -10,12 +10,16 @@ import { type IPty, spawn as spawnPty } from 'node-pty';
 import { type RawData } from 'ws';
 
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
+import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
+  mergeTerminalRecentCommands,
   normalizeTerminalClientMessage,
   parseTerminalHistoryOutput,
+  TERMINAL_HISTORY_MAX_ENTRIES,
   TERMINAL_TELEMETRY_INTERVAL_MS,
+  updateInteractiveCompletionState,
 } from '../terminal/shared.js';
 
 const execFileAsync = promisify(execFile);
@@ -82,6 +86,20 @@ type ServerOutboundMessage =
       networkRxBytesPerSec: number | null;
       networkTxBytesPerSec: number | null;
       recentCommands: string[];
+    }
+  | {
+      type: 'completion-response';
+      requestId: string;
+      replacePrefixLength: number;
+      items: Array<{
+        id: string;
+        label: string;
+        insertText: string;
+        detail: string | null;
+        source: 'history' | 'inshellisense';
+        kind: 'command' | 'subcommand' | 'option' | 'history';
+        score: number;
+      }>;
     };
 
 type LocalLiveSession = TerminalManagedSessionBase & {
@@ -93,6 +111,8 @@ type LocalLiveSession = TerminalManagedSessionBase & {
   historySyncPending: boolean;
   lastHistorySyncStartedAtMs: number;
   recentCommands: string[];
+  completionLineBuffer: string;
+  completionRecentCommands: string[];
 };
 
 /**
@@ -291,6 +311,8 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       historySyncPending: false,
       lastHistorySyncStartedAtMs: 0,
       recentCommands: [],
+      completionLineBuffer: '',
+      completionRecentCommands: [],
       t: i18n.t,
       socket: null,
       disposed: false,
@@ -342,6 +364,16 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
     }
 
     if (message.type === 'input') {
+      const interactiveState = {
+        lineBuffer: session.completionLineBuffer,
+        recentCommands: session.completionRecentCommands,
+      };
+      updateInteractiveCompletionState(interactiveState, message.data, {
+        maxEntries: TERMINAL_HISTORY_MAX_ENTRIES,
+      });
+      session.completionLineBuffer = interactiveState.lineBuffer;
+      session.completionRecentCommands = interactiveState.recentCommands;
+
       if (/\r|\n/.test(message.data)) {
         this.scheduleHistorySync(session.sessionId);
       }
@@ -368,6 +400,29 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       }
 
       void this.deleteLocalHistoryEntry(session, command);
+      return;
+    }
+
+    if (message.type === 'completion-request') {
+      const completionResult = resolveTerminalCompletions(
+        {
+          linePrefix: message.linePrefix,
+          cursorIndex: message.cursorIndex,
+          limit: message.limit,
+          fuzzyMatch: message.fuzzyMatch,
+          trigger: message.trigger,
+        },
+        {
+          recentCommands: session.completionRecentCommands,
+        },
+      );
+
+      this.sendServerMessage(session, {
+        type: 'completion-response',
+        requestId: message.requestId,
+        replacePrefixLength: completionResult.replacePrefixLength,
+        items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+      });
       return;
     }
 
@@ -463,6 +518,10 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
 
     try {
       session.recentCommands = await this.readLocalHistory(session);
+      session.completionRecentCommands = mergeTerminalRecentCommands(
+        session.recentCommands,
+        session.completionRecentCommands,
+      );
       this.sendTelemetry(sessionId);
     } finally {
       session.historySyncInFlight = false;
@@ -527,6 +586,7 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
     await Promise.all(candidateFiles.map(async (filePath) => this.deleteFromHistoryFile(filePath, command)));
 
     session.recentCommands = session.recentCommands.filter((entry) => entry !== command);
+    session.completionRecentCommands = session.completionRecentCommands.filter((entry) => entry !== command);
     this.sendTelemetry(session.sessionId);
     this.scheduleHistorySync(session.sessionId, { immediate: true });
   }

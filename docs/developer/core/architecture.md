@@ -31,6 +31,12 @@ flowchart LR
   - `COSMOSH_INTERNAL_TOKEN` as internal auth header.
   - locale header for i18n-compatible backend responses.
 
+### Backend Process (`packages/backend/src/index.ts`)
+
+- Registers idempotent graceful-shutdown flow for runtime signals and fatal process events.
+- Shutdown order is explicit: stop WS session services, close HTTP listener, then disconnect Prisma/SQLite handles.
+- Windows-specific termination (`SIGBREAK`) is handled in the same path as POSIX signals to reduce stale DB lock cases.
+
 ### Renderer Process (`packages/renderer/src`)
 
 - Uses `window.electron` bridge only (no direct Node API usage).

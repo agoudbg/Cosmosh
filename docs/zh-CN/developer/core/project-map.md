@@ -30,6 +30,7 @@ flowchart TB
 - **关键目录**：
   - `src/pages`：功能页面（`Home`、`SSH`、`SSHEditor`、`Settings`、`SettingsEditor`等）。
   - `src/components/ui`：基于 Radix 的原子组件封装与样式契约。
+  - `src/components/terminal`：终端交互复合组件（右键菜单、选区工具条、自动补全面板）。
   - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）与工具抽象。
   - `theme`：生成 CSS Variables 的令牌源。
 
@@ -42,6 +43,7 @@ flowchart TB
   - `src/settings`：设置默认值与请求校验解析。
   - `src/local-terminal`：本地 PTY 会话逻辑（`node-pty`）。
   - `src/terminal`：终端会话共享原语（WebSocket 消息规范化、历史命令解析、尺寸收敛、历史同步时序辅助）。
+  - `src/terminal/completion`：终端自动补全共享领域模块（规范数据、排序引擎、补全响应组装），由 SSH 与本地终端会话服务共同使用。
   - `src/db`：Prisma 初始化与数据库生命周期。
 
 ### `packages/api-contract`

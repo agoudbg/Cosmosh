@@ -22,8 +22,8 @@ sequenceDiagram
   SSH-->>API: sessionId + wsUrl + wsToken
   API-->>UI: create-session response
   UI->>SSH: WebSocket /ws/ssh/{sessionId}?token=...
-  UI-->>SSH: input/resize/ping/history-delete
-  SSH-->>UI: output/telemetry/history/pong/exit
+  UI-->>SSH: input/resize/ping/history-delete/completion-request
+  SSH-->>UI: output/telemetry/history/completion-response/pong/exit
 ```
 
 ## 2. Backend Session Lifecycle
@@ -74,6 +74,7 @@ sequenceDiagram
 - `ping`: heartbeat.
 - `close`: explicit disconnect request.
 - `history-delete`: request backend to delete a selected command from remote shell history.
+- `completion-request`: request ranked command suggestions for current command prefix and cursor position.
 
 ### Server → Client
 
@@ -81,6 +82,7 @@ sequenceDiagram
 - `output`: shell stdout/stderr output.
 - `telemetry`: CPU/memory/network + command history snapshot.
 - `history`: history-only snapshot push for immediate UI sync.
+- `completion-response`: ranked completion candidates for the active command token.
 - `pong`: ping response.
 - `error`: protocol/runtime error.
 - `exit`: terminal session closed with reason.
@@ -93,8 +95,44 @@ sequenceDiagram
 - Runtime-specific REPL stores (for example `.node_repl_history`) are intentionally excluded from shell command history aggregation.
 - When renderer sends `input` containing line-submit characters (`\r` / `\n`), backend schedules a delayed + throttled history refresh to avoid over-fetching.
 - History refresh and telemetry are decoupled: telemetry stays interval-based, while history can be pushed immediately through `history` events.
-- Delete action in `SSH.tsx` sends `history-delete`; backend performs best-effort remote history file cleanup, applies session tombstone filtering, and then re-syncs history.
 - Delete action in `SSH.tsx` sends `history-delete`; backend performs best-effort remote history file cleanup and then re-syncs history.
+
+### 3.2 Auto-Complete Model
+
+- Renderer triggers `completion-request` with a short typing debounce and also sends an immediate request when user manually presses `Tab`.
+- Backend completion engine is shared by SSH and local-terminal session services and merges:
+  - current session interactive commands captured from live input stream (history signal, isolated per session),
+  - synchronized shell history snapshots merged into completion history cache so completion remains available before fresh interactive input,
+  - command metadata imported from inshellisense/Fig resources (spec signal), generated from full command-path index rather than root-only subset.
+- `packages/backend/scripts/generate-inshellisense.mjs` generates spec dataset plus locale resources with language-specific policy:
+  - `packages/backend/src/terminal/completion/generated-inshellisense.ts` keeps command structure and `descriptionI18nKey` only (no duplicated raw description text payload).
+  - `packages/i18n/locales/en/backend-inshellisense.json` is fully regenerated from upstream descriptions.
+  - `packages/i18n/locales/zh-CN/backend-inshellisense.json` keeps only manually translated keys whose English source text is unchanged; new keys are not auto-filled, and keys are pruned when source text changes or is removed.
+- Backend scope i18n merges `backend-inshellisense.json` into `backend.json`, so completion descriptions can be translated without mixing generated keys into base backend locale files.
+- Generator sanitizes LS/PS Unicode separators (`U+2028`/`U+2029`) to keep generated TypeScript files free of unusual-line-terminator warnings.
+- Ranking strategy in current implementation:
+  - command-path-aware matching first (for example, `git push -` resolves against `git push` spec before falling back to root `git`),
+  - prefix match first, then optional fuzzy subsequence match,
+  - built-in command-spec candidates are prioritized above generic history matches,
+  - history candidates are filtered by command context and receive dynamic recency bonus based on distance from latest run.
+- Suggestions are rendered as full command paths (for example, `git push --force`).
+- Option parsing is argument-aware:
+  - repeated option combinations are supported without losing command context,
+  - known value-taking options (from Fig `args` metadata) can surface value suggestions,
+  - already used options are deprioritized/filtered to reduce noisy duplicates in the same command line.
+- Acceptance replaces only the active token segment (`replacePrefixLength`) before cursor instead of clearing the entire command line, so multi-argument combinations remain intact.
+- `completion-response` contains `replacePrefixLength` plus items (`label`, `insertText`, `detail`, `source`, `kind`, `score`).
+- Completion `detail` is localized in backend session services before response emission, with fallback chain: translated `detailI18nKey` → localized source label (`History` / `Command spec`).
+- Renderer keyboard policy when suggestions are visible:
+  - `ArrowUp/ArrowDown` changes active suggestion and is consumed by completion navigation,
+  - `Tab` accepts active suggestion,
+  - `Escape` closes suggestion menu,
+  - `Enter` remains shell submit behavior.
+- Suggestion panel layout constraints:
+  - panel anchor is clamped to terminal viewport bounds,
+  - panel width is expanded for dense descriptions while preserving viewport clamping,
+  - panel body uses max height + vertical scroll (`max-h`) to keep large candidate sets fully reachable,
+  - long labels/details are truncated to avoid horizontal overflow.
 
 ```mermaid
 flowchart LR

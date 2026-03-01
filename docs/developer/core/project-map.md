@@ -30,6 +30,7 @@ flowchart TB
 - **Key folders**:
   - `src/pages`: feature pages (`Home`, `SSH`, `SSHEditor`, `Settings`, `SettingsEditor`, etc.).
   - `src/components/ui`: Radix-based primitive wrappers and styling contracts.
+  - `src/components/terminal`: terminal interaction composites (context menu, selection bar, autocomplete menu).
   - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), utility abstractions.
   - `theme`: token source used to generate CSS variable system.
 
@@ -42,6 +43,7 @@ flowchart TB
   - `src/settings`: settings payload defaults and validation parsers.
   - `src/local-terminal`: local PTY session logic (`node-pty`).
   - `src/terminal`: shared terminal session primitives (WebSocket message normalization, history parsing, size clamping, history sync timing helpers).
+  - `src/terminal/completion`: shared terminal auto-complete domain (spec dataset, ranking engine, completion payload shaping) used by both SSH and local-terminal session services.
   - `src/db`: Prisma initialization and DB lifecycle.
 
 ### `packages/api-contract`

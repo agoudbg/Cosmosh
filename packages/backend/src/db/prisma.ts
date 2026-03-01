@@ -656,14 +656,24 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
  * Shuts down active Prisma client and releases DB resources.
  */
 export const shutdownDatabase = async (): Promise<void> => {
-  if (!prismaClient) {
+  const activeClient = prismaClient;
+  const pendingClientPromise = initializingClientPromise;
+
+  if (!activeClient && !pendingClientPromise) {
     return;
   }
 
   try {
-    await prismaClient.$disconnect();
-    prismaClient = null;
+    if (activeClient) {
+      await activeClient.$disconnect();
+    } else if (pendingClientPromise) {
+      const pendingClient = await pendingClientPromise;
+      await pendingClient.$disconnect();
+    }
   } catch (error: unknown) {
     withDbError('DB_DISCONNECT_FAILED', 'Failed to disconnect Prisma client.', {}, error);
+  } finally {
+    prismaClient = null;
+    initializingClientPromise = null;
   }
 };

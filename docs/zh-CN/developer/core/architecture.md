@@ -31,6 +31,12 @@ flowchart LR
   - 作为内部鉴权头的 `COSMOSH_INTERNAL_TOKEN`。
   - 用于后端 i18n 响应的 locale header。
 
+### Backend 进程 (`packages/backend/src/index.ts`)
+
+- 注册幂等的优雅关闭流程，覆盖运行时信号与致命进程事件。
+- 关闭顺序固定：先停 WS 会话服务，再关闭 HTTP 监听，最后断开 Prisma/SQLite 连接句柄。
+- Windows 终止信号（`SIGBREAK`）与 POSIX 信号共用同一路径，降低数据库文件锁残留概率。
+
 ### Renderer 进程 (`packages/renderer/src`)
 
 - 仅通过 `window.electron` bridge 访问能力（不直接使用 Node API）。

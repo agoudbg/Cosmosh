@@ -2,6 +2,12 @@
   "api": {
     "rootMessage": "Cosmosh Backend API"
   },
+  "completion": {
+    "labels": {
+      "commandSpec": "Command spec",
+      "history": "History"
+    }
+  },
   "errors": {
     "common": {
       "internalServerError": "Internal server error.",
