@@ -326,6 +326,40 @@ export const Tabs: React.FC<TabsProps> = ({
     el.scrollBy({ left: offset, behavior: 'smooth' });
   };
 
+  const handleTabListWheel = React.useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      const scrollContainer = scrollContainerRef.current;
+      if (!scrollContainer) {
+        return;
+      }
+
+      if (scrollContainer.scrollWidth <= scrollContainer.clientWidth + 1 || event.deltaY === 0) {
+        return;
+      }
+
+      const hasHorizontalDelta = Math.abs(event.deltaX) > 0;
+      const isPixelMode = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL;
+      const isLikelyTouchpadGesture = hasHorizontalDelta || (isPixelMode && Math.abs(event.deltaY) < 15);
+      if (isLikelyTouchpadGesture) {
+        return;
+      }
+
+      const normalizedDelta =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? event.deltaY * 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? event.deltaY * scrollContainer.clientWidth
+            : event.deltaY;
+
+      const sensitivity = 2.8;
+
+      event.preventDefault();
+      scrollContainer.scrollLeft += normalizedDelta * sensitivity;
+      updateScrollState();
+    },
+    [updateScrollState],
+  );
+
   const orderedTabs = dragPreviewTabs ?? tabs;
 
   const handleTopHitAreaMouseDown = React.useCallback(
@@ -452,6 +486,9 @@ export const Tabs: React.FC<TabsProps> = ({
             <div
               ref={scrollContainerRef}
               className="no-scrollbar h-full min-w-0 overflow-x-auto"
+              // @ts-expect-error React.CSSProperties
+              style={{ WebkitAppRegion: 'no-drag' }}
+              onWheel={handleTabListWheel}
             >
               <DndContext
                 sensors={sensors}
