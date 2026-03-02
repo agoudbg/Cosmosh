@@ -669,7 +669,7 @@ const createWindow = async (): Promise<void> => {
           titleBarOverlay: {
             color: '#00000000',
             symbolColor: '#ffffff',
-            height: 30,
+            height: 50,
           },
         }),
   });
