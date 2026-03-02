@@ -182,6 +182,19 @@ const resolveValue = (target: TranslationTree | undefined, key: string): string 
   return typeof result === 'string' ? result : undefined;
 };
 
+const applyBestEffortInterpolation = (
+  template: string,
+  values: Readonly<Record<string, TranslationPrimitive>>,
+): string => {
+  return template.replace(/\{(\w+)\}/g, (placeholder, key: string) => {
+    if (!(key in values)) {
+      return placeholder;
+    }
+
+    return String(values[key]);
+  });
+};
+
 const formatTemplate = (template: string, locale: Locale, params?: TranslationParams): string => {
   // Keep backward compatibility for legacy placeholders and escaped percent literals.
   const escapedPercentToken = '__COSMOSH_PERCENT__';
@@ -219,12 +232,22 @@ const formatTemplate = (template: string, locale: Locale, params?: TranslationPa
   const cacheKey = `${locale}::${templateWithPrintf}`;
   let formatter = formatterCache.get(cacheKey);
 
-  if (!formatter) {
-    formatter = new IntlMessageFormat(templateWithPrintf, locale, undefined, intlMessageFormatOptions);
-    formatterCache.set(cacheKey, formatter);
-  }
+  try {
+    if (!formatter) {
+      formatter = new IntlMessageFormat(templateWithPrintf, locale, undefined, intlMessageFormatOptions);
+      formatterCache.set(cacheKey, formatter);
+    }
 
-  return String(formatter.format(values)).replace(new RegExp(escapedPercentToken, 'g'), '%');
+    return String(formatter.format(values)).replace(new RegExp(escapedPercentToken, 'g'), '%');
+  } catch (error) {
+    console.warn('[i18n] Message formatting failed. Falling back to best-effort interpolation.', {
+      locale,
+      template: templateWithPrintf,
+      error,
+    });
+
+    return applyBestEffortInterpolation(templateWithPrintf, values).replace(new RegExp(escapedPercentToken, 'g'), '%');
+  }
 };
 
 export const resolveLocale = (input: string | undefined, fallbackLocale: Locale = 'en'): Locale => {
