@@ -13,6 +13,9 @@
   ],
   "files": [
     "dist/**/*",
+    "!dist/**/*.map",
+    "!dist/**/*.d.ts",
+    "!dist/**/*.d.ts.map",
     "package.json"
   ],
   "extraResources": [

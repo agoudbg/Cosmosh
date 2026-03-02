@@ -3,12 +3,12 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { enableI18nDevHotReload } from '@cosmosh/i18n';
 import { serve } from '@hono/node-server';
 import type { PrismaClient } from '@prisma/client';
 
 import { DatabaseInitError, initializeDatabase, shutdownDatabase } from './db/prisma.js';
 import { createBackendApp } from './http/create-app.js';
+import { enableI18nDevHotReload } from './i18n-bridge.js';
 import { LocalTerminalSessionService } from './local-terminal/session-service.js';
 import { resolveRuntimeMode } from './runtime.js';
 import { SshSessionService } from './ssh/session-service.js';

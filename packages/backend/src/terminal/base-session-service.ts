@@ -1,5 +1,6 @@
-import { createI18n, type I18nInstance } from '@cosmosh/i18n';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
+
+import { createI18n, type I18nInstance } from '../i18n-bridge.js';
 
 /**
  * Minimal common fields required by terminal-like live sessions.

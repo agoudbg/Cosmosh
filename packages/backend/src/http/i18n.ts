@@ -1,6 +1,7 @@
 import { API_HEADERS } from '@cosmosh/api-contract';
-import { createI18n, type I18nInstance, type Locale, resolveLocale } from '@cosmosh/i18n';
 import type { Context, Hono } from 'hono';
+
+import { createI18n, type I18nInstance, type Locale, resolveLocale } from '../i18n-bridge.js';
 
 export type BackendHttpVariables = {
   locale: Locale;

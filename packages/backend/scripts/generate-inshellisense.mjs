@@ -180,21 +180,21 @@ const normalizeOptionArgMetadata = (entry) => {
   if (args.length === 0) {
     return {
       takesValue: false,
-      valueSuggestions: [],
+      valueSuggestions: undefined,
     };
   }
 
-  const valueSuggestions = Array.from(
+  const normalizedSuggestions = Array.from(
     new Set(
       args.flatMap((arg) => {
         return normalizeSuggestionEntries(arg?.suggestions);
       }),
     ),
-  );
+  ).filter((entry) => entry.length > 0 && entry.length <= 80);
 
   return {
     takesValue: true,
-    valueSuggestions,
+    valueSuggestions: normalizedSuggestions.length > 0 ? normalizedSuggestions : undefined,
   };
 };
 
@@ -256,12 +256,31 @@ const normalizeOptionEntries = (specNode, descriptionCatalog, commandPath) => {
       const normalizedDescription =
         typeof entry?.description === 'string' ? sanitizeText(entry.description, { trim: false }) : undefined;
 
-      return names.map((name) => ({
-        name,
-        takesValue: metadata.takesValue,
-        valueSuggestions: metadata.valueSuggestions,
-        descriptionI18nKey: registerDescriptionEntry(descriptionCatalog, `opt:${commandPath}:${name}`, normalizedDescription),
-      }));
+      return names.map((name) => {
+        const optionEntry = {
+          name,
+        };
+
+        if (metadata.takesValue) {
+          optionEntry.takesValue = true;
+        }
+
+        if (Array.isArray(metadata.valueSuggestions) && metadata.valueSuggestions.length > 0) {
+          optionEntry.valueSuggestions = metadata.valueSuggestions;
+        }
+
+        const descriptionI18nKey = registerDescriptionEntry(
+          descriptionCatalog,
+          `opt:${commandPath}:${name}`,
+          normalizedDescription,
+        );
+
+        if (descriptionI18nKey) {
+          optionEntry.descriptionI18nKey = descriptionI18nKey;
+        }
+
+        return optionEntry;
+      });
     })
     .filter((entry) => entry.name.length > 0);
 };
@@ -320,17 +339,25 @@ const createSpecEntry = (entryPath, sourceSpec, descriptionCatalog) => {
     typeof specNode.description === 'string' ? sanitizeText(specNode.description, { trim: false }) : undefined;
   const subcommands = normalizeSubcommandEntries(specNode, descriptionCatalog, normalizedCommand);
   const options = normalizeOptionEntries(specNode, descriptionCatalog, normalizedCommand);
+  const descriptionI18nKey = registerDescriptionEntry(descriptionCatalog, `cmd:${normalizedCommand}`, normalizedDescription);
 
-  return {
+  const specEntry = {
     command: normalizedCommand,
-    descriptionI18nKey: registerDescriptionEntry(
-      descriptionCatalog,
-      `cmd:${normalizedCommand}`,
-      normalizedDescription,
-    ),
-    subcommands,
-    options,
   };
+
+  if (descriptionI18nKey) {
+    specEntry.descriptionI18nKey = descriptionI18nKey;
+  }
+
+  if (subcommands.length > 0) {
+    specEntry.subcommands = subcommands;
+  }
+
+  if (options.length > 0) {
+    specEntry.options = options;
+  }
+
+  return specEntry;
 };
 
 const resolveLinkedSpecPath = (value) => {
@@ -487,7 +514,7 @@ const generate = async () => {
     }
   });
 
-  const fileContent = `/* eslint-disable */\n/* prettier-ignore */\nimport type { TerminalCommandSpec } from './types.js';\n\n/**\n * Auto-generated from @withfig/autocomplete resources.\n * Run \`pnpm --filter @cosmosh/backend completion:generate\` to refresh.\n */\nexport const INSHELLISENSE_COMMAND_SPECS: ReadonlyArray<TerminalCommandSpec> = ${JSON.stringify(entries, null, 2)};\n`;
+  const fileContent = `/* eslint-disable */\n/* prettier-ignore */\nimport type { TerminalCommandSpec } from './types.js';\n\n/**\n * Auto-generated from @withfig/autocomplete resources.\n * Run \`pnpm --filter @cosmosh/backend completion:generate\` to refresh.\n */\nexport const INSHELLISENSE_COMMAND_SPECS: ReadonlyArray<TerminalCommandSpec> = ${JSON.stringify(entries)};\n`;
   const safeFileContent = fileContent.replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
   const enLocaleContent = `${JSON.stringify(enInshellisenseLocaleTree, null, 2)}\n`;
   const zhCnLocaleContent = `${JSON.stringify(zhCnInshellisenseLocaleTree, null, 2)}\n`;
@@ -504,3 +531,4 @@ generate().catch((error) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
+

@@ -5,10 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import { createI18n, type Locale } from '@cosmosh/i18n';
 import { type IPty, spawn as spawnPty } from 'node-pty';
 import { type RawData } from 'ws';
 
+import { createI18n, type Locale } from '../i18n-bridge.js';
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import {

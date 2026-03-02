@@ -1,10 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import { createI18n, type I18nInstance, type Locale } from '@cosmosh/i18n';
 import type { PrismaClient, SshServer } from '@prisma/client';
 import { Client, type ClientChannel, type ConnectConfig } from 'ssh2';
 import { type RawData } from 'ws';
 
+import { createI18n, type I18nInstance, type Locale } from '../i18n-bridge.js';
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import {

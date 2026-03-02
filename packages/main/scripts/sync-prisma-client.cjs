@@ -7,6 +7,8 @@ const runtimeResourcesRoot = path.join(workspaceRoot, 'packages', 'main', 'resou
 const targetDir = path.join(runtimeResourcesRoot, '.prisma');
 const targetPrismaClientDir = path.join(runtimeResourcesRoot, '@prisma', 'client');
 
+const toNormalizedRelativePath = (baseDir, sourcePath) => path.relative(baseDir, sourcePath).split(path.sep).join('/');
+
 /**
  * Skips browser/WASM/typing artifacts that are unnecessary for Electron backend runtime.
  */
@@ -16,6 +18,7 @@ const shouldSkipPrismaArtifact = (sourcePath) => {
 
   const skipExactFiles = new Set([
     'index-browser.js',
+    'index-browser.mjs',
     'query_engine_bg.js',
     'query_engine_bg.wasm',
     'react-native.js',
@@ -90,7 +93,22 @@ const syncPrismaClient = async () => {
   });
   await fs.cp(prismaClientDir, targetPrismaClientDir, {
     recursive: true,
-    filter: (sourcePath) => !shouldSkipPrismaArtifact(sourcePath),
+    filter: (sourcePath) => {
+      const relativePath = toNormalizedRelativePath(prismaClientDir, sourcePath).toLowerCase();
+
+      if (
+        relativePath === 'generator-build' ||
+        relativePath.startsWith('generator-build/') ||
+        relativePath === 'scripts' ||
+        relativePath.startsWith('scripts/') ||
+        relativePath === 'node_modules' ||
+        relativePath.startsWith('node_modules/')
+      ) {
+        return false;
+      }
+
+      return !shouldSkipPrismaArtifact(sourcePath);
+    },
   });
 
   console.log(`[main:prebuild] Synced Prisma runtime: ${prismaRuntimeDir} -> ${targetDir}`);

@@ -114,12 +114,18 @@ const excludedFileExtensions = new Set([
   '.c',
   '.d.ts',
   '.d.mts',
+  '.exp',
   '.gyp',
   '.h',
   '.hpp',
+  '.iobj',
+  '.ilk',
+  '.lib',
   '.map',
   '.md',
   '.mk',
+  '.obj',
+  '.o',
   '.pdb',
   '.ts',
   '.tsx',
@@ -155,8 +161,18 @@ const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot)
     excludedFileExtensions.has(path.extname(lowerFileName)) ||
     lowerFileName.endsWith('.d.ts') ||
     lowerFileName.endsWith('.d.mts') ||
+    lowerFileName.endsWith('.ipdb') ||
+    lowerFileName.endsWith('.tlog') ||
     lowerRelativePath.endsWith('.d.ts') ||
     lowerRelativePath.endsWith('.d.mts')
+  ) {
+    return false;
+  }
+
+  if (
+    lowerRelativePath.includes('/obj/') ||
+    lowerRelativePath.includes('/obj.target/') ||
+    lowerRelativePath.includes('/.deps/')
   ) {
     return false;
   }
@@ -180,6 +196,8 @@ const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot)
     const prebuildRoot = trimTrailingSlash(prebuildPrefix);
 
     if (
+      relativePath === 'build' ||
+      relativePath.startsWith('build/') ||
       relativePath === 'src' ||
       relativePath.startsWith('src/') ||
       relativePath === 'scripts' ||
@@ -293,7 +311,16 @@ const syncWorkspaceRuntimePackages = async () => {
       force: true,
       filter: (sourcePath) => {
         const lowerName = path.basename(sourcePath).toLowerCase();
-        return !(lowerName.endsWith('.map') || lowerName.endsWith('.d.ts') || lowerName.endsWith('.d.mts'));
+
+        if (lowerName.endsWith('.map') || lowerName.endsWith('.d.ts') || lowerName.endsWith('.d.mts')) {
+          return false;
+        }
+
+        if (packageName === 'i18n' && lowerName === 'index.mjs') {
+          return false;
+        }
+
+        return true;
       },
     });
     await fs.copyFile(sourcePackageJsonPath, targetPackageJsonPath);
