@@ -1,3 +1,4 @@
+import { ClipboardPaste, Copy, Redo, Scissors, TextSelect, Undo } from 'lucide-react';
 import React from 'react';
 
 import { getLocale, onLocaleChange, t } from '../../lib/i18n';
@@ -105,6 +106,7 @@ const buildDefaultItems = (target: InputMenuTarget): InputContextMenuItem[] => [
   {
     key: 'undo',
     label: t('inputContextMenu.undo'),
+    icon: Undo,
     shortcut: shortcut.undo,
     disabled: target.readOnly,
     onSelect: (currentTarget) => executeCommand(currentTarget, 'undo'),
@@ -112,6 +114,7 @@ const buildDefaultItems = (target: InputMenuTarget): InputContextMenuItem[] => [
   {
     key: 'redo',
     label: t('inputContextMenu.redo'),
+    icon: Redo,
     shortcut: shortcut.redo,
     disabled: target.readOnly,
     onSelect: (currentTarget) => executeCommand(currentTarget, 'redo'),
@@ -119,6 +122,7 @@ const buildDefaultItems = (target: InputMenuTarget): InputContextMenuItem[] => [
   {
     key: 'cut',
     label: t('inputContextMenu.cut'),
+    icon: Scissors,
     shortcut: shortcut.cut,
     disabled: (currentTarget) => currentTarget.readOnly || !hasSelection(currentTarget),
     onSelect: (currentTarget) => executeCommand(currentTarget, 'cut'),
@@ -126,6 +130,7 @@ const buildDefaultItems = (target: InputMenuTarget): InputContextMenuItem[] => [
   {
     key: 'copy',
     label: t('inputContextMenu.copy'),
+    icon: Copy,
     shortcut: shortcut.copy,
     disabled: (currentTarget) => !hasSelection(currentTarget),
     onSelect: (currentTarget) => executeCommand(currentTarget, 'copy'),
@@ -133,6 +138,7 @@ const buildDefaultItems = (target: InputMenuTarget): InputContextMenuItem[] => [
   {
     key: 'paste',
     label: t('inputContextMenu.paste'),
+    icon: ClipboardPaste,
     shortcut: shortcut.paste,
     disabled: target.readOnly,
     onSelect: (currentTarget) => {
@@ -142,6 +148,7 @@ const buildDefaultItems = (target: InputMenuTarget): InputContextMenuItem[] => [
   {
     key: 'select-all',
     label: t('inputContextMenu.selectAll'),
+    icon: TextSelect,
     shortcut: shortcut.selectAll,
     disabled: (currentTarget) => currentTarget.value.length === 0,
     onSelect: (currentTarget) => {
@@ -231,6 +238,7 @@ const InputContextMenuProvider: React.FC<React.PropsWithChildren> = ({ children 
         nodes.push(
           <ContextMenuItem
             key={item.key}
+            icon={item.icon}
             disabled={!target || resolveDisabled(item, target)}
             onSelect={() => {
               if (!target) {
