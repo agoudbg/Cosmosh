@@ -15,6 +15,7 @@ import type {
 
 const supportedLocales: Locale[] = ['en', 'zh-CN'];
 const formatterCache = new Map<string, IntlMessageFormat>();
+const intlMessageFormatOptions = { ignoreTag: true } as const;
 const supportedScopes: Scope[] = ['main', 'renderer', 'backend'];
 const additionalScopeLocaleFiles: Partial<Record<Scope, string[]>> = {
   backend: ['backend-inshellisense.json'],
@@ -219,7 +220,7 @@ const formatTemplate = (template: string, locale: Locale, params?: TranslationPa
   let formatter = formatterCache.get(cacheKey);
 
   if (!formatter) {
-    formatter = new IntlMessageFormat(templateWithPrintf, locale);
+    formatter = new IntlMessageFormat(templateWithPrintf, locale, undefined, intlMessageFormatOptions);
     formatterCache.set(cacheKey, formatter);
   }
 

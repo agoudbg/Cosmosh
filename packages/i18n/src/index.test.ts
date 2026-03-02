@@ -17,6 +17,7 @@ const fixtureMessages: Messages = {
         named: 'Hello {name}, profile: {profile}',
         printf: 'CPU %d%%, status: %s',
         indexed: 'Node %1s has %2d sessions',
+        commandDoc: 'Push all branches; cannot be used with other <refspec>',
         plural: '{count, plural, =0 {No sessions} one {# session} other {# sessions}}',
       },
     },
@@ -94,5 +95,10 @@ describe('i18n core', () => {
     expect(i18n.t('demo.plural', { count: 0 })).toBe('No sessions');
     expect(i18n.t('demo.plural', { count: 1 })).toBe('1 session');
     expect(i18n.t('demo.plural', { count: 3 })).toBe('3 sessions');
+  });
+
+  it('treats angle-bracket command placeholders as plain text', () => {
+    const i18n = createI18n({ locale: 'en', scope: 'renderer', resources: fixtureMessages });
+    expect(i18n.t('demo.commandDoc')).toBe('Push all branches; cannot be used with other <refspec>');
   });
 });
