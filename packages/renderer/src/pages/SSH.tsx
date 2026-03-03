@@ -1,18 +1,11 @@
 import '@xterm/xterm/css/xterm.css';
 
-import type { components, SettingsValues } from '@cosmosh/api-contract';
-import { FitAddon } from '@xterm/addon-fit';
 import { type ITerminalOptions, Terminal } from '@xterm/xterm';
 import classNames from 'classnames';
-import { ArrowUpDown, Cpu, MemoryStick, RefreshCw, Search, Send, Sparkles, X } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import React from 'react';
 
-import {
-  type TerminalAutocompleteItem,
-  TerminalAutocompleteMenu,
-  type TerminalAutocompleteMenuHandle,
-} from '../components/terminal/terminal-autocomplete-menu';
-import { TerminalContextMenu } from '../components/terminal/terminal-context-menu';
+import { TerminalAutocompleteMenu } from '../components/terminal/terminal-autocomplete-menu';
 import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
 import { TerminalTextDropZone } from '../components/terminal/terminal-text-drop-zone';
 import { Button } from '../components/ui/button';
@@ -26,493 +19,47 @@ import {
   DialogSecondaryButton,
   DialogTitle,
 } from '../components/ui/dialog';
-import { Input } from '../components/ui/input';
 import { Menubar } from '../components/ui/menubar';
-import {
-  closeLocalTerminalSession,
-  closeSshSession,
-  createLocalTerminalSession,
-  createSshSession,
-  listLocalTerminalProfiles,
-  listSshServers,
-  trustSshFingerprint,
-} from '../lib/backend';
 import { t } from '../lib/i18n';
 import { useSettingsValues } from '../lib/settings-store';
-import { getActiveSshServerId, parseTerminalTarget } from '../lib/ssh-target';
 import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
-
-type SshServerListItem = components['schemas']['SshServerListItem'];
-
-type ClientOutboundMessage =
-  | {
-      type: 'input';
-      data: string;
-    }
-  | {
-      type: 'resize';
-      cols: number;
-      rows: number;
-    }
-  | {
-      type: 'close';
-    }
-  | {
-      type: 'ping';
-    }
-  | {
-      type: 'history-delete';
-      command: string;
-    }
-  | {
-      type: 'completion-request';
-      requestId: string;
-      linePrefix: string;
-      cursorIndex: number;
-      limit?: number;
-      fuzzyMatch?: boolean;
-      trigger: 'typing' | 'manual';
-    };
-
-type ServerInboundMessage =
-  | {
-      type: 'ready';
-    }
-  | {
-      type: 'output';
-      data: string;
-    }
-  | {
-      type: 'error';
-      message: string;
-    }
-  | {
-      type: 'exit';
-      reason: string;
-    }
-  | {
-      type: 'pong';
-    }
-  | {
-      type: 'telemetry';
-      cpuUsagePercent: number | null;
-      memoryUsedBytes: number | null;
-      memoryTotalBytes: number | null;
-      networkRxBytesPerSec: number | null;
-      networkTxBytesPerSec: number | null;
-      recentCommands: string[];
-    }
-  | {
-      type: 'history';
-      recentCommands: string[];
-    }
-  | {
-      type: 'completion-response';
-      requestId: string;
-      replacePrefixLength: number;
-      items: TerminalAutocompleteItem[];
-    };
-
-type SshTelemetryState = {
-  cpuUsagePercent: number | null;
-  memoryUsedBytes: number | null;
-  memoryTotalBytes: number | null;
-  networkRxBytesPerSec: number | null;
-  networkTxBytesPerSec: number | null;
-  recentCommands: string[];
-};
-
-type HostFingerprintPrompt = {
-  serverId: string;
-  host: string;
-  port: number;
-  algorithm: string;
-  fingerprint: string;
-};
-
-const DEFAULT_TELEMETRY_STATE: SshTelemetryState = {
-  cpuUsagePercent: null,
-  memoryUsedBytes: null,
-  memoryTotalBytes: null,
-  networkRxBytesPerSec: null,
-  networkTxBytesPerSec: null,
-  recentCommands: [],
-};
-
-const formatCompactBytes = (value: number): string => {
-  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
-  const units = ['B', 'K', 'M', 'G', 'T'];
-  let scaled = safeValue;
-  let unitIndex = 0;
-
-  while (scaled >= 1024 && unitIndex < units.length - 1) {
-    scaled /= 1024;
-    unitIndex += 1;
-  }
-
-  if (unitIndex === 0) {
-    return `${Math.round(scaled)}${units[unitIndex]}`;
-  }
-
-  return `${scaled.toFixed(scaled >= 10 ? 0 : 1)}${units[unitIndex]}`;
-};
-
-const formatCpuPercent = (value: number | null): string => {
-  if (value === null) {
-    return 'N/A';
-  }
-
-  const safeValue = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
-  return `${safeValue.toFixed(1)}%`;
-};
-
-const formatMemoryUsage = (usedBytes: number | null, totalBytes: number | null): string => {
-  if (usedBytes === null || totalBytes === null) {
-    return 'N/A';
-  }
-
-  return `${formatCompactBytes(usedBytes)}/${formatCompactBytes(totalBytes)}`;
-};
-
-const formatTrafficRate = (bytesPerSecond: number | null): string => {
-  if (bytesPerSecond === null) {
-    return 'N/A';
-  }
-
-  return formatCompactBytes(bytesPerSecond);
-};
-
-const sendClientMessage = (socket: WebSocket, payload: ClientOutboundMessage): void => {
-  if (socket.readyState !== WebSocket.OPEN) {
-    return;
-  }
-
-  socket.send(JSON.stringify(payload));
-};
-
-type ResolvedTerminalTarget =
-  | {
-      type: 'ssh-server';
-      server: SshServerListItem;
-    }
-  | {
-      type: 'local-terminal';
-      profileId: string;
-      profileName: string | null;
-    };
-
-const resolveLocalTerminalProfileName = async (profileId: string): Promise<string | null> => {
-  try {
-    const response = await listLocalTerminalProfiles();
-    const profile = response.data.items.find((item) => item.id === profileId);
-    if (!profile?.name) {
-      return null;
-    }
-
-    return profile.name;
-  } catch {
-    return null;
-  }
-};
-
-const resolveTerminalTarget = async (): Promise<ResolvedTerminalTarget> => {
-  const activeTarget = parseTerminalTarget(getActiveSshServerId());
-  if (activeTarget?.type === 'local-terminal') {
-    const profileName = await resolveLocalTerminalProfileName(activeTarget.id);
-    return {
-      type: 'local-terminal',
-      profileId: activeTarget.id,
-      profileName,
-    };
-  }
-
-  const serverResponse = await listSshServers();
-  const servers = serverResponse.data.items;
-
-  if (servers.length === 0) {
-    throw new Error('No SSH server is configured yet.');
-  }
-
-  const preferredTarget = parseTerminalTarget(getActiveSshServerId());
-  const preferredServerId = preferredTarget?.type === 'ssh-server' ? preferredTarget.id : null;
-  if (preferredServerId) {
-    const preferredServer = servers.find((item) => item.id === preferredServerId);
-    if (preferredServer) {
-      return {
-        type: 'ssh-server',
-        server: preferredServer,
-      };
-    }
-  }
-
-  return {
-    type: 'ssh-server',
-    server: servers[0],
-  };
-};
-
-type TerminalSelectionAnchor = {
-  selectionText: string;
-  pointerClientX: number | null;
-  anchorLeft: number;
-  anchorRight: number;
-  top: number;
-  left: number;
-  right: number;
-  bottom: number;
-};
-
-type TerminalSelectionBarPosition = {
-  top: number;
-  left: number;
-};
-
-type TerminalAutocompleteAnchor = {
-  top: number;
-  left: number;
-  renderAbove: boolean;
-};
-
-type TerminalSelectionSettings = {
-  enabled: boolean;
-  searchEngine: SettingsValues['terminalSelectionSearchEngine'];
-  searchUrlTemplate: string;
-};
-
-type TerminalSelectionBounds = Pick<
-  TerminalSelectionAnchor,
-  'anchorLeft' | 'anchorRight' | 'top' | 'left' | 'right' | 'bottom'
->;
-
-const INTERNAL_TERMINAL_TEXT_DRAG_MIME = 'application/x-cosmosh-terminal-text';
-const AUTOCOMPLETE_PANEL_ESTIMATED_WIDTH = 520;
-const AUTOCOMPLETE_PANEL_EDGE_PADDING = 8;
-const AUTOCOMPLETE_TYPING_DEBOUNCE_MS = 180;
-const MAX_TERMINAL_PANES = 4;
-
-type MirrorPaneRuntime = {
-  terminal: Terminal;
-  fitAddon: FitAddon;
-  containerElement: HTMLDivElement;
-  socket: WebSocket | null;
-  sessionId: string | null;
-  sessionType: 'ssh-server' | 'local-terminal' | null;
-  dispose: () => void;
-};
-
-const snapshotTerminalBuffer = (terminal: Terminal, maxLines = 2000): string => {
-  const activeBuffer = terminal.buffer.active;
-  const totalLines = activeBuffer.baseY + activeBuffer.cursorY + 1;
-  const startLine = Math.max(0, totalLines - maxLines);
-  const lines: string[] = [];
-
-  for (let index = startLine; index < totalLines; index += 1) {
-    const line = activeBuffer.getLine(index);
-    lines.push(line ? line.translateToString(true) : '');
-  }
-
-  return lines.join('\r\n');
-};
-
-const COMMAND_START_TOKENS = ['> ', '$ ', '# ', '❯ ', '➜ ', 'λ '];
-
-const resolveCommandStartOffset = (linePrefix: string): number => {
-  let bestIndex = -1;
-  let bestTokenLength = 0;
-
-  for (const token of COMMAND_START_TOKENS) {
-    const index = linePrefix.lastIndexOf(token);
-    if (index < 0) {
-      continue;
-    }
-
-    if (index > bestIndex) {
-      bestIndex = index;
-      bestTokenLength = token.length;
-    }
-  }
-
-  if (bestIndex < 0) {
-    return 0;
-  }
-
-  return Math.max(0, bestIndex + bestTokenLength);
-};
-
-const resolveTerminalCurrentLinePrefix = (
-  terminal: Terminal,
-): {
-  fullLinePrefix: string;
-  commandPrefix: string;
-  commandStartColumn: number;
-  cursorRow: number;
-} | null => {
-  const activeBuffer = terminal.buffer.active;
-  const cursorY = activeBuffer.cursorY;
-  const cursorX = activeBuffer.cursorX;
-  const absoluteLineIndex = activeBuffer.baseY + cursorY;
-  const line = activeBuffer.getLine(absoluteLineIndex);
-
-  if (!line) {
-    return null;
-  }
-
-  const fullLinePrefix = line.translateToString(true, 0, cursorX);
-  const commandStartColumn = resolveCommandStartOffset(fullLinePrefix);
-
-  return {
-    fullLinePrefix,
-    commandPrefix: fullLinePrefix.slice(commandStartColumn),
-    commandStartColumn,
-    cursorRow: cursorY,
-  };
-};
-
-const SEARCH_URL_BY_ENGINE: Partial<Record<TerminalSelectionSettings['searchEngine'], string>> = {
-  google: 'https://www.google.com/search?q=',
-  bing: 'https://www.bing.com/search?q=',
-  duckduckgo: 'https://duckduckgo.com/?q=',
-  baidu: 'https://www.baidu.com/s?wd=',
-};
-
-const resolveSearchTemplate = (template: string, encodedQuery: string): string => {
-  if (template.includes('%s')) {
-    return template.replaceAll('%s', encodedQuery);
-  }
-
-  if (template.includes('QUERY_TOKEN')) {
-    return template.replaceAll('QUERY_TOKEN', encodedQuery);
-  }
-
-  return `${template}${encodedQuery}`;
-};
-
-const tryResolveCustomSearchUrl = (searchUrlTemplate: string, encodedQuery: string): string | null => {
-  const normalizedTemplate = searchUrlTemplate.trim();
-  if (normalizedTemplate.length === 0) {
-    return null;
-  }
-
-  const resolvedTemplate = resolveSearchTemplate(normalizedTemplate, encodedQuery);
-
-  try {
-    const parsedCustomUrl = new URL(resolvedTemplate);
-    if (parsedCustomUrl.protocol === 'http:' || parsedCustomUrl.protocol === 'https:') {
-      return parsedCustomUrl.toString();
-    }
-  } catch {
-    // Ignore invalid custom templates and fallback to configured search engine.
-  }
-
-  return null;
-};
-
-const resolveSearchUrl = (
-  engine: TerminalSelectionSettings['searchEngine'],
-  query: string,
-  searchUrlTemplate: string,
-): string => {
-  const encodedQuery = encodeURIComponent(query.trim());
-
-  if (engine === 'custom') {
-    const customUrl = tryResolveCustomSearchUrl(searchUrlTemplate, encodedQuery);
-    if (customUrl) {
-      return customUrl;
-    }
-  }
-
-  const baseUrl = SEARCH_URL_BY_ENGINE[engine] ?? SEARCH_URL_BY_ENGINE.google;
-  return `${baseUrl}${encodedQuery}`;
-};
-
-const parseOptionalNumberSetting = (
-  value: string,
-  constraints?: { min?: number; max?: number },
-): number | undefined => {
-  const normalizedValue = value.trim();
-  if (!normalizedValue) {
-    return undefined;
-  }
-
-  const parsedValue = Number(normalizedValue);
-  if (!Number.isFinite(parsedValue)) {
-    return undefined;
-  }
-
-  if (constraints?.min !== undefined && parsedValue < constraints.min) {
-    return undefined;
-  }
-
-  if (constraints?.max !== undefined && parsedValue > constraints.max) {
-    return undefined;
-  }
-
-  return parsedValue;
-};
-
-const resolveTerminalFontWeightSetting = (
-  value: string,
-  fallback: NonNullable<ITerminalOptions['fontWeight']>,
-): ITerminalOptions['fontWeight'] => {
-  const normalizedValue = value.trim();
-  if (!normalizedValue) {
-    return fallback;
-  }
-
-  if (/^\d+$/.test(normalizedValue)) {
-    return Number(normalizedValue);
-  }
-
-  const literalWeightValues: Array<Exclude<NonNullable<ITerminalOptions['fontWeight']>, number>> = [
-    'normal',
-    'bold',
-    '100',
-    '200',
-    '300',
-    '400',
-    '500',
-    '600',
-    '700',
-    '800',
-    '900',
-  ];
-
-  return literalWeightValues.includes(normalizedValue as (typeof literalWeightValues)[number])
-    ? (normalizedValue as (typeof literalWeightValues)[number])
-    : fallback;
-};
-
-const applyTerminalRuntimeOptions = (terminal: Terminal, options: ITerminalOptions): void => {
-  terminal.options.convertEol = options.convertEol;
-  terminal.options.altClickMovesCursor = options.altClickMovesCursor;
-  terminal.options.cursorBlink = options.cursorBlink;
-  terminal.options.cursorInactiveStyle = options.cursorInactiveStyle;
-  terminal.options.cursorStyle = options.cursorStyle;
-  terminal.options.cursorWidth = options.cursorWidth;
-  terminal.options.customGlyphs = options.customGlyphs;
-  terminal.options.drawBoldTextInBrightColors = options.drawBoldTextInBrightColors;
-  terminal.options.fastScrollSensitivity = options.fastScrollSensitivity;
-  terminal.options.fontFamily = options.fontFamily;
-  terminal.options.fontSize = options.fontSize;
-  terminal.options.fontWeight = options.fontWeight;
-  terminal.options.fontWeightBold = options.fontWeightBold;
-  terminal.options.letterSpacing = options.letterSpacing;
-  terminal.options.lineHeight = options.lineHeight;
-  terminal.options.minimumContrastRatio = options.minimumContrastRatio;
-  terminal.options.screenReaderMode = options.screenReaderMode;
-  terminal.options.scrollback = options.scrollback;
-  terminal.options.scrollOnUserInput = options.scrollOnUserInput;
-  terminal.options.scrollSensitivity = options.scrollSensitivity;
-  terminal.options.smoothScrollDuration = options.smoothScrollDuration;
-  terminal.options.tabStopWidth = options.tabStopWidth;
-  terminal.options.theme = options.theme;
-};
-
+import { resolveTerminalTarget } from './ssh/ssh-target';
+import {
+  DEFAULT_TELEMETRY_STATE,
+  type HostFingerprintPrompt,
+  INTERNAL_TERMINAL_TEXT_DRAG_MIME,
+  MAX_TERMINAL_PANES,
+  type MirrorPaneRuntime,
+  type ResolvedTerminalTarget,
+  type SshTelemetryState,
+  type TerminalSelectionSettings,
+} from './ssh/ssh-types';
+import {
+  applyTerminalRuntimeOptions,
+  parseOptionalNumberSetting,
+  resolveSearchUrl,
+  resolveTerminalFontWeightSetting,
+  sendClientMessage,
+} from './ssh/ssh-utils';
+import { SSHSidebar } from './ssh/SSHSidebar';
+import { SSHTerminalPaneLayout } from './ssh/SSHTerminalPaneLayout';
+import { useSshAutocomplete } from './ssh/use-ssh-autocomplete';
+import { useSshMirrorPanes } from './ssh/use-ssh-mirror-panes';
+import { useSshPrimarySession } from './ssh/use-ssh-primary-session';
+import { useSshSelectionBar } from './ssh/use-ssh-selection-bar';
+
+/**
+ * SSH page props.
+ */
 type SSHProps = {
   onTabTitleChange?: (title: string) => void;
 };
 
+/**
+ * SSH page that orchestrates terminal lifecycle, websocket sessions,
+ * split-pane mirroring, and interaction overlays.
+ */
 const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const settingsValues = useSettingsValues();
@@ -534,25 +81,11 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const selectionBarRef = React.useRef<HTMLDivElement | null>(null);
   const connectSessionRef = React.useRef<(() => void) | null>(null);
   const fingerprintPromptResolverRef = React.useRef<((accepted: boolean) => void) | null>(null);
-  const autocompleteRequestSequenceRef = React.useRef<number>(0);
-  const autocompleteRequestTimeoutRef = React.useRef<number | null>(null);
-  const latestAutocompleteRequestKeyRef = React.useRef<string>('');
-  const latestAutocompleteRequestIdRef = React.useRef<string>('');
-  const latestAutocompletePaneIdRef = React.useRef<string>('pane-1');
-  const autocompleteReplacePrefixLengthRef = React.useRef<number>(0);
-  const latestAutocompleteCommandStartColumnRef = React.useRef<number>(0);
-  const latestAutocompleteCursorRowRef = React.useRef<number>(0);
-  const autocompleteMenuRef = React.useRef<TerminalAutocompleteMenuHandle | null>(null);
   const [terminalPaneIds, setTerminalPaneIds] = React.useState<string[]>(['pane-1']);
   const [connectionState, setConnectionState] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [connectionError, setConnectionError] = React.useState<string>('');
   const [telemetryState, setTelemetryState] = React.useState<SshTelemetryState>(DEFAULT_TELEMETRY_STATE);
   const [hostFingerprintPrompt, setHostFingerprintPrompt] = React.useState<HostFingerprintPrompt | null>(null);
-  const [selectionAnchor, setSelectionAnchor] = React.useState<TerminalSelectionAnchor | null>(null);
-  const [selectionBarPosition, setSelectionBarPosition] = React.useState<TerminalSelectionBarPosition | null>(null);
-  const [dismissedSelectionText, setDismissedSelectionText] = React.useState<string | null>(null);
-  const [autocompleteItems, setAutocompleteItems] = React.useState<TerminalAutocompleteItem[]>([]);
-  const [autocompleteAnchor, setAutocompleteAnchor] = React.useState<TerminalAutocompleteAnchor | null>(null);
 
   // Derive terminal-relevant settings from the centralized store.
   const sshMaxRows = settingsValues.sshMaxRows;
@@ -643,6 +176,49 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     ],
   );
 
+  const {
+    autocompleteItems,
+    autocompleteAnchor,
+    autocompleteMenuRef,
+    acceptAutocompleteAtIndex,
+    applyAutocompleteInputData,
+    closeAutocompleteRef,
+    scheduleAutocompleteRequestRef,
+    handleAutocompleteTerminalKeyDownRef,
+    handleCompletionResponse,
+  } = useSshAutocomplete({
+    connectionState,
+    terminalAutoCompleteEnabled,
+    terminalAutoCompleteMinChars,
+    terminalAutoCompleteMaxItems,
+    terminalAutoCompleteFuzzyMatch,
+    wrapperRef,
+    terminalContainerRef,
+    terminalRef,
+    socketRef,
+    primaryPaneIdRef,
+    activePaneIdRef,
+    primarySocketRef,
+    primaryTerminalRef,
+    mirrorPaneRuntimeMapRef,
+  });
+
+  const {
+    selectionAnchor,
+    selectionBarPosition,
+    dismissedSelectionText,
+    refreshSelectionAnchor,
+    dismissSelectionBar,
+    clearSelectionOverlay,
+  } = useSshSelectionBar({
+    terminalRef,
+    terminalContainerRef,
+    wrapperRef,
+    selectionBarRef,
+    selectionPointerClientXRef,
+    enabled: terminalSelectionSettings.enabled,
+  });
+
   React.useEffect(() => {
     onTabTitleChangeRef.current = onTabTitleChange;
   }, [onTabTitleChange]);
@@ -661,6 +237,13 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     }
   }, [terminalPaneIds]);
 
+  /**
+   * Keeps pane id -> container element mapping synchronized with React refs.
+   *
+   * @param paneId Logical pane identifier.
+   * @param element Current pane container element or `null` on unmount.
+   * @returns Nothing.
+   */
   const setPaneContainerElement = React.useCallback((paneId: string, element: HTMLDivElement | null) => {
     const existingElement = paneContainerMapRef.current.get(paneId) ?? null;
 
@@ -680,6 +263,11 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     paneContainerMapRef.current.delete(paneId);
   }, []);
 
+  /**
+   * Adds one mirrored pane while respecting the hard pane limit.
+   *
+   * @returns Nothing.
+   */
   const splitTerminalPane = React.useCallback(() => {
     setTerminalPaneIds((previous) => {
       if (previous.length >= MAX_TERMINAL_PANES) {
@@ -691,6 +279,12 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     });
   }, []);
 
+  /**
+   * Closes a mirrored pane and safely reassigns active pane focus.
+   *
+   * @param paneId Pane id to close.
+   * @returns Nothing.
+   */
   const closeTerminalPane = React.useCallback((paneId: string) => {
     setTerminalPaneIds((previous) => {
       if (previous.length <= 1) {
@@ -715,19 +309,6 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     });
   }, []);
 
-  const clearScheduledAutocompleteRequest = React.useCallback(() => {
-    if (autocompleteRequestTimeoutRef.current !== null) {
-      window.clearTimeout(autocompleteRequestTimeoutRef.current);
-      autocompleteRequestTimeoutRef.current = null;
-    }
-  }, []);
-
-  React.useEffect(() => {
-    return () => {
-      clearScheduledAutocompleteRequest();
-    };
-  }, [clearScheduledAutocompleteRequest]);
-
   const terminalInitOptionsRef = React.useRef<ITerminalOptions>(terminalInitOptions);
   const sshConnectionTimeoutSecRef = React.useRef<number>(sshConnectionTimeoutSec);
 
@@ -735,6 +316,12 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     sshConnectionTimeoutSecRef.current = sshConnectionTimeoutSec;
   }, [sshConnectionTimeoutSec]);
 
+  /**
+   * Resolves the pending host-fingerprint confirmation promise.
+   *
+   * @param accepted Whether user accepted trusting host fingerprint.
+   * @returns Nothing.
+   */
   const resolveHostFingerprintPrompt = React.useCallback((accepted: boolean) => {
     const resolver = fingerprintPromptResolverRef.current;
     fingerprintPromptResolverRef.current = null;
@@ -742,6 +329,12 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     resolver?.(accepted);
   }, []);
 
+  /**
+   * Opens trust dialog and suspends session creation until user decision.
+   *
+   * @param prompt Fingerprint prompt data shown in dialog.
+   * @returns Promise resolved with user decision.
+   */
   const requestHostFingerprintTrust = React.useCallback((prompt: HostFingerprintPrompt): Promise<boolean> => {
     return new Promise((resolve) => {
       fingerprintPromptResolverRef.current = resolve;
@@ -766,101 +359,12 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     connectSessionRef.current?.();
   }, [connectionState]);
 
-  const resolveSelectionBounds = React.useCallback((): TerminalSelectionBounds | null => {
-    const containerElement = terminalContainerRef.current;
-    if (!containerElement) {
-      return null;
-    }
-
-    const selectionLayer = containerElement.querySelector('.xterm-selection');
-    if (!selectionLayer) {
-      return null;
-    }
-
-    const selectionBlocks = selectionLayer.querySelectorAll('div');
-    if (selectionBlocks.length === 0) {
-      return null;
-    }
-
-    let top = Number.POSITIVE_INFINITY;
-    let left = Number.POSITIVE_INFINITY;
-    let right = Number.NEGATIVE_INFINITY;
-    let bottom = Number.NEGATIVE_INFINITY;
-    let anchorLeft = Number.POSITIVE_INFINITY;
-    let anchorRight = Number.NEGATIVE_INFINITY;
-
-    selectionBlocks.forEach((block) => {
-      const rect = block.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) {
-        return;
-      }
-
-      if (rect.top < top - 0.5) {
-        top = rect.top;
-        anchorLeft = rect.left;
-      } else if (Math.abs(rect.top - top) <= 0.5) {
-        anchorLeft = Math.min(anchorLeft, rect.left);
-      }
-
-      if (rect.bottom > bottom + 0.5) {
-        bottom = rect.bottom;
-        anchorRight = rect.right;
-      } else if (Math.abs(rect.bottom - bottom) <= 0.5) {
-        anchorRight = Math.max(anchorRight, rect.right);
-      }
-
-      left = Math.min(left, rect.left);
-      right = Math.max(right, rect.right);
-    });
-
-    if (
-      !Number.isFinite(top) ||
-      !Number.isFinite(left) ||
-      !Number.isFinite(right) ||
-      !Number.isFinite(bottom) ||
-      !Number.isFinite(anchorLeft) ||
-      !Number.isFinite(anchorRight)
-    ) {
-      return null;
-    }
-
-    return {
-      anchorLeft,
-      anchorRight,
-      top,
-      left,
-      right,
-      bottom,
-    };
-  }, []);
-
-  const refreshSelectionAnchor = React.useCallback(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) {
-      setSelectionAnchor(null);
-      return;
-    }
-
-    const selectionText = terminal.getSelection();
-    const normalizedText = selectionText.trim();
-    if (normalizedText.length === 0) {
-      setSelectionAnchor(null);
-      return;
-    }
-
-    const bounds = resolveSelectionBounds();
-    if (!bounds) {
-      setSelectionAnchor(null);
-      return;
-    }
-
-    setSelectionAnchor({
-      selectionText,
-      ...bounds,
-      pointerClientX: selectionPointerClientXRef.current,
-    });
-  }, [resolveSelectionBounds]);
-
+  /**
+   * Switches active pane context for terminal, container and socket refs.
+   *
+   * @param paneId Pane id to activate.
+   * @returns Nothing.
+   */
   const setActivePane = React.useCallback(
     (paneId: string) => {
       const didPaneChange = activePaneIdRef.current !== paneId;
@@ -891,7 +395,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
 
       refreshSelectionAnchor();
     },
-    [refreshSelectionAnchor],
+    [closeAutocompleteRef, refreshSelectionAnchor],
   );
 
   React.useEffect(() => {
@@ -906,88 +410,6 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     scheduleFitAndResizeSyncRef.current?.();
     refreshSelectionAnchor();
   }, [refreshSelectionAnchor, terminalInitOptions]);
-
-  React.useLayoutEffect(() => {
-    if (
-      !selectionAnchor ||
-      !terminalSelectionSettings.enabled ||
-      dismissedSelectionText === selectionAnchor.selectionText
-    ) {
-      setSelectionBarPosition(null);
-      return;
-    }
-
-    const wrapperElement = wrapperRef.current;
-    const selectionBarElement = selectionBarRef.current;
-    if (!wrapperElement) {
-      return;
-    }
-
-    const terminalBoundsElement = terminalContainerRef.current;
-
-    const wrapperRect = wrapperElement.getBoundingClientRect();
-    const placementBoundsRect = terminalBoundsElement?.getBoundingClientRect() ?? wrapperRect;
-    const barWidth = selectionBarElement?.offsetWidth ?? 320;
-    const barHeight = selectionBarElement?.offsetHeight ?? 42;
-    const edgePadding = 8;
-    const gap = 8;
-
-    const selectionTop = selectionAnchor.top - wrapperRect.top;
-    const selectionBottom = selectionAnchor.bottom - wrapperRect.top;
-    const selectionLeft = selectionAnchor.anchorLeft - wrapperRect.left;
-    const pointerBasedRight =
-      selectionAnchor.pointerClientX !== null &&
-      selectionAnchor.pointerClientX >= selectionAnchor.left &&
-      selectionAnchor.pointerClientX <= selectionAnchor.right
-        ? selectionAnchor.pointerClientX
-        : null;
-    const selectionRight = (pointerBasedRight ?? selectionAnchor.anchorRight) - wrapperRect.left;
-    const boundsTop = placementBoundsRect.top - wrapperRect.top;
-    const boundsBottom = placementBoundsRect.bottom - wrapperRect.top;
-
-    const canPlaceAbove = selectionTop - gap - barHeight >= boundsTop + edgePadding;
-    const canPlaceBelow = selectionBottom + gap + barHeight <= boundsBottom - edgePadding;
-    const horizontalPadding = canPlaceAbove ? edgePadding : 0;
-    const minLeftBound = placementBoundsRect.left - wrapperRect.left + horizontalPadding;
-    const maxLeftBound = placementBoundsRect.right - wrapperRect.left - horizontalPadding - barWidth;
-
-    if (!canPlaceAbove && !canPlaceBelow) {
-      setSelectionBarPosition(null);
-      return;
-    }
-
-    const unclampedLeft = canPlaceAbove ? selectionLeft : selectionRight - barWidth;
-    const maxLeft = Math.max(minLeftBound, maxLeftBound);
-    const left = Math.max(minLeftBound, Math.min(unclampedLeft, maxLeft));
-    const top = canPlaceAbove ? selectionTop - gap - barHeight : selectionBottom + gap;
-
-    setSelectionBarPosition({
-      left,
-      top,
-    });
-  }, [dismissedSelectionText, selectionAnchor, terminalSelectionSettings.enabled]);
-
-  React.useEffect(() => {
-    if (!selectionAnchor) {
-      setDismissedSelectionText(null);
-      return;
-    }
-
-    if (dismissedSelectionText && dismissedSelectionText !== selectionAnchor.selectionText) {
-      setDismissedSelectionText(null);
-    }
-  }, [dismissedSelectionText, selectionAnchor]);
-
-  React.useEffect(() => {
-    if (connectionState !== 'connected' || !terminalAutoCompleteEnabled) {
-      setAutocompleteItems([]);
-      autocompleteMenuRef.current?.reset();
-      setAutocompleteAnchor(null);
-      autocompleteReplacePrefixLengthRef.current = 0;
-      latestAutocompleteRequestIdRef.current = '';
-      latestAutocompleteRequestKeyRef.current = '';
-    }
-  }, [connectionState, terminalAutoCompleteEnabled]);
 
   // ---------------------------------------------------------------------------
   // Shared terminal action helpers — used by both the Orbit Bar and the context
@@ -1164,278 +586,6 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     terminalRef.current?.focus();
   }, []);
 
-  const closeAutocomplete = React.useCallback(() => {
-    clearScheduledAutocompleteRequest();
-    setAutocompleteItems([]);
-    autocompleteMenuRef.current?.reset();
-    setAutocompleteAnchor(null);
-    autocompleteReplacePrefixLengthRef.current = 0;
-    latestAutocompleteRequestIdRef.current = '';
-    latestAutocompleteRequestKeyRef.current = '';
-  }, [clearScheduledAutocompleteRequest]);
-
-  const resolveAutocompleteAnchor = React.useCallback(
-    (commandStartColumn: number, cursorRow: number): TerminalAutocompleteAnchor | null => {
-      const wrapperElement = wrapperRef.current;
-      const containerElement = terminalContainerRef.current;
-      const terminal = terminalRef.current;
-
-      if (!wrapperElement || !containerElement || !terminal) {
-        return null;
-      }
-
-      const containerRect = containerElement.getBoundingClientRect();
-      const wrapperRect = wrapperElement.getBoundingClientRect();
-
-      const internalTerminal = terminal as unknown as {
-        _core?: {
-          _renderService?: {
-            dimensions?: {
-              css?: {
-                cell?: {
-                  width?: number;
-                  height?: number;
-                };
-              };
-            };
-          };
-        };
-      };
-
-      const cellWidth = internalTerminal._core?._renderService?.dimensions?.css?.cell?.width ?? 9;
-      const cellHeight = internalTerminal._core?._renderService?.dimensions?.css?.cell?.height ?? 18;
-      const left = containerRect.left - wrapperRect.left + commandStartColumn * cellWidth;
-      const maxLeft = Math.max(
-        AUTOCOMPLETE_PANEL_EDGE_PADDING,
-        wrapperRect.width - AUTOCOMPLETE_PANEL_ESTIMATED_WIDTH - AUTOCOMPLETE_PANEL_EDGE_PADDING,
-      );
-      const cursorBaselineTop = containerRect.top - wrapperRect.top + cursorRow * cellHeight;
-      const estimatedPanelHeight = 280;
-      const renderAbove = cursorBaselineTop - estimatedPanelHeight - 8 >= 8;
-
-      return {
-        left: Math.max(AUTOCOMPLETE_PANEL_EDGE_PADDING, Math.min(left, maxLeft)),
-        top: renderAbove ? cursorBaselineTop - 8 : cursorBaselineTop + cellHeight + 8,
-        renderAbove,
-      };
-    },
-    [],
-  );
-
-  const requestAutocomplete = React.useCallback(
-    (trigger: 'typing' | 'manual') => {
-      const activePaneId = activePaneIdRef.current;
-      const isPrimaryPane = activePaneId === primaryPaneIdRef.current;
-      const socket = isPrimaryPane
-        ? primarySocketRef.current
-        : (mirrorPaneRuntimeMapRef.current.get(activePaneId)?.socket ?? null);
-      const terminal = isPrimaryPane
-        ? primaryTerminalRef.current
-        : (mirrorPaneRuntimeMapRef.current.get(activePaneId)?.terminal ?? null);
-
-      if (
-        !terminalAutoCompleteEnabled ||
-        !socket ||
-        socket.readyState !== WebSocket.OPEN ||
-        !terminal ||
-        connectionState !== 'connected'
-      ) {
-        closeAutocomplete();
-        return;
-      }
-
-      const lineContext = resolveTerminalCurrentLinePrefix(terminal);
-      if (!lineContext) {
-        closeAutocomplete();
-        return;
-      }
-
-      const commandPrefix = lineContext.commandPrefix;
-      if (!commandPrefix.trim()) {
-        closeAutocomplete();
-        return;
-      }
-
-      if (commandPrefix.trim().length < terminalAutoCompleteMinChars) {
-        closeAutocomplete();
-        return;
-      }
-
-      latestAutocompleteCommandStartColumnRef.current = lineContext.commandStartColumn;
-      latestAutocompleteCursorRowRef.current = lineContext.cursorRow;
-
-      const requestKey = `${lineContext.cursorRow}:${commandPrefix}`;
-      if (trigger === 'typing' && requestKey === latestAutocompleteRequestKeyRef.current) {
-        return;
-      }
-      latestAutocompleteRequestKeyRef.current = requestKey;
-
-      const requestId = `cmp-${Date.now()}-${(autocompleteRequestSequenceRef.current += 1)}`;
-      latestAutocompleteRequestIdRef.current = requestId;
-      latestAutocompletePaneIdRef.current = activePaneId;
-
-      sendClientMessage(socket, {
-        type: 'completion-request',
-        requestId,
-        linePrefix: commandPrefix,
-        cursorIndex: commandPrefix.length,
-        limit: terminalAutoCompleteMaxItems,
-        fuzzyMatch: terminalAutoCompleteFuzzyMatch,
-        trigger,
-      });
-    },
-    [
-      closeAutocomplete,
-      connectionState,
-      terminalAutoCompleteEnabled,
-      terminalAutoCompleteFuzzyMatch,
-      terminalAutoCompleteMaxItems,
-      terminalAutoCompleteMinChars,
-    ],
-  );
-
-  const scheduleAutocompleteRequest = React.useCallback(
-    (trigger: 'typing' | 'manual') => {
-      if (trigger === 'manual') {
-        clearScheduledAutocompleteRequest();
-        requestAutocomplete(trigger);
-        return;
-      }
-
-      clearScheduledAutocompleteRequest();
-      autocompleteRequestTimeoutRef.current = window.setTimeout(() => {
-        autocompleteRequestTimeoutRef.current = null;
-        requestAutocomplete('typing');
-      }, AUTOCOMPLETE_TYPING_DEBOUNCE_MS);
-    },
-    [clearScheduledAutocompleteRequest, requestAutocomplete],
-  );
-
-  const acceptAutocompleteAtIndex = React.useCallback(
-    (index: number) => {
-      const socket = socketRef.current;
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        closeAutocomplete();
-        return;
-      }
-
-      const targetItem = autocompleteItems[index];
-      if (!targetItem) {
-        return;
-      }
-
-      const terminal = terminalRef.current;
-      const deleteCount = Math.max(0, autocompleteReplacePrefixLengthRef.current);
-      const deletePrefix = '\x7f'.repeat(Math.max(0, deleteCount));
-      sendClientMessage(socket, {
-        type: 'input',
-        data: `${deletePrefix}${targetItem.insertText}`,
-      });
-      terminal?.focus();
-      closeAutocomplete();
-    },
-    [autocompleteItems, closeAutocomplete],
-  );
-
-  const applyAutocompleteInputData = React.useCallback(
-    (data: string): { shouldRequest: boolean; shouldClose: boolean } => {
-      let shouldRequest = false;
-      let shouldClose = false;
-
-      for (let index = 0; index < data.length; index += 1) {
-        const char = data[index] ?? '';
-
-        if (char === '\x1b') {
-          return {
-            shouldRequest: false,
-            shouldClose: true,
-          };
-        }
-
-        if (char === '\r' || char === '\n' || char === '\u0003') {
-          shouldRequest = false;
-          shouldClose = true;
-          continue;
-        }
-
-        if (char === '\x7f' || char === '\b') {
-          shouldRequest = true;
-          continue;
-        }
-
-        if (char === '\t' || char === '\u0000') {
-          continue;
-        }
-
-        if (char >= ' ') {
-          shouldRequest = true;
-        }
-      }
-
-      return {
-        shouldRequest: shouldRequest && !shouldClose,
-        shouldClose,
-      };
-    },
-    [],
-  );
-
-  const handleAutocompleteTerminalKeyDown = React.useCallback(
-    (event: KeyboardEvent) => {
-      if (event.isComposing || event.key === 'Process') {
-        return;
-      }
-
-      if (event.key === 'Tab') {
-        event.preventDefault();
-        event.stopPropagation();
-        if (autocompleteItems.length > 0) {
-          acceptAutocompleteAtIndex(autocompleteMenuRef.current?.getActiveIndex() ?? 0);
-        } else {
-          scheduleAutocompleteRequest('manual');
-        }
-        return;
-      }
-
-      if (autocompleteItems.length === 0) {
-        return;
-      }
-
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        event.stopPropagation();
-        autocompleteMenuRef.current?.moveNext();
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        event.stopPropagation();
-        autocompleteMenuRef.current?.movePrevious();
-        return;
-      }
-
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        closeAutocomplete();
-      }
-    },
-    [acceptAutocompleteAtIndex, autocompleteItems, closeAutocomplete, scheduleAutocompleteRequest],
-  );
-
-  const closeAutocompleteRef = React.useRef(closeAutocomplete);
-  const resolveAutocompleteAnchorRef = React.useRef(resolveAutocompleteAnchor);
-  const scheduleAutocompleteRequestRef = React.useRef(scheduleAutocompleteRequest);
-  const handleAutocompleteTerminalKeyDownRef = React.useRef(handleAutocompleteTerminalKeyDown);
-
-  React.useEffect(() => {
-    closeAutocompleteRef.current = closeAutocomplete;
-    resolveAutocompleteAnchorRef.current = resolveAutocompleteAnchor;
-    scheduleAutocompleteRequestRef.current = scheduleAutocompleteRequest;
-    handleAutocompleteTerminalKeyDownRef.current = handleAutocompleteTerminalKeyDown;
-  }, [closeAutocomplete, resolveAutocompleteAnchor, scheduleAutocompleteRequest, handleAutocompleteTerminalKeyDown]);
-
   const handleSelectionBarDragStart = React.useCallback(
     (event: React.DragEvent<HTMLButtonElement>) => {
       if (!selectionAnchor?.selectionText) {
@@ -1462,13 +612,8 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   );
 
   const handleSelectionBarClose = React.useCallback(() => {
-    if (!selectionAnchor?.selectionText) {
-      return;
-    }
-
-    setDismissedSelectionText(selectionAnchor.selectionText);
-    setSelectionBarPosition(null);
-  }, [selectionAnchor]);
+    dismissSelectionBar();
+  }, [dismissSelectionBar]);
 
   const handleSelectionOpenDirectory = React.useCallback(() => {
     notifyWarning(t('ssh.selectionBarOpenDirectoryComingSoon'));
@@ -1512,1120 +657,65 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     onDropText: handleTerminalTextDrop,
   });
 
-  React.useEffect(() => {
-    const terminal = new Terminal(terminalInitOptionsRef.current);
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-
-    const containerElement = terminalContainerRef.current;
-    if (!containerElement) {
-      terminalRef.current = null;
-      terminal.dispose();
-      return;
-    }
-
-    terminal.open(containerElement);
-    primaryTerminalRef.current = terminal;
-    terminalRef.current = terminal;
-    let disposed = false;
-    let retryFitFrameId: number | null = null;
-
-    const hasRenderableSize = (): boolean => {
-      const rect = containerElement.getBoundingClientRect();
-      return rect.width > 16 && rect.height > 16;
-    };
-
-    const safeFit = (): boolean => {
-      if (disposed) {
-        return false;
-      }
-
-      if (!hasRenderableSize()) {
-        return false;
-      }
-
-      try {
-        fitAddon.fit();
-        return true;
-      } catch {
-        // Ignore fit races during StrictMode mount/unmount cycles.
-        return false;
-      }
-    };
-
-    const retryFitUntilVisible = (): void => {
-      if (disposed) {
-        return;
-      }
-
-      if (safeFit()) {
-        retryFitFrameId = null;
-        return;
-      }
-
-      retryFitFrameId = requestAnimationFrame(retryFitUntilVisible);
-    };
-
-    retryFitUntilVisible();
-
-    let socket: WebSocket | null = null;
-    let sessionId: string | null = null;
-    let sessionType: 'ssh-server' | 'local-terminal' | null = null;
-    let lastSyncedCols: number | null = null;
-    let lastSyncedRows: number | null = null;
-    let fitFrameId: number | null = null;
-
-    const syncResizeIfNeeded = (): void => {
-      if (disposed || !socket || socket.readyState !== WebSocket.OPEN) {
-        return;
-      }
-
-      if (terminal.cols === lastSyncedCols && terminal.rows === lastSyncedRows) {
-        return;
-      }
-
-      lastSyncedCols = terminal.cols;
-      lastSyncedRows = terminal.rows;
-      sendClientMessage(socket, {
-        type: 'resize',
-        cols: terminal.cols,
-        rows: terminal.rows,
-      });
-    };
-
-    const scheduleFitAndResizeSync = (): void => {
-      if (disposed || fitFrameId !== null) {
-        return;
-      }
-
-      fitFrameId = requestAnimationFrame(() => {
-        fitFrameId = null;
-
-        const didFit = safeFit();
-        if (!didFit || disposed) {
-          return;
-        }
-
-        syncResizeIfNeeded();
-        refreshSelectionAnchor();
-      });
-    };
-    scheduleFitAndResizeSyncRef.current = scheduleFitAndResizeSync;
-
-    void document.fonts.ready.then(() => {
-      if (disposed) {
-        return;
-      }
-
-      scheduleFitAndResizeSync();
-    });
-
-    const setupResizeSync = (): (() => void) => {
-      const observer = new ResizeObserver(() => {
-        scheduleFitAndResizeSync();
-        refreshSelectionAnchor();
-      });
-
-      observer.observe(containerElement);
-
-      return () => observer.disconnect();
-    };
-
-    const handleSocketMessage = (event: MessageEvent<string>): void => {
-      if (disposed) {
-        return;
-      }
-
-      try {
-        const payload = JSON.parse(event.data) as ServerInboundMessage;
-
-        if (payload.type === 'output') {
-          terminal.write(payload.data);
-          return;
-        }
-
-        if (payload.type === 'error') {
-          setConnectionState('failed');
-          setConnectionError(payload.message);
-          return;
-        }
-
-        if (payload.type === 'exit') {
-          setConnectionState('failed');
-          setConnectionError(payload.reason);
-          return;
-        }
-
-        if (payload.type === 'ready') {
-          return;
-        }
-
-        if (payload.type === 'telemetry') {
-          setTelemetryState({
-            cpuUsagePercent: payload.cpuUsagePercent,
-            memoryUsedBytes: payload.memoryUsedBytes,
-            memoryTotalBytes: payload.memoryTotalBytes,
-            networkRxBytesPerSec: payload.networkRxBytesPerSec,
-            networkTxBytesPerSec: payload.networkTxBytesPerSec,
-            // Backend already caps and de-duplicates commands; keep latest at top in the view layer.
-            recentCommands: payload.recentCommands,
-          });
-          return;
-        }
-
-        if (payload.type === 'history') {
-          setTelemetryState((previous) => ({
-            ...previous,
-            recentCommands: payload.recentCommands,
-          }));
-          return;
-        }
-
-        if (payload.type === 'completion-response') {
-          if (latestAutocompletePaneIdRef.current !== primaryPaneIdRef.current) {
-            return;
-          }
-
-          if (payload.requestId !== latestAutocompleteRequestIdRef.current) {
-            return;
-          }
-
-          if (payload.items.length === 0) {
-            closeAutocompleteRef.current();
-            return;
-          }
-
-          const anchor = resolveAutocompleteAnchorRef.current(
-            latestAutocompleteCommandStartColumnRef.current,
-            latestAutocompleteCursorRowRef.current,
-          );
-          if (!anchor) {
-            closeAutocompleteRef.current();
-            return;
-          }
-
-          setAutocompleteItems(payload.items);
-          autocompleteMenuRef.current?.reset();
-          setAutocompleteAnchor(anchor);
-          autocompleteReplacePrefixLengthRef.current = payload.replacePrefixLength;
-          return;
-        }
-      } catch {
-        setConnectionState('failed');
-        setConnectionError(t('ssh.websocketMalformedMessage'));
-      }
-    };
-
-    const connectSession = async (): Promise<void> => {
-      try {
-        setConnectionState('connecting');
-        setConnectionError('');
-        setTelemetryState(DEFAULT_TELEMETRY_STATE);
-
-        const target = await resolveTerminalTarget();
-        if (disposed) {
-          return;
-        }
-        resolvedTerminalTargetRef.current = target;
-
-        if (target.type === 'ssh-server') {
-          onTabTitleChangeRef.current?.(target.server.name.trim() || t('tabs.page.ssh'));
-        } else {
-          onTabTitleChangeRef.current?.(target.profileName?.trim() || t('tabs.page.localTerminal'));
-        }
-
-        if (target.type === 'local-terminal') {
-          terminal.options.windowsPty = { backend: 'conpty' };
-          terminal.options.reflowCursorLine = false;
-
-          const createResult = await createLocalTerminalSession({
-            profileId: target.profileId,
-            cols: terminal.cols,
-            rows: terminal.rows,
-            term: 'xterm-256color',
-          });
-
-          if (disposed) {
-            void closeLocalTerminalSession(createResult.data.sessionId).catch(() => undefined);
-            return;
-          }
-
-          sessionType = 'local-terminal';
-          sessionId = createResult.data.sessionId;
-          const websocketUrl = new URL(createResult.data.websocketUrl);
-          websocketUrl.searchParams.set('token', createResult.data.websocketToken);
-
-          socket = new WebSocket(websocketUrl.toString());
-          primarySocketRef.current = socket;
-          if (activePaneIdRef.current === primaryPaneIdRef.current) {
-            socketRef.current = socket;
-          }
-          socket.addEventListener('message', handleSocketMessage);
-
-          socket.addEventListener('open', () => {
-            if (disposed) {
-              return;
-            }
-
-            setConnectionState('connected');
-            setConnectionError('');
-            scheduleFitAndResizeSync();
-          });
-
-          socket.addEventListener('close', () => {
-            primarySocketRef.current = null;
-            if (activePaneIdRef.current === primaryPaneIdRef.current) {
-              socketRef.current = null;
-            }
-            if (disposed) {
-              return;
-            }
-
-            setConnectionState('failed');
-            setConnectionError(t('ssh.websocketClosed'));
-          });
-
-          socket.addEventListener('error', () => {
-            primarySocketRef.current = null;
-            if (activePaneIdRef.current === primaryPaneIdRef.current) {
-              socketRef.current = null;
-            }
-            if (disposed) {
-              return;
-            }
-
-            setConnectionState('failed');
-            setConnectionError(t('ssh.websocketTransportFailed'));
-          });
-
-          return;
-        }
-
-        terminal.options.windowsPty = undefined;
-        terminal.options.reflowCursorLine = true;
-
-        const createPayload = await createSshSession({
-          serverId: target.server.id,
-          cols: terminal.cols,
-          rows: terminal.rows,
-          term: 'xterm-256color',
-          connectTimeoutSec: sshConnectionTimeoutSecRef.current,
-        });
-
-        let createResult = createPayload;
-        if (disposed) {
-          if (createResult.success) {
-            void closeSshSession(createResult.data.sessionId).catch(() => undefined);
-          }
-          return;
-        }
-
-        if (!createResult.success && createResult.code === 'SSH_HOST_UNTRUSTED') {
-          const confirmed = await requestHostFingerprintTrust({
-            serverId: createResult.data.serverId,
-            host: createResult.data.host,
-            port: createResult.data.port,
-            algorithm: createResult.data.algorithm,
-            fingerprint: createResult.data.fingerprint,
-          });
-
-          if (disposed) {
-            return;
-          }
-
-          if (!confirmed) {
-            setConnectionState('failed');
-            setConnectionError(t('ssh.hostFingerprintNotTrusted'));
-            return;
-          }
-
-          await trustSshFingerprint({
-            serverId: createResult.data.serverId,
-            fingerprintSha256: createResult.data.fingerprint,
-            algorithm: createResult.data.algorithm,
-          });
-
-          createResult = await createSshSession({
-            serverId: target.server.id,
-            cols: terminal.cols,
-            rows: terminal.rows,
-            term: 'xterm-256color',
-            connectTimeoutSec: sshConnectionTimeoutSecRef.current,
-          });
-
-          if (disposed) {
-            if (createResult.success) {
-              void closeSshSession(createResult.data.sessionId).catch(() => undefined);
-            }
-            return;
-          }
-        }
-
-        if (!createResult.success) {
-          throw new Error(createResult.message);
-        }
-
-        sessionType = 'ssh-server';
-        sessionId = createResult.data.sessionId;
-        const websocketUrl = new URL(createResult.data.websocketUrl);
-        websocketUrl.searchParams.set('token', createResult.data.websocketToken);
-
-        if (disposed) {
-          void closeSshSession(createResult.data.sessionId).catch(() => undefined);
-          return;
-        }
-
-        socket = new WebSocket(websocketUrl.toString());
-        primarySocketRef.current = socket;
-        if (activePaneIdRef.current === primaryPaneIdRef.current) {
-          socketRef.current = socket;
-        }
-        socket.addEventListener('message', handleSocketMessage);
-
-        socket.addEventListener('open', () => {
-          if (disposed) {
-            return;
-          }
-
-          setConnectionState('connected');
-          setConnectionError('');
-          scheduleFitAndResizeSync();
-        });
-
-        socket.addEventListener('close', () => {
-          primarySocketRef.current = null;
-          if (activePaneIdRef.current === primaryPaneIdRef.current) {
-            socketRef.current = null;
-          }
-          if (disposed) {
-            return;
-          }
-
-          setConnectionState('failed');
-          setConnectionError(t('ssh.websocketClosed'));
-          return;
-        });
-
-        socket.addEventListener('error', () => {
-          primarySocketRef.current = null;
-          if (activePaneIdRef.current === primaryPaneIdRef.current) {
-            socketRef.current = null;
-          }
-          if (disposed) {
-            return;
-          }
-
-          setConnectionState('failed');
-          setConnectionError(t('ssh.websocketTransportFailed'));
-        });
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : t('ssh.sessionInitFailed');
-        setConnectionState('failed');
-        setConnectionError(message);
-      }
-    };
-
-    const disposeResize = setupResizeSync();
-    const trackPointerPosition = (event: MouseEvent | PointerEvent): void => {
-      selectionPointerClientXRef.current = event.clientX;
-    };
-    containerElement.addEventListener('pointerup', trackPointerPosition);
-    containerElement.addEventListener('mouseup', trackPointerPosition);
-    const disposeTerminalInput = terminal.onData((data) => {
-      if (activePaneIdRef.current !== primaryPaneIdRef.current) {
-        setActivePane(primaryPaneIdRef.current);
-      }
-
-      if (disposed) {
-        return;
-      }
-
-      const autocompleteInputState = applyAutocompleteInputData(data);
-      if (autocompleteInputState.shouldClose) {
-        closeAutocompleteRef.current();
-      }
-
-      if (autocompleteInputState.shouldRequest) {
-        scheduleAutocompleteRequestRef.current('typing');
-      }
-
-      if (socket) {
-        sendClientMessage(socket, {
-          type: 'input',
-          data,
-        });
-      }
-    });
-    const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {
-      handleAutocompleteTerminalKeyDownRef.current(event);
-    };
-    containerElement.addEventListener('keydown', handleAutocompleteKeyDown, true);
-    const disposeSelectionChange = terminal.onSelectionChange(() => {
-      refreshSelectionAnchor();
-    });
-    const disposeSelectionScroll = terminal.onScroll(() => {
-      refreshSelectionAnchor();
-    });
-    const disposeSelectionRender = terminal.onRender(() => {
-      if (!terminal.hasSelection()) {
-        return;
-      }
-
-      refreshSelectionAnchor();
-    });
-    const handleWindowResize = (): void => {
-      refreshSelectionAnchor();
-    };
-    window.addEventListener('resize', handleWindowResize);
-    refreshSelectionAnchor();
-
-    connectSessionRef.current = connectSession;
-    void connectSession();
-
-    return () => {
-      disposed = true;
-
-      if (retryFitFrameId !== null) {
-        cancelAnimationFrame(retryFitFrameId);
-        retryFitFrameId = null;
-      }
-
-      if (fitFrameId !== null) {
-        cancelAnimationFrame(fitFrameId);
-        fitFrameId = null;
-      }
-
-      try {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          sendClientMessage(socket, { type: 'close' });
-          socket.close();
-        }
-      } catch {
-        // Ignore websocket close race conditions.
-      }
-
-      primarySocketRef.current = null;
-      if (activePaneIdRef.current === primaryPaneIdRef.current) {
-        socketRef.current = null;
-      }
-
-      if (sessionId) {
-        if (sessionType === 'local-terminal') {
-          void closeLocalTerminalSession(sessionId).catch(() => undefined);
-        } else {
-          void closeSshSession(sessionId).catch(() => undefined);
-        }
-      }
-
-      connectSessionRef.current = null;
-      scheduleFitAndResizeSyncRef.current = null;
-      primaryTerminalRef.current = null;
-      terminalRef.current = null;
-      selectionPointerClientXRef.current = null;
-      setSelectionAnchor(null);
-      setSelectionBarPosition(null);
-      disposeTerminalInput.dispose();
-      disposeSelectionChange.dispose();
-      disposeSelectionScroll.dispose();
-      disposeSelectionRender.dispose();
-      containerElement.removeEventListener('pointerup', trackPointerPosition);
-      containerElement.removeEventListener('mouseup', trackPointerPosition);
-      containerElement.removeEventListener('keydown', handleAutocompleteKeyDown, true);
-      window.removeEventListener('resize', handleWindowResize);
-      disposeResize();
-      terminal.dispose();
-    };
-  }, [applyAutocompleteInputData, requestHostFingerprintTrust, refreshSelectionAnchor, setActivePane]);
-
-  React.useEffect(() => {
-    if (connectionState !== 'connected') {
-      return;
-    }
-
-    const desiredMirrorPaneIds = terminalPaneIds.slice(1);
-
-    mirrorPaneRuntimeMapRef.current.forEach((runtime, paneId) => {
-      if (desiredMirrorPaneIds.includes(paneId)) {
-        return;
-      }
-
-      runtime.dispose();
-      mirrorPaneRuntimeMapRef.current.delete(paneId);
-    });
-
-    desiredMirrorPaneIds.forEach((paneId) => {
-      const containerElement = paneContainerMapRef.current.get(paneId);
-      if (!containerElement) {
-        return;
-      }
-
-      const existingRuntime = mirrorPaneRuntimeMapRef.current.get(paneId);
-      if (existingRuntime) {
-        if (existingRuntime.containerElement === containerElement) {
-          return;
-        }
-
-        existingRuntime.dispose();
-        mirrorPaneRuntimeMapRef.current.delete(paneId);
-      }
-
-      const terminal = new Terminal(terminalInitOptionsRef.current);
-      const fitAddon = new FitAddon();
-      terminal.loadAddon(fitAddon);
-      terminal.open(containerElement);
-
-      const runtime: MirrorPaneRuntime = {
-        terminal,
-        fitAddon,
-        containerElement,
-        socket: null,
-        sessionId: null,
-        sessionType: null,
-        dispose: () => undefined,
-      };
-      mirrorPaneRuntimeMapRef.current.set(paneId, runtime);
-
-      try {
-        fitAddon.fit();
-      } catch {
-        // Ignore fit race during layout transitions.
-      }
-
-      const primaryTerminal = primaryTerminalRef.current;
-      if (primaryTerminal) {
-        const snapshot = snapshotTerminalBuffer(primaryTerminal);
-        if (snapshot.length > 0) {
-          terminal.write(snapshot);
-        }
-      }
-
-      const trackPointerPosition = (event: MouseEvent | PointerEvent): void => {
-        selectionPointerClientXRef.current = event.clientX;
-      };
-
-      const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {
-        handleAutocompleteTerminalKeyDownRef.current(event);
-      };
-
-      const handleSetActivePane = (): void => {
-        setActivePane(paneId);
-      };
-
-      const disposeTerminalInput = terminal.onData((data) => {
-        if (activePaneIdRef.current !== paneId) {
-          setActivePane(paneId);
-        }
-
-        const autocompleteInputState = applyAutocompleteInputData(data);
-        if (autocompleteInputState.shouldClose) {
-          closeAutocompleteRef.current();
-        }
-
-        if (autocompleteInputState.shouldRequest) {
-          scheduleAutocompleteRequestRef.current('typing');
-        }
-
-        const socket = runtime.socket;
-        if (socket) {
-          sendClientMessage(socket, {
-            type: 'input',
-            data,
-          });
-        }
-      });
-
-      const disposeSelectionChange = terminal.onSelectionChange(() => {
-        if (activePaneIdRef.current === paneId) {
-          refreshSelectionAnchor();
-        }
-      });
-      const disposeSelectionScroll = terminal.onScroll(() => {
-        if (activePaneIdRef.current === paneId) {
-          refreshSelectionAnchor();
-        }
-      });
-      const disposeSelectionRender = terminal.onRender(() => {
-        if (!terminal.hasSelection()) {
-          return;
-        }
-
-        if (activePaneIdRef.current === paneId) {
-          refreshSelectionAnchor();
-        }
-      });
-
-      containerElement.addEventListener('pointerup', trackPointerPosition);
-      containerElement.addEventListener('mouseup', trackPointerPosition);
-      containerElement.addEventListener('keydown', handleAutocompleteKeyDown, true);
-      containerElement.addEventListener('mousedown', handleSetActivePane, true);
-      containerElement.addEventListener('contextmenu', handleSetActivePane, true);
-
-      const connectPaneSession = async (): Promise<void> => {
-        try {
-          const target = resolvedTerminalTargetRef.current ?? (await resolveTerminalTarget());
-          resolvedTerminalTargetRef.current = target;
-          const sessionCols = Math.max(20, terminal.cols || 120);
-          const sessionRows = Math.max(10, terminal.rows || 30);
-
-          if (target.type === 'local-terminal') {
-            terminal.options.windowsPty = { backend: 'conpty' };
-            terminal.options.reflowCursorLine = false;
-
-            const createResult = await createLocalTerminalSession({
-              profileId: target.profileId,
-              cols: sessionCols,
-              rows: sessionRows,
-              term: 'xterm-256color',
-            });
-
-            runtime.sessionType = 'local-terminal';
-            runtime.sessionId = createResult.data.sessionId;
-
-            const websocketUrl = new URL(createResult.data.websocketUrl);
-            websocketUrl.searchParams.set('token', createResult.data.websocketToken);
-            const socket = new WebSocket(websocketUrl.toString());
-            runtime.socket = socket;
-
-            socket.addEventListener('message', (event) => {
-              try {
-                const payload = JSON.parse(event.data) as ServerInboundMessage;
-                if (payload.type === 'output') {
-                  terminal.write(payload.data);
-                  return;
-                }
-
-                if (payload.type === 'completion-response') {
-                  if (latestAutocompletePaneIdRef.current !== paneId) {
-                    return;
-                  }
-
-                  if (payload.requestId !== latestAutocompleteRequestIdRef.current) {
-                    return;
-                  }
-
-                  if (payload.items.length === 0) {
-                    closeAutocompleteRef.current();
-                    return;
-                  }
-
-                  const anchor = resolveAutocompleteAnchorRef.current(
-                    latestAutocompleteCommandStartColumnRef.current,
-                    latestAutocompleteCursorRowRef.current,
-                  );
-                  if (!anchor) {
-                    closeAutocompleteRef.current();
-                    return;
-                  }
-
-                  setAutocompleteItems(payload.items);
-                  autocompleteMenuRef.current?.reset();
-                  setAutocompleteAnchor(anchor);
-                  autocompleteReplacePrefixLengthRef.current = payload.replacePrefixLength;
-                }
-              } catch {
-                notifyWarning(t('ssh.websocketMalformedMessage'));
-              }
-            });
-
-            socket.addEventListener('open', () => {
-              if (activePaneIdRef.current === paneId) {
-                socketRef.current = socket;
-              }
-
-              try {
-                fitAddon.fit();
-              } catch {
-                // Ignore fit race after pane socket open.
-              }
-
-              sendClientMessage(socket, {
-                type: 'resize',
-                cols: Math.max(20, terminal.cols || 120),
-                rows: Math.max(10, terminal.rows || 30),
-              });
-            });
-
-            socket.addEventListener('close', () => {
-              runtime.socket = null;
-              if (activePaneIdRef.current === paneId) {
-                socketRef.current = null;
-              }
-            });
-
-            socket.addEventListener('error', () => {
-              runtime.socket = null;
-              notifyWarning(t('ssh.websocketTransportFailed'));
-              if (activePaneIdRef.current === paneId) {
-                socketRef.current = null;
-              }
-            });
-
-            return;
-          }
-
-          terminal.options.windowsPty = undefined;
-          terminal.options.reflowCursorLine = true;
-
-          let createResult = await createSshSession({
-            serverId: target.server.id,
-            cols: sessionCols,
-            rows: sessionRows,
-            term: 'xterm-256color',
-            connectTimeoutSec: sshConnectionTimeoutSecRef.current,
-          });
-
-          if (!createResult.success && createResult.code === 'SSH_HOST_UNTRUSTED') {
-            const confirmed = await requestHostFingerprintTrust({
-              serverId: createResult.data.serverId,
-              host: createResult.data.host,
-              port: createResult.data.port,
-              algorithm: createResult.data.algorithm,
-              fingerprint: createResult.data.fingerprint,
-            });
-
-            if (!confirmed) {
-              notifyWarning(t('ssh.hostFingerprintNotTrusted'));
-              return;
-            }
-
-            await trustSshFingerprint({
-              serverId: createResult.data.serverId,
-              fingerprintSha256: createResult.data.fingerprint,
-              algorithm: createResult.data.algorithm,
-            });
-
-            createResult = await createSshSession({
-              serverId: target.server.id,
-              cols: sessionCols,
-              rows: sessionRows,
-              term: 'xterm-256color',
-              connectTimeoutSec: sshConnectionTimeoutSecRef.current,
-            });
-          }
-
-          if (!createResult.success) {
-            notifyWarning(createResult.message);
-            return;
-          }
-
-          runtime.sessionType = 'ssh-server';
-          runtime.sessionId = createResult.data.sessionId;
-          const websocketUrl = new URL(createResult.data.websocketUrl);
-          websocketUrl.searchParams.set('token', createResult.data.websocketToken);
-          const socket = new WebSocket(websocketUrl.toString());
-          runtime.socket = socket;
-
-          socket.addEventListener('message', (event) => {
-            try {
-              const payload = JSON.parse(event.data) as ServerInboundMessage;
-              if (payload.type === 'output') {
-                terminal.write(payload.data);
-                return;
-              }
-
-              if (payload.type === 'completion-response') {
-                if (latestAutocompletePaneIdRef.current !== paneId) {
-                  return;
-                }
-
-                if (payload.requestId !== latestAutocompleteRequestIdRef.current) {
-                  return;
-                }
-
-                if (payload.items.length === 0) {
-                  closeAutocompleteRef.current();
-                  return;
-                }
-
-                const anchor = resolveAutocompleteAnchorRef.current(
-                  latestAutocompleteCommandStartColumnRef.current,
-                  latestAutocompleteCursorRowRef.current,
-                );
-                if (!anchor) {
-                  closeAutocompleteRef.current();
-                  return;
-                }
-
-                setAutocompleteItems(payload.items);
-                autocompleteMenuRef.current?.reset();
-                setAutocompleteAnchor(anchor);
-                autocompleteReplacePrefixLengthRef.current = payload.replacePrefixLength;
-              }
-            } catch {
-              notifyWarning(t('ssh.websocketMalformedMessage'));
-            }
-          });
-
-          socket.addEventListener('open', () => {
-            if (activePaneIdRef.current === paneId) {
-              socketRef.current = socket;
-            }
-
-            try {
-              fitAddon.fit();
-            } catch {
-              // Ignore fit race after pane socket open.
-            }
-
-            sendClientMessage(socket, {
-              type: 'resize',
-              cols: Math.max(20, terminal.cols || 120),
-              rows: Math.max(10, terminal.rows || 30),
-            });
-          });
-
-          socket.addEventListener('close', () => {
-            runtime.socket = null;
-            if (activePaneIdRef.current === paneId) {
-              socketRef.current = null;
-            }
-          });
-
-          socket.addEventListener('error', () => {
-            runtime.socket = null;
-            notifyWarning(t('ssh.websocketTransportFailed'));
-            if (activePaneIdRef.current === paneId) {
-              socketRef.current = null;
-            }
-          });
-        } catch (error: unknown) {
-          notifyWarning(error instanceof Error ? error.message : t('ssh.sessionInitFailed'));
-        }
-      };
-
-      void connectPaneSession();
-
-      runtime.dispose = () => {
-        if (runtime.socket && runtime.socket.readyState === WebSocket.OPEN) {
-          sendClientMessage(runtime.socket, { type: 'close' });
-          runtime.socket.close();
-        }
-
-        if (runtime.sessionId) {
-          if (runtime.sessionType === 'local-terminal') {
-            void closeLocalTerminalSession(runtime.sessionId).catch(() => undefined);
-          } else {
-            void closeSshSession(runtime.sessionId).catch(() => undefined);
-          }
-        }
-
-        runtime.socket = null;
-        runtime.sessionId = null;
-        runtime.sessionType = null;
-        disposeTerminalInput.dispose();
-        disposeSelectionChange.dispose();
-        disposeSelectionScroll.dispose();
-        disposeSelectionRender.dispose();
-        containerElement.removeEventListener('pointerup', trackPointerPosition);
-        containerElement.removeEventListener('mouseup', trackPointerPosition);
-        containerElement.removeEventListener('keydown', handleAutocompleteKeyDown, true);
-        containerElement.removeEventListener('mousedown', handleSetActivePane, true);
-        containerElement.removeEventListener('contextmenu', handleSetActivePane, true);
-        terminal.dispose();
-      };
-    });
-
-    mirrorPaneRuntimeMapRef.current.forEach((runtime) => {
-      applyTerminalRuntimeOptions(runtime.terminal, terminalInitOptionsRef.current);
-      try {
-        runtime.fitAddon.fit();
-      } catch {
-        // Ignore fit race while pane layout is transitioning.
-      }
-    });
-
-    scheduleFitAndResizeSyncRef.current?.();
-    setActivePane(activePaneIdRef.current);
-  }, [
-    applyAutocompleteInputData,
-    connectionState,
-    notifyWarning,
-    refreshSelectionAnchor,
+  useSshPrimarySession({
+    terminalInitOptionsRef,
+    terminalContainerRef,
+    terminalRef,
+    primaryTerminalRef,
+    primaryPaneIdRef,
+    activePaneIdRef,
+    primarySocketRef,
+    socketRef,
+    resolvedTerminalTargetRef,
+    sshConnectionTimeoutSecRef,
+    scheduleFitAndResizeSyncRef,
+    connectSessionRef,
+    selectionPointerClientXRef,
+    onTabTitleChangeRef,
+    setConnectionState,
+    setConnectionError,
+    setTelemetryState,
     requestHostFingerprintTrust,
     setActivePane,
+    refreshSelectionAnchor,
+    clearSelectionOverlay,
+    applyAutocompleteInputData,
+    closeAutocompleteRef,
+    scheduleAutocompleteRequestRef,
+    handleAutocompleteTerminalKeyDownRef,
+    handleCompletionResponse,
+  });
+
+  useSshMirrorPanes({
+    connectionState,
     terminalPaneIds,
-  ]);
-
-  React.useEffect(() => {
-    const mirrorRuntimeMap = mirrorPaneRuntimeMapRef.current;
-
-    return () => {
-      mirrorRuntimeMap.forEach((runtime) => {
-        runtime.dispose();
-      });
-      mirrorRuntimeMap.clear();
-    };
-  }, []);
-
-  const fitAllTerminalPanes = React.useCallback(() => {
-    scheduleFitAndResizeSyncRef.current?.();
-
-    mirrorPaneRuntimeMapRef.current.forEach((runtime) => {
-      try {
-        runtime.fitAddon.fit();
-        if (runtime.socket && runtime.socket.readyState === WebSocket.OPEN) {
-          sendClientMessage(runtime.socket, {
-            type: 'resize',
-            cols: Math.max(20, runtime.terminal.cols || 120),
-            rows: Math.max(10, runtime.terminal.rows || 30),
-          });
-        }
-      } catch {
-        // Ignore fit race while host layout is transitioning.
-      }
-    });
-  }, []);
-
-  React.useEffect(() => {
-    const scheduleFitRefresh = (): void => {
-      requestAnimationFrame(() => {
-        fitAllTerminalPanes();
-        requestAnimationFrame(() => {
-          fitAllTerminalPanes();
-        });
-      });
-    };
-
-    const wrapperElement = wrapperRef.current;
-    const resizeObserver = wrapperElement ? new ResizeObserver(scheduleFitRefresh) : null;
-    if (wrapperElement && resizeObserver) {
-      resizeObserver.observe(wrapperElement);
-    }
-
-    window.addEventListener('resize', scheduleFitRefresh);
-    scheduleFitRefresh();
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', scheduleFitRefresh);
-    };
-  }, [fitAllTerminalPanes, terminalPaneIds]);
+    terminalInitOptionsRef,
+    paneContainerMapRef,
+    mirrorPaneRuntimeMapRef,
+    primaryTerminalRef,
+    selectionPointerClientXRef,
+    activePaneIdRef,
+    socketRef,
+    resolvedTerminalTargetRef,
+    sshConnectionTimeoutSecRef,
+    scheduleFitAndResizeSyncRef,
+    wrapperRef,
+    setActivePane,
+    refreshSelectionAnchor,
+    handleAutocompleteTerminalKeyDownRef,
+    applyAutocompleteInputData,
+    closeAutocompleteRef,
+    scheduleAutocompleteRequestRef,
+    handleCompletionResponse,
+    requestHostFingerprintTrust,
+    resolveTerminalTarget,
+    notifyWarning,
+  });
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 overflow-hidden rounded-[18px] p-1';
-  const sidebarCardStyle = 'bg-ssh-card-bg w-full flex-1 rounded-[18px] p-1';
-  const cardHiddenArea =
-    'overflow-hidden hof:my-[-38px] hof:py-[42px] hof:z-20 hof:shadow-lg transition-all duration-300 ease-in-out';
-  const hiddenHeaderStyle = 'h-[34px] mt-[-38px]';
-
-  const commandButtonStyle =
-    '!justify-start overflow-hidden text-ellipsis text-start w-full whitespace-nowrap flex-shrink-0';
 
   const canSplitTerminal = terminalPaneIds.length < MAX_TERMINAL_PANES;
-
-  const renderTerminalPane = (paneId: string, isPrimaryPane: boolean): React.ReactNode => {
-    return (
-      <div className="h-full min-h-0 w-full min-w-0 overflow-hidden">
-        <TerminalContextMenu
-          hasSelection={activePaneIdRef.current === paneId && !!selectionAnchor?.selectionText}
-          isConnected={connectionState === 'connected'}
-          copyLabel={t('ssh.contextMenuCopy')}
-          pasteLabel={t('ssh.contextMenuPaste')}
-          searchOnlineLabel={t('ssh.contextMenuSearchOnline')}
-          findLabel={t('ssh.contextMenuFind')}
-          selectAllLabel={t('ssh.contextMenuSelectAll')}
-          clearTerminalLabel={t('ssh.contextMenuClearTerminal')}
-          splitTerminalLabel={t('ssh.contextMenuSplitTerminal')}
-          closeTerminalLabel={t('ssh.contextMenuCloseTerminal')}
-          canSplitTerminal={canSplitTerminal}
-          canCloseTerminal={terminalPaneIds.length > 1}
-          onCopy={() => {
-            setActivePane(paneId);
-            handleContextMenuCopy();
-          }}
-          onPaste={() => {
-            setActivePane(paneId);
-            handleContextMenuPaste();
-          }}
-          onSearchOnline={() => {
-            setActivePane(paneId);
-            handleContextMenuSearchOnline();
-          }}
-          onFind={() => {
-            setActivePane(paneId);
-            handleContextMenuFind();
-          }}
-          onSelectAll={() => {
-            setActivePane(paneId);
-            handleContextMenuSelectAll();
-          }}
-          onClearTerminal={() => {
-            setActivePane(paneId);
-            handleContextMenuClearTerminal();
-          }}
-          onSplitTerminal={() => {
-            setActivePane(paneId);
-            splitTerminalPane();
-          }}
-          onCloseTerminal={() => {
-            setActivePane(paneId);
-            closeTerminalPane(paneId);
-          }}
-        >
-          <div
-            ref={(element) => {
-              setPaneContainerElement(paneId, element);
-
-              if (!isPrimaryPane) {
-                return;
-              }
-
-              terminalContainerRef.current = element;
-            }}
-            className="h-full w-full p-2"
-            onMouseDown={() => setActivePane(paneId)}
-            onContextMenu={() => setActivePane(paneId)}
-          />
-        </TerminalContextMenu>
-      </div>
-    );
-  };
-
-  const renderTerminalPaneLayout = (): React.ReactNode => {
-    const paneCount = terminalPaneIds.length;
-    const pane1Id = terminalPaneIds[0] ?? 'pane-1';
-    const pane2Id = terminalPaneIds[1] ?? 'pane-2';
-    const pane3Id = terminalPaneIds[2] ?? 'pane-3';
-    const pane4Id = terminalPaneIds[3] ?? 'pane-4';
-
-    if (paneCount <= 2) {
-      return (
-        <div className="grid h-full min-h-0 w-full min-w-0 grid-cols-2">
-          <div className={classNames('min-h-0', paneCount === 1 ? 'col-span-2' : '')}>
-            {renderTerminalPane(pane1Id, true)}
-          </div>
-          <div
-            className={classNames('min-h-0 border-l border-ssh-terminal-split-divider', paneCount < 2 ? 'hidden' : '')}
-          >
-            {paneCount >= 2 ? renderTerminalPane(pane2Id, false) : null}
-          </div>
-        </div>
-      );
-    }
-
-    if (paneCount === 3) {
-      return (
-        <div className="grid h-full min-h-0 w-full min-w-0 grid-cols-3">
-          <div className="min-h-0">{renderTerminalPane(pane1Id, true)}</div>
-          <div className="min-h-0 border-l border-ssh-terminal-split-divider">{renderTerminalPane(pane2Id, false)}</div>
-          <div className="min-h-0 border-l border-ssh-terminal-split-divider">{renderTerminalPane(pane3Id, false)}</div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid h-full min-h-0 w-full min-w-0 grid-cols-[1fr_1fr_1fr]">
-        <div className="min-h-0">{renderTerminalPane(pane1Id, true)}</div>
-        <div className="min-h-0 border-l border-ssh-terminal-split-divider">{renderTerminalPane(pane2Id, false)}</div>
-        <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-ssh-terminal-split-divider">
-          <div className="min-h-0 flex-1">{renderTerminalPane(pane3Id, false)}</div>
-          <div className="min-h-0 flex-1 border-t border-ssh-terminal-split-divider">
-            {renderTerminalPane(pane4Id, false)}
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div
@@ -2637,7 +727,52 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       onDrop={handleWrapperDrop}
     >
       {/* SSH */}
-      <div className={classNames(cardStyle, 'min-w-0')}>{renderTerminalPaneLayout()}</div>
+      <div className={classNames(cardStyle, 'min-w-0')}>
+        <SSHTerminalPaneLayout
+          terminalPaneIds={terminalPaneIds}
+          activePaneId={activePaneIdRef.current}
+          hasSelection={!!selectionAnchor?.selectionText}
+          isConnected={connectionState === 'connected'}
+          canSplitTerminal={canSplitTerminal}
+          setPaneContainerElement={setPaneContainerElement}
+          setPrimaryPaneContainer={(element) => {
+            terminalContainerRef.current = element;
+          }}
+          onPaneActivate={setActivePane}
+          onCopy={(paneId) => {
+            setActivePane(paneId);
+            handleContextMenuCopy();
+          }}
+          onPaste={(paneId) => {
+            setActivePane(paneId);
+            handleContextMenuPaste();
+          }}
+          onSearchOnline={(paneId) => {
+            setActivePane(paneId);
+            handleContextMenuSearchOnline();
+          }}
+          onFind={(paneId) => {
+            setActivePane(paneId);
+            handleContextMenuFind();
+          }}
+          onSelectAll={(paneId) => {
+            setActivePane(paneId);
+            handleContextMenuSelectAll();
+          }}
+          onClearTerminal={(paneId) => {
+            setActivePane(paneId);
+            handleContextMenuClearTerminal();
+          }}
+          onSplitPane={(paneId) => {
+            setActivePane(paneId);
+            splitTerminalPane();
+          }}
+          onClosePane={(paneId) => {
+            setActivePane(paneId);
+            closeTerminalPane(paneId);
+          }}
+        />
+      </div>
 
       <TerminalAutocompleteMenu
         ref={autocompleteMenuRef}
@@ -2701,117 +836,11 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         />
       ) : null}
 
-      {/* Sidebar */}
-      <div className="flex w-[300px] min-w-[300px] shrink-0 flex-col items-center justify-between gap-2.5 overflow-auto">
-        {/* Usage */}
-        <div
-          className={classNames(
-            sidebarCardStyle,
-            'flex flex-shrink-0 flex-grow-0 items-center justify-between gap-2 px-3 py-2',
-          )}
-        >
-          {/* CPU */}
-          <div className="flex flex-grow items-center gap-1">
-            <Cpu size={14} />
-            <span className="text-sm">{formatCpuPercent(telemetryState.cpuUsagePercent)}</span>
-          </div>
-
-          {/* Memory */}
-          <div className="flex flex-grow items-center gap-1">
-            <MemoryStick size={14} />
-            <span className="text-sm">
-              {formatMemoryUsage(telemetryState.memoryUsedBytes, telemetryState.memoryTotalBytes)}
-            </span>
-          </div>
-
-          {/* Transit */}
-          <div className="flex flex-grow items-center gap-1">
-            <ArrowUpDown size={14} />
-            <span className="text-sm">
-              {formatTrafficRate(telemetryState.networkTxBytesPerSec)}/
-              {formatTrafficRate(telemetryState.networkRxBytesPerSec)}
-            </span>
-          </div>
-        </div>
-
-        {/* Recent commands */}
-        <div className={classNames(sidebarCardStyle, cardHiddenArea)}>
-          <div className={classNames(hiddenHeaderStyle, 'flex flex-shrink-0 items-center justify-between')}>
-            <Button>{t('ssh.historyCommandsTitle')}</Button>
-            <div className="flex">
-              <Button
-                aria-label="Search"
-                variant="icon"
-              >
-                <Search size={16} />
-              </Button>
-            </div>
-          </div>
-          <div className="flex h-[178px] flex-col overflow-auto">
-            {telemetryState.recentCommands.length === 0 ? (
-              <div className="text-muted-text flex h-full items-center justify-center text-xs">
-                {t('ssh.historyCommandsEmpty')}
-              </div>
-            ) : (
-              [...telemetryState.recentCommands].reverse().map((command, index) => (
-                <div
-                  key={`${command}-${index}`}
-                  className="group relative"
-                >
-                  <Button
-                    className={classNames(commandButtonStyle, 'min-w-0 flex-1')}
-                    title={command}
-                    onClick={() => handleInsertRecentCommand(command)}
-                  >
-                    <span className="block w-full truncate pr-8">{command}</span>
-                  </Button>
-                  <button
-                    aria-label={t('ssh.historyDeleteLabel')}
-                    title={t('ssh.historyDeleteLabel')}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleDeleteRecentCommand(command);
-                    }}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Files */}
-        <div className={sidebarCardStyle}>
-          <span>1</span>
-        </div>
-
-        {/* Shortcuts */}
-        <div className={sidebarCardStyle}>
-          <span>1</span>
-        </div>
-
-        {/* Ask AI */}
-        <div className={classNames(sidebarCardStyle, 'flex-grow-0')}>
-          <div className="flex h-full w-full items-center justify-center">
-            <Button
-              variant="icon"
-              aria-label="Ask AI"
-            >
-              <Sparkles size={16} />
-            </Button>
-            <Input placeholder="Ask AI Anything..." />
-            <Button
-              variant="icon"
-              aria-label="Send"
-            >
-              <Send size={16} />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <SSHSidebar
+        telemetryState={telemetryState}
+        onInsertRecentCommand={handleInsertRecentCommand}
+        onDeleteRecentCommand={handleDeleteRecentCommand}
+      />
 
       {connectionState !== 'connected' ? (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-between bg-bg px-4 py-12">
