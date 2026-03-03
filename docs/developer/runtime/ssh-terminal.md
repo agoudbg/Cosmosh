@@ -209,6 +209,7 @@ Notes:
 - New split panes bootstrap with a recent terminal buffer snapshot before their own stream starts, for immediate context continuity.
 - Closing a pane only affects renderer layout state; backend session lifecycle remains unchanged until the page-level session closes.
 - Closing a pane disposes only that pane’s session/socket; the remaining panes continue running.
+- Completion popup anchoring is resolved against the currently active pane container, and primary-pane ref updates must not overwrite active mirror-pane geometry after rerenders.
 
 ## 7. Developer Debug Checklist
 

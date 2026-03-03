@@ -736,7 +736,9 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
           canSplitTerminal={canSplitTerminal}
           setPaneContainerElement={setPaneContainerElement}
           setPrimaryPaneContainer={(element) => {
-            terminalContainerRef.current = element;
+            if (activePaneIdRef.current === primaryPaneIdRef.current) {
+              terminalContainerRef.current = element;
+            }
           }}
           onPaneActivate={setActivePane}
           onCopy={(paneId) => {
