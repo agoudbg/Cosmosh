@@ -41,17 +41,14 @@ flowchart TB
 | `backend:ssh-close-session` | `invoke` | `sessionId: string` | `Promise<{ success: boolean }>` | DELETE SSH session |
 | `backend:ssh-delete-server` | `invoke` | `serverId: string` | `Promise<{ success: boolean }>` | DELETE SSH server |
 | `backend:ssh-delete-folder` | `invoke` | `folderId: string` | `Promise<{ success: boolean }>` | DELETE SSH folder |
-| `backend:local-terminal-list-profiles` | `invoke` | none | `Promise<LocalTerminalListResponse \| ApiErrorResponse>` | GET local terminal profile list |
-| `backend:local-terminal-create-session` | `invoke` | `payload: LocalTerminalCreateSessionRequest` | `Promise<LocalTerminalCreateSessionResponse \| ApiErrorResponse>` | POST 本地终端会话（Main 可能注入一次性 `cwd` 上下文） |
+| `backend:local-terminal-list-profiles` | `invoke` | none | `Promise<ApiLocalTerminalListProfilesResponse \| ApiErrorResponse>` | GET local terminal profile list |
+| `backend:local-terminal-create-session` | `invoke` | `payload: ApiLocalTerminalCreateSessionRequest` | `Promise<ApiLocalTerminalCreateSessionResponse \| ApiErrorResponse>` | POST 本地终端会话（Main 可能注入一次性 `cwd` 上下文） |
 | `backend:local-terminal-close-session` | `invoke` | `sessionId: string` | `Promise<{ success: boolean }>` | DELETE local terminal session |
 
 ## 3. Schema 来源
 
-- API payload 类型来自 `@cosmosh/api-contract` 包。
-- 本地终端 request/response schema 当前定义在：
-  - `packages/main/src/preload.ts`
-  - `packages/renderer/src/vite-env.d.ts`
-  - `packages/renderer/src/lib/api/transport.ts`
+- API payload 类型来自 `@cosmosh/api-contract`，并由 `packages/api-contract/openapi/cosmosh.openapi.yaml` 生成。
+- Backend、Main IPC 代理与 renderer HTTP 调用端必须通过 `@cosmosh/api-contract` 中生成的 `API_PATHS` 及相关合同导出访问 API，不允许硬编码路由字符串。
 
 ## 3.1 终端 WebSocket 契约（Renderer ↔ Backend）
 

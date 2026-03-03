@@ -214,6 +214,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/local-terminals/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List local terminal profiles available on host. */
+        get: operations["localTerminalListProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/local-terminals/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a live local terminal session. */
+        post: operations["localTerminalCreateSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/local-terminals/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Close a live local terminal session. */
+        delete: operations["localTerminalCloseSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -428,6 +479,46 @@ export interface components {
         SshTrustFingerprintData: {
             /** @enum {boolean} */
             trusted: true;
+        };
+        LocalTerminalProfile: {
+            id: string;
+            name: string;
+            command: string;
+            executablePath: string;
+            args: string[];
+        };
+        LocalTerminalProfileListData: {
+            items: components["schemas"]["LocalTerminalProfile"][];
+        };
+        LocalTerminalSessionCreateRequest: {
+            profileId: string;
+            /** @default 120 */
+            cols: number;
+            /** @default 32 */
+            rows: number;
+            /** @default xterm-256color */
+            term: string;
+            cwd?: string;
+        };
+        LocalTerminalSessionCreateData: {
+            sessionId: string;
+            profileId: string;
+            websocketUrl: string;
+            websocketToken: string;
+        };
+        LocalTerminalProfileListSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "LOCAL_TERMINAL_LIST_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["LocalTerminalProfileListData"];
+        };
+        LocalTerminalSessionCreateSuccess: components["schemas"]["ApiMeta"] & {
+            /** @enum {string} */
+            code: "LOCAL_TERMINAL_SESSION_CREATE_OK";
+            /** @enum {boolean} */
+            success: true;
+            data: components["schemas"]["LocalTerminalSessionCreateData"];
         };
         SettingsGetSuccess: components["schemas"]["ApiMeta"] & {
             /** @enum {string} */
@@ -1304,6 +1395,130 @@ export interface operations {
                 };
             };
             /** @description Server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    localTerminalListProfiles: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Local terminal profiles listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTerminalProfileListSuccess"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    localTerminalCreateSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalTerminalSessionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Local terminal session is ready for websocket streaming. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTerminalSessionCreateSuccess"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Profile not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    localTerminalCloseSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cosmosh-locale"?: components["parameters"]["LocaleHeader"];
+            };
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session closed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Session not found. */
             404: {
                 headers: {
                     [name: string]: unknown;

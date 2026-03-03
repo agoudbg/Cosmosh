@@ -575,6 +575,94 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/local-terminals/profiles:
+    get:
+      tags:
+        - local-terminal
+      summary: List local terminal profiles available on host.
+      operationId: localTerminalListProfiles
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      responses:
+        "200":
+          description: Local terminal profiles listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalTerminalProfileListSuccess"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/local-terminals/sessions:
+    post:
+      tags:
+        - local-terminal
+      summary: Create a live local terminal session.
+      operationId: localTerminalCreateSession
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocalTerminalSessionCreateRequest"
+      responses:
+        "200":
+          description: Local terminal session is ready for websocket streaming.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalTerminalSessionCreateSuccess"
+        "400":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Profile not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/local-terminals/sessions/{sessionId}:
+    delete:
+      tags:
+        - local-terminal
+      summary: Close a live local terminal session.
+      operationId: localTerminalCloseSession
+      parameters:
+        - $ref: "#/components/parameters/LocaleHeader"
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Session closed.
+        "404":
+          description: Session not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   securitySchemes:
     CosmoshInternalToken:
@@ -1118,6 +1206,111 @@ components:
         trusted:
           type: boolean
           enum: [true]
+    LocalTerminalProfile:
+      type: object
+      required:
+        - id
+        - name
+        - command
+        - executablePath
+        - args
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        command:
+          type: string
+        executablePath:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+    LocalTerminalProfileListData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocalTerminalProfile"
+    LocalTerminalSessionCreateRequest:
+      type: object
+      required:
+        - profileId
+      properties:
+        profileId:
+          type: string
+        cols:
+          type: integer
+          minimum: 20
+          maximum: 400
+          default: 120
+        rows:
+          type: integer
+          minimum: 10
+          maximum: 200
+          default: 32
+        term:
+          type: string
+          minLength: 2
+          maxLength: 64
+          default: xterm-256color
+        cwd:
+          type: string
+          minLength: 1
+    LocalTerminalSessionCreateData:
+      type: object
+      required:
+        - sessionId
+        - profileId
+        - websocketUrl
+        - websocketToken
+      properties:
+        sessionId:
+          type: string
+        profileId:
+          type: string
+        websocketUrl:
+          type: string
+        websocketToken:
+          type: string
+    LocalTerminalProfileListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["LOCAL_TERMINAL_LIST_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/LocalTerminalProfileListData"
+    LocalTerminalSessionCreateSuccess:
+      allOf:
+        - $ref: "#/components/schemas/ApiMeta"
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ["LOCAL_TERMINAL_SESSION_CREATE_OK"]
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: "#/components/schemas/LocalTerminalSessionCreateData"
     SettingsGetSuccess:
       allOf:
         - $ref: "#/components/schemas/ApiMeta"

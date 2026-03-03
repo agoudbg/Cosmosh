@@ -82,6 +82,11 @@ No implementation PR is considered complete if required docs are stale.
   - Renderer for UI logic only.
 - Avoid heavy UI frameworks; use Radix primitives wrapped by Cosmosh internal Tailwind components to guarantee pixel-perfect precision.
 
+### 2.4 API Contract Source of Truth
+- All backend HTTP route paths, main-process backend proxy paths, and renderer HTTP paths must use `API_PATHS` from `@cosmosh/api-contract`.
+- API request/response payload types must use generated exports from `@cosmosh/api-contract`; do not hand-write duplicate schema types in `main`, `preload`, or `renderer`.
+- When adding or changing any API endpoint, update `packages/api-contract/openapi/cosmosh.openapi.yaml` first, then regenerate `@cosmosh/api-contract` before wiring implementation code.
+
 ## 3. Aesthetic Constraints
 
 - Visual language must follow `docs/ui-ux-standards.md` exactly.

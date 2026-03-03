@@ -1,5 +1,8 @@
 import type {
   ApiErrorResponse,
+  ApiLocalTerminalCreateSessionRequest,
+  ApiLocalTerminalCreateSessionResponse,
+  ApiLocalTerminalListProfilesResponse,
   ApiSettingsGetResponse,
   ApiSettingsUpdateRequest,
   ApiSettingsUpdateResponse,
@@ -25,45 +28,9 @@ import type {
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 
-type LocalTerminalProfile = {
-  id: string;
-  name: string;
-  command: string;
-  executablePath: string;
-  args: string[];
-};
-
-type LocalTerminalListResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    items: LocalTerminalProfile[];
-  };
-};
-
-type LocalTerminalCreateSessionRequest = {
-  profileId: string;
-  cols: number;
-  rows: number;
-  term: string;
-};
-
-type LocalTerminalCreateSessionResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    sessionId: string;
-    profileId: string;
-    websocketUrl: string;
-    websocketToken: string;
-  };
-};
+type LocalTerminalListResponse = ApiLocalTerminalListProfilesResponse;
+type LocalTerminalCreateSessionRequest = ApiLocalTerminalCreateSessionRequest;
+type LocalTerminalCreateSessionResponse = ApiLocalTerminalCreateSessionResponse;
 
 declare global {
   interface ImportMetaEnv {

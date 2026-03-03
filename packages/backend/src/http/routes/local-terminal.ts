@@ -1,47 +1,43 @@
-import { API_CODES, createApiSuccess } from '@cosmosh/api-contract';
+import {
+  API_CODES,
+  API_PATHS,
+  type ApiLocalTerminalCreateSessionRequest,
+  type ApiLocalTerminalCreateSessionResponse,
+  type ApiLocalTerminalListProfilesResponse,
+  createApiSuccess,
+} from '@cosmosh/api-contract';
 
 import { buildErrorPayload } from '../errors.js';
 import type { BackendHttpApp } from '../i18n.js';
 import { getTranslator, translateValidationMessage } from '../i18n.js';
 import type { BackendAppContext } from '../types.js';
 
-const LOCAL_TERMINAL_LIST_PATH = '/api/v1/local-terminals/profiles';
-const LOCAL_TERMINAL_CREATE_SESSION_PATH = '/api/v1/local-terminals/sessions';
-const LOCAL_TERMINAL_CLOSE_SESSION_PATH = '/api/v1/local-terminals/sessions/{sessionId}';
-
 /**
  * Registers local terminal profile and session management routes.
  */
 export const registerLocalTerminalRoutes = (app: BackendHttpApp, context: BackendAppContext): void => {
-  app.get(LOCAL_TERMINAL_LIST_PATH, async (c) => {
+  app.get(API_PATHS.localTerminalListProfiles, async (c) => {
     const t = getTranslator(c);
     const items = await context.localTerminalSessionService.listProfiles();
 
-    return c.json(
-      createApiSuccess({
-        code: 'LOCAL_TERMINAL_LIST_OK',
-        message: t('success.localTerminal.profilesFetched'),
-        data: {
-          items,
-        },
-      }),
-    );
+    const payload: ApiLocalTerminalListProfilesResponse = createApiSuccess({
+      code: API_CODES.localTerminalListOk,
+      message: t('success.localTerminal.profilesFetched'),
+      data: {
+        items,
+      },
+    });
+
+    return c.json(payload);
   });
 
-  app.post(LOCAL_TERMINAL_CREATE_SESSION_PATH, async (c) => {
+  app.post(API_PATHS.localTerminalCreateSession, async (c) => {
     const t = getTranslator(c);
 
     // Parse loosely typed body first, then normalize/validate each field explicitly.
     const payload = (await c.req.json().catch(() => undefined)) as
-      | {
-          profileId?: unknown;
-          cols?: unknown;
-          rows?: unknown;
-          term?: unknown;
-          cwd?: unknown;
-        }
+      | Partial<ApiLocalTerminalCreateSessionRequest>
       | undefined;
-
     const profileId = typeof payload?.profileId === 'string' ? payload.profileId.trim() : '';
     const cols = typeof payload?.cols === 'number' ? payload.cols : Number(payload?.cols ?? 120);
     const rows = typeof payload?.rows === 'number' ? payload.rows : Number(payload?.rows ?? 32);
@@ -87,21 +83,21 @@ export const registerLocalTerminalRoutes = (app: BackendHttpApp, context: Backen
       );
     }
 
-    return c.json(
-      createApiSuccess({
-        code: 'LOCAL_TERMINAL_SESSION_CREATE_OK',
-        message: t('success.localTerminal.sessionCreated'),
-        data: {
-          sessionId: result.sessionId,
-          profileId: result.profileId,
-          websocketUrl: result.websocketUrl,
-          websocketToken: result.websocketToken,
-        },
-      }),
-    );
+    const successPayload: ApiLocalTerminalCreateSessionResponse = createApiSuccess({
+      code: API_CODES.localTerminalSessionCreateOk,
+      message: t('success.localTerminal.sessionCreated'),
+      data: {
+        sessionId: result.sessionId,
+        profileId: result.profileId,
+        websocketUrl: result.websocketUrl,
+        websocketToken: result.websocketToken,
+      },
+    });
+
+    return c.json(successPayload);
   });
 
-  app.delete(LOCAL_TERMINAL_CLOSE_SESSION_PATH.replace('{sessionId}', ':sessionId'), async (c) => {
+  app.delete(API_PATHS.localTerminalCloseSession.replace('{sessionId}', ':sessionId'), async (c) => {
     const t = getTranslator(c);
     const sessionId = c.req.param('sessionId');
     if (!sessionId || !context.localTerminalSessionService.closeSession(sessionId)) {

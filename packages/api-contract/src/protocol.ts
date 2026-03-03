@@ -22,6 +22,9 @@ export const API_PATHS = {
   sshCreateSession: '/api/v1/ssh/sessions',
   sshCloseSession: '/api/v1/ssh/sessions/{sessionId}',
   sshTrustFingerprint: '/api/v1/ssh/trusted-host-keys',
+  localTerminalListProfiles: '/api/v1/local-terminals/profiles',
+  localTerminalCreateSession: '/api/v1/local-terminals/sessions',
+  localTerminalCloseSession: '/api/v1/local-terminals/sessions/{sessionId}',
 } as const;
 
 export const API_HEADERS = {
@@ -40,6 +43,8 @@ export const API_CODES = {
   sshHostUntrusted: 'SSH_HOST_UNTRUSTED',
   sshSessionNotFound: 'SSH_SESSION_NOT_FOUND',
   testPingOk: 'TEST_PING_OK',
+  localTerminalListOk: 'LOCAL_TERMINAL_LIST_OK',
+  localTerminalSessionCreateOk: 'LOCAL_TERMINAL_SESSION_CREATE_OK',
   settingsGetOk: 'SETTINGS_GET_OK',
   settingsUpdateOk: 'SETTINGS_UPDATE_OK',
   sshServerListOk: 'SSH_SERVER_LIST_OK',

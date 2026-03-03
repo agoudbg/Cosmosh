@@ -1,5 +1,9 @@
 import type {
   ApiErrorResponse,
+  ApiLocalTerminalCreateSessionRequest,
+  ApiLocalTerminalCreateSessionResponse,
+  ApiLocalTerminalListProfilesResponse,
+  ApiLocalTerminalProfile,
   ApiSettingsGetResponse,
   ApiSettingsUpdateRequest,
   ApiSettingsUpdateResponse,
@@ -28,45 +32,10 @@ import { API_HEADERS, API_PATHS } from '@cosmosh/api-contract';
 
 type RuntimeTarget = 'electron' | 'browser';
 
-export type LocalTerminalProfile = {
-  id: string;
-  name: string;
-  command: string;
-  executablePath: string;
-  args: string[];
-};
-
-export type LocalTerminalListResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    items: LocalTerminalProfile[];
-  };
-};
-
-export type LocalTerminalCreateSessionRequest = {
-  profileId: string;
-  cols: number;
-  rows: number;
-  term: string;
-};
-
-export type LocalTerminalCreateSessionResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    sessionId: string;
-    profileId: string;
-    websocketUrl: string;
-    websocketToken: string;
-  };
-};
+export type LocalTerminalProfile = ApiLocalTerminalProfile;
+export type LocalTerminalListResponse = ApiLocalTerminalListProfilesResponse;
+export type LocalTerminalCreateSessionRequest = ApiLocalTerminalCreateSessionRequest;
+export type LocalTerminalCreateSessionResponse = ApiLocalTerminalCreateSessionResponse;
 
 type ApiResponse =
   | ApiErrorResponse
@@ -85,8 +54,8 @@ type ApiResponse =
   | ApiSshCreateSessionResponse
   | ApiSshCreateSessionHostVerificationRequiredResponse
   | ApiSshTrustFingerprintResponse
-  | LocalTerminalListResponse
-  | LocalTerminalCreateSessionResponse;
+  | ApiLocalTerminalListProfilesResponse
+  | ApiLocalTerminalCreateSessionResponse;
 
 export type ApiTransport = {
   target: RuntimeTarget;

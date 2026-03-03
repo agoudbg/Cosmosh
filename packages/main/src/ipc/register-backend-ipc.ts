@@ -1,5 +1,8 @@
 import type {
   ApiErrorResponse,
+  ApiLocalTerminalCreateSessionRequest,
+  ApiLocalTerminalCreateSessionResponse,
+  ApiLocalTerminalListProfilesResponse,
   ApiSettingsGetResponse,
   ApiSettingsUpdateRequest,
   ApiSettingsUpdateResponse,
@@ -26,59 +29,6 @@ import type {
 } from '@cosmosh/api-contract';
 import { API_HEADERS, API_PATHS } from '@cosmosh/api-contract';
 import { ipcMain } from 'electron';
-
-/**
- * Local terminal profile metadata returned by backend runtime.
- */
-export type LocalTerminalProfile = {
-  id: string;
-  name: string;
-  command: string;
-  executablePath: string;
-  args: string[];
-};
-
-/**
- * Local terminal profile listing response envelope.
- */
-export type LocalTerminalListResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    items: LocalTerminalProfile[];
-  };
-};
-
-/**
- * Local terminal create-session request payload.
- */
-export type LocalTerminalCreateSessionRequest = {
-  profileId: string;
-  cols: number;
-  rows: number;
-  term: string;
-  cwd?: string;
-};
-
-/**
- * Local terminal create-session response envelope.
- */
-export type LocalTerminalCreateSessionResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    sessionId: string;
-    profileId: string;
-    websocketUrl: string;
-    websocketToken: string;
-  };
-};
 
 /**
  * Runtime dependencies required by backend IPC registration.
@@ -128,9 +78,8 @@ const requestBackendDeleteSuccess = async (
  * Registers all backend-related IPC handlers (settings/SSH/local terminal).
  */
 export const registerBackendIpcHandlers = (options: RegisterBackendIpcHandlersOptions): void => {
-  // Settings + SSH channels share API_PATHS contract from api-contract package.
+  // Settings, SSH, and local terminal channels share API_PATHS contract from api-contract package.
   registerBackendSshAndSettingsHandlers(options);
-  // Local terminal channels use dedicated backend routes under /api/v1/local-terminals.
   registerBackendLocalTerminalHandlers(options);
 };
 
@@ -306,8 +255,8 @@ const registerBackendSshAndSettingsHandlers = (options: RegisterBackendIpcHandle
 const registerBackendLocalTerminalHandlers = (options: RegisterBackendIpcHandlersOptions): void => {
   ipcMain.handle(
     'backend:local-terminal-list-profiles',
-    async (): Promise<LocalTerminalListResponse | ApiErrorResponse> => {
-      return options.requestBackend<LocalTerminalListResponse>('/api/v1/local-terminals/profiles', {
+    async (): Promise<ApiLocalTerminalListProfilesResponse | ApiErrorResponse> => {
+      return options.requestBackend<ApiLocalTerminalListProfilesResponse>(API_PATHS.localTerminalListProfiles, {
         method: 'GET',
       });
     },
@@ -317,10 +266,10 @@ const registerBackendLocalTerminalHandlers = (options: RegisterBackendIpcHandler
     'backend:local-terminal-create-session',
     async (
       _event,
-      payload: LocalTerminalCreateSessionRequest,
-    ): Promise<LocalTerminalCreateSessionResponse | ApiErrorResponse> => {
+      payload: ApiLocalTerminalCreateSessionRequest,
+    ): Promise<ApiLocalTerminalCreateSessionResponse | ApiErrorResponse> => {
       const launchWorkingDirectory = options.consumePendingLaunchWorkingDirectory();
-      return options.requestBackend<LocalTerminalCreateSessionResponse>('/api/v1/local-terminals/sessions', {
+      return options.requestBackend<ApiLocalTerminalCreateSessionResponse>(API_PATHS.localTerminalCreateSession, {
         method: 'POST',
         body: {
           ...payload,
@@ -333,7 +282,7 @@ const registerBackendLocalTerminalHandlers = (options: RegisterBackendIpcHandler
   ipcMain.handle(
     'backend:local-terminal-close-session',
     async (_event, sessionId: string): Promise<{ success: boolean }> => {
-      const path = `/api/v1/local-terminals/sessions/${encodeURIComponent(sessionId)}`;
+      const path = API_PATHS.localTerminalCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));
       return requestBackendDeleteSuccess(options, path);
     },
   );

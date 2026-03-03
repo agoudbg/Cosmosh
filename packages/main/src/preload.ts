@@ -1,5 +1,8 @@
 import type {
   ApiErrorResponse,
+  ApiLocalTerminalCreateSessionRequest,
+  ApiLocalTerminalCreateSessionResponse,
+  ApiLocalTerminalListProfilesResponse,
   ApiSettingsGetResponse,
   ApiSettingsUpdateRequest,
   ApiSettingsUpdateResponse,
@@ -25,49 +28,6 @@ import type {
   ApiTestPingResponse,
 } from '@cosmosh/api-contract';
 import { contextBridge, ipcRenderer } from 'electron';
-
-/**
- * Runtime shape for local terminal presets returned by backend.
- */
-type LocalTerminalProfile = {
-  id: string;
-  name: string;
-  command: string;
-  executablePath: string;
-  args: string[];
-};
-
-type LocalTerminalListResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    items: LocalTerminalProfile[];
-  };
-};
-
-type LocalTerminalCreateSessionRequest = {
-  profileId: string;
-  cols: number;
-  rows: number;
-  term: string;
-};
-
-type LocalTerminalCreateSessionResponse = {
-  success: true;
-  code: string;
-  message: string;
-  requestId: string;
-  timestamp: string;
-  data: {
-    sessionId: string;
-    profileId: string;
-    websocketUrl: string;
-    websocketToken: string;
-  };
-};
 
 /**
  * Exposes a minimal, allow-listed bridge API to renderer.
@@ -214,12 +174,12 @@ contextBridge.exposeInMainWorld('electron', {
   // Local terminal IPC proxy group.
   backendLocalTerminalListProfiles: () => {
     return ipcRenderer.invoke('backend:local-terminal-list-profiles') as Promise<
-      LocalTerminalListResponse | ApiErrorResponse
+      ApiLocalTerminalListProfilesResponse | ApiErrorResponse
     >;
   },
-  backendLocalTerminalCreateSession: (payload: LocalTerminalCreateSessionRequest) => {
+  backendLocalTerminalCreateSession: (payload: ApiLocalTerminalCreateSessionRequest) => {
     return ipcRenderer.invoke('backend:local-terminal-create-session', payload) as Promise<
-      LocalTerminalCreateSessionResponse | ApiErrorResponse
+      ApiLocalTerminalCreateSessionResponse | ApiErrorResponse
     >;
   },
   backendLocalTerminalCloseSession: (sessionId: string) => {

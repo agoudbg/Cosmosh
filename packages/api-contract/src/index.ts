@@ -105,3 +105,12 @@ export type ApiSshTrustFingerprintRequest =
 export type ApiSshTrustFingerprintResponse =
 	paths['/api/v1/ssh/trusted-host-keys']['post']['responses']['200']['content']['application/json'];
 export type ApiSshCloseSessionRequest = paths['/api/v1/ssh/sessions/{sessionId}']['delete']['parameters']['path'];
+export type ApiLocalTerminalProfile = components['schemas']['LocalTerminalProfile'];
+export type ApiLocalTerminalListProfilesResponse =
+	paths['/api/v1/local-terminals/profiles']['get']['responses']['200']['content']['application/json'];
+export type ApiLocalTerminalCreateSessionRequest =
+	paths['/api/v1/local-terminals/sessions']['post']['requestBody']['content']['application/json'];
+export type ApiLocalTerminalCreateSessionResponse =
+	paths['/api/v1/local-terminals/sessions']['post']['responses']['200']['content']['application/json'];
+export type ApiLocalTerminalCloseSessionRequest =
+	paths['/api/v1/local-terminals/sessions/{sessionId}']['delete']['parameters']['path'];
