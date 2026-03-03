@@ -71,6 +71,7 @@ No implementation PR is considered complete if required docs are stale.
 ### 2.2 Comprehensive Commenting (Mandatory)
 - **Language:** All comments in the codebase MUST be in English.
 - **JSDoc Everywhere:** All exported functions, classes, interfaces, and complex types must have complete JSDoc blocks explaining the purpose, parameters, return types, and any edge cases.
+- **Function-Level JSDoc (Strict):** In practice, treat JSDoc as required for almost every function (including internal helpers/callbacks that contain non-trivial logic). Include explicit `@param` entries for each parameter and `@returns` for the returned value (or `void` semantics) to keep intent and contracts searchable.
 - **Explain the "Why":** Comments should explain the intent, business logic, and constraints (`Why`), not narrate the syntax (`What`).
 - **Block-level Summaries:** For complex algorithms, multi-step processes, or specific logical chunks, provide a clear, high-level summary comment at the start of that code block detailing what the block achieves.
 

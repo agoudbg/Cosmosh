@@ -26,6 +26,10 @@
 ## 4. Coding Standards & Implementation
 
 - **Comments**: All code comments **MUST** be in English.
+- **JSDoc Coverage**:
+	- Treat JSDoc as mandatory for almost every function (including internal helpers with meaningful logic).
+	- Every JSDoc block should include explicit `@param` entries and `@returns` details.
+	- Prefer documenting intent/constraints and edge-case behavior, not only syntax.
 - **Theme Management**:
 - Use CSS Variables for all colors, spacing, and radiuses to support custom themes.
 - Tailwind should be extended in `tailwind.config.js` to map these CSS variables.
