@@ -75,6 +75,12 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - Split panes must reuse the current live terminal session stream when technically feasible; avoid opening redundant backend sessions by default.
 - Pane close action should be available on each pane context menu while keeping at least one visible pane.
 
+## 7.2 Tab Reorder Runtime Continuity
+
+- Dragging/reordering tabs should affect strip order only; it must not remount/recreate page runtimes.
+- Runtime-heavy pages (for example SSH/xterm sessions) must preserve in-memory session state when tab order changes.
+- Reorder state updates should be id-based and must preserve the latest tab objects from state instead of writing stale drag snapshots back.
+
 ## 8. Compliance Checklist
 
 Before merging UI changes:

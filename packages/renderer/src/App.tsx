@@ -213,6 +213,31 @@ const App: React.FC = () => {
   } = useTabs({
     onLastTabClose: handleLastTabClose,
   });
+  const tabsById = React.useMemo(() => {
+    return new Map(tabs.map((tab) => [tab.id, tab] as const));
+  }, [tabs]);
+  const [contentTabOrder, setContentTabOrder] = React.useState<string[]>(() => tabs.map((tab) => tab.id));
+
+  React.useEffect(() => {
+    setContentTabOrder((previousOrder) => {
+      const liveTabIds = new Set(tabs.map((tab) => tab.id));
+      const nextOrder = previousOrder.filter((tabId) => liveTabIds.has(tabId));
+      const nextOrderSet = new Set(nextOrder);
+
+      for (const tab of tabs) {
+        if (nextOrderSet.has(tab.id)) {
+          continue;
+        }
+
+        nextOrder.push(tab.id);
+        nextOrderSet.add(tab.id);
+      }
+
+      const isSameOrder =
+        nextOrder.length === previousOrder.length && nextOrder.every((tabId, index) => tabId === previousOrder[index]);
+      return isSameOrder ? previousOrder : nextOrder;
+    });
+  }, [tabs]);
 
   const handleOpenLocalTerminalList = React.useCallback(() => {
     requestOpenLocalTerminalList();
@@ -282,89 +307,96 @@ const App: React.FC = () => {
   const tabContent = React.useMemo(() => {
     return (
       <div className="flex min-h-0 w-full flex-1 p-2 pt-0">
-        {tabs.map((tab) => (
-          <section
-            key={tab.id}
-            className={classNames('h-full min-h-0 w-full overflow-auto', tab.id === activeTabId ? 'block' : 'hidden')}
-          >
-            {tab.page === 'home' && (
-              <Home
-                isActive={tab.id === activeTabId}
-                onOpenSSH={(serverId, tabTitle, options) => {
-                  setActiveSshServerId(serverId);
-                  if (options?.openInNewTab) {
-                    const newTabId = addTab('ssh');
-                    if (tabTitle) {
-                      updateTab(newTabId, { title: tabTitle });
-                    }
-                    return;
-                  }
+        {contentTabOrder.map((tabId) => {
+          const tab = tabsById.get(tabId);
+          if (!tab) {
+            return null;
+          }
 
-                  openPageInTab(tab.id, 'ssh');
-                  if (tabTitle) {
-                    updateTab(tab.id, { title: tabTitle });
+          return (
+            <section
+              key={tab.id}
+              className={classNames('h-full min-h-0 w-full overflow-auto', tab.id === activeTabId ? 'block' : 'hidden')}
+            >
+              {tab.page === 'home' && (
+                <Home
+                  isActive={tab.id === activeTabId}
+                  onOpenSSH={(serverId, tabTitle, options) => {
+                    setActiveSshServerId(serverId);
+                    if (options?.openInNewTab) {
+                      const newTabId = addTab('ssh');
+                      if (tabTitle) {
+                        updateTab(newTabId, { title: tabTitle });
+                      }
+                      return;
+                    }
+
+                    openPageInTab(tab.id, 'ssh');
+                    if (tabTitle) {
+                      updateTab(tab.id, { title: tabTitle });
+                    }
+                  }}
+                  onOpenSshEditor={(serverId) => {
+                    const trimmedServerId = serverId.trim();
+                    if (trimmedServerId.length === 0) {
+                      requestSshEditorCreateMode();
+                    }
+                    setActiveSshServerId(trimmedServerId);
+                    openPageInTab(tab.id, 'ssh-editor');
+                  }}
+                />
+              )}
+              {tab.page === 'ssh' && (
+                <SSH
+                  onTabTitleChange={(title) => {
+                    updateTab(tab.id, { title });
+                  }}
+                />
+              )}
+              {tab.page === 'ssh-editor' && <SSHEditor />}
+              {tab.page === 'settings' && (
+                <Settings
+                  initialCategoryId={tab.state?.settingsCategory}
+                  onOpenSettingInEditor={(settingKey) =>
+                    addTab('settings-editor', {
+                      state: {
+                        settingsEditorSettingKey: settingKey,
+                      },
+                    })
                   }
-                }}
-                onOpenSshEditor={(serverId) => {
-                  const trimmedServerId = serverId.trim();
-                  if (trimmedServerId.length === 0) {
-                    requestSshEditorCreateMode();
+                />
+              )}
+              {tab.page === 'settings-editor' && (
+                <SettingsEditor initialSettingKey={tab.state?.settingsEditorSettingKey} />
+              )}
+              {tab.page === 'components-field' && <ComponentsField />}
+              {tab.page === 'debug' && (
+                <Debug
+                  activeTabTitle={tab.title}
+                  activeTabIcon={tab.iconKey}
+                  onOpenSSH={(openInNewTab) => (openInNewTab ? addTab('ssh') : openPageInTab(tab.id, 'ssh'))}
+                  onOpenSettings={(openInNewTab) =>
+                    openInNewTab ? addTab('settings') : openPageInTab(tab.id, 'settings')
                   }
-                  setActiveSshServerId(trimmedServerId);
-                  openPageInTab(tab.id, 'ssh-editor');
-                }}
-              />
-            )}
-            {tab.page === 'ssh' && (
-              <SSH
-                onTabTitleChange={(title) => {
-                  updateTab(tab.id, { title });
-                }}
-              />
-            )}
-            {tab.page === 'ssh-editor' && <SSHEditor />}
-            {tab.page === 'settings' && (
-              <Settings
-                initialCategoryId={tab.state?.settingsCategory}
-                onOpenSettingInEditor={(settingKey) =>
-                  addTab('settings-editor', {
-                    state: {
-                      settingsEditorSettingKey: settingKey,
-                    },
-                  })
-                }
-              />
-            )}
-            {tab.page === 'settings-editor' && (
-              <SettingsEditor initialSettingKey={tab.state?.settingsEditorSettingKey} />
-            )}
-            {tab.page === 'components-field' && <ComponentsField />}
-            {tab.page === 'debug' && (
-              <Debug
-                activeTabTitle={tab.title}
-                activeTabIcon={tab.iconKey}
-                onOpenSSH={(openInNewTab) => (openInNewTab ? addTab('ssh') : openPageInTab(tab.id, 'ssh'))}
-                onOpenSettings={(openInNewTab) =>
-                  openInNewTab ? addTab('settings') : openPageInTab(tab.id, 'settings')
-                }
-                onOpenSettingsEditor={(openInNewTab) =>
-                  openInNewTab ? addTab('settings-editor') : openPageInTab(tab.id, 'settings-editor')
-                }
-                onOpenComponentsField={(openInNewTab) =>
-                  openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')
-                }
-                onOpenSshEditor={(openInNewTab) =>
-                  openInNewTab ? addTab('ssh-editor') : openPageInTab(tab.id, 'ssh-editor')
-                }
-                onRenameTab={(title) => updateTab(tab.id, { title })}
-                onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
-              />
-            )}
-          </section>
-        ))}
+                  onOpenSettingsEditor={(openInNewTab) =>
+                    openInNewTab ? addTab('settings-editor') : openPageInTab(tab.id, 'settings-editor')
+                  }
+                  onOpenComponentsField={(openInNewTab) =>
+                    openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')
+                  }
+                  onOpenSshEditor={(openInNewTab) =>
+                    openInNewTab ? addTab('ssh-editor') : openPageInTab(tab.id, 'ssh-editor')
+                  }
+                  onRenameTab={(title) => updateTab(tab.id, { title })}
+                  onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
+                />
+              )}
+            </section>
+          );
+        })}
       </div>
     );
-  }, [activeTabId, addTab, openPageInTab, tabs, updateTab]);
+  }, [activeTabId, addTab, contentTabOrder, openPageInTab, tabsById, updateTab]);
 
   return (
     <AppToastProvider>

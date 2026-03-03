@@ -174,8 +174,41 @@ export const useTabs = (options?: UseTabsOptions) => {
     });
   }, []);
 
+  /**
+   * Reorders tabs by id while preserving the latest tab objects from state.
+   *
+   * Using incoming tab snapshots directly can overwrite newer tab updates
+   * (for example title/state updates that happen during drag).
+   *
+   * @param nextTabs Incoming tab order from drag-and-drop.
+   * @returns Nothing.
+   */
   const reorderTabs = React.useCallback((nextTabs: TabItem[]) => {
-    setTabs(nextTabs);
+    setTabs((currentTabs) => {
+      if (nextTabs.length !== currentTabs.length) {
+        return currentTabs;
+      }
+
+      const currentTabsById = new Map(currentTabs.map((tab) => [tab.id, tab] as const));
+      const reorderedTabs: TabItem[] = [];
+
+      for (const nextTab of nextTabs) {
+        const currentTab = currentTabsById.get(nextTab.id);
+        if (!currentTab) {
+          return currentTabs;
+        }
+
+        reorderedTabs.push(currentTab);
+        currentTabsById.delete(nextTab.id);
+      }
+
+      if (currentTabsById.size > 0) {
+        return currentTabs;
+      }
+
+      const hasOrderChanged = reorderedTabs.some((tab, index) => tab.id !== currentTabs[index]?.id);
+      return hasOrderChanged ? reorderedTabs : currentTabs;
+    });
   }, []);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
