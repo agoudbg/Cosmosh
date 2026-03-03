@@ -289,6 +289,31 @@ const INTERNAL_TERMINAL_TEXT_DRAG_MIME = 'application/x-cosmosh-terminal-text';
 const AUTOCOMPLETE_PANEL_ESTIMATED_WIDTH = 520;
 const AUTOCOMPLETE_PANEL_EDGE_PADDING = 8;
 const AUTOCOMPLETE_TYPING_DEBOUNCE_MS = 180;
+const MAX_TERMINAL_PANES = 4;
+
+type MirrorPaneRuntime = {
+  terminal: Terminal;
+  fitAddon: FitAddon;
+  containerElement: HTMLDivElement;
+  socket: WebSocket | null;
+  sessionId: string | null;
+  sessionType: 'ssh-server' | 'local-terminal' | null;
+  dispose: () => void;
+};
+
+const snapshotTerminalBuffer = (terminal: Terminal, maxLines = 2000): string => {
+  const activeBuffer = terminal.buffer.active;
+  const totalLines = activeBuffer.baseY + activeBuffer.cursorY + 1;
+  const startLine = Math.max(0, totalLines - maxLines);
+  const lines: string[] = [];
+
+  for (let index = startLine; index < totalLines; index += 1) {
+    const line = activeBuffer.getLine(index);
+    lines.push(line ? line.translateToString(true) : '');
+  }
+
+  return lines.join('\r\n');
+};
 
 const COMMAND_START_TOKENS = ['> ', '$ ', '# ', '❯ ', '➜ ', 'λ '];
 
@@ -494,8 +519,16 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const onTabTitleChangeRef = React.useRef<SSHProps['onTabTitleChange']>(onTabTitleChange);
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const terminalContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const primaryPaneIdRef = React.useRef<string>('pane-1');
+  const activePaneIdRef = React.useRef<string>('pane-1');
+  const paneContainerMapRef = React.useRef<Map<string, HTMLDivElement>>(new Map());
+  const mirrorPaneRuntimeMapRef = React.useRef<Map<string, MirrorPaneRuntime>>(new Map());
+  const paneIdSequenceRef = React.useRef<number>(1);
   const selectionPointerClientXRef = React.useRef<number | null>(null);
+  const primaryTerminalRef = React.useRef<Terminal | null>(null);
   const terminalRef = React.useRef<Terminal | null>(null);
+  const primarySocketRef = React.useRef<WebSocket | null>(null);
+  const resolvedTerminalTargetRef = React.useRef<ResolvedTerminalTarget | null>(null);
   const socketRef = React.useRef<WebSocket | null>(null);
   const scheduleFitAndResizeSyncRef = React.useRef<(() => void) | null>(null);
   const selectionBarRef = React.useRef<HTMLDivElement | null>(null);
@@ -505,10 +538,12 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const autocompleteRequestTimeoutRef = React.useRef<number | null>(null);
   const latestAutocompleteRequestKeyRef = React.useRef<string>('');
   const latestAutocompleteRequestIdRef = React.useRef<string>('');
+  const latestAutocompletePaneIdRef = React.useRef<string>('pane-1');
   const autocompleteReplacePrefixLengthRef = React.useRef<number>(0);
   const latestAutocompleteCommandStartColumnRef = React.useRef<number>(0);
   const latestAutocompleteCursorRowRef = React.useRef<number>(0);
   const autocompleteMenuRef = React.useRef<TerminalAutocompleteMenuHandle | null>(null);
+  const [terminalPaneIds, setTerminalPaneIds] = React.useState<string[]>(['pane-1']);
   const [connectionState, setConnectionState] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [connectionError, setConnectionError] = React.useState<string>('');
   const [telemetryState, setTelemetryState] = React.useState<SshTelemetryState>(DEFAULT_TELEMETRY_STATE);
@@ -611,6 +646,74 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   React.useEffect(() => {
     onTabTitleChangeRef.current = onTabTitleChange;
   }, [onTabTitleChange]);
+
+  React.useEffect(() => {
+    const nextPrimaryPaneId = terminalPaneIds[0] ?? 'pane-1';
+    primaryPaneIdRef.current = nextPrimaryPaneId;
+
+    if (!terminalPaneIds.includes(activePaneIdRef.current)) {
+      activePaneIdRef.current = nextPrimaryPaneId;
+      terminalRef.current =
+        nextPrimaryPaneId === primaryPaneIdRef.current
+          ? primaryTerminalRef.current
+          : (mirrorPaneRuntimeMapRef.current.get(nextPrimaryPaneId)?.terminal ?? terminalRef.current);
+      terminalContainerRef.current = paneContainerMapRef.current.get(nextPrimaryPaneId) ?? terminalContainerRef.current;
+    }
+  }, [terminalPaneIds]);
+
+  const setPaneContainerElement = React.useCallback((paneId: string, element: HTMLDivElement | null) => {
+    const existingElement = paneContainerMapRef.current.get(paneId) ?? null;
+
+    if (element) {
+      if (existingElement === element) {
+        return;
+      }
+
+      paneContainerMapRef.current.set(paneId, element);
+      return;
+    }
+
+    if (!existingElement) {
+      return;
+    }
+
+    paneContainerMapRef.current.delete(paneId);
+  }, []);
+
+  const splitTerminalPane = React.useCallback(() => {
+    setTerminalPaneIds((previous) => {
+      if (previous.length >= MAX_TERMINAL_PANES) {
+        return previous;
+      }
+
+      paneIdSequenceRef.current += 1;
+      return [...previous, `pane-${paneIdSequenceRef.current}`];
+    });
+  }, []);
+
+  const closeTerminalPane = React.useCallback((paneId: string) => {
+    setTerminalPaneIds((previous) => {
+      if (previous.length <= 1) {
+        return previous;
+      }
+
+      const index = previous.indexOf(paneId);
+      if (index < 0) {
+        return previous;
+      }
+
+      const next = previous.filter((item) => item !== paneId);
+      if (next.length === 0) {
+        return previous;
+      }
+
+      if (activePaneIdRef.current === paneId) {
+        activePaneIdRef.current = next[Math.max(0, index - 1)] ?? next[0] ?? primaryPaneIdRef.current;
+      }
+
+      return next;
+    });
+  }, []);
 
   const clearScheduledAutocompleteRequest = React.useCallback(() => {
     if (autocompleteRequestTimeoutRef.current !== null) {
@@ -757,6 +860,39 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       pointerClientX: selectionPointerClientXRef.current,
     });
   }, [resolveSelectionBounds]);
+
+  const setActivePane = React.useCallback(
+    (paneId: string) => {
+      const didPaneChange = activePaneIdRef.current !== paneId;
+      activePaneIdRef.current = paneId;
+
+      const isPrimaryPane = paneId === primaryPaneIdRef.current;
+      const nextTerminal = isPrimaryPane
+        ? primaryTerminalRef.current
+        : (mirrorPaneRuntimeMapRef.current.get(paneId)?.terminal ?? null);
+      const nextContainer = paneContainerMapRef.current.get(paneId) ?? null;
+      const nextSocket = isPrimaryPane
+        ? primarySocketRef.current
+        : (mirrorPaneRuntimeMapRef.current.get(paneId)?.socket ?? null);
+
+      if (nextTerminal) {
+        terminalRef.current = nextTerminal;
+      }
+
+      if (nextContainer) {
+        terminalContainerRef.current = nextContainer;
+      }
+
+      socketRef.current = nextSocket;
+
+      if (didPaneChange) {
+        closeAutocompleteRef.current();
+      }
+
+      refreshSelectionAnchor();
+    },
+    [refreshSelectionAnchor],
+  );
 
   React.useEffect(() => {
     terminalInitOptionsRef.current = terminalInitOptions;
@@ -1088,8 +1224,14 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
 
   const requestAutocomplete = React.useCallback(
     (trigger: 'typing' | 'manual') => {
-      const socket = socketRef.current;
-      const terminal = terminalRef.current;
+      const activePaneId = activePaneIdRef.current;
+      const isPrimaryPane = activePaneId === primaryPaneIdRef.current;
+      const socket = isPrimaryPane
+        ? primarySocketRef.current
+        : (mirrorPaneRuntimeMapRef.current.get(activePaneId)?.socket ?? null);
+      const terminal = isPrimaryPane
+        ? primaryTerminalRef.current
+        : (mirrorPaneRuntimeMapRef.current.get(activePaneId)?.terminal ?? null);
 
       if (
         !terminalAutoCompleteEnabled ||
@@ -1130,6 +1272,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
 
       const requestId = `cmp-${Date.now()}-${(autocompleteRequestSequenceRef.current += 1)}`;
       latestAutocompleteRequestIdRef.current = requestId;
+      latestAutocompletePaneIdRef.current = activePaneId;
 
       sendClientMessage(socket, {
         type: 'completion-request',
@@ -1382,6 +1525,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     }
 
     terminal.open(containerElement);
+    primaryTerminalRef.current = terminal;
     terminalRef.current = terminal;
     let disposed = false;
     let retryFitFrameId: number | null = null;
@@ -1538,6 +1682,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         }
 
         if (payload.type === 'completion-response') {
+          if (latestAutocompletePaneIdRef.current !== primaryPaneIdRef.current) {
+            return;
+          }
+
           if (payload.requestId !== latestAutocompleteRequestIdRef.current) {
             return;
           }
@@ -1578,6 +1726,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         if (disposed) {
           return;
         }
+        resolvedTerminalTargetRef.current = target;
 
         if (target.type === 'ssh-server') {
           onTabTitleChangeRef.current?.(target.server.name.trim() || t('tabs.page.ssh'));
@@ -1607,7 +1756,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
           websocketUrl.searchParams.set('token', createResult.data.websocketToken);
 
           socket = new WebSocket(websocketUrl.toString());
-          socketRef.current = socket;
+          primarySocketRef.current = socket;
+          if (activePaneIdRef.current === primaryPaneIdRef.current) {
+            socketRef.current = socket;
+          }
           socket.addEventListener('message', handleSocketMessage);
 
           socket.addEventListener('open', () => {
@@ -1621,7 +1773,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
           });
 
           socket.addEventListener('close', () => {
-            socketRef.current = null;
+            primarySocketRef.current = null;
+            if (activePaneIdRef.current === primaryPaneIdRef.current) {
+              socketRef.current = null;
+            }
             if (disposed) {
               return;
             }
@@ -1631,7 +1786,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
           });
 
           socket.addEventListener('error', () => {
-            socketRef.current = null;
+            primarySocketRef.current = null;
+            if (activePaneIdRef.current === primaryPaneIdRef.current) {
+              socketRef.current = null;
+            }
             if (disposed) {
               return;
             }
@@ -1718,7 +1876,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         }
 
         socket = new WebSocket(websocketUrl.toString());
-        socketRef.current = socket;
+        primarySocketRef.current = socket;
+        if (activePaneIdRef.current === primaryPaneIdRef.current) {
+          socketRef.current = socket;
+        }
         socket.addEventListener('message', handleSocketMessage);
 
         socket.addEventListener('open', () => {
@@ -1732,7 +1893,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         });
 
         socket.addEventListener('close', () => {
-          socketRef.current = null;
+          primarySocketRef.current = null;
+          if (activePaneIdRef.current === primaryPaneIdRef.current) {
+            socketRef.current = null;
+          }
           if (disposed) {
             return;
           }
@@ -1743,7 +1907,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         });
 
         socket.addEventListener('error', () => {
-          socketRef.current = null;
+          primarySocketRef.current = null;
+          if (activePaneIdRef.current === primaryPaneIdRef.current) {
+            socketRef.current = null;
+          }
           if (disposed) {
             return;
           }
@@ -1765,6 +1932,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     containerElement.addEventListener('pointerup', trackPointerPosition);
     containerElement.addEventListener('mouseup', trackPointerPosition);
     const disposeTerminalInput = terminal.onData((data) => {
+      if (activePaneIdRef.current !== primaryPaneIdRef.current) {
+        setActivePane(primaryPaneIdRef.current);
+      }
+
       if (disposed) {
         return;
       }
@@ -1833,7 +2004,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
         // Ignore websocket close race conditions.
       }
 
-      socketRef.current = null;
+      primarySocketRef.current = null;
+      if (activePaneIdRef.current === primaryPaneIdRef.current) {
+        socketRef.current = null;
+      }
 
       if (sessionId) {
         if (sessionType === 'local-terminal') {
@@ -1845,6 +2019,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
 
       connectSessionRef.current = null;
       scheduleFitAndResizeSyncRef.current = null;
+      primaryTerminalRef.current = null;
       terminalRef.current = null;
       selectionPointerClientXRef.current = null;
       setSelectionAnchor(null);
@@ -1860,10 +2035,474 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       disposeResize();
       terminal.dispose();
     };
-  }, [applyAutocompleteInputData, requestHostFingerprintTrust, refreshSelectionAnchor]);
+  }, [applyAutocompleteInputData, requestHostFingerprintTrust, refreshSelectionAnchor, setActivePane]);
+
+  React.useEffect(() => {
+    if (connectionState !== 'connected') {
+      return;
+    }
+
+    const desiredMirrorPaneIds = terminalPaneIds.slice(1);
+
+    mirrorPaneRuntimeMapRef.current.forEach((runtime, paneId) => {
+      if (desiredMirrorPaneIds.includes(paneId)) {
+        return;
+      }
+
+      runtime.dispose();
+      mirrorPaneRuntimeMapRef.current.delete(paneId);
+    });
+
+    desiredMirrorPaneIds.forEach((paneId) => {
+      const containerElement = paneContainerMapRef.current.get(paneId);
+      if (!containerElement) {
+        return;
+      }
+
+      const existingRuntime = mirrorPaneRuntimeMapRef.current.get(paneId);
+      if (existingRuntime) {
+        if (existingRuntime.containerElement === containerElement) {
+          return;
+        }
+
+        existingRuntime.dispose();
+        mirrorPaneRuntimeMapRef.current.delete(paneId);
+      }
+
+      const terminal = new Terminal(terminalInitOptionsRef.current);
+      const fitAddon = new FitAddon();
+      terminal.loadAddon(fitAddon);
+      terminal.open(containerElement);
+
+      const runtime: MirrorPaneRuntime = {
+        terminal,
+        fitAddon,
+        containerElement,
+        socket: null,
+        sessionId: null,
+        sessionType: null,
+        dispose: () => undefined,
+      };
+      mirrorPaneRuntimeMapRef.current.set(paneId, runtime);
+
+      try {
+        fitAddon.fit();
+      } catch {
+        // Ignore fit race during layout transitions.
+      }
+
+      const primaryTerminal = primaryTerminalRef.current;
+      if (primaryTerminal) {
+        const snapshot = snapshotTerminalBuffer(primaryTerminal);
+        if (snapshot.length > 0) {
+          terminal.write(snapshot);
+        }
+      }
+
+      const trackPointerPosition = (event: MouseEvent | PointerEvent): void => {
+        selectionPointerClientXRef.current = event.clientX;
+      };
+
+      const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {
+        handleAutocompleteTerminalKeyDownRef.current(event);
+      };
+
+      const handleSetActivePane = (): void => {
+        setActivePane(paneId);
+      };
+
+      const disposeTerminalInput = terminal.onData((data) => {
+        if (activePaneIdRef.current !== paneId) {
+          setActivePane(paneId);
+        }
+
+        const autocompleteInputState = applyAutocompleteInputData(data);
+        if (autocompleteInputState.shouldClose) {
+          closeAutocompleteRef.current();
+        }
+
+        if (autocompleteInputState.shouldRequest) {
+          scheduleAutocompleteRequestRef.current('typing');
+        }
+
+        const socket = runtime.socket;
+        if (socket) {
+          sendClientMessage(socket, {
+            type: 'input',
+            data,
+          });
+        }
+      });
+
+      const disposeSelectionChange = terminal.onSelectionChange(() => {
+        if (activePaneIdRef.current === paneId) {
+          refreshSelectionAnchor();
+        }
+      });
+      const disposeSelectionScroll = terminal.onScroll(() => {
+        if (activePaneIdRef.current === paneId) {
+          refreshSelectionAnchor();
+        }
+      });
+      const disposeSelectionRender = terminal.onRender(() => {
+        if (!terminal.hasSelection()) {
+          return;
+        }
+
+        if (activePaneIdRef.current === paneId) {
+          refreshSelectionAnchor();
+        }
+      });
+
+      containerElement.addEventListener('pointerup', trackPointerPosition);
+      containerElement.addEventListener('mouseup', trackPointerPosition);
+      containerElement.addEventListener('keydown', handleAutocompleteKeyDown, true);
+      containerElement.addEventListener('mousedown', handleSetActivePane, true);
+      containerElement.addEventListener('contextmenu', handleSetActivePane, true);
+
+      const connectPaneSession = async (): Promise<void> => {
+        try {
+          const target = resolvedTerminalTargetRef.current ?? (await resolveTerminalTarget());
+          resolvedTerminalTargetRef.current = target;
+          const sessionCols = Math.max(20, terminal.cols || 120);
+          const sessionRows = Math.max(10, terminal.rows || 30);
+
+          if (target.type === 'local-terminal') {
+            terminal.options.windowsPty = { backend: 'conpty' };
+            terminal.options.reflowCursorLine = false;
+
+            const createResult = await createLocalTerminalSession({
+              profileId: target.profileId,
+              cols: sessionCols,
+              rows: sessionRows,
+              term: 'xterm-256color',
+            });
+
+            runtime.sessionType = 'local-terminal';
+            runtime.sessionId = createResult.data.sessionId;
+
+            const websocketUrl = new URL(createResult.data.websocketUrl);
+            websocketUrl.searchParams.set('token', createResult.data.websocketToken);
+            const socket = new WebSocket(websocketUrl.toString());
+            runtime.socket = socket;
+
+            socket.addEventListener('message', (event) => {
+              try {
+                const payload = JSON.parse(event.data) as ServerInboundMessage;
+                if (payload.type === 'output') {
+                  terminal.write(payload.data);
+                  return;
+                }
+
+                if (payload.type === 'completion-response') {
+                  if (latestAutocompletePaneIdRef.current !== paneId) {
+                    return;
+                  }
+
+                  if (payload.requestId !== latestAutocompleteRequestIdRef.current) {
+                    return;
+                  }
+
+                  if (payload.items.length === 0) {
+                    closeAutocompleteRef.current();
+                    return;
+                  }
+
+                  const anchor = resolveAutocompleteAnchorRef.current(
+                    latestAutocompleteCommandStartColumnRef.current,
+                    latestAutocompleteCursorRowRef.current,
+                  );
+                  if (!anchor) {
+                    closeAutocompleteRef.current();
+                    return;
+                  }
+
+                  setAutocompleteItems(payload.items);
+                  autocompleteMenuRef.current?.reset();
+                  setAutocompleteAnchor(anchor);
+                  autocompleteReplacePrefixLengthRef.current = payload.replacePrefixLength;
+                }
+              } catch {
+                notifyWarning(t('ssh.websocketMalformedMessage'));
+              }
+            });
+
+            socket.addEventListener('open', () => {
+              if (activePaneIdRef.current === paneId) {
+                socketRef.current = socket;
+              }
+
+              try {
+                fitAddon.fit();
+              } catch {
+                // Ignore fit race after pane socket open.
+              }
+
+              sendClientMessage(socket, {
+                type: 'resize',
+                cols: Math.max(20, terminal.cols || 120),
+                rows: Math.max(10, terminal.rows || 30),
+              });
+            });
+
+            socket.addEventListener('close', () => {
+              runtime.socket = null;
+              if (activePaneIdRef.current === paneId) {
+                socketRef.current = null;
+              }
+            });
+
+            socket.addEventListener('error', () => {
+              runtime.socket = null;
+              notifyWarning(t('ssh.websocketTransportFailed'));
+              if (activePaneIdRef.current === paneId) {
+                socketRef.current = null;
+              }
+            });
+
+            return;
+          }
+
+          terminal.options.windowsPty = undefined;
+          terminal.options.reflowCursorLine = true;
+
+          let createResult = await createSshSession({
+            serverId: target.server.id,
+            cols: sessionCols,
+            rows: sessionRows,
+            term: 'xterm-256color',
+            connectTimeoutSec: sshConnectionTimeoutSecRef.current,
+          });
+
+          if (!createResult.success && createResult.code === 'SSH_HOST_UNTRUSTED') {
+            const confirmed = await requestHostFingerprintTrust({
+              serverId: createResult.data.serverId,
+              host: createResult.data.host,
+              port: createResult.data.port,
+              algorithm: createResult.data.algorithm,
+              fingerprint: createResult.data.fingerprint,
+            });
+
+            if (!confirmed) {
+              notifyWarning(t('ssh.hostFingerprintNotTrusted'));
+              return;
+            }
+
+            await trustSshFingerprint({
+              serverId: createResult.data.serverId,
+              fingerprintSha256: createResult.data.fingerprint,
+              algorithm: createResult.data.algorithm,
+            });
+
+            createResult = await createSshSession({
+              serverId: target.server.id,
+              cols: sessionCols,
+              rows: sessionRows,
+              term: 'xterm-256color',
+              connectTimeoutSec: sshConnectionTimeoutSecRef.current,
+            });
+          }
+
+          if (!createResult.success) {
+            notifyWarning(createResult.message);
+            return;
+          }
+
+          runtime.sessionType = 'ssh-server';
+          runtime.sessionId = createResult.data.sessionId;
+          const websocketUrl = new URL(createResult.data.websocketUrl);
+          websocketUrl.searchParams.set('token', createResult.data.websocketToken);
+          const socket = new WebSocket(websocketUrl.toString());
+          runtime.socket = socket;
+
+          socket.addEventListener('message', (event) => {
+            try {
+              const payload = JSON.parse(event.data) as ServerInboundMessage;
+              if (payload.type === 'output') {
+                terminal.write(payload.data);
+                return;
+              }
+
+              if (payload.type === 'completion-response') {
+                if (latestAutocompletePaneIdRef.current !== paneId) {
+                  return;
+                }
+
+                if (payload.requestId !== latestAutocompleteRequestIdRef.current) {
+                  return;
+                }
+
+                if (payload.items.length === 0) {
+                  closeAutocompleteRef.current();
+                  return;
+                }
+
+                const anchor = resolveAutocompleteAnchorRef.current(
+                  latestAutocompleteCommandStartColumnRef.current,
+                  latestAutocompleteCursorRowRef.current,
+                );
+                if (!anchor) {
+                  closeAutocompleteRef.current();
+                  return;
+                }
+
+                setAutocompleteItems(payload.items);
+                autocompleteMenuRef.current?.reset();
+                setAutocompleteAnchor(anchor);
+                autocompleteReplacePrefixLengthRef.current = payload.replacePrefixLength;
+              }
+            } catch {
+              notifyWarning(t('ssh.websocketMalformedMessage'));
+            }
+          });
+
+          socket.addEventListener('open', () => {
+            if (activePaneIdRef.current === paneId) {
+              socketRef.current = socket;
+            }
+
+            try {
+              fitAddon.fit();
+            } catch {
+              // Ignore fit race after pane socket open.
+            }
+
+            sendClientMessage(socket, {
+              type: 'resize',
+              cols: Math.max(20, terminal.cols || 120),
+              rows: Math.max(10, terminal.rows || 30),
+            });
+          });
+
+          socket.addEventListener('close', () => {
+            runtime.socket = null;
+            if (activePaneIdRef.current === paneId) {
+              socketRef.current = null;
+            }
+          });
+
+          socket.addEventListener('error', () => {
+            runtime.socket = null;
+            notifyWarning(t('ssh.websocketTransportFailed'));
+            if (activePaneIdRef.current === paneId) {
+              socketRef.current = null;
+            }
+          });
+        } catch (error: unknown) {
+          notifyWarning(error instanceof Error ? error.message : t('ssh.sessionInitFailed'));
+        }
+      };
+
+      void connectPaneSession();
+
+      runtime.dispose = () => {
+        if (runtime.socket && runtime.socket.readyState === WebSocket.OPEN) {
+          sendClientMessage(runtime.socket, { type: 'close' });
+          runtime.socket.close();
+        }
+
+        if (runtime.sessionId) {
+          if (runtime.sessionType === 'local-terminal') {
+            void closeLocalTerminalSession(runtime.sessionId).catch(() => undefined);
+          } else {
+            void closeSshSession(runtime.sessionId).catch(() => undefined);
+          }
+        }
+
+        runtime.socket = null;
+        runtime.sessionId = null;
+        runtime.sessionType = null;
+        disposeTerminalInput.dispose();
+        disposeSelectionChange.dispose();
+        disposeSelectionScroll.dispose();
+        disposeSelectionRender.dispose();
+        containerElement.removeEventListener('pointerup', trackPointerPosition);
+        containerElement.removeEventListener('mouseup', trackPointerPosition);
+        containerElement.removeEventListener('keydown', handleAutocompleteKeyDown, true);
+        containerElement.removeEventListener('mousedown', handleSetActivePane, true);
+        containerElement.removeEventListener('contextmenu', handleSetActivePane, true);
+        terminal.dispose();
+      };
+    });
+
+    mirrorPaneRuntimeMapRef.current.forEach((runtime) => {
+      applyTerminalRuntimeOptions(runtime.terminal, terminalInitOptionsRef.current);
+      try {
+        runtime.fitAddon.fit();
+      } catch {
+        // Ignore fit race while pane layout is transitioning.
+      }
+    });
+
+    scheduleFitAndResizeSyncRef.current?.();
+    setActivePane(activePaneIdRef.current);
+  }, [
+    applyAutocompleteInputData,
+    connectionState,
+    notifyWarning,
+    refreshSelectionAnchor,
+    requestHostFingerprintTrust,
+    setActivePane,
+    terminalPaneIds,
+  ]);
+
+  React.useEffect(() => {
+    const mirrorRuntimeMap = mirrorPaneRuntimeMapRef.current;
+
+    return () => {
+      mirrorRuntimeMap.forEach((runtime) => {
+        runtime.dispose();
+      });
+      mirrorRuntimeMap.clear();
+    };
+  }, []);
+
+  const fitAllTerminalPanes = React.useCallback(() => {
+    scheduleFitAndResizeSyncRef.current?.();
+
+    mirrorPaneRuntimeMapRef.current.forEach((runtime) => {
+      try {
+        runtime.fitAddon.fit();
+        if (runtime.socket && runtime.socket.readyState === WebSocket.OPEN) {
+          sendClientMessage(runtime.socket, {
+            type: 'resize',
+            cols: Math.max(20, runtime.terminal.cols || 120),
+            rows: Math.max(10, runtime.terminal.rows || 30),
+          });
+        }
+      } catch {
+        // Ignore fit race while host layout is transitioning.
+      }
+    });
+  }, []);
+
+  React.useEffect(() => {
+    const scheduleFitRefresh = (): void => {
+      requestAnimationFrame(() => {
+        fitAllTerminalPanes();
+        requestAnimationFrame(() => {
+          fitAllTerminalPanes();
+        });
+      });
+    };
+
+    const wrapperElement = wrapperRef.current;
+    const resizeObserver = wrapperElement ? new ResizeObserver(scheduleFitRefresh) : null;
+    if (wrapperElement && resizeObserver) {
+      resizeObserver.observe(wrapperElement);
+    }
+
+    window.addEventListener('resize', scheduleFitRefresh);
+    scheduleFitRefresh();
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', scheduleFitRefresh);
+    };
+  }, [fitAllTerminalPanes, terminalPaneIds]);
 
   // Card style
-  const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 rounded-[18px] p-1';
+  const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 overflow-hidden rounded-[18px] p-1';
   const sidebarCardStyle = 'bg-ssh-card-bg w-full flex-1 rounded-[18px] p-1';
   const cardHiddenArea =
     'overflow-hidden hof:my-[-38px] hof:py-[42px] hof:z-20 hof:shadow-lg transition-all duration-300 ease-in-out';
@@ -1871,6 +2510,122 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
 
   const commandButtonStyle =
     '!justify-start overflow-hidden text-ellipsis text-start w-full whitespace-nowrap flex-shrink-0';
+
+  const canSplitTerminal = terminalPaneIds.length < MAX_TERMINAL_PANES;
+
+  const renderTerminalPane = (paneId: string, isPrimaryPane: boolean): React.ReactNode => {
+    return (
+      <div className="h-full min-h-0 w-full min-w-0 overflow-hidden">
+        <TerminalContextMenu
+          hasSelection={activePaneIdRef.current === paneId && !!selectionAnchor?.selectionText}
+          isConnected={connectionState === 'connected'}
+          copyLabel={t('ssh.contextMenuCopy')}
+          pasteLabel={t('ssh.contextMenuPaste')}
+          searchOnlineLabel={t('ssh.contextMenuSearchOnline')}
+          findLabel={t('ssh.contextMenuFind')}
+          selectAllLabel={t('ssh.contextMenuSelectAll')}
+          clearTerminalLabel={t('ssh.contextMenuClearTerminal')}
+          splitTerminalLabel={t('ssh.contextMenuSplitTerminal')}
+          closeTerminalLabel={t('ssh.contextMenuCloseTerminal')}
+          canSplitTerminal={canSplitTerminal}
+          canCloseTerminal={terminalPaneIds.length > 1}
+          onCopy={() => {
+            setActivePane(paneId);
+            handleContextMenuCopy();
+          }}
+          onPaste={() => {
+            setActivePane(paneId);
+            handleContextMenuPaste();
+          }}
+          onSearchOnline={() => {
+            setActivePane(paneId);
+            handleContextMenuSearchOnline();
+          }}
+          onFind={() => {
+            setActivePane(paneId);
+            handleContextMenuFind();
+          }}
+          onSelectAll={() => {
+            setActivePane(paneId);
+            handleContextMenuSelectAll();
+          }}
+          onClearTerminal={() => {
+            setActivePane(paneId);
+            handleContextMenuClearTerminal();
+          }}
+          onSplitTerminal={() => {
+            setActivePane(paneId);
+            splitTerminalPane();
+          }}
+          onCloseTerminal={() => {
+            setActivePane(paneId);
+            closeTerminalPane(paneId);
+          }}
+        >
+          <div
+            ref={(element) => {
+              setPaneContainerElement(paneId, element);
+
+              if (!isPrimaryPane) {
+                return;
+              }
+
+              terminalContainerRef.current = element;
+            }}
+            className="h-full w-full p-2"
+            onMouseDown={() => setActivePane(paneId)}
+            onContextMenu={() => setActivePane(paneId)}
+          />
+        </TerminalContextMenu>
+      </div>
+    );
+  };
+
+  const renderTerminalPaneLayout = (): React.ReactNode => {
+    const paneCount = terminalPaneIds.length;
+    const pane1Id = terminalPaneIds[0] ?? 'pane-1';
+    const pane2Id = terminalPaneIds[1] ?? 'pane-2';
+    const pane3Id = terminalPaneIds[2] ?? 'pane-3';
+    const pane4Id = terminalPaneIds[3] ?? 'pane-4';
+
+    if (paneCount <= 2) {
+      return (
+        <div className="grid h-full min-h-0 w-full min-w-0 grid-cols-2">
+          <div className={classNames('min-h-0', paneCount === 1 ? 'col-span-2' : '')}>
+            {renderTerminalPane(pane1Id, true)}
+          </div>
+          <div
+            className={classNames('min-h-0 border-l border-ssh-terminal-split-divider', paneCount < 2 ? 'hidden' : '')}
+          >
+            {paneCount >= 2 ? renderTerminalPane(pane2Id, false) : null}
+          </div>
+        </div>
+      );
+    }
+
+    if (paneCount === 3) {
+      return (
+        <div className="grid h-full min-h-0 w-full min-w-0 grid-cols-3">
+          <div className="min-h-0">{renderTerminalPane(pane1Id, true)}</div>
+          <div className="min-h-0 border-l border-ssh-terminal-split-divider">{renderTerminalPane(pane2Id, false)}</div>
+          <div className="min-h-0 border-l border-ssh-terminal-split-divider">{renderTerminalPane(pane3Id, false)}</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid h-full min-h-0 w-full min-w-0 grid-cols-[1fr_1fr_1fr]">
+        <div className="min-h-0">{renderTerminalPane(pane1Id, true)}</div>
+        <div className="min-h-0 border-l border-ssh-terminal-split-divider">{renderTerminalPane(pane2Id, false)}</div>
+        <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-ssh-terminal-split-divider">
+          <div className="min-h-0 flex-1">{renderTerminalPane(pane3Id, false)}</div>
+          <div className="min-h-0 flex-1 border-t border-ssh-terminal-split-divider">
+            {renderTerminalPane(pane4Id, false)}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -1882,29 +2637,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       onDrop={handleWrapperDrop}
     >
       {/* SSH */}
-      <div className={classNames(cardStyle, 'min-w-0')}>
-        <TerminalContextMenu
-          hasSelection={!!selectionAnchor?.selectionText}
-          isConnected={connectionState === 'connected'}
-          copyLabel={t('ssh.contextMenuCopy')}
-          pasteLabel={t('ssh.contextMenuPaste')}
-          searchOnlineLabel={t('ssh.contextMenuSearchOnline')}
-          findLabel={t('ssh.contextMenuFind')}
-          selectAllLabel={t('ssh.contextMenuSelectAll')}
-          clearTerminalLabel={t('ssh.contextMenuClearTerminal')}
-          onCopy={handleContextMenuCopy}
-          onPaste={handleContextMenuPaste}
-          onSearchOnline={handleContextMenuSearchOnline}
-          onFind={handleContextMenuFind}
-          onSelectAll={handleContextMenuSelectAll}
-          onClearTerminal={handleContextMenuClearTerminal}
-        >
-          <div
-            ref={terminalContainerRef}
-            className="h-full w-full p-2"
-          />
-        </TerminalContextMenu>
-      </div>
+      <div className={classNames(cardStyle, 'min-w-0')}>{renderTerminalPaneLayout()}</div>
 
       <TerminalAutocompleteMenu
         ref={autocompleteMenuRef}

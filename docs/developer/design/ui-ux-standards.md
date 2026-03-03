@@ -66,6 +66,15 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - Provide tooltip labels for each icon action and keep labels localized through renderer i18n resources.
 - Non-implemented actions must use explicit "coming soon" feedback instead of silent no-op behavior.
 
+## 7.1 SSH Split-Pane Context Menu Standard
+
+- SSH terminal split/close actions are exposed only through the terminal context menu.
+- Split progression is intentionally constrained to a fixed dense layout sequence (1 → 2 → 3 → 4 panes) to keep power-user scanning rhythm predictable.
+- Pane separators must use tokenized divider colors with lighter contrast than card boundaries.
+- SSH split-pane separators should use the dedicated token `color.ssh.terminal.split.divider` (Tailwind: `border-ssh-terminal-split-divider`) instead of reusing generic home/card divider colors.
+- Split panes must reuse the current live terminal session stream when technically feasible; avoid opening redundant backend sessions by default.
+- Pane close action should be available on each pane context menu while keeping at least one visible pane.
+
 ## 8. Compliance Checklist
 
 Before merging UI changes:

@@ -196,6 +196,20 @@ Notes:
 - Optional numeric values (for example `cursorWidth`) are parsed defensively; invalid or empty input falls back to xterm defaults.
 - Existing `sshMaxRows` remains bound to xterm `scrollback`.
 
+## 6.2 Split-Pane Terminal Interaction Model
+
+- Renderer supports a constrained split progression in `SSH.tsx`:
+  1. single pane,
+  2. two side-by-side panes,
+  3. three side-by-side panes,
+  4. right-most pane split into two stacked panes.
+- Split action is exposed from the terminal context menu (`Split Terminal`), and close action is exposed as `Close Terminal`.
+- Maximum visible panes are capped at 4 in current implementation.
+- Each split pane creates its own backend terminal session against the same resolved target (same SSH server/local profile), so panes can run independent commands.
+- New split panes bootstrap with a recent terminal buffer snapshot before their own stream starts, for immediate context continuity.
+- Closing a pane only affects renderer layout state; backend session lifecycle remains unchanged until the page-level session closes.
+- Closing a pane disposes only that pane’s session/socket; the remaining panes continue running.
+
 ## 7. Developer Debug Checklist
 
 When SSH session behavior is wrong, verify in order:

@@ -45,7 +45,8 @@
   --color-home-icon-cyan: #183b45;
   --color-home-icon-cyan-ink: #b8f0ff;
   --color-ssh-card-bg: #191919;
-  --color-ssh-card-bg-terminal: #000000;
+  --color-ssh-card-bg-terminal: #0f0f0f;
+  --color-ssh-terminal-split-divider: #2a2a2a;
   --color-menu-control: #191919d9;
   --color-menu-control-hover: #292929cc;
   --color-menu-divider: #333333;
@@ -139,6 +140,7 @@
   --color-home-icon-cyan: #e4f3f7;
   --color-home-icon-cyan-ink: #2e7484;
   --color-ssh-card-bg: #ffffff;
+  --color-ssh-terminal-split-divider: #d9dde6;
   --color-accent: #0ea5e9;
   --color-accent-hover: #0284c7;
   --color-accent-glow: rgba(14, 165, 233, 0.35);
@@ -233,6 +235,7 @@
     --color-home-icon-cyan: #e4f3f7;
     --color-home-icon-cyan-ink: #2e7484;
     --color-ssh-card-bg: #ffffff;
+    --color-ssh-terminal-split-divider: #d9dde6;
     --color-accent: #0ea5e9;
     --color-accent-hover: #0284c7;
     --color-accent-glow: rgba(14, 165, 233, 0.35);

@@ -69,9 +69,14 @@ const base = {
       card: {
         bg: {
           DEFAULT: '#191919',
-          terminal: '#000000',
+          terminal: '#0f0f0f',
         }
-      }
+      },
+      terminal: {
+        split: {
+          divider: '#2a2a2a',
+        },
+      },
     },
     menu: {
       control: {
@@ -240,6 +245,11 @@ const light = {
       card: {
         bg: {
           DEFAULT: '#ffffff',
+        },
+      },
+      terminal: {
+        split: {
+          divider: '#d9dde6',
         },
       },
     },

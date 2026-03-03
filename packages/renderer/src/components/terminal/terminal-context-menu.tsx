@@ -26,6 +26,14 @@ type TerminalContextMenuProps = {
   selectAllLabel: string;
   /** Label for the "Clear Terminal" menu item. */
   clearTerminalLabel: string;
+  /** Label for the "Split Terminal" menu item. */
+  splitTerminalLabel?: string;
+  /** Label for the "Close Terminal" menu item. */
+  closeTerminalLabel?: string;
+  /** Whether split action is available for the current pane. */
+  canSplitTerminal?: boolean;
+  /** Whether close action is available for the current pane. */
+  canCloseTerminal?: boolean;
   onCopy: () => void;
   onPaste: () => void;
   onSearchOnline: () => void;
@@ -33,6 +41,8 @@ type TerminalContextMenuProps = {
   onFind: () => void;
   onSelectAll: () => void;
   onClearTerminal: () => void;
+  onSplitTerminal?: () => void;
+  onCloseTerminal?: () => void;
   children: React.ReactNode;
 };
 
@@ -45,12 +55,18 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
   findLabel,
   selectAllLabel,
   clearTerminalLabel,
+  splitTerminalLabel,
+  closeTerminalLabel,
+  canSplitTerminal = false,
+  canCloseTerminal = false,
   onCopy,
   onPaste,
   onSearchOnline,
   onFind,
   onSelectAll,
   onClearTerminal,
+  onSplitTerminal,
+  onCloseTerminal,
   children,
 }) => {
   const triggerHostRef = React.useRef<HTMLDivElement | null>(null);
@@ -181,6 +197,27 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
         >
           {clearTerminalLabel}
         </ContextMenuItem>
+
+        {splitTerminalLabel && onSplitTerminal ? (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              disabled={!isConnected || !canSplitTerminal}
+              onSelect={onSplitTerminal}
+            >
+              {splitTerminalLabel}
+            </ContextMenuItem>
+          </>
+        ) : null}
+
+        {closeTerminalLabel && onCloseTerminal ? (
+          <ContextMenuItem
+            disabled={!isConnected || !canCloseTerminal}
+            onSelect={onCloseTerminal}
+          >
+            {closeTerminalLabel}
+          </ContextMenuItem>
+        ) : null}
       </ContextMenuContent>
     </ContextMenu>
   );
