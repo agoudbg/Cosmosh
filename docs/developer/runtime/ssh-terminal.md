@@ -206,7 +206,7 @@ Notes:
 - Split action is exposed from the terminal context menu (`Split Terminal`), and close action is exposed as `Close Terminal`.
 - Maximum visible panes are capped at 4 in current implementation.
 - Each split pane creates its own backend terminal session against the same resolved target (same SSH server/local profile), so panes can run independent commands.
-- New split panes bootstrap with a recent terminal buffer snapshot before their own stream starts, for immediate context continuity.
+- New split panes start from an empty viewport and render only their own session stream to avoid stale buffer carry-over from other panes.
 - Closing a pane only affects renderer layout state; backend session lifecycle remains unchanged until the page-level session closes.
 - Closing a pane disposes only that pane’s session/socket; the remaining panes continue running.
 - Completion popup anchoring is resolved against the currently active pane container, and primary-pane ref updates must not overwrite active mirror-pane geometry after rerenders.

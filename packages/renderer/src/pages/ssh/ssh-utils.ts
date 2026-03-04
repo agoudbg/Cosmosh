@@ -95,27 +95,6 @@ export const sendClientMessage = (socket: WebSocket, payload: ClientOutboundMess
 };
 
 /**
- * Copies visible terminal buffer lines into plain text.
- *
- * @param terminal Source xterm instance.
- * @param maxLines Maximum lines to snapshot.
- * @returns Combined terminal buffer text.
- */
-export const snapshotTerminalBuffer = (terminal: Terminal, maxLines = 2000): string => {
-  const activeBuffer = terminal.buffer.active;
-  const totalLines = activeBuffer.baseY + activeBuffer.cursorY + 1;
-  const startLine = Math.max(0, totalLines - maxLines);
-  const lines: string[] = [];
-
-  for (let index = startLine; index < totalLines; index += 1) {
-    const line = activeBuffer.getLine(index);
-    lines.push(line ? line.translateToString(true) : '');
-  }
-
-  return lines.join('\r\n');
-};
-
-/**
  * Locates where user command starts in a shell prompt line.
  *
  * @param linePrefix Visible content before cursor on current line.

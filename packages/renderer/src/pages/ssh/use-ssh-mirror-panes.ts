@@ -6,7 +6,7 @@ import { closeLocalTerminalSession, closeSshSession } from '../../lib/backend';
 import { t } from '../../lib/i18n';
 import { openTerminalSessionSocket } from './ssh-session-connectors';
 import type { MirrorPaneRuntime, ResolvedTerminalTarget, ServerInboundMessage } from './ssh-types';
-import { applyTerminalRuntimeOptions, sendClientMessage, snapshotTerminalBuffer } from './ssh-utils';
+import { applyTerminalRuntimeOptions, sendClientMessage } from './ssh-utils';
 
 type UseSshMirrorPanesParams = {
   connectionState: 'connecting' | 'connected' | 'failed';
@@ -14,7 +14,6 @@ type UseSshMirrorPanesParams = {
   terminalInitOptionsRef: React.RefObject<ITerminalOptions>;
   paneContainerMapRef: React.RefObject<Map<string, HTMLDivElement>>;
   mirrorPaneRuntimeMapRef: React.RefObject<Map<string, MirrorPaneRuntime>>;
-  primaryTerminalRef: React.RefObject<Terminal | null>;
   selectionPointerClientXRef: React.RefObject<number | null>;
   activePaneIdRef: React.RefObject<string>;
   socketRef: React.RefObject<WebSocket | null>;
@@ -56,7 +55,6 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     terminalInitOptionsRef,
     paneContainerMapRef,
     mirrorPaneRuntimeMapRef,
-    primaryTerminalRef,
     selectionPointerClientXRef,
     activePaneIdRef,
     socketRef,
@@ -128,14 +126,6 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
         fitAddon.fit();
       } catch {
         // Ignore fit race during layout transitions.
-      }
-
-      const primaryTerminal = primaryTerminalRef.current;
-      if (primaryTerminal) {
-        const snapshot = snapshotTerminalBuffer(primaryTerminal);
-        if (snapshot.length > 0) {
-          terminal.write(snapshot);
-        }
       }
 
       const trackPointerPosition = (event: MouseEvent | PointerEvent): void => {
@@ -334,7 +324,6 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     handleCompletionResponse,
     mirrorPaneRuntimeMapRef,
     paneContainerMapRef,
-    primaryTerminalRef,
     refreshSelectionAnchor,
     requestHostFingerprintTrust,
     resolveTerminalTarget,

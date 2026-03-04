@@ -685,7 +685,6 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalInitOptionsRef,
     paneContainerMapRef,
     mirrorPaneRuntimeMapRef,
-    primaryTerminalRef,
     selectionPointerClientXRef,
     activePaneIdRef,
     socketRef,
