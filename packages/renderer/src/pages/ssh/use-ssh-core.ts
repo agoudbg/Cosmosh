@@ -28,19 +28,107 @@ export type SshConnectionState = 'connecting' | 'connected' | 'failed';
 /**
  * Runtime-only mutable resources that should not trigger React renders.
  */
-type SshRuntimeState = {
-  terminalContainer: HTMLDivElement | null;
-  activeTerminal: Terminal | null;
-  primaryTerminal: Terminal | null;
-  activeSocket: WebSocket | null;
-  primarySocket: WebSocket | null;
-  paneContainerMap: Map<string, HTMLDivElement>;
-  mirrorPaneRuntimeMap: Map<string, MirrorPaneRuntime>;
-  resolvedTarget: ResolvedTerminalTarget | null;
-  scheduleFitAndResizeSync: (() => void) | null;
-  connectSession: (() => void) | null;
-  selectionPointerClientX: number | null;
-  paneIdSequence: number;
+type PaneSessionRuntime = {
+  paneId: string;
+  isPrimary: boolean;
+  terminal: Terminal | null;
+  socket: WebSocket | null;
+  container: HTMLDivElement | null;
+};
+
+/**
+ * Runtime session coordinator for pane-level socket/terminal routing.
+ */
+class SshRuntimeCoordinator {
+  public primaryPaneId = 'pane-1';
+  public activePaneId = 'pane-1';
+  public paneIdSequence = 1;
+  public activeTerminal: Terminal | null = null;
+  public primaryTerminal: Terminal | null = null;
+  public activeSocket: WebSocket | null = null;
+  public primarySocket: WebSocket | null = null;
+  public activeContainer: HTMLDivElement | null = null;
+  public resolvedTarget: ResolvedTerminalTarget | null = null;
+  public scheduleFitAndResizeSync: (() => void) | null = null;
+  public connectSession: (() => void) | null = null;
+  public selectionPointerClientX: number | null = null;
+  public readonly paneContainerMap: Map<string, HTMLDivElement> = new Map();
+  public readonly mirrorPaneRuntimeMap: Map<string, MirrorPaneRuntime> = new Map();
+  public readonly sessionMap: Map<string, PaneSessionRuntime> = new Map();
+
+  /**
+   * Returns existing pane session entry or creates one lazily.
+   *
+   * @param paneId Logical pane identifier.
+   * @returns Mutable pane session runtime entry.
+   */
+  public ensureSession(paneId: string): PaneSessionRuntime {
+    const existing = this.sessionMap.get(paneId);
+    if (existing) {
+      return existing;
+    }
+
+    const created: PaneSessionRuntime = {
+      paneId,
+      isPrimary: paneId === this.primaryPaneId,
+      terminal: null,
+      socket: null,
+      container: null,
+    };
+    this.sessionMap.set(paneId, created);
+    return created;
+  }
+
+  /**
+   * Applies active pane routing to terminal/socket/container handles.
+   *
+   * @param paneId Pane id that should become active.
+   * @param terminalContainerRef Mutable active container ref used by view hooks.
+   * @returns Nothing.
+   */
+  public applyActivePane(paneId: string, terminalContainerRef: React.MutableRefObject<HTMLDivElement | null>): void {
+    this.activePaneId = paneId;
+    const session = this.ensureSession(paneId);
+
+    this.activeTerminal = session.terminal;
+    this.activeSocket = session.socket;
+    this.activeContainer = session.container;
+
+    if (session.container) {
+      terminalContainerRef.current = session.container;
+    }
+  }
+}
+
+/**
+ * Creates a stable mutable ref adapter over a runtime object field.
+ *
+ * @param runtimeRef Runtime container ref.
+ * @param getValue Getter for target field.
+ * @param setValue Setter for target field.
+ * @returns Mutable ref facade compatible with existing hooks.
+ */
+const useRuntimeFieldRef = <T>(
+  runtimeRef: React.MutableRefObject<SshRuntimeCoordinator>,
+  getValue: (runtime: SshRuntimeCoordinator) => T,
+  setValue: (runtime: SshRuntimeCoordinator, value: T) => void,
+): React.MutableRefObject<T> => {
+  const fieldRef = React.useRef<React.MutableRefObject<T> | null>(null);
+
+  if (!fieldRef.current) {
+    const refFacade: React.MutableRefObject<T> = {
+      get current(): T {
+        return getValue(runtimeRef.current);
+      },
+      set current(value: T) {
+        setValue(runtimeRef.current, value);
+      },
+    };
+
+    fieldRef.current = refFacade;
+  }
+
+  return fieldRef.current;
 };
 
 /**
@@ -227,39 +315,93 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
 
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const selectionBarRef = React.useRef<HTMLDivElement | null>(null);
-  const primaryPaneIdRef = React.useRef<string>('pane-1');
-  const activePaneIdRef = React.useRef<string>('pane-1');
+  const runtimeRef = React.useRef(new SshRuntimeCoordinator());
+  const primaryPaneIdRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.primaryPaneId,
+    (runtime, value) => {
+      runtime.primaryPaneId = value;
+    },
+  );
+  const activePaneIdRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.activePaneId,
+    (runtime, value) => {
+      runtime.activePaneId = value;
+    },
+  );
   const onTabTitleChangeRef = React.useRef<UseSshCoreParams['onTabTitleChange']>(onTabTitleChange);
   const fingerprintPromptResolverRef = React.useRef<((accepted: boolean) => void) | null>(null);
 
-  const terminalRef = React.useRef<Terminal | null>(null);
-  const primaryTerminalRef = React.useRef<Terminal | null>(null);
   const terminalContainerRef = React.useRef<HTMLDivElement | null>(null);
-  const primarySocketRef = React.useRef<WebSocket | null>(null);
-  const socketRef = React.useRef<WebSocket | null>(null);
-  const resolvedTerminalTargetRef = React.useRef<ResolvedTerminalTarget | null>(null);
-  const paneContainerMapRef = React.useRef<Map<string, HTMLDivElement>>(new Map());
-  const mirrorPaneRuntimeMapRef = React.useRef<Map<string, MirrorPaneRuntime>>(new Map());
-  const scheduleFitAndResizeSyncRef = React.useRef<(() => void) | null>(null);
-  const connectSessionRef = React.useRef<(() => void) | null>(null);
-  const selectionPointerClientXRef = React.useRef<number | null>(null);
+  const terminalRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.activeTerminal,
+    (runtime, value) => {
+      runtime.activeTerminal = value;
+    },
+  );
+  const primaryTerminalRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.primaryTerminal,
+    (runtime, value) => {
+      runtime.primaryTerminal = value;
+    },
+  );
+  const primarySocketRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.primarySocket,
+    (runtime, value) => {
+      runtime.primarySocket = value;
+    },
+  );
+  const socketRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.activeSocket,
+    (runtime, value) => {
+      runtime.activeSocket = value;
+    },
+  );
+  const resolvedTerminalTargetRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.resolvedTarget,
+    (runtime, value) => {
+      runtime.resolvedTarget = value;
+    },
+  );
+  const paneContainerMapRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.paneContainerMap,
+    () => undefined,
+  );
+  const mirrorPaneRuntimeMapRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.mirrorPaneRuntimeMap,
+    () => undefined,
+  );
+  const scheduleFitAndResizeSyncRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.scheduleFitAndResizeSync,
+    (runtime, value) => {
+      runtime.scheduleFitAndResizeSync = value;
+    },
+  );
+  const connectSessionRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.connectSession,
+    (runtime, value) => {
+      runtime.connectSession = value;
+    },
+  );
+  const selectionPointerClientXRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.selectionPointerClientX,
+    (runtime, value) => {
+      runtime.selectionPointerClientX = value;
+    },
+  );
   const terminalInitOptionsRef = React.useRef<ITerminalOptions>(terminalInitOptions);
   const sshConnectionTimeoutSecRef = React.useRef<number>(sshConnectionTimeoutSec);
-
-  const runtimeRef = React.useRef<SshRuntimeState>({
-    terminalContainer: null,
-    activeTerminal: null,
-    primaryTerminal: null,
-    activeSocket: null,
-    primarySocket: null,
-    paneContainerMap: paneContainerMapRef.current,
-    mirrorPaneRuntimeMap: mirrorPaneRuntimeMapRef.current,
-    resolvedTarget: null,
-    scheduleFitAndResizeSync: null,
-    connectSession: null,
-    selectionPointerClientX: null,
-    paneIdSequence: 1,
-  });
 
   const [terminalPaneIds, setTerminalPaneIds] = React.useState<string[]>(['pane-1']);
   const [activePaneId, setActivePaneId] = React.useState<string>('pane-1');
@@ -274,7 +416,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
 
   React.useEffect(() => {
     activePaneIdRef.current = activePaneId;
-  }, [activePaneId]);
+  }, [activePaneId, activePaneIdRef]);
 
   React.useEffect(() => {
     terminalInitOptionsRef.current = terminalInitOptions;
@@ -344,30 +486,21 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   const activatePane = React.useCallback(
     (paneId: string) => {
       const didPaneChange = activePaneIdRef.current !== paneId;
-      activePaneIdRef.current = paneId;
+      const runtime = runtimeRef.current;
+      runtime.activePaneId = paneId;
       setActivePaneId(paneId);
 
-      const isPrimaryPane = paneId === primaryPaneIdRef.current;
-      const nextTerminal = isPrimaryPane
-        ? primaryTerminalRef.current
-        : (mirrorPaneRuntimeMapRef.current.get(paneId)?.terminal ?? null);
-      const nextContainer = paneContainerMapRef.current.get(paneId) ?? null;
-      const nextSocket = isPrimaryPane
-        ? primarySocketRef.current
-        : (mirrorPaneRuntimeMapRef.current.get(paneId)?.socket ?? null);
-
-      if (nextTerminal) {
-        terminalRef.current = nextTerminal;
-      }
-
-      if (nextContainer) {
-        terminalContainerRef.current = nextContainer;
-      }
-
-      socketRef.current = nextSocket;
-      runtimeRef.current.activeTerminal = terminalRef.current;
-      runtimeRef.current.activeSocket = socketRef.current;
-      runtimeRef.current.terminalContainer = terminalContainerRef.current;
+      const mirrorRuntime = runtime.mirrorPaneRuntimeMap.get(paneId);
+      const paneSession = runtime.ensureSession(paneId);
+      paneSession.isPrimary = paneId === runtime.primaryPaneId;
+      paneSession.terminal = paneSession.isPrimary
+        ? runtime.primaryTerminal
+        : (mirrorRuntime?.terminal ?? paneSession.terminal);
+      paneSession.socket = paneSession.isPrimary
+        ? runtime.primarySocket
+        : (mirrorRuntime?.socket ?? paneSession.socket);
+      paneSession.container = runtime.paneContainerMap.get(paneId) ?? paneSession.container;
+      runtime.applyActivePane(paneId, terminalContainerRef);
 
       if (didPaneChange) {
         closeAutocompleteRef.current();
@@ -375,7 +508,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
 
       refreshSelectionAnchorRef.current();
     },
-    [closeAutocompleteRef],
+    [activePaneIdRef, closeAutocompleteRef],
   );
 
   React.useEffect(() => {
@@ -385,7 +518,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     if (!terminalPaneIds.includes(activePaneIdRef.current)) {
       activatePane(nextPrimaryPaneId);
     }
-  }, [activatePane, terminalPaneIds]);
+  }, [activatePane, activePaneIdRef, primaryPaneIdRef, terminalPaneIds]);
 
   /**
    * Registers or unregisters pane container elements used by split runtimes.
@@ -395,15 +528,16 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    * @returns Nothing.
    */
   const setPaneContainerElement = React.useCallback((paneId: string, element: HTMLDivElement | null) => {
-    const existingElement = paneContainerMapRef.current.get(paneId) ?? null;
+    const runtime = runtimeRef.current;
+    const existingElement = runtime.paneContainerMap.get(paneId) ?? null;
 
     if (element) {
       if (existingElement === element) {
         return;
       }
 
-      paneContainerMapRef.current.set(paneId, element);
-      runtimeRef.current.paneContainerMap = paneContainerMapRef.current;
+      runtime.paneContainerMap.set(paneId, element);
+      runtime.ensureSession(paneId).container = element;
       return;
     }
 
@@ -411,8 +545,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       return;
     }
 
-    paneContainerMapRef.current.delete(paneId);
-    runtimeRef.current.paneContainerMap = paneContainerMapRef.current;
+    runtime.paneContainerMap.delete(paneId);
+    runtime.ensureSession(paneId).container = null;
   }, []);
 
   /**
@@ -422,9 +556,12 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    * @returns Nothing.
    */
   const setPrimaryPaneContainer = React.useCallback((element: HTMLDivElement | null) => {
-    if (activePaneIdRef.current === primaryPaneIdRef.current) {
+    const runtime = runtimeRef.current;
+    runtime.ensureSession(runtime.primaryPaneId).container = element;
+
+    if (runtime.activePaneId === runtime.primaryPaneId) {
       terminalContainerRef.current = element;
-      runtimeRef.current.terminalContainer = element;
+      runtime.activeContainer = element;
     }
   }, []);
 
@@ -475,7 +612,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         return next;
       });
     },
-    [activatePane],
+    [activatePane, activePaneIdRef, primaryPaneIdRef],
   );
 
   /**
@@ -569,14 +706,28 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   });
 
   React.useEffect(() => {
-    runtimeRef.current.activeTerminal = terminalRef.current;
-    runtimeRef.current.primaryTerminal = primaryTerminalRef.current;
-    runtimeRef.current.activeSocket = socketRef.current;
-    runtimeRef.current.primarySocket = primarySocketRef.current;
-    runtimeRef.current.resolvedTarget = resolvedTerminalTargetRef.current;
-    runtimeRef.current.scheduleFitAndResizeSync = scheduleFitAndResizeSyncRef.current;
-    runtimeRef.current.connectSession = connectSessionRef.current;
-    runtimeRef.current.selectionPointerClientX = selectionPointerClientXRef.current;
+    const runtime = runtimeRef.current;
+    const primarySession = runtime.ensureSession(runtime.primaryPaneId);
+    primarySession.isPrimary = true;
+    primarySession.terminal = runtime.primaryTerminal;
+    primarySession.socket = runtime.primarySocket;
+    primarySession.container = runtime.paneContainerMap.get(runtime.primaryPaneId) ?? primarySession.container;
+
+    runtime.mirrorPaneRuntimeMap.forEach((mirrorRuntime, paneId) => {
+      const session = runtime.ensureSession(paneId);
+      session.isPrimary = paneId === runtime.primaryPaneId;
+      session.terminal = mirrorRuntime.terminal;
+      session.socket = mirrorRuntime.socket;
+      session.container = runtime.paneContainerMap.get(paneId) ?? mirrorRuntime.containerElement ?? session.container;
+    });
+
+    runtime.sessionMap.forEach((_, paneId) => {
+      if (!terminalPaneIds.includes(paneId)) {
+        runtime.sessionMap.delete(paneId);
+      }
+    });
+
+    runtime.applyActivePane(activePaneId, terminalContainerRef);
   }, [connectionState, terminalPaneIds, activePaneId]);
 
   /**
@@ -590,7 +741,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     }
 
     connectSessionRef.current?.();
-  }, [connectionState]);
+  }, [connectSessionRef, connectionState]);
 
   /**
    * Sends input bytes to active pane websocket.
@@ -598,17 +749,20 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    * @param data Raw input payload.
    * @returns Nothing.
    */
-  const sendInput = React.useCallback((data: string) => {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
+  const sendInput = React.useCallback(
+    (data: string) => {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
 
-    sendClientMessage(socket, {
-      type: 'input',
-      data,
-    });
-  }, []);
+      sendClientMessage(socket, {
+        type: 'input',
+        data,
+      });
+    },
+    [socketRef],
+  );
 
   /**
    * Requests deletion of one command from active pane history source.
@@ -616,22 +770,25 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    * @param command Command text selected in sidebar history list.
    * @returns Nothing.
    */
-  const deleteHistoryCommand = React.useCallback((command: string) => {
-    const normalizedCommand = command.trim();
-    if (!normalizedCommand) {
-      return;
-    }
+  const deleteHistoryCommand = React.useCallback(
+    (command: string) => {
+      const normalizedCommand = command.trim();
+      if (!normalizedCommand) {
+        return;
+      }
 
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
 
-    sendClientMessage(socket, {
-      type: 'history-delete',
-      command: normalizedCommand,
-    });
-  }, []);
+      sendClientMessage(socket, {
+        type: 'history-delete',
+        command: normalizedCommand,
+      });
+    },
+    [socketRef],
+  );
 
   /**
    * Selects all content in active terminal instance.
@@ -640,7 +797,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    */
   const selectAll = React.useCallback(() => {
     terminalRef.current?.selectAll();
-  }, []);
+  }, [terminalRef]);
 
   /**
    * Reads active terminal selected text.
@@ -649,7 +806,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    */
   const getSelectionText = React.useCallback((): string => {
     return terminalRef.current?.getSelection() ?? '';
-  }, []);
+  }, [terminalRef]);
 
   /**
    * Focuses active terminal instance.
@@ -658,7 +815,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    */
   const focusActiveTerminal = React.useCallback(() => {
     terminalRef.current?.focus();
-  }, []);
+  }, [terminalRef]);
 
   /**
    * Sends Ctrl+L clear-screen sequence to active session.
