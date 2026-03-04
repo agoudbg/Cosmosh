@@ -4,6 +4,7 @@ import {
   Info,
   Link2,
   Palette,
+  RefreshCw,
   RotateCcw,
   Save,
   Search,
@@ -16,6 +17,15 @@ import React from 'react';
 
 import SettingsAboutSection, { type AppVersionInfo } from '../components/settings/SettingsAboutSection';
 import { Button } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogPrimaryButton,
+  DialogSecondaryButton,
+  DialogTitle,
+} from '../components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +63,19 @@ type SettingsFormState = {
 
 type SettingKey = keyof AppSettingsValues;
 
+type DatabaseSecurityInfo = {
+  runtimeMode: 'development' | 'production';
+  resolverMode: 'development-fixed-key' | 'safe-storage' | 'master-password-fallback';
+  safeStorageAvailable: boolean;
+  databasePath: string;
+  securityConfigPath: string;
+  hasEncryptedDbMasterKey: boolean;
+  hasMasterPasswordHash: boolean;
+  hasMasterPasswordSalt: boolean;
+  hasMasterPasswordEnv: boolean;
+  fallbackReady: boolean;
+};
+
 const DEFAULT_APP_VERSION_INFO: AppVersionInfo = {
   appName: 'Cosmosh',
   version: '0.0.0',
@@ -64,6 +87,19 @@ const DEFAULT_APP_VERSION_INFO: AppVersionInfo = {
   node: '',
   v8: '',
   os: '',
+};
+
+const DEFAULT_DATABASE_SECURITY_INFO: DatabaseSecurityInfo = {
+  runtimeMode: 'development',
+  resolverMode: 'development-fixed-key',
+  safeStorageAvailable: false,
+  databasePath: '',
+  securityConfigPath: '',
+  hasEncryptedDbMasterKey: false,
+  hasMasterPasswordHash: false,
+  hasMasterPasswordSalt: false,
+  hasMasterPasswordEnv: false,
+  fallbackReady: false,
 };
 
 const categoryIconMap: Record<SettingsCategoryId, React.ComponentType<{ className?: string }>> = {
@@ -195,6 +231,10 @@ const Settings: React.FC<{ initialCategoryId?: string; onOpenSettingInEditor?: (
     toFormState(DEFAULT_APP_SETTINGS_VALUES),
   );
   const [appVersionInfo, setAppVersionInfo] = React.useState<AppVersionInfo>(DEFAULT_APP_VERSION_INFO);
+  const [databaseSecurityInfo, setDatabaseSecurityInfo] =
+    React.useState<DatabaseSecurityInfo>(DEFAULT_DATABASE_SECURITY_INFO);
+  const [isDatabaseSecurityInfoLoading, setIsDatabaseSecurityInfoLoading] = React.useState<boolean>(false);
+  const [isDatabaseSecurityDialogOpen, setIsDatabaseSecurityDialogOpen] = React.useState<boolean>(false);
   const [localTerminalProfiles, setLocalTerminalProfiles] = React.useState<LocalTerminalProfile[]>([]);
 
   React.useEffect(() => {
@@ -206,6 +246,30 @@ const Settings: React.FC<{ initialCategoryId?: string; onOpenSettingInEditor?: (
 
   const normalizedSearch = search.trim().toLowerCase();
   const isSearchMode = normalizedSearch.length > 0;
+
+  const loadDatabaseSecurityInfo = React.useCallback(async () => {
+    setIsDatabaseSecurityInfoLoading(true);
+
+    try {
+      const response = await window.electron?.getDatabaseSecurityInfo?.();
+
+      if (response) {
+        setDatabaseSecurityInfo(response);
+      }
+    } catch {
+      setDatabaseSecurityInfo(DEFAULT_DATABASE_SECURITY_INFO);
+    } finally {
+      setIsDatabaseSecurityInfoLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (activeCategoryId !== 'advanced' || isSearchMode) {
+      return;
+    }
+
+    void loadDatabaseSecurityInfo();
+  }, [activeCategoryId, isSearchMode, loadDatabaseSecurityInfo]);
 
   const visibleSettings = React.useMemo(() => {
     const resolveCategoryLabel = (category: SettingDefinition['category']): string => {
@@ -335,6 +399,18 @@ const Settings: React.FC<{ initialCategoryId?: string; onOpenSettingInEditor?: (
   }, [formState, savedFormState]);
 
   const isAutoSaveEnabled = formState.autoSaveEnabled === 'true';
+
+  const formatBooleanLabel = React.useCallback((value: boolean): string => {
+    return value ? t('settings.enabled') : t('settings.disabled');
+  }, []);
+
+  const resolverModeLabel = React.useMemo(() => {
+    return t(`settings.databaseSecurity.resolverMode.${databaseSecurityInfo.resolverMode}`);
+  }, [databaseSecurityInfo.resolverMode]);
+
+  const runtimeModeLabel = React.useMemo(() => {
+    return t(`settings.databaseSecurity.runtimeMode.${databaseSecurityInfo.runtimeMode}`);
+  }, [databaseSecurityInfo.runtimeMode]);
 
   const activeCategory = React.useMemo(() => {
     return SETTINGS_CATEGORIES[activeCategoryId];
@@ -745,9 +821,119 @@ const Settings: React.FC<{ initialCategoryId?: string; onOpenSettingInEditor?: (
                 ))}
               </div>
             ) : null}
+
+            {!isLoading && activeCategoryId === 'advanced' && !isSearchMode ? (
+              <div className="flex justify-end pb-4 pr-1">
+                <button
+                  type="button"
+                  className="text-home-text text-sm underline hover:text-home-text-subtle"
+                  onClick={() => {
+                    setIsDatabaseSecurityDialogOpen(true);
+                    void loadDatabaseSecurityInfo();
+                  }}
+                >
+                  {t('settings.databaseSecurity.openDialog')}
+                </button>
+              </div>
+            ) : null}
           </div>
         </main>
       </div>
+
+      <Dialog
+        open={isDatabaseSecurityDialogOpen}
+        onOpenChange={setIsDatabaseSecurityDialogOpen}
+      >
+        <DialogContent className="max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>{t('settings.databaseSecurity.title')}</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-2 rounded-md border border-home-divider p-3 text-sm">
+            <p className="pb-1 text-home-text-subtle">{t('settings.databaseSecurity.description')}</p>
+
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">{t('settings.databaseSecurity.fields.runtimeMode')}</span>
+              <span className="text-home-text select-text break-all">{runtimeModeLabel}</span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">{t('settings.databaseSecurity.fields.resolverMode')}</span>
+              <span className="text-home-text select-text break-all">{resolverModeLabel}</span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">
+                {t('settings.databaseSecurity.fields.safeStorageAvailable')}
+              </span>
+              <span className="text-home-text select-text break-all">
+                {formatBooleanLabel(databaseSecurityInfo.safeStorageAvailable)}
+              </span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">
+                {t('settings.databaseSecurity.fields.hasEncryptedDbMasterKey')}
+              </span>
+              <span className="text-home-text select-text break-all">
+                {formatBooleanLabel(databaseSecurityInfo.hasEncryptedDbMasterKey)}
+              </span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">
+                {t('settings.databaseSecurity.fields.hasMasterPasswordHash')}
+              </span>
+              <span className="text-home-text select-text break-all">
+                {formatBooleanLabel(databaseSecurityInfo.hasMasterPasswordHash)}
+              </span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">
+                {t('settings.databaseSecurity.fields.hasMasterPasswordSalt')}
+              </span>
+              <span className="text-home-text select-text break-all">
+                {formatBooleanLabel(databaseSecurityInfo.hasMasterPasswordSalt)}
+              </span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">
+                {t('settings.databaseSecurity.fields.hasMasterPasswordEnv')}
+              </span>
+              <span className="text-home-text select-text break-all">
+                {formatBooleanLabel(databaseSecurityInfo.hasMasterPasswordEnv)}
+              </span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">{t('settings.databaseSecurity.fields.fallbackReady')}</span>
+              <span className="text-home-text select-text break-all">
+                {formatBooleanLabel(databaseSecurityInfo.fallbackReady)}
+              </span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">{t('settings.databaseSecurity.fields.securityConfigPath')}</span>
+              <span className="text-home-text select-text break-all">{databaseSecurityInfo.securityConfigPath}</span>
+            </div>
+            <div className="grid grid-cols-[220px,1fr] items-start gap-3">
+              <span className="text-home-text-subtle">{t('settings.databaseSecurity.fields.databasePath')}</span>
+              <span className="text-home-text select-text break-all">{databaseSecurityInfo.databasePath}</span>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <DialogSecondaryButton
+              disabled={isDatabaseSecurityInfoLoading}
+              onClick={() => {
+                void loadDatabaseSecurityInfo();
+              }}
+            >
+              <RefreshCw className="h-4 w-4" />
+              {isDatabaseSecurityInfoLoading
+                ? t('settings.databaseSecurity.refreshing')
+                : t('settings.databaseSecurity.refresh')}
+            </DialogSecondaryButton>
+            <DialogPrimaryButton onClick={() => setIsDatabaseSecurityDialogOpen(false)}>
+              {t('settings.databaseSecurity.close')}
+            </DialogPrimaryButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

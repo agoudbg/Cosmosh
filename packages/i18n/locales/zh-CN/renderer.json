@@ -147,6 +147,35 @@
       "terminal": "终端",
       "theme": "主题"
     },
+    "databaseSecurity": {
+      "close": "关闭",
+      "description": "当前数据库加密引导状态的只读诊断信息。",
+      "fields": {
+        "databasePath": "数据库路径",
+        "fallbackReady": "回退模式就绪",
+        "hasEncryptedDbMasterKey": "已存在加密数据库主密钥",
+        "hasMasterPasswordEnv": "已提供主密码环境变量",
+        "hasMasterPasswordHash": "已存在主密码哈希",
+        "hasMasterPasswordSalt": "已存在主密码盐值",
+        "resolverMode": "解析模式",
+        "runtimeMode": "运行模式",
+        "safeStorageAvailable": "safeStorage 可用",
+        "securityConfigPath": "安全配置路径"
+      },
+      "openDialog": "数据库调试信息",
+      "refresh": "刷新",
+      "refreshing": "刷新中...",
+      "resolverMode": {
+        "development-fixed-key": "开发模式固定密钥",
+        "master-password-fallback": "主密码回退",
+        "safe-storage": "safeStorage"
+      },
+      "runtimeMode": {
+        "development": "开发环境",
+        "production": "生产环境"
+      },
+      "title": "数据库加密信息"
+    },
     "disabled": "已禁用",
     "enabled": "已启用",
     "itemActions": {

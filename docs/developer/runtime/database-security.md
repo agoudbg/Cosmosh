@@ -176,6 +176,8 @@ Planned direction (implementation target, not yet complete):
 
 ## 9. Troubleshooting Matrix
 
+In desktop runtime, developers can inspect these diagnostics directly in Settings → Advanced → Database Encryption Info.
+
 ### Symptom: `safeStorage is unavailable`
 
 - Meaning: OS secure storage integration is not available in current runtime.

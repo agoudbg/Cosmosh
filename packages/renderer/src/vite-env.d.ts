@@ -60,6 +60,18 @@ declare global {
         os: string;
       }>;
       getPendingLaunchWorkingDirectory: () => Promise<string | null>;
+      getDatabaseSecurityInfo: () => Promise<{
+        runtimeMode: 'development' | 'production';
+        resolverMode: 'development-fixed-key' | 'safe-storage' | 'master-password-fallback';
+        safeStorageAvailable: boolean;
+        databasePath: string;
+        securityConfigPath: string;
+        hasEncryptedDbMasterKey: boolean;
+        hasMasterPasswordHash: boolean;
+        hasMasterPasswordSalt: boolean;
+        hasMasterPasswordEnv: boolean;
+        fallbackReady: boolean;
+      }>;
       onLaunchWorkingDirectory: (listener: (cwd: string) => void) => () => void;
       openDevTools: () => Promise<boolean>;
       showInFileManager: (targetPath?: string) => Promise<boolean>;

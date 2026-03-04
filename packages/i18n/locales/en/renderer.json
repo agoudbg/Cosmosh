@@ -147,6 +147,35 @@
       "terminal": "Terminal",
       "theme": "Theme"
     },
+    "databaseSecurity": {
+      "close": "Close",
+      "description": "Read-only diagnostics for current database encryption bootstrap state.",
+      "fields": {
+        "databasePath": "Database Path",
+        "fallbackReady": "Fallback Ready",
+        "hasEncryptedDbMasterKey": "Has Encrypted DB Master Key",
+        "hasMasterPasswordEnv": "Has Master Password Env",
+        "hasMasterPasswordHash": "Has Master Password Hash",
+        "hasMasterPasswordSalt": "Has Master Password Salt",
+        "resolverMode": "Resolver Mode",
+        "runtimeMode": "Runtime Mode",
+        "safeStorageAvailable": "safeStorage Available",
+        "securityConfigPath": "Security Config Path"
+      },
+      "openDialog": "Database Debug Info",
+      "refresh": "Refresh",
+      "refreshing": "Refreshing...",
+      "resolverMode": {
+        "development-fixed-key": "Development Fixed Key",
+        "master-password-fallback": "Master Password Fallback",
+        "safe-storage": "safeStorage"
+      },
+      "runtimeMode": {
+        "development": "Development",
+        "production": "Production"
+      },
+      "title": "Database Encryption Info"
+    },
     "disabled": "Disabled",
     "enabled": "Enabled",
     "itemActions": {

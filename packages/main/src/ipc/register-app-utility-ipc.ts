@@ -4,6 +4,8 @@ import os from 'node:os';
 
 import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, shell } from 'electron';
 
+import type { DatabaseSecurityInfo } from '../security/database-encryption';
+
 /**
  * Dependency contract for registering app-level utility IPC handlers.
  */
@@ -21,6 +23,8 @@ export type RegisterAppUtilityIpcHandlersOptions = {
   getPendingLaunchWorkingDirectory: () => string | null;
   /** Resolves build timestamp for version metadata. */
   resolveBuildTime: () => Promise<string>;
+  /** Returns non-sensitive database encryption diagnostics. */
+  getDatabaseSecurityInfo: () => Promise<DatabaseSecurityInfo>;
 };
 
 /**
@@ -99,6 +103,10 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
 
   ipcMain.handle('app:get-pending-launch-working-directory', () => {
     return options.getPendingLaunchWorkingDirectory();
+  });
+
+  ipcMain.handle('app:get-database-security-info', async (): Promise<DatabaseSecurityInfo> => {
+    return options.getDatabaseSecurityInfo();
   });
 
   ipcMain.handle('app:open-devtools', () => {

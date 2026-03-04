@@ -14,6 +14,19 @@ type DatabaseSecurityConfig = {
   masterPasswordSalt?: string;
 };
 
+export type DatabaseSecurityInfo = {
+  runtimeMode: 'development' | 'production';
+  resolverMode: 'development-fixed-key' | 'safe-storage' | 'master-password-fallback';
+  safeStorageAvailable: boolean;
+  databasePath: string;
+  securityConfigPath: string;
+  hasEncryptedDbMasterKey: boolean;
+  hasMasterPasswordHash: boolean;
+  hasMasterPasswordSalt: boolean;
+  hasMasterPasswordEnv: boolean;
+  fallbackReady: boolean;
+};
+
 const DATABASE_FILE_NAME = 'cosmosh.db';
 const DEV_MASTER_KEY = 'cosmosh_dev_key';
 const CONFIG_FILE_NAME = 'security.config.json';
@@ -180,4 +193,42 @@ export const exportPlainTextKey = async (): Promise<string> => {
   }
 
   return resolveDatabaseKeyFromMasterPasswordFallback(config, isDev);
+};
+
+/**
+ * Returns non-sensitive database security diagnostics for renderer observability.
+ */
+export const getDatabaseSecurityInfo = async (): Promise<DatabaseSecurityInfo> => {
+  const isDev = !app.isPackaged;
+  const config = await readSecurityConfig();
+  const safeStorageAvailable = safeStorage.isEncryptionAvailable();
+  const hasMasterPasswordEnv =
+    typeof process.env.COSMOSH_DB_MASTER_PASSWORD === 'string' &&
+    process.env.COSMOSH_DB_MASTER_PASSWORD.trim().length > 0;
+
+  const resolverMode: DatabaseSecurityInfo['resolverMode'] = isDev
+    ? 'development-fixed-key'
+    : safeStorageAvailable
+      ? 'safe-storage'
+      : 'master-password-fallback';
+
+  const hasEncryptedDbMasterKey =
+    typeof config.encryptedDbMasterKey === 'string' && config.encryptedDbMasterKey.trim().length > 0;
+  const hasMasterPasswordHash =
+    typeof config.masterPasswordHash === 'string' && config.masterPasswordHash.trim().length > 0;
+  const hasMasterPasswordSalt =
+    typeof config.masterPasswordSalt === 'string' && config.masterPasswordSalt.trim().length > 0;
+
+  return {
+    runtimeMode: isDev ? 'development' : 'production',
+    resolverMode,
+    safeStorageAvailable,
+    databasePath: getDatabasePath(),
+    securityConfigPath: getSecurityConfigPath(),
+    hasEncryptedDbMasterKey,
+    hasMasterPasswordHash,
+    hasMasterPasswordSalt,
+    hasMasterPasswordEnv,
+    fallbackReady: hasMasterPasswordHash && hasMasterPasswordSalt && hasMasterPasswordEnv,
+  };
 };

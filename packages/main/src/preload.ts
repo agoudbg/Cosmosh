@@ -66,6 +66,20 @@ contextBridge.exposeInMainWorld('electron', {
   getPendingLaunchWorkingDirectory: () => {
     return ipcRenderer.invoke('app:get-pending-launch-working-directory') as Promise<string | null>;
   },
+  getDatabaseSecurityInfo: () => {
+    return ipcRenderer.invoke('app:get-database-security-info') as Promise<{
+      runtimeMode: 'development' | 'production';
+      resolverMode: 'development-fixed-key' | 'safe-storage' | 'master-password-fallback';
+      safeStorageAvailable: boolean;
+      databasePath: string;
+      securityConfigPath: string;
+      hasEncryptedDbMasterKey: boolean;
+      hasMasterPasswordHash: boolean;
+      hasMasterPasswordSalt: boolean;
+      hasMasterPasswordEnv: boolean;
+      fallbackReady: boolean;
+    }>;
+  },
   /**
    * Subscribes to launch cwd events emitted when a second instance forwards context.
    */

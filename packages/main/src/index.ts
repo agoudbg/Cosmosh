@@ -13,7 +13,12 @@ import path from 'path';
 
 import { registerAppUtilityIpcHandlers } from './ipc/register-app-utility-ipc';
 import { registerBackendIpcHandlers } from './ipc/register-backend-ipc';
-import { getDatabaseEncryptionKey, getDatabasePath, toPrismaSqliteUrl } from './security/database-encryption';
+import {
+  getDatabaseEncryptionKey,
+  getDatabasePath,
+  getDatabaseSecurityInfo,
+  toPrismaSqliteUrl,
+} from './security/database-encryption';
 
 /**
  * Main-process singleton runtime state.
@@ -767,6 +772,7 @@ registerAppUtilityIpcHandlers({
   },
   getPendingLaunchWorkingDirectory: () => pendingLaunchWorkingDirectory,
   resolveBuildTime,
+  getDatabaseSecurityInfo,
 });
 
 registerBackendIpcHandlers({
