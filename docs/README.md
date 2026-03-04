@@ -15,6 +15,7 @@ docs/
       ipc-protocol.md
     runtime/
       ssh-terminal.md
+      database-security.md
       sftp-file-system.md
     design/
       ui-ux-standards.md
@@ -38,8 +39,9 @@ flowchart TD
   A[developer/core/project-map.md] --> B[developer/core/architecture.md]
   B --> C[developer/core/ipc-protocol.md]
   B --> D[developer/runtime/ssh-terminal.md]
-  B --> E[developer/runtime/sftp-file-system.md]
-  B --> F[developer/design/ui-ux-standards.md]
+  B --> E[developer/runtime/database-security.md]
+  B --> F[developer/runtime/sftp-file-system.md]
+  B --> G[developer/design/ui-ux-standards.md]
 ```
 
 ## Localization Policy
