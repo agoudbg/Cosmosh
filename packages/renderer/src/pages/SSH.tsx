@@ -1,6 +1,6 @@
 import '@xterm/xterm/css/xterm.css';
 
-import { type ITerminalOptions, Terminal } from '@xterm/xterm';
+import { type ITerminalOptions } from '@xterm/xterm';
 import classNames from 'classnames';
 import { RefreshCw } from 'lucide-react';
 import React from 'react';
@@ -24,30 +24,11 @@ import { t } from '../lib/i18n';
 import { useSettingsValues } from '../lib/settings-store';
 import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
-import { resolveTerminalTarget } from './ssh/ssh-target';
-import {
-  DEFAULT_TELEMETRY_STATE,
-  type HostFingerprintPrompt,
-  INTERNAL_TERMINAL_TEXT_DRAG_MIME,
-  MAX_TERMINAL_PANES,
-  type MirrorPaneRuntime,
-  type ResolvedTerminalTarget,
-  type SshTelemetryState,
-  type TerminalSelectionSettings,
-} from './ssh/ssh-types';
-import {
-  applyTerminalRuntimeOptions,
-  parseOptionalNumberSetting,
-  resolveSearchUrl,
-  resolveTerminalFontWeightSetting,
-  sendClientMessage,
-} from './ssh/ssh-utils';
+import { INTERNAL_TERMINAL_TEXT_DRAG_MIME, type TerminalSelectionSettings } from './ssh/ssh-types';
+import { parseOptionalNumberSetting, resolveSearchUrl, resolveTerminalFontWeightSetting } from './ssh/ssh-utils';
 import { SSHSidebar } from './ssh/SSHSidebar';
 import { SSHTerminalPaneLayout } from './ssh/SSHTerminalPaneLayout';
-import { useSshAutocomplete } from './ssh/use-ssh-autocomplete';
-import { useSshMirrorPanes } from './ssh/use-ssh-mirror-panes';
-import { useSshPrimarySession } from './ssh/use-ssh-primary-session';
-import { useSshSelectionBar } from './ssh/use-ssh-selection-bar';
+import { useSshCore } from './ssh/use-ssh-core';
 
 /**
  * SSH page props.
@@ -63,29 +44,6 @@ type SSHProps = {
 const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const settingsValues = useSettingsValues();
-  const onTabTitleChangeRef = React.useRef<SSHProps['onTabTitleChange']>(onTabTitleChange);
-  const wrapperRef = React.useRef<HTMLDivElement | null>(null);
-  const terminalContainerRef = React.useRef<HTMLDivElement | null>(null);
-  const primaryPaneIdRef = React.useRef<string>('pane-1');
-  const activePaneIdRef = React.useRef<string>('pane-1');
-  const paneContainerMapRef = React.useRef<Map<string, HTMLDivElement>>(new Map());
-  const mirrorPaneRuntimeMapRef = React.useRef<Map<string, MirrorPaneRuntime>>(new Map());
-  const paneIdSequenceRef = React.useRef<number>(1);
-  const selectionPointerClientXRef = React.useRef<number | null>(null);
-  const primaryTerminalRef = React.useRef<Terminal | null>(null);
-  const terminalRef = React.useRef<Terminal | null>(null);
-  const primarySocketRef = React.useRef<WebSocket | null>(null);
-  const resolvedTerminalTargetRef = React.useRef<ResolvedTerminalTarget | null>(null);
-  const socketRef = React.useRef<WebSocket | null>(null);
-  const scheduleFitAndResizeSyncRef = React.useRef<(() => void) | null>(null);
-  const selectionBarRef = React.useRef<HTMLDivElement | null>(null);
-  const connectSessionRef = React.useRef<(() => void) | null>(null);
-  const fingerprintPromptResolverRef = React.useRef<((accepted: boolean) => void) | null>(null);
-  const [terminalPaneIds, setTerminalPaneIds] = React.useState<string[]>(['pane-1']);
-  const [connectionState, setConnectionState] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
-  const [connectionError, setConnectionError] = React.useState<string>('');
-  const [telemetryState, setTelemetryState] = React.useState<SshTelemetryState>(DEFAULT_TELEMETRY_STATE);
-  const [hostFingerprintPrompt, setHostFingerprintPrompt] = React.useState<HostFingerprintPrompt | null>(null);
 
   // Derive terminal-relevant settings from the centralized store.
   const sshMaxRows = settingsValues.sshMaxRows;
@@ -176,240 +134,52 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     ],
   );
 
-  const {
-    autocompleteItems,
-    autocompleteAnchor,
-    autocompleteMenuRef,
-    acceptAutocompleteAtIndex,
-    applyAutocompleteInputData,
-    closeAutocompleteRef,
-    scheduleAutocompleteRequestRef,
-    handleAutocompleteTerminalKeyDownRef,
-    handleCompletionResponse,
-  } = useSshAutocomplete({
-    connectionState,
+  const sshCore = useSshCore({
+    terminalInitOptions,
+    sshConnectionTimeoutSec,
     terminalAutoCompleteEnabled,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
-    wrapperRef,
-    terminalContainerRef,
-    terminalRef,
-    socketRef,
-    primaryPaneIdRef,
-    activePaneIdRef,
-    primarySocketRef,
-    primaryTerminalRef,
-    mirrorPaneRuntimeMapRef,
+    terminalSelectionBarEnabled: terminalSelectionSettings.enabled,
+    onTabTitleChange,
+    notifyWarning,
   });
 
   const {
-    selectionAnchor,
-    selectionBarPosition,
-    dismissedSelectionText,
-    refreshSelectionAnchor,
-    dismissSelectionBar,
-    clearSelectionOverlay,
-  } = useSshSelectionBar({
-    terminalRef,
-    terminalContainerRef,
-    wrapperRef,
-    selectionBarRef,
-    selectionPointerClientXRef,
-    enabled: terminalSelectionSettings.enabled,
-  });
-
-  React.useEffect(() => {
-    onTabTitleChangeRef.current = onTabTitleChange;
-  }, [onTabTitleChange]);
-
-  React.useEffect(() => {
-    const nextPrimaryPaneId = terminalPaneIds[0] ?? 'pane-1';
-    primaryPaneIdRef.current = nextPrimaryPaneId;
-
-    if (!terminalPaneIds.includes(activePaneIdRef.current)) {
-      activePaneIdRef.current = nextPrimaryPaneId;
-      terminalRef.current =
-        nextPrimaryPaneId === primaryPaneIdRef.current
-          ? primaryTerminalRef.current
-          : (mirrorPaneRuntimeMapRef.current.get(nextPrimaryPaneId)?.terminal ?? terminalRef.current);
-      terminalContainerRef.current = paneContainerMapRef.current.get(nextPrimaryPaneId) ?? terminalContainerRef.current;
-    }
-  }, [terminalPaneIds]);
-
-  /**
-   * Keeps pane id -> container element mapping synchronized with React refs.
-   *
-   * @param paneId Logical pane identifier.
-   * @param element Current pane container element or `null` on unmount.
-   * @returns Nothing.
-   */
-  const setPaneContainerElement = React.useCallback((paneId: string, element: HTMLDivElement | null) => {
-    const existingElement = paneContainerMapRef.current.get(paneId) ?? null;
-
-    if (element) {
-      if (existingElement === element) {
-        return;
-      }
-
-      paneContainerMapRef.current.set(paneId, element);
-      return;
-    }
-
-    if (!existingElement) {
-      return;
-    }
-
-    paneContainerMapRef.current.delete(paneId);
-  }, []);
-
-  /**
-   * Adds one mirrored pane while respecting the hard pane limit.
-   *
-   * @returns Nothing.
-   */
-  const splitTerminalPane = React.useCallback(() => {
-    setTerminalPaneIds((previous) => {
-      if (previous.length >= MAX_TERMINAL_PANES) {
-        return previous;
-      }
-
-      paneIdSequenceRef.current += 1;
-      return [...previous, `pane-${paneIdSequenceRef.current}`];
-    });
-  }, []);
-
-  /**
-   * Closes a mirrored pane and safely reassigns active pane focus.
-   *
-   * @param paneId Pane id to close.
-   * @returns Nothing.
-   */
-  const closeTerminalPane = React.useCallback((paneId: string) => {
-    setTerminalPaneIds((previous) => {
-      if (previous.length <= 1) {
-        return previous;
-      }
-
-      const index = previous.indexOf(paneId);
-      if (index < 0) {
-        return previous;
-      }
-
-      const next = previous.filter((item) => item !== paneId);
-      if (next.length === 0) {
-        return previous;
-      }
-
-      if (activePaneIdRef.current === paneId) {
-        activePaneIdRef.current = next[Math.max(0, index - 1)] ?? next[0] ?? primaryPaneIdRef.current;
-      }
-
-      return next;
-    });
-  }, []);
-
-  const terminalInitOptionsRef = React.useRef<ITerminalOptions>(terminalInitOptions);
-  const sshConnectionTimeoutSecRef = React.useRef<number>(sshConnectionTimeoutSec);
-
-  React.useEffect(() => {
-    sshConnectionTimeoutSecRef.current = sshConnectionTimeoutSec;
-  }, [sshConnectionTimeoutSec]);
-
-  /**
-   * Resolves the pending host-fingerprint confirmation promise.
-   *
-   * @param accepted Whether user accepted trusting host fingerprint.
-   * @returns Nothing.
-   */
-  const resolveHostFingerprintPrompt = React.useCallback((accepted: boolean) => {
-    const resolver = fingerprintPromptResolverRef.current;
-    fingerprintPromptResolverRef.current = null;
-    setHostFingerprintPrompt(null);
-    resolver?.(accepted);
-  }, []);
-
-  /**
-   * Opens trust dialog and suspends session creation until user decision.
-   *
-   * @param prompt Fingerprint prompt data shown in dialog.
-   * @returns Promise resolved with user decision.
-   */
-  const requestHostFingerprintTrust = React.useCallback((prompt: HostFingerprintPrompt): Promise<boolean> => {
-    return new Promise((resolve) => {
-      fingerprintPromptResolverRef.current = resolve;
-      setHostFingerprintPrompt(prompt);
-    });
-  }, []);
-
-  React.useEffect(() => {
-    return () => {
-      if (fingerprintPromptResolverRef.current) {
-        fingerprintPromptResolverRef.current(false);
-        fingerprintPromptResolverRef.current = null;
-      }
-    };
-  }, []);
-
-  const handleRetry = React.useCallback(() => {
-    if (connectionState === 'connecting' || connectionState === 'connected') {
-      return;
-    }
-
-    connectSessionRef.current?.();
-  }, [connectionState]);
-
-  /**
-   * Switches active pane context for terminal, container and socket refs.
-   *
-   * @param paneId Pane id to activate.
-   * @returns Nothing.
-   */
-  const setActivePane = React.useCallback(
-    (paneId: string) => {
-      const didPaneChange = activePaneIdRef.current !== paneId;
-      activePaneIdRef.current = paneId;
-
-      const isPrimaryPane = paneId === primaryPaneIdRef.current;
-      const nextTerminal = isPrimaryPane
-        ? primaryTerminalRef.current
-        : (mirrorPaneRuntimeMapRef.current.get(paneId)?.terminal ?? null);
-      const nextContainer = paneContainerMapRef.current.get(paneId) ?? null;
-      const nextSocket = isPrimaryPane
-        ? primarySocketRef.current
-        : (mirrorPaneRuntimeMapRef.current.get(paneId)?.socket ?? null);
-
-      if (nextTerminal) {
-        terminalRef.current = nextTerminal;
-      }
-
-      if (nextContainer) {
-        terminalContainerRef.current = nextContainer;
-      }
-
-      socketRef.current = nextSocket;
-
-      if (didPaneChange) {
-        closeAutocompleteRef.current();
-      }
-
-      refreshSelectionAnchor();
+    state: {
+      terminalPaneIds,
+      activePaneId,
+      connectionState,
+      connectionError,
+      telemetryState,
+      hostFingerprintPrompt,
+      canSplitTerminal,
+      selectionAnchor,
+      selectionBarPosition,
+      dismissedSelectionText,
+      autocompleteItems,
+      autocompleteAnchor,
     },
-    [closeAutocompleteRef, refreshSelectionAnchor],
-  );
-
-  React.useEffect(() => {
-    terminalInitOptionsRef.current = terminalInitOptions;
-
-    const terminal = terminalRef.current;
-    if (!terminal) {
-      return;
-    }
-
-    applyTerminalRuntimeOptions(terminal, terminalInitOptions);
-    scheduleFitAndResizeSyncRef.current?.();
-    refreshSelectionAnchor();
-  }, [refreshSelectionAnchor, terminalInitOptions]);
+    actions: {
+      activatePane,
+      splitPane,
+      closePane,
+      retryConnection,
+      sendInput,
+      deleteHistoryCommand,
+      selectAll,
+      getSelectionText,
+      focusActiveTerminal,
+      clearTerminalScreen,
+      setPaneContainerElement,
+      setPrimaryPaneContainer,
+      resolveHostFingerprintPrompt,
+      dismissSelectionBar,
+      acceptAutocompleteAtIndex,
+    },
+    refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
+  } = sshCore;
 
   // ---------------------------------------------------------------------------
   // Shared terminal action helpers — used by both the Orbit Bar and the context
@@ -476,17 +246,9 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       return;
     }
 
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    sendClientMessage(socket, {
-      type: 'input',
-      data: selectionAnchor.selectionText,
-    });
-    terminalRef.current?.focus();
-  }, [selectionAnchor]);
+    sendInput(selectionAnchor.selectionText);
+    focusActiveTerminal();
+  }, [focusActiveTerminal, selectionAnchor, sendInput]);
 
   const handleSelectionBarSearch = React.useCallback(() => {
     if (!selectionAnchor?.selectionText.trim()) {
@@ -501,90 +263,64 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   // ---------------------------------------------------------------------------
 
   const handleContextMenuCopy = React.useCallback(() => {
-    const selectionText = terminalRef.current?.getSelection() ?? '';
+    const selectionText = getSelectionText();
     if (!selectionText) {
       return;
     }
 
     void copyTextToClipboard(selectionText);
-  }, [copyTextToClipboard]);
+  }, [copyTextToClipboard, getSelectionText]);
 
   const handleContextMenuPaste = React.useCallback(() => {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
     void navigator.clipboard
       .readText()
       .then((text) => {
         if (text) {
-          sendClientMessage(socket, { type: 'input', data: text });
-          terminalRef.current?.focus();
+          sendInput(text);
+          focusActiveTerminal();
         }
       })
       .catch(() => {
         // Clipboard read permission denied or unavailable; silently ignore.
       });
-  }, []);
+  }, [focusActiveTerminal, sendInput]);
 
   const handleContextMenuSearchOnline = React.useCallback(() => {
-    const selectionText = terminalRef.current?.getSelection() ?? '';
+    const selectionText = getSelectionText();
     if (!selectionText.trim()) {
       return;
     }
 
     openSearchForText(selectionText);
-  }, [openSearchForText]);
+  }, [getSelectionText, openSearchForText]);
 
   const handleContextMenuFind = React.useCallback(() => {
     notifyWarning(t('ssh.contextMenuFindComingSoon'));
   }, [notifyWarning]);
 
   const handleContextMenuSelectAll = React.useCallback(() => {
-    terminalRef.current?.selectAll();
-  }, []);
+    selectAll();
+  }, [selectAll]);
 
   const handleContextMenuClearTerminal = React.useCallback(() => {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
+    clearTerminalScreen();
+    focusActiveTerminal();
+  }, [clearTerminalScreen, focusActiveTerminal]);
 
-    // Send Ctrl+L — the standard ANSI clear-screen sequence.
-    sendClientMessage(socket, { type: 'input', data: '\x0c' });
-    terminalRef.current?.focus();
-  }, []);
+  const handleDeleteRecentCommand = React.useCallback(
+    (command: string) => {
+      deleteHistoryCommand(command);
+    },
+    [deleteHistoryCommand],
+  );
 
-  const handleDeleteRecentCommand = React.useCallback((command: string) => {
-    const normalizedCommand = command.trim();
-    if (!normalizedCommand) {
-      return;
-    }
-
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    sendClientMessage(socket, {
-      type: 'history-delete',
-      command: normalizedCommand,
-    });
-  }, []);
-
-  const handleInsertRecentCommand = React.useCallback((command: string) => {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    sendClientMessage(socket, {
-      type: 'input',
-      data: command,
-    });
-    terminalRef.current?.focus();
-  }, []);
+  const handleInsertRecentCommand = React.useCallback(
+    (command: string) => {
+      sendInput(command);
+      focusActiveTerminal();
+    },
+    [focusActiveTerminal, sendInput],
+  );
 
   const handleSelectionBarDragStart = React.useCallback(
     (event: React.DragEvent<HTMLButtonElement>) => {
@@ -623,18 +359,13 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     notifyWarning(t('ssh.selectionBarAskAiComingSoon'));
   }, [notifyWarning]);
 
-  const handleTerminalTextDrop = React.useCallback((droppedText: string) => {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    sendClientMessage(socket, {
-      type: 'input',
-      data: droppedText,
-    });
-    terminalRef.current?.focus();
-  }, []);
+  const handleTerminalTextDrop = React.useCallback(
+    (droppedText: string) => {
+      sendInput(droppedText);
+      focusActiveTerminal();
+    },
+    [focusActiveTerminal, sendInput],
+  );
 
   const {
     isVisible: isTextDropZoneVisible,
@@ -657,65 +388,8 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     onDropText: handleTerminalTextDrop,
   });
 
-  useSshPrimarySession({
-    terminalInitOptionsRef,
-    terminalContainerRef,
-    terminalRef,
-    primaryTerminalRef,
-    primaryPaneIdRef,
-    activePaneIdRef,
-    primarySocketRef,
-    socketRef,
-    resolvedTerminalTargetRef,
-    sshConnectionTimeoutSecRef,
-    scheduleFitAndResizeSyncRef,
-    connectSessionRef,
-    selectionPointerClientXRef,
-    onTabTitleChangeRef,
-    setConnectionState,
-    setConnectionError,
-    setTelemetryState,
-    requestHostFingerprintTrust,
-    setActivePane,
-    refreshSelectionAnchor,
-    clearSelectionOverlay,
-    applyAutocompleteInputData,
-    closeAutocompleteRef,
-    scheduleAutocompleteRequestRef,
-    handleAutocompleteTerminalKeyDownRef,
-    handleCompletionResponse,
-  });
-
-  useSshMirrorPanes({
-    connectionState,
-    terminalPaneIds,
-    terminalInitOptionsRef,
-    paneContainerMapRef,
-    mirrorPaneRuntimeMapRef,
-    primaryTerminalRef,
-    selectionPointerClientXRef,
-    activePaneIdRef,
-    socketRef,
-    resolvedTerminalTargetRef,
-    sshConnectionTimeoutSecRef,
-    scheduleFitAndResizeSyncRef,
-    wrapperRef,
-    setActivePane,
-    refreshSelectionAnchor,
-    handleAutocompleteTerminalKeyDownRef,
-    applyAutocompleteInputData,
-    closeAutocompleteRef,
-    scheduleAutocompleteRequestRef,
-    handleCompletionResponse,
-    requestHostFingerprintTrust,
-    resolveTerminalTarget,
-    notifyWarning,
-  });
-
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 overflow-hidden rounded-[18px] p-1';
-
-  const canSplitTerminal = terminalPaneIds.length < MAX_TERMINAL_PANES;
 
   return (
     <div
@@ -730,48 +404,44 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
       <div className={classNames(cardStyle, 'min-w-0')}>
         <SSHTerminalPaneLayout
           terminalPaneIds={terminalPaneIds}
-          activePaneId={activePaneIdRef.current}
+          activePaneId={activePaneId}
           hasSelection={!!selectionAnchor?.selectionText}
           isConnected={connectionState === 'connected'}
           canSplitTerminal={canSplitTerminal}
           setPaneContainerElement={setPaneContainerElement}
-          setPrimaryPaneContainer={(element) => {
-            if (activePaneIdRef.current === primaryPaneIdRef.current) {
-              terminalContainerRef.current = element;
-            }
-          }}
-          onPaneActivate={setActivePane}
+          setPrimaryPaneContainer={setPrimaryPaneContainer}
+          onPaneActivate={activatePane}
           onCopy={(paneId) => {
-            setActivePane(paneId);
+            activatePane(paneId);
             handleContextMenuCopy();
           }}
           onPaste={(paneId) => {
-            setActivePane(paneId);
+            activatePane(paneId);
             handleContextMenuPaste();
           }}
           onSearchOnline={(paneId) => {
-            setActivePane(paneId);
+            activatePane(paneId);
             handleContextMenuSearchOnline();
           }}
           onFind={(paneId) => {
-            setActivePane(paneId);
+            activatePane(paneId);
             handleContextMenuFind();
           }}
           onSelectAll={(paneId) => {
-            setActivePane(paneId);
+            activatePane(paneId);
             handleContextMenuSelectAll();
           }}
           onClearTerminal={(paneId) => {
-            setActivePane(paneId);
+            activatePane(paneId);
             handleContextMenuClearTerminal();
           }}
           onSplitPane={(paneId) => {
-            setActivePane(paneId);
-            splitTerminalPane();
+            activatePane(paneId);
+            splitPane();
           }}
           onClosePane={(paneId) => {
-            setActivePane(paneId);
-            closeTerminalPane(paneId);
+            activatePane(paneId);
+            closePane(paneId);
           }}
         />
       </div>
@@ -857,7 +527,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
             )}
           >
             <Menubar>
-              <Button onClick={handleRetry}>
+              <Button onClick={retryConnection}>
                 <RefreshCw size={16} />
                 {t('ssh.retry')}
               </Button>
