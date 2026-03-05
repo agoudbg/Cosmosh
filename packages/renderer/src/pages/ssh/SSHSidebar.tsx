@@ -26,6 +26,7 @@ import {
   ContextMenuTrigger,
 } from '../../components/ui/context-menu';
 import { Input } from '../../components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { t } from '../../lib/i18n';
 import { MAX_TERMINAL_PANES, type SshTelemetryState } from './ssh-types';
 import { formatCpuPercent, formatMemoryUsage, formatTrafficRate } from './ssh-utils';
@@ -84,6 +85,7 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
   const hiddenHeaderStyle = 'h-[34px] mt-[-38px]';
   const commandButtonStyle =
     '!justify-start overflow-hidden text-ellipsis text-start w-full whitespace-nowrap flex-shrink-0';
+  const commandPreviewMaxLength = 200;
   const shouldShowTargetTerminalSubmenu = terminalPaneIds.length > 1;
   const shouldShowSplitAndAdd = canSplitTerminal && terminalPaneIds.length < MAX_TERMINAL_PANES;
 
@@ -135,125 +137,147 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
               {t('ssh.historyCommandsEmpty')}
             </div>
           ) : (
-            [...telemetryState.recentCommands].reverse().map((command, index) => (
-              <ContextMenu key={`${command}-${index}`}>
-                <ContextMenuTrigger asChild>
-                  <div className="group relative">
-                    <Button
-                      className={classNames(commandButtonStyle, 'min-w-0 flex-1')}
-                      title={command}
-                      onClick={() => onInsertRecentCommand(command)}
-                    >
-                      <span className="block w-full truncate pr-8">{command}</span>
-                    </Button>
-                    <button
-                      aria-label={t('ssh.historyDeleteLabel')}
-                      title={t('ssh.historyDeleteLabel')}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onDeleteRecentCommand(command);
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent>
-                  <ContextMenuItem
-                    icon={Plus}
-                    onSelect={() => onInsertRecentCommand(command)}
-                  >
-                    {t('ssh.historyAddToCurrentTerminal')}
-                  </ContextMenuItem>
+            <TooltipProvider delayDuration={180}>
+              {[...telemetryState.recentCommands].reverse().map((command, index) => {
+                const commandPreview =
+                  command.length > commandPreviewMaxLength
+                    ? `${command.slice(0, commandPreviewMaxLength)}...`
+                    : command;
 
-                  {shouldShowTargetTerminalSubmenu ? (
-                    <ContextMenuSub>
-                      <ContextMenuSubTrigger icon={Terminal}>{t('ssh.historyAddToTerminalMenu')}</ContextMenuSubTrigger>
-                      <ContextMenuSubContent>
-                        {terminalPaneIds.map((paneId, paneIndex) => (
-                          <ContextMenuItem
-                            key={paneId}
-                            icon={Terminal}
-                            disabled={paneId === activePaneId}
-                            onSelect={() => onInsertRecentCommandToPane(command, paneId)}
-                          >
-                            {t('ssh.historyTerminalLabel', { index: paneIndex + 1 })}
-                          </ContextMenuItem>
-                        ))}
-                        {shouldShowSplitAndAdd ? <ContextMenuSeparator /> : null}
-                        {shouldShowSplitAndAdd ? (
-                          <ContextMenuItem
-                            icon={SplitSquareHorizontal}
-                            onSelect={() => onSplitTerminalAndInsertRecentCommand(command)}
-                          >
-                            {t('ssh.historySplitTerminalAndAdd')}
-                          </ContextMenuItem>
-                        ) : null}
-                      </ContextMenuSubContent>
-                    </ContextMenuSub>
-                  ) : shouldShowSplitAndAdd ? (
-                    <ContextMenuItem
-                      icon={SplitSquareHorizontal}
-                      onSelect={() => onSplitTerminalAndInsertRecentCommand(command)}
-                    >
-                      {t('ssh.historySplitTerminalAndAdd')}
-                    </ContextMenuItem>
-                  ) : null}
+                return (
+                  <ContextMenu key={`${command}-${index}`}>
+                    <ContextMenuTrigger asChild>
+                      <div className="group relative">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              className={classNames(commandButtonStyle, 'min-w-0 flex-1')}
+                              onClick={() => onInsertRecentCommand(command)}
+                            >
+                              <span className="block w-full truncate pr-8">{commandPreview}</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-[420px] whitespace-pre-wrap break-all">
+                            {commandPreview}
+                          </TooltipContent>
+                        </Tooltip>
 
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    icon={Play}
-                    onSelect={() => onRunRecentCommand(command)}
-                  >
-                    {t('ssh.historyRunInCurrentTerminal')}
-                  </ContextMenuItem>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              aria-label={t('ssh.historyDeleteLabel')}
+                              className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onDeleteRecentCommand(command);
+                              }}
+                            >
+                              <X size={14} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>{t('ssh.historyDeleteLabel')}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        icon={Plus}
+                        onSelect={() => onInsertRecentCommand(command)}
+                      >
+                        {t('ssh.historyAddToCurrentTerminal')}
+                      </ContextMenuItem>
 
-                  {shouldShowTargetTerminalSubmenu ? (
-                    <ContextMenuSub>
-                      <ContextMenuSubTrigger icon={Play}>{t('ssh.historyRunInTerminalMenu')}</ContextMenuSubTrigger>
-                      <ContextMenuSubContent>
-                        {terminalPaneIds.map((paneId, paneIndex) => (
-                          <ContextMenuItem
-                            key={paneId}
-                            icon={Terminal}
-                            disabled={paneId === activePaneId}
-                            onSelect={() => onRunRecentCommandToPane(command, paneId)}
-                          >
-                            {t('ssh.historyTerminalLabel', { index: paneIndex + 1 })}
-                          </ContextMenuItem>
-                        ))}
-                        {shouldShowSplitAndAdd ? <ContextMenuSeparator /> : null}
-                        {shouldShowSplitAndAdd ? (
-                          <ContextMenuItem
-                            icon={SplitSquareHorizontal}
-                            onSelect={() => onSplitTerminalAndRunRecentCommand(command)}
-                          >
-                            {t('ssh.historySplitTerminalAndRun')}
-                          </ContextMenuItem>
-                        ) : null}
-                      </ContextMenuSubContent>
-                    </ContextMenuSub>
-                  ) : shouldShowSplitAndAdd ? (
-                    <ContextMenuItem
-                      icon={SplitSquareHorizontal}
-                      onSelect={() => onSplitTerminalAndRunRecentCommand(command)}
-                    >
-                      {t('ssh.historySplitTerminalAndRun')}
-                    </ContextMenuItem>
-                  ) : null}
+                      {shouldShowTargetTerminalSubmenu ? (
+                        <ContextMenuSub>
+                          <ContextMenuSubTrigger icon={Terminal}>
+                            {t('ssh.historyAddToTerminalMenu')}
+                          </ContextMenuSubTrigger>
+                          <ContextMenuSubContent>
+                            {terminalPaneIds.map((paneId, paneIndex) => (
+                              <ContextMenuItem
+                                key={paneId}
+                                icon={Terminal}
+                                disabled={paneId === activePaneId}
+                                onSelect={() => onInsertRecentCommandToPane(command, paneId)}
+                              >
+                                {t('ssh.historyTerminalLabel', { index: paneIndex + 1 })}
+                              </ContextMenuItem>
+                            ))}
+                            {shouldShowSplitAndAdd ? <ContextMenuSeparator /> : null}
+                            {shouldShowSplitAndAdd ? (
+                              <ContextMenuItem
+                                icon={SplitSquareHorizontal}
+                                onSelect={() => onSplitTerminalAndInsertRecentCommand(command)}
+                              >
+                                {t('ssh.historySplitTerminalAndAdd')}
+                              </ContextMenuItem>
+                            ) : null}
+                          </ContextMenuSubContent>
+                        </ContextMenuSub>
+                      ) : shouldShowSplitAndAdd ? (
+                        <ContextMenuItem
+                          icon={SplitSquareHorizontal}
+                          onSelect={() => onSplitTerminalAndInsertRecentCommand(command)}
+                        >
+                          {t('ssh.historySplitTerminalAndAdd')}
+                        </ContextMenuItem>
+                      ) : null}
 
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    icon={X}
-                    onSelect={() => onDeleteRecentCommand(command)}
-                  >
-                    {t('ssh.historyDeleteLabel')}
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            ))
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        icon={Play}
+                        onSelect={() => onRunRecentCommand(command)}
+                      >
+                        {t('ssh.historyRunInCurrentTerminal')}
+                      </ContextMenuItem>
+
+                      {shouldShowTargetTerminalSubmenu ? (
+                        <ContextMenuSub>
+                          <ContextMenuSubTrigger icon={Play}>{t('ssh.historyRunInTerminalMenu')}</ContextMenuSubTrigger>
+                          <ContextMenuSubContent>
+                            {terminalPaneIds.map((paneId, paneIndex) => (
+                              <ContextMenuItem
+                                key={paneId}
+                                icon={Terminal}
+                                disabled={paneId === activePaneId}
+                                onSelect={() => onRunRecentCommandToPane(command, paneId)}
+                              >
+                                {t('ssh.historyTerminalLabel', { index: paneIndex + 1 })}
+                              </ContextMenuItem>
+                            ))}
+                            {shouldShowSplitAndAdd ? <ContextMenuSeparator /> : null}
+                            {shouldShowSplitAndAdd ? (
+                              <ContextMenuItem
+                                icon={SplitSquareHorizontal}
+                                onSelect={() => onSplitTerminalAndRunRecentCommand(command)}
+                              >
+                                {t('ssh.historySplitTerminalAndRun')}
+                              </ContextMenuItem>
+                            ) : null}
+                          </ContextMenuSubContent>
+                        </ContextMenuSub>
+                      ) : shouldShowSplitAndAdd ? (
+                        <ContextMenuItem
+                          icon={SplitSquareHorizontal}
+                          onSelect={() => onSplitTerminalAndRunRecentCommand(command)}
+                        >
+                          {t('ssh.historySplitTerminalAndRun')}
+                        </ContextMenuItem>
+                      ) : null}
+
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        icon={X}
+                        onSelect={() => onDeleteRecentCommand(command)}
+                      >
+                        {t('ssh.historyDeleteLabel')}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                );
+              })}
+            </TooltipProvider>
           )}
         </div>
       </div>
