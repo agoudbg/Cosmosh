@@ -12,14 +12,19 @@ import { useSettingsValue } from './lib/settings-store';
 import { requestSshEditorCreateMode, setActiveSshServerId, toLocalTerminalTargetId } from './lib/ssh-target';
 import { AppToastProvider } from './lib/toast';
 import { useTabs } from './lib/useTabs';
-import ComponentsField from './pages/ComponentsField';
-import Debug from './pages/Debug';
 import Home from './pages/Home';
-import Settings from './pages/Settings';
-import SettingsEditor from './pages/SettingsEditor';
-import SSH from './pages/SSH';
-import SSHEditor from './pages/SSHEditor';
 import type { TabIconKey, TabItem } from './types/tabs';
+
+const ComponentsField = React.lazy(() => import('./pages/ComponentsField'));
+const Debug = React.lazy(() => import('./pages/Debug'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const SettingsEditor = React.lazy(() => import('./pages/SettingsEditor'));
+const SSH = React.lazy(() => import('./pages/SSH'));
+const SSHEditor = React.lazy(() => import('./pages/SSHEditor'));
+
+const pageLoadingFallback = (
+  <div className="text-muted-foreground flex h-full w-full items-center justify-center">Loading page...</div>
+);
 
 const tabIconMap: Record<TabIconKey, React.ReactNode> = {
   home: <HomeIcon className="h-4 w-4" />,
@@ -347,49 +352,65 @@ const App: React.FC = () => {
                 />
               )}
               {tab.page === 'ssh' && (
-                <SSH
-                  onTabTitleChange={(title) => {
-                    updateTab(tab.id, { title });
-                  }}
-                />
+                <React.Suspense fallback={pageLoadingFallback}>
+                  <SSH
+                    onTabTitleChange={(title) => {
+                      updateTab(tab.id, { title });
+                    }}
+                  />
+                </React.Suspense>
               )}
-              {tab.page === 'ssh-editor' && <SSHEditor />}
+              {tab.page === 'ssh-editor' && (
+                <React.Suspense fallback={pageLoadingFallback}>
+                  <SSHEditor />
+                </React.Suspense>
+              )}
               {tab.page === 'settings' && (
-                <Settings
-                  initialCategoryId={tab.state?.settingsCategory}
-                  onOpenSettingInEditor={(settingKey) =>
-                    addTab('settings-editor', {
-                      state: {
-                        settingsEditorSettingKey: settingKey,
-                      },
-                    })
-                  }
-                />
+                <React.Suspense fallback={pageLoadingFallback}>
+                  <Settings
+                    initialCategoryId={tab.state?.settingsCategory}
+                    onOpenSettingInEditor={(settingKey) =>
+                      addTab('settings-editor', {
+                        state: {
+                          settingsEditorSettingKey: settingKey,
+                        },
+                      })
+                    }
+                  />
+                </React.Suspense>
               )}
               {tab.page === 'settings-editor' && (
-                <SettingsEditor initialSettingKey={tab.state?.settingsEditorSettingKey} />
+                <React.Suspense fallback={pageLoadingFallback}>
+                  <SettingsEditor initialSettingKey={tab.state?.settingsEditorSettingKey} />
+                </React.Suspense>
               )}
-              {tab.page === 'components-field' && <ComponentsField />}
+              {tab.page === 'components-field' && (
+                <React.Suspense fallback={pageLoadingFallback}>
+                  <ComponentsField />
+                </React.Suspense>
+              )}
               {tab.page === 'debug' && (
-                <Debug
-                  activeTabTitle={tab.title}
-                  activeTabIcon={tab.iconKey}
-                  onOpenSSH={(openInNewTab) => (openInNewTab ? addTab('ssh') : openPageInTab(tab.id, 'ssh'))}
-                  onOpenSettings={(openInNewTab) =>
-                    openInNewTab ? addTab('settings') : openPageInTab(tab.id, 'settings')
-                  }
-                  onOpenSettingsEditor={(openInNewTab) =>
-                    openInNewTab ? addTab('settings-editor') : openPageInTab(tab.id, 'settings-editor')
-                  }
-                  onOpenComponentsField={(openInNewTab) =>
-                    openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')
-                  }
-                  onOpenSshEditor={(openInNewTab) =>
-                    openInNewTab ? addTab('ssh-editor') : openPageInTab(tab.id, 'ssh-editor')
-                  }
-                  onRenameTab={(title) => updateTab(tab.id, { title })}
-                  onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
-                />
+                <React.Suspense fallback={pageLoadingFallback}>
+                  <Debug
+                    activeTabTitle={tab.title}
+                    activeTabIcon={tab.iconKey}
+                    onOpenSSH={(openInNewTab) => (openInNewTab ? addTab('ssh') : openPageInTab(tab.id, 'ssh'))}
+                    onOpenSettings={(openInNewTab) =>
+                      openInNewTab ? addTab('settings') : openPageInTab(tab.id, 'settings')
+                    }
+                    onOpenSettingsEditor={(openInNewTab) =>
+                      openInNewTab ? addTab('settings-editor') : openPageInTab(tab.id, 'settings-editor')
+                    }
+                    onOpenComponentsField={(openInNewTab) =>
+                      openInNewTab ? addTab('components-field') : openPageInTab(tab.id, 'components-field')
+                    }
+                    onOpenSshEditor={(openInNewTab) =>
+                      openInNewTab ? addTab('ssh-editor') : openPageInTab(tab.id, 'ssh-editor')
+                    }
+                    onRenameTab={(title) => updateTab(tab.id, { title })}
+                    onChangeIcon={(iconKey) => updateTab(tab.id, { iconKey })}
+                  />
+                </React.Suspense>
               )}
             </section>
           );

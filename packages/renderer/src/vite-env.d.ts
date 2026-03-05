@@ -35,6 +35,7 @@ type LocalTerminalCreateSessionResponse = ApiLocalTerminalCreateSessionResponse;
 declare global {
   interface ImportMetaEnv {
     readonly DEV: boolean;
+    readonly VITE_ENABLE_STRICT_MODE?: string;
   }
 
   interface ImportMeta {

@@ -7,16 +7,18 @@ import App from './App';
 import { initializeLocale } from './lib/i18n';
 import { initializeSettingsStore } from './lib/settings-store';
 
+const shouldUseStrictMode = !import.meta.env.DEV || import.meta.env.VITE_ENABLE_STRICT_MODE === 'true';
+
 document.documentElement.dataset.theme = 'dark';
 
 const bootstrap = async (): Promise<void> => {
   await initializeLocale();
   await initializeSettingsStore();
 
+  const appNode = <App />;
+
   ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
+    shouldUseStrictMode ? <React.StrictMode>{appNode}</React.StrictMode> : appNode,
   );
 };
 

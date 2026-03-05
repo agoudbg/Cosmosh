@@ -44,6 +44,8 @@ flowchart LR
 - Uses `window.electron` bridge only (no direct Node API usage).
 - Creates SSH/local terminal sessions through backend APIs.
 - Connects terminal data channels through WebSocket and renders with `xterm.js`.
+- Non-home renderer pages (including SSH and settings editor/Monaco) are lazy-loaded to keep heavyweight assets out of the default startup path.
+- Development StrictMode is opt-in via `VITE_ENABLE_STRICT_MODE=true` to reduce duplicate effect execution during local performance profiling.
 
 ## 3. IPC Lifecycle (Current)
 

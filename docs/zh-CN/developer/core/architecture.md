@@ -44,6 +44,8 @@ flowchart LR
 - 仅通过 `window.electron` bridge 访问能力（不直接使用 Node API）。
 - 通过后端 API 创建 SSH/本地终端会话。
 - 通过 WebSocket 建立终端数据通道，并由 `xterm.js` 渲染。
+- 非 Home 的渲染页（含 SSH 与设置编辑器/Monaco）采用懒加载，避免重型资源进入默认启动路径。
+- 开发态 StrictMode 改为通过 `VITE_ENABLE_STRICT_MODE=true` 显式开启，降低本地性能排查时重复 effect 执行带来的干扰。
 
 ## 3. IPC 生命周期（当前）
 
