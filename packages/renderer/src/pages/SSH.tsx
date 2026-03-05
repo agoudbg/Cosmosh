@@ -222,7 +222,7 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
 
   // ---------------------------------------------------------------------------
   // Shared terminal action helpers — used by both the Orbit Bar and the context
-  // menu so that behaviour is consistent across interaction surfaces.
+  // menu so that behavior is consistent across interaction surfaces.
   // ---------------------------------------------------------------------------
 
   const copyTextToClipboard = React.useCallback(
