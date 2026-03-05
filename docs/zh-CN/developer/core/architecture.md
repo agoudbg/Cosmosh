@@ -26,6 +26,7 @@ flowchart LR
 ### Main 进程 (`packages/main/src/index.ts`)
 
 - 启动后端进程，并在 `/health` 就绪后再打开 UI。
+- 在开发启动路径中，Main 会先一次性准备 Prisma Client，再以仅运行时命令（`dev:runtime`）拉起 backend，避免嵌套脚本导致 `predev` 重复构建。
 - 持有应用级能力：语言持久化（内存）、窗口/开发者工具/文件管理器操作。
 - 将渲染层请求代理到后端端点，并注入：
   - 作为内部鉴权头的 `COSMOSH_INTERNAL_TOKEN`。

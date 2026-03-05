@@ -462,6 +462,14 @@ const waitForBackendReady = async (port: number, isProcessAlive: () => boolean, 
 };
 
 /**
+ * Returns backend readiness timeout based on runtime mode.
+ * Development mode receives a wider window to tolerate slow laptops and first-run warmup.
+ */
+const resolveBackendHealthCheckTimeoutMs = (isDev: boolean): number => {
+  return isDev ? 60000 : 30000;
+};
+
+/**
  * Starts backend runtime and blocks until health check becomes available.
  */
 const startBackendService = async (): Promise<void> => {
@@ -504,6 +512,13 @@ const startBackendService = async (): Promise<void> => {
   let backendProcessCwd = workspaceRoot;
 
   if (isDev) {
+    await runCommand('pnpm --filter @cosmosh/backend run db:generate', {
+      cwd: workspaceRoot,
+      env: backendEnv,
+      logPrefix: '[backend:init]',
+      shell: true,
+    });
+
     const hasExistingDatabase = await fileExists(databasePath);
 
     if (!hasExistingDatabase) {
@@ -521,7 +536,7 @@ const startBackendService = async (): Promise<void> => {
       );
     }
 
-    command = 'pnpm --filter @cosmosh/backend run dev';
+    command = 'pnpm --filter @cosmosh/backend run dev:runtime';
     args = [];
     shell = true;
   } else {
@@ -562,7 +577,11 @@ const startBackendService = async (): Promise<void> => {
   });
 
   const healthCheckStartedAt = Date.now();
-  await waitForBackendReady(port, () => spawnedBackendProcess.exitCode === null && !spawnedBackendProcess.killed);
+  await waitForBackendReady(
+    port,
+    () => spawnedBackendProcess.exitCode === null && !spawnedBackendProcess.killed,
+    resolveBackendHealthCheckTimeoutMs(isDev),
+  );
   console.log(`[backend] Health check passed in ${Date.now() - healthCheckStartedAt}ms.`);
   backendPort = port;
   backendToken = token;
