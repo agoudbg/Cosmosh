@@ -1,4 +1,4 @@
-import { ClipboardPaste, Copy, Eraser, Globe, ScanSearch, TextSelect } from 'lucide-react';
+import { ClipboardPaste, Copy, Eraser, Globe, ScanSearch, SplitSquareHorizontal, TextSelect, X } from 'lucide-react';
 import React from 'react';
 
 import {
@@ -202,6 +202,7 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
           <>
             <ContextMenuSeparator />
             <ContextMenuItem
+              icon={SplitSquareHorizontal}
               disabled={!isConnected || !canSplitTerminal}
               onSelect={onSplitTerminal}
             >
@@ -212,6 +213,7 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
 
         {closeTerminalLabel && onCloseTerminal ? (
           <ContextMenuItem
+            icon={X}
             disabled={!isConnected || !canCloseTerminal}
             onSelect={onCloseTerminal}
           >
