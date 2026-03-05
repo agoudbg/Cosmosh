@@ -11,7 +11,7 @@
   "homepage": "https://github.com/agoudbg/cosmosh",
   "main": "./dist/index.js",
   "scripts": {
-    "predev": "pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build",
+    "predev": "node ./scripts/dev-preflight.cjs",
     "dev": "tsc -p tsconfig.json && electron dist/index.js",
     "prebuild": "node ./scripts/cleanup-legacy-artifacts.cjs && node ./scripts/release-unlock-prisma-locks.cjs && pnpm --filter @cosmosh/backend build && pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && node ./scripts/ensure-sqlcipher-native.cjs && node ./scripts/sync-prisma-client.cjs && node ./scripts/sync-backend-runtime.cjs && node ./scripts/generate-installer-strings.mjs && pnpm --filter @cosmosh/renderer build",
     "build": "tsc && electron-builder",

@@ -512,13 +512,6 @@ const startBackendService = async (): Promise<void> => {
   let backendProcessCwd = workspaceRoot;
 
   if (isDev) {
-    await runCommand('pnpm --filter @cosmosh/backend run db:generate', {
-      cwd: workspaceRoot,
-      env: backendEnv,
-      logPrefix: '[backend:init]',
-      shell: true,
-    });
-
     const hasExistingDatabase = await fileExists(databasePath);
 
     if (!hasExistingDatabase) {

@@ -26,7 +26,8 @@ flowchart LR
 ### Main Process (`packages/main/src/index.ts`)
 
 - Starts backend process and waits for `/health` before opening UI.
-- In development startup, main prepares Prisma client once, then launches backend with a runtime-only command (`dev:runtime`) to avoid duplicate `predev` rebuilds from nested workspace scripts.
+- In development startup, main uses an incremental preflight (`packages/main/scripts/dev-preflight.cjs`) and skips `@cosmosh/api-contract` / `@cosmosh/i18n` rebuilds when outputs are fresh.
+- Main launches backend with a runtime-only non-watch command (`dev:runtime`) to avoid duplicate `predev` rebuilds and reduce sustained CPU noise on laptops.
 - Owns app-level capabilities: locale persistence (in-memory), window/devtools/file-manager actions.
 - Proxies renderer requests to backend endpoints with:
   - `COSMOSH_INTERNAL_TOKEN` as internal auth header.
