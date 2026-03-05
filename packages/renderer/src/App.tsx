@@ -11,7 +11,7 @@ import { t } from './lib/i18n';
 import { useSettingsValue } from './lib/settings-store';
 import { requestSshEditorCreateMode, setActiveSshServerId, toLocalTerminalTargetId } from './lib/ssh-target';
 import { AppToastProvider } from './lib/toast';
-import { useTabs } from './lib/useTabs';
+import { resolvePageDefaults, useTabs } from './lib/useTabs';
 import Home from './pages/Home';
 import type { TabIconKey, TabItem } from './types/tabs';
 
@@ -135,7 +135,7 @@ const TabSwitcherOverlay: React.FC<TabSwitcherOverlayProps> = ({ tabs, activeTab
       key: tab.id,
       title: tab.title,
       subtitle: (() => {
-        const pageLabel = t(`tabs.page.${tab.page}`);
+        const pageLabel = resolvePageDefaults(tab.page).title;
         return pageLabel === tab.title ? undefined : pageLabel;
       })(),
       icon: tabIconMap[tab.iconKey] ?? <FileText className="h-4 w-4" />,

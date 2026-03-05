@@ -8,7 +8,13 @@ type UseTabsOptions = {
   onLastTabClose?: () => void;
 };
 
-const resolvePageDefaults = (page: TabPage): { title: string; iconKey: TabIconKey } => {
+/**
+ * Returns the localized title and icon for a logical tab page identifier.
+ *
+ * @param page The logical page identifier used to resolve translation keys.
+ * @returns The translated title and associated icon key for that page.
+ */
+export const resolvePageDefaults = (page: TabPage): { title: string; iconKey: TabIconKey } => {
   if (page === 'home') {
     return { title: t('tabs.page.home'), iconKey: 'home' };
   }
