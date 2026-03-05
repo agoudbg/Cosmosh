@@ -199,9 +199,9 @@ export type SshCoreActions = {
    * Sends raw input data to current active pane session.
    *
    * @param data Raw terminal input bytes encoded as string.
-   * @returns Nothing.
+   * @returns `true` when payload is sent to an open socket, otherwise `false`.
    */
-  sendInput: (data: string) => void;
+  sendInput: (data: string) => boolean;
   /**
    * Sends command-history deletion request for current active session.
    *
@@ -746,19 +746,21 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    * Sends input bytes to active pane websocket.
    *
    * @param data Raw input payload.
-   * @returns Nothing.
+   * @returns `true` when input is sent to an open socket, otherwise `false`.
    */
   const sendInput = React.useCallback(
-    (data: string) => {
+    (data: string): boolean => {
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) {
-        return;
+        return false;
       }
 
       sendClientMessage(socket, {
         type: 'input',
         data,
       });
+
+      return true;
     },
     [socketRef],
   );

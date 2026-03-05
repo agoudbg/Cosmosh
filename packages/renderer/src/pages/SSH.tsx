@@ -180,6 +180,45 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     },
     refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
   } = sshCore;
+  const terminalPaneIdsRef = React.useRef<string[]>(terminalPaneIds);
+
+  React.useEffect(() => {
+    terminalPaneIdsRef.current = terminalPaneIds;
+  }, [terminalPaneIds]);
+
+  /**
+   * Suspends for one short async interval used by pane/socket polling loops.
+   *
+   * @param milliseconds Delay duration in milliseconds.
+   * @returns Promise resolved after the requested delay.
+   */
+  const delay = React.useCallback((milliseconds: number): Promise<void> => {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, milliseconds);
+    });
+  }, []);
+
+  /**
+   * Waits until split-pane state includes the newly created pane id.
+   *
+   * @param expectedPaneCount Pane count expected after split.
+   * @returns Newest pane id when available, otherwise `null` on timeout.
+   */
+  const waitForNewestPaneId = React.useCallback(
+    async (expectedPaneCount: number): Promise<string | null> => {
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const currentPaneIds = terminalPaneIdsRef.current;
+        if (currentPaneIds.length >= expectedPaneCount) {
+          return currentPaneIds[currentPaneIds.length - 1] ?? null;
+        }
+
+        await delay(50);
+      }
+
+      return null;
+    },
+    [delay],
+  );
 
   // ---------------------------------------------------------------------------
   // Shared terminal action helpers — used by both the Orbit Bar and the context
@@ -314,12 +353,113 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     [deleteHistoryCommand],
   );
 
+  /**
+   * Converts sidebar command actions into terminal input payloads.
+   *
+   * @param command Raw command text selected from history.
+   * @param shouldRun Whether command should auto-submit with Enter.
+   * @returns Input payload written to terminal websocket.
+   */
+  const buildRecentCommandPayload = React.useCallback((command: string, shouldRun: boolean): string => {
+    return shouldRun ? `${command}\r` : command;
+  }, []);
+
+  /**
+   * Sends a history command to one pane and focuses that pane terminal.
+   *
+   * @param command Command text selected in history panel.
+   * @param paneId Target pane id.
+   * @param shouldRun Whether command should auto-submit with Enter.
+   * @returns `true` when command payload is sent to an open socket.
+   */
+  const dispatchRecentCommandToPane = React.useCallback(
+    (command: string, paneId: string, shouldRun: boolean): boolean => {
+      activatePane(paneId);
+      const didSend = sendInput(buildRecentCommandPayload(command, shouldRun));
+      focusActiveTerminal();
+      return didSend;
+    },
+    [activatePane, buildRecentCommandPayload, focusActiveTerminal, sendInput],
+  );
+
+  /**
+   * Splits one pane and retries command dispatch to the new pane until ready.
+   *
+   * @param command Command text selected in history panel.
+   * @param shouldRun Whether command should auto-submit with Enter.
+   * @returns Nothing.
+   */
+  const splitTerminalAndDispatchRecentCommand = React.useCallback(
+    (command: string, shouldRun: boolean): void => {
+      if (!canSplitTerminal) {
+        return;
+      }
+
+      const expectedPaneCount = terminalPaneIdsRef.current.length + 1;
+      splitPane();
+
+      void (async () => {
+        const newestPaneId = await waitForNewestPaneId(expectedPaneCount);
+        if (!newestPaneId) {
+          notifyWarning(t(shouldRun ? 'ssh.historySplitTerminalAndRunFailed' : 'ssh.historySplitTerminalAndAddFailed'));
+          return;
+        }
+
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          const didSend = dispatchRecentCommandToPane(command, newestPaneId, shouldRun);
+          if (didSend) {
+            return;
+          }
+
+          await delay(75);
+        }
+
+        notifyWarning(t(shouldRun ? 'ssh.historySplitTerminalAndRunFailed' : 'ssh.historySplitTerminalAndAddFailed'));
+      })();
+    },
+    [canSplitTerminal, delay, dispatchRecentCommandToPane, notifyWarning, splitPane, waitForNewestPaneId],
+  );
+
   const handleInsertRecentCommand = React.useCallback(
     (command: string) => {
-      sendInput(command);
-      focusActiveTerminal();
+      dispatchRecentCommandToPane(command, activePaneId, false);
     },
-    [focusActiveTerminal, sendInput],
+    [activePaneId, dispatchRecentCommandToPane],
+  );
+
+  const handleInsertRecentCommandToPane = React.useCallback(
+    (command: string, paneId: string) => {
+      dispatchRecentCommandToPane(command, paneId, false);
+    },
+    [dispatchRecentCommandToPane],
+  );
+
+  const handleRunRecentCommand = React.useCallback(
+    (command: string) => {
+      dispatchRecentCommandToPane(command, activePaneId, true);
+    },
+    [activePaneId, dispatchRecentCommandToPane],
+  );
+
+  const handleRunRecentCommandToPane = React.useCallback(
+    (command: string, paneId: string) => {
+      dispatchRecentCommandToPane(command, paneId, true);
+    },
+    [dispatchRecentCommandToPane],
+  );
+
+  const handleSplitTerminalAndInsertRecentCommand = React.useCallback(
+    (command: string) => {
+      splitTerminalAndDispatchRecentCommand(command, false);
+    },
+    [splitTerminalAndDispatchRecentCommand],
+  );
+
+  const handleSplitTerminalAndRunRecentCommand = React.useCallback(
+    (command: string) => {
+      splitTerminalAndDispatchRecentCommand(command, true);
+    },
+    [splitTerminalAndDispatchRecentCommand],
   );
 
   const handleSelectionBarDragStart = React.useCallback(
@@ -510,7 +650,15 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
 
       <SSHSidebar
         telemetryState={telemetryState}
+        terminalPaneIds={terminalPaneIds}
+        activePaneId={activePaneId}
+        canSplitTerminal={canSplitTerminal}
         onInsertRecentCommand={handleInsertRecentCommand}
+        onInsertRecentCommandToPane={handleInsertRecentCommandToPane}
+        onSplitTerminalAndInsertRecentCommand={handleSplitTerminalAndInsertRecentCommand}
+        onRunRecentCommand={handleRunRecentCommand}
+        onRunRecentCommandToPane={handleRunRecentCommandToPane}
+        onSplitTerminalAndRunRecentCommand={handleSplitTerminalAndRunRecentCommand}
         onDeleteRecentCommand={handleDeleteRecentCommand}
       />
 
