@@ -75,6 +75,7 @@ declare global {
       }>;
       onLaunchWorkingDirectory: (listener: (cwd: string) => void) => () => void;
       openDevTools: () => Promise<boolean>;
+      restartBackendRuntime: () => Promise<boolean>;
       showInFileManager: (targetPath?: string) => Promise<boolean>;
       openExternalUrl: (targetUrl: string) => Promise<boolean>;
       importPrivateKeyFromFile: () => Promise<{ canceled: boolean; content?: string }>;

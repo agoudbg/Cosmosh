@@ -593,6 +593,20 @@ const stopBackendService = (): void => {
 };
 
 /**
+ * Restarts backend runtime in-place and refreshes active connection metadata.
+ */
+const restartBackendService = async (): Promise<boolean> => {
+  try {
+    stopBackendService();
+    await startBackendService();
+    return true;
+  } catch (error) {
+    console.error('Failed to restart backend runtime.', error);
+    return false;
+  }
+};
+
+/**
  * Returns backend connection state and enforces ready-state contract.
  */
 const requireBackendConfig = (): { port: number; token: string } => {
@@ -785,6 +799,7 @@ registerAppUtilityIpcHandlers({
   getPendingLaunchWorkingDirectory: () => pendingLaunchWorkingDirectory,
   resolveBuildTime,
   getDatabaseSecurityInfo,
+  restartBackendRuntime: restartBackendService,
 });
 
 registerBackendIpcHandlers({

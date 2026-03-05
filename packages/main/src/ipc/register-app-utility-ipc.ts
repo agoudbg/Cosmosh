@@ -25,6 +25,8 @@ export type RegisterAppUtilityIpcHandlersOptions = {
   resolveBuildTime: () => Promise<string>;
   /** Returns non-sensitive database encryption diagnostics. */
   getDatabaseSecurityInfo: () => Promise<DatabaseSecurityInfo>;
+  /** Restarts backend runtime without restarting the full Electron app. */
+  restartBackendRuntime: () => Promise<boolean>;
 };
 
 /**
@@ -122,6 +124,14 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
 
     targetWindow.webContents.openDevTools({ mode: 'detach' });
     return true;
+  });
+
+  ipcMain.handle('app:restart-backend-runtime', async (): Promise<boolean> => {
+    if (app.isPackaged) {
+      return false;
+    }
+
+    return options.restartBackendRuntime();
   });
 
   ipcMain.handle('app:show-in-file-manager', async (_event, targetPath?: string): Promise<boolean> => {

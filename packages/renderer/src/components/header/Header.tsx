@@ -67,6 +67,16 @@ const Header: React.FC<{
     void window.electron?.openDevTools();
   }, [devToolsEnabled]);
 
+  const onRestartBackendRuntime = React.useCallback(async () => {
+    const restarted = await window.electron?.restartBackendRuntime?.();
+    if (restarted) {
+      notifySuccess(t('header.restartBackendSuccess'));
+      return;
+    }
+
+    notifyWarning(t('header.restartBackendFailed'));
+  }, [notifySuccess, notifyWarning]);
+
   React.useEffect(() => {
     const handleDevToolsShortcut = (event: KeyboardEvent): void => {
       const isOpenDevToolsShortcut = event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'i';
@@ -199,6 +209,16 @@ const Header: React.FC<{
               onSelect={onOpenDevTools}
             >
               {t('header.openDevTools')}
+            </DropdownMenuItem>
+          ) : null}
+          {isDev ? (
+            <DropdownMenuItem
+              icon={RefreshCcw}
+              onSelect={() => {
+                void onRestartBackendRuntime();
+              }}
+            >
+              {t('header.restartBackend')}
             </DropdownMenuItem>
           ) : null}
           {isDev ? (

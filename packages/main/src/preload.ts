@@ -101,6 +101,9 @@ contextBridge.exposeInMainWorld('electron', {
   openDevTools: () => {
     return ipcRenderer.invoke('app:open-devtools') as Promise<boolean>;
   },
+  restartBackendRuntime: () => {
+    return ipcRenderer.invoke('app:restart-backend-runtime') as Promise<boolean>;
+  },
   showInFileManager: (targetPath?: string) => {
     return ipcRenderer.invoke('app:show-in-file-manager', targetPath) as Promise<boolean>;
   },
