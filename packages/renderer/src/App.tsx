@@ -23,7 +23,10 @@ const SSH = React.lazy(() => import('./pages/SSH'));
 const SSHEditor = React.lazy(() => import('./pages/SSHEditor'));
 
 const pageLoadingFallback = (
-  <div className="text-muted-foreground flex h-full w-full items-center justify-center">Loading page...</div>
+  <div
+    className="h-full w-full"
+    aria-hidden="true"
+  />
 );
 
 const tabIconMap: Record<TabIconKey, React.ReactNode> = {
