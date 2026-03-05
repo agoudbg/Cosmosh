@@ -15,6 +15,7 @@ Rules:
 - Theme values originate from `packages/renderer/theme/tokens.cjs`.
 - Tailwind colors/radius/shadow map to CSS variables (no hard-coded ad-hoc palette in feature code).
 - UI primitives are wrapped in `packages/renderer/src/components/ui/*` and consumed by pages.
+- Windows title-bar system menu symbol color must come from token `color.windows.system-menu-symbol` and be synchronized to main-process overlay at runtime.
 
 ## 2. Visual Consistency Principles
 

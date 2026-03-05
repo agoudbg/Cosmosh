@@ -27,6 +27,8 @@ export type RegisterAppUtilityIpcHandlersOptions = {
   getDatabaseSecurityInfo: () => Promise<DatabaseSecurityInfo>;
   /** Restarts backend runtime without restarting the full Electron app. */
   restartBackendRuntime: () => Promise<boolean>;
+  /** Applies runtime Windows title bar symbol color for system menu controls. */
+  setWindowsSystemMenuSymbolColor: (symbolColor: string) => boolean;
 };
 
 /**
@@ -174,6 +176,10 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
     } catch {
       return false;
     }
+  });
+
+  ipcMain.handle('app:set-windows-system-menu-symbol-color', (_event, symbolColor: string): boolean => {
+    return options.setWindowsSystemMenuSymbolColor(symbolColor);
   });
 
   ipcMain.handle('app:import-private-key', async (): Promise<{ canceled: boolean; content?: string }> => {

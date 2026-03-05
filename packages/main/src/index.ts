@@ -8,7 +8,7 @@ import type { ApiErrorResponse } from '@cosmosh/api-contract';
 import { API_CODES, API_HEADERS, API_PATHS, createApiError } from '@cosmosh/api-contract';
 import { createI18n, enableI18nDevHotReload, resolveLocale } from '@cosmosh/i18n';
 import { spawn } from 'child_process';
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
 import path from 'path';
 
 import { registerAppUtilityIpcHandlers } from './ipc/register-app-utility-ipc';
@@ -35,6 +35,51 @@ let appLocale = resolveLocale(process.env.COSMOSH_LOCALE, 'en');
 const DEFAULT_RENDERER_DEV_PORT = 2767;
 const MACOS_CLI_COMMAND_NAME = 'cosmosh';
 const MACOS_CLI_PREFERRED_LINK_DIRS = ['/opt/homebrew/bin', '/usr/local/bin'] as const;
+const WINDOWS_TITLE_BAR_OVERLAY_COLOR = '#00000000';
+const WINDOWS_TITLE_BAR_OVERLAY_HEIGHT = 50;
+
+let windowsSystemMenuSymbolColor = nativeTheme.shouldUseDarkColors ? '#f5f7fa' : '#111827';
+
+/**
+ * Validates CSS color payload passed from renderer bridge.
+ *
+ * @param value Raw CSS color candidate.
+ * @returns `true` when value is accepted as a safe overlay color.
+ */
+const isSupportedCssColor = (value: string): boolean => {
+  return /^#(?:[\da-fA-F]{3}|[\da-fA-F]{4}|[\da-fA-F]{6}|[\da-fA-F]{8})$/.test(value);
+};
+
+/**
+ * Applies Windows title bar overlay symbol color to the current main window.
+ *
+ * @param symbolColor Token-derived symbol color from renderer runtime.
+ * @returns `true` when color is accepted and applied.
+ */
+const setWindowsSystemMenuSymbolColor = (symbolColor: string): boolean => {
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  const normalizedColor = symbolColor.trim();
+  if (!isSupportedCssColor(normalizedColor)) {
+    return false;
+  }
+
+  windowsSystemMenuSymbolColor = normalizedColor;
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return true;
+  }
+
+  mainWindow.setTitleBarOverlay({
+    color: WINDOWS_TITLE_BAR_OVERLAY_COLOR,
+    symbolColor: windowsSystemMenuSymbolColor,
+    height: WINDOWS_TITLE_BAR_OVERLAY_HEIGHT,
+  });
+
+  return true;
+};
 
 /**
  * Resolves renderer dev-server port from environment with strict numeric validation.
@@ -698,9 +743,9 @@ const createWindow = async (): Promise<void> => {
       : {
           titleBarStyle: 'hidden',
           titleBarOverlay: {
-            color: '#00000000',
-            symbolColor: '#ffffff',
-            height: 50,
+            color: WINDOWS_TITLE_BAR_OVERLAY_COLOR,
+            symbolColor: windowsSystemMenuSymbolColor,
+            height: WINDOWS_TITLE_BAR_OVERLAY_HEIGHT,
           },
         }),
   });
@@ -800,6 +845,7 @@ registerAppUtilityIpcHandlers({
   resolveBuildTime,
   getDatabaseSecurityInfo,
   restartBackendRuntime: restartBackendService,
+  setWindowsSystemMenuSymbolColor,
 });
 
 registerBackendIpcHandlers({

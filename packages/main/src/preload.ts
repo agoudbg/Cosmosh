@@ -110,6 +110,9 @@ contextBridge.exposeInMainWorld('electron', {
   openExternalUrl: (targetUrl: string) => {
     return ipcRenderer.invoke('app:open-external-url', targetUrl) as Promise<boolean>;
   },
+  setWindowsSystemMenuSymbolColor: (symbolColor: string) => {
+    return ipcRenderer.invoke('app:set-windows-system-menu-symbol-color', symbolColor) as Promise<boolean>;
+  },
   importPrivateKeyFromFile: () => {
     return ipcRenderer.invoke('app:import-private-key') as Promise<{ canceled: boolean; content?: string }>;
   },

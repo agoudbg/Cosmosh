@@ -15,6 +15,7 @@ flowchart LR
 - 主题值来源于 `packages/renderer/theme/tokens.cjs`。
 - Tailwind color/radius/shadow 必须映射到 CSS Variables（功能代码中禁止硬编码临时色板）。
 - UI 原子组件通过 `packages/renderer/src/components/ui/*` 封装后供页面消费。
+- Windows 标题栏系统菜单符号色必须来自 token `color.windows.system-menu-symbol`，并在运行时同步到 main 进程 overlay。
 
 ## 2. 视觉一致性原则
 

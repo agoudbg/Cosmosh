@@ -65,6 +65,9 @@ const base = {
         'cyan-ink': '#b8f0ff',
       },
     },
+    windows: {
+      'system-menu-symbol': '#f5f7fa',
+    },
     ssh: {
       card: {
         bg: {
@@ -240,6 +243,9 @@ const light = {
         cyan: '#e4f3f7',
         'cyan-ink': '#2e7484',
       },
+    },
+    windows: {
+      'system-menu-symbol': '#111827',
     },
     ssh: {
       card: {

@@ -44,6 +44,7 @@
   --color-home-icon-rose-ink: #ffc2d4;
   --color-home-icon-cyan: #183b45;
   --color-home-icon-cyan-ink: #b8f0ff;
+  --color-windows-system-menu-symbol: #f5f7fa;
   --color-ssh-card-bg: #191919;
   --color-ssh-card-bg-terminal: #0f0f0f;
   --color-ssh-terminal-split-divider: #2a2a2a;
@@ -139,6 +140,7 @@
   --color-home-icon-rose-ink: #9c4363;
   --color-home-icon-cyan: #e4f3f7;
   --color-home-icon-cyan-ink: #2e7484;
+  --color-windows-system-menu-symbol: #111827;
   --color-ssh-card-bg: #ffffff;
   --color-ssh-terminal-split-divider: #d9dde6;
   --color-accent: #0ea5e9;
@@ -234,6 +236,7 @@
     --color-home-icon-rose-ink: #9c4363;
     --color-home-icon-cyan: #e4f3f7;
     --color-home-icon-cyan-ink: #2e7484;
+    --color-windows-system-menu-symbol: #111827;
     --color-ssh-card-bg: #ffffff;
     --color-ssh-terminal-split-divider: #d9dde6;
     --color-accent: #0ea5e9;
