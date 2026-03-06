@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -72,9 +72,10 @@ const normalizeHashHex = (hash: string): Buffer => {
 
 /**
  * Derives a deterministic password verification hash.
+ * Uses scrypt to ensure sufficient computational cost for offline attacks.
  */
 const deriveMasterPasswordHash = (password: string, salt: string): string => {
-  return createHash('sha256').update(`${salt}:${password}`).digest('hex');
+  return scryptSync(password, salt, 32).toString('hex');
 };
 
 const deriveDatabaseKeyFromMasterPassword = (password: string, salt: string): string => {
