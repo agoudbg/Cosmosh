@@ -49,6 +49,12 @@ Main process calls `getDatabaseEncryptionKey()` and then injects result into bac
 
 If backend does not receive this key in production, it fails fast with `[db:key] Missing COSMOSH_DB_ENCRYPTION_KEY ...`.
 
+### 3.3 Schema ownership and startup policy
+
+- Database schema is owned by Prisma workflows (`prisma db push` in dev, migrations in packaged/prod pipelines).
+- Backend startup validates required tables and fails fast if schema is missing, instead of creating tables via runtime hand-written SQL.
+- In strict production mode, SQLCipher/Prisma unreadable-file errors are not auto-recovered by decrypting/resetting local files; startup fails with explicit diagnostics so operators can fix the root cause.
+
 ## 4. Preferred Path: Electron `safeStorage`
 
 When `safeStorage.isEncryptionAvailable()` is `true`:

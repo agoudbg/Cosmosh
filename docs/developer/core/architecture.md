@@ -247,15 +247,9 @@ sequenceDiagram
 
   BE->>DB: Try SQLCipher bootstrap
   DB-->>BE: file is not a database / unreadable
-  BE->>BE: Try compatibility fallback (decrypt for Prisma)
-  alt still unreadable
-    BE->>DB: Backup *.db / *.db-wal / *.db-shm as *.unreadable-<timestamp>.bak
-    BE->>DB: Recreate fresh database file and schema
-  end
-  BE-->>MAIN: /health ready
+  BE-->>MAIN: fail startup with DB_PRAGMA_FAILED
 ```
 
 Handling principle:
 
-- Prefer preserving startup availability over hard-crashing on unreadable local state.
-- Preserve forensic recoverability by backing up unreadable database artifacts before reset.
+- Production uses strict mode: SQLCipher/Prisma incompatibility fails fast and must be fixed operationally.

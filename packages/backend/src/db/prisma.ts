@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
-import { access, chmod, mkdir, open, rename } from 'node:fs/promises';
+import { access, chmod, mkdir, open } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,12 +12,18 @@ import prismaClientPackage from '@prisma/client';
 const { PrismaClient } = prismaClientPackage;
 const require = createRequire(import.meta.url);
 
+/**
+ * Minimal SQLCipher-capable database shape used from better-sqlite3-multiple-ciphers.
+ */
 type BetterSqlite3LikeDatabase = {
   pragma: (statement: string) => unknown;
   prepare: (statement: string) => { get: () => unknown };
   close: () => void;
 };
 
+/**
+ * Constructor signature for SQLCipher driver used by bootstrap helpers.
+ */
 type BetterSqlite3LikeConstructor = new (filePath: string) => BetterSqlite3LikeDatabase;
 
 /**
@@ -25,10 +31,16 @@ type BetterSqlite3LikeConstructor = new (filePath: string) => BetterSqlite3LikeD
  */
 export type RuntimeMode = 'standalone' | 'electron-main';
 
+/**
+ * Runtime options for database initialization.
+ */
 type InitializeDatabaseOptions = {
   runtimeMode: RuntimeMode;
 };
 
+/**
+ * Stable error codes emitted by database bootstrap/runtime operations.
+ */
 type DatabaseErrorCode =
   | 'DB_PATH_RESOLVE_FAILED'
   | 'DB_KEY_RESOLVE_FAILED'
@@ -41,6 +53,9 @@ type DatabaseErrorCode =
   | 'DB_SCHEMA_BOOTSTRAP_FAILED'
   | 'DB_DISCONNECT_FAILED';
 
+/**
+ * Additional structured context included in DatabaseInitError.
+ */
 type DatabaseErrorContext = Record<string, string>;
 
 /**
@@ -50,6 +65,14 @@ export class DatabaseInitError extends Error {
   public readonly code: DatabaseErrorCode;
   public readonly context: DatabaseErrorContext;
 
+  /**
+   * Creates a structured database initialization/runtime error.
+   *
+   * @param code Stable error code.
+   * @param message Human-readable error message.
+   * @param context Structured diagnostic context.
+   * @param cause Original underlying error.
+   */
   public constructor(code: DatabaseErrorCode, message: string, context: DatabaseErrorContext, cause?: unknown) {
     super(message, { cause });
     this.name = 'DatabaseInitError';
@@ -71,6 +94,11 @@ let prismaClient: PrismaClientType | null = null;
 let initializingClientPromise: Promise<PrismaClientType> | null = null;
 let cachedSqlCipherDriver: BetterSqlite3LikeConstructor | null | undefined;
 
+/**
+ * Lazily resolves the optional SQLCipher-capable sqlite driver.
+ *
+ * @returns SQLCipher driver constructor when available, otherwise null.
+ */
 const resolveSqlCipherDriver = (): BetterSqlite3LikeConstructor | null => {
   if (cachedSqlCipherDriver !== undefined) {
     return cachedSqlCipherDriver;
@@ -88,6 +116,11 @@ const resolveSqlCipherDriver = (): BetterSqlite3LikeConstructor | null => {
   }
 };
 
+/**
+ * Resolves whether current process should run with development behaviors.
+ *
+ * @returns True when development runtime flags are active.
+ */
 const isDevelopmentRuntime = (): boolean => {
   if (process.env.COSMOSH_APP_ENV === 'development') {
     return true;
@@ -100,6 +133,15 @@ const isDevelopmentRuntime = (): boolean => {
   return process.env.NODE_ENV !== 'production';
 };
 
+/**
+ * Throws a strongly typed database error with stable code and context.
+ *
+ * @param code Stable initialization/runtime error code.
+ * @param message Human-readable error message.
+ * @param context Structured context for diagnostics.
+ * @param cause Original underlying error.
+ * @returns Never returns because it always throws.
+ */
 const withDbError = (
   code: DatabaseErrorCode,
   message: string,
@@ -109,6 +151,11 @@ const withDbError = (
   throw new DatabaseInitError(code, message, context, cause);
 };
 
+/**
+ * Resolves the current Windows user identity for ACL assignment.
+ *
+ * @returns Domain-qualified identity when available, otherwise local username.
+ */
 const resolveWindowsIdentity = async (): Promise<string> => {
   const userName = process.env.USERNAME;
   if (userName) {
@@ -125,6 +172,13 @@ const resolveWindowsIdentity = async (): Promise<string> => {
   return identity;
 };
 
+/**
+ * Applies restrictive ACLs for the current user and SYSTEM on Windows.
+ *
+ * @param targetPath File or directory path to protect.
+ * @param isDirectory Whether the target path is a directory.
+ * @returns Promise that resolves when ACL changes are applied.
+ */
 const applyWindowsAcl = async (targetPath: string, isDirectory: boolean): Promise<void> => {
   const identity = await resolveWindowsIdentity();
   const userPermission = isDirectory ? `${identity}:(OI)(CI)F` : `${identity}:F`;
@@ -134,6 +188,12 @@ const applyWindowsAcl = async (targetPath: string, isDirectory: boolean): Promis
   await execFileAsync('icacls', [targetPath, '/grant:r', userPermission, systemPermission]);
 };
 
+/**
+ * Ensures secure directory permissions for database storage.
+ *
+ * @param directoryPath Absolute directory path containing sqlite files.
+ * @returns Promise that resolves after permissions are enforced.
+ */
 const ensureSecureDirectory = async (directoryPath: string): Promise<void> => {
   await mkdir(directoryPath, { recursive: true, mode: 0o700 });
 
@@ -149,6 +209,12 @@ const ensureSecureDirectory = async (directoryPath: string): Promise<void> => {
   }
 };
 
+/**
+ * Ensures database file existence and secure read/write permissions.
+ *
+ * @param filePath Absolute sqlite file path.
+ * @returns Promise that resolves after file permission checks pass.
+ */
 const ensureSecureFile = async (filePath: string): Promise<void> => {
   try {
     const fileHandle = await open(filePath, 'wx', 0o600);
@@ -173,24 +239,10 @@ const ensureSecureFile = async (filePath: string): Promise<void> => {
   await access(filePath, fsConstants.R_OK | fsConstants.W_OK);
 };
 
-const backupUnreadableDatabaseFiles = async (databaseFilePath: string): Promise<void> => {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const candidates = [databaseFilePath, `${databaseFilePath}-wal`, `${databaseFilePath}-shm`];
-
-  for (const sourcePath of candidates) {
-    try {
-      await access(sourcePath, fsConstants.F_OK);
-    } catch {
-      continue;
-    }
-
-    const targetPath = `${sourcePath}.unreadable-${timestamp}.bak`;
-    await rename(sourcePath, targetPath);
-  }
-};
-
 /**
  * Resolves database file path for current runtime mode.
+ *
+ * @returns Absolute sqlite database file path.
  */
 export const getDatabasePath = (): string => {
   if (isDevelopmentRuntime()) {
@@ -207,6 +259,8 @@ export const getDatabasePath = (): string => {
 
 /**
  * Resolves database encryption key from runtime mode/environment.
+ *
+ * @returns Encryption key used by SQLCipher/bootstrap flow.
  */
 export const getDatabaseEncryptionKey = (): string => {
   if (isDevelopmentRuntime()) {
@@ -223,15 +277,33 @@ export const getDatabaseEncryptionKey = (): string => {
   );
 };
 
+/**
+ * Converts an absolute file path into Prisma sqlite datasource URL format.
+ *
+ * @param filePath Absolute sqlite file path.
+ * @returns Prisma sqlite URL string.
+ */
 const toPrismaSqliteUrl = (filePath: string): string => {
   const normalizedPath = filePath.split(path.sep).join('/');
   return `file:${normalizedPath}`;
 };
 
+/**
+ * Escapes single quotes for SQLite string literals used in PRAGMA statements.
+ *
+ * @param input Raw string value.
+ * @returns Escaped string safe for SQL string literal embedding.
+ */
 const escapeSqliteLiteral = (input: string): string => {
   return input.replace(/'/g, "''");
 };
 
+/**
+ * Detects native driver load/runtime incompatibility conditions.
+ *
+ * @param error Unknown thrown error value.
+ * @returns True when error indicates missing/incompatible native bindings.
+ */
 const isNativeDriverUnavailableError = (error: unknown): boolean => {
   const code = (error as { code?: string })?.code;
   if (code === 'ERR_DLOPEN_FAILED') {
@@ -268,6 +340,12 @@ const isNativeDriverUnavailableError = (error: unknown): boolean => {
   return false;
 };
 
+/**
+ * Detects unreadable SQLite file errors returned through Prisma.
+ *
+ * @param error Unknown thrown error value.
+ * @returns True when Prisma reports sqlite file corruption/incompatibility.
+ */
 const isPrismaSqliteFileUnreadableError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('file is not a database')) {
@@ -279,6 +357,13 @@ const isPrismaSqliteFileUnreadableError = (error: unknown): boolean => {
   return code === 'P2010' && metaCode === '26';
 };
 
+/**
+ * Converts an SQLCipher-encrypted development DB file back to plaintext.
+ *
+ * @param databaseFilePath SQLite file path.
+ * @param databaseKey Encryption key used to unlock SQLCipher file.
+ * @returns Void.
+ */
 const ensureDevelopmentPlaintextDatabase = (databaseFilePath: string, databaseKey: string): void => {
   const SqlCipherDriver = resolveSqlCipherDriver();
   if (!SqlCipherDriver) {
@@ -318,6 +403,13 @@ const ensureDevelopmentPlaintextDatabase = (databaseFilePath: string, databaseKe
   }
 };
 
+/**
+ * Verifies SQLCipher access and prepares encrypted runtime behavior.
+ *
+ * @param databaseFilePath SQLite file path.
+ * @param databaseKey Encryption key used for SQLCipher bootstrap.
+ * @returns True when SQLCipher path is active; false when falling back to plaintext compatibility mode.
+ */
 const bootstrapSqlCipher = (databaseFilePath: string, databaseKey: string): boolean => {
   const SqlCipherDriver = resolveSqlCipherDriver();
   if (!SqlCipherDriver) {
@@ -363,6 +455,56 @@ const bootstrapSqlCipher = (databaseFilePath: string, databaseKey: string): bool
   }
 };
 
+/**
+ * Creates a Prisma client bound to the runtime-resolved SQLite datasource URL.
+ *
+ * @param databaseUrl Prisma sqlite datasource URL.
+ * @returns Configured Prisma client instance.
+ */
+const createPrismaClient = (databaseUrl: string): PrismaClientType => {
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
+  });
+};
+
+/**
+ * Connects a Prisma client and wraps failures with stable DB_CONNECT_FAILED metadata.
+ *
+ * @param client Prisma client to connect.
+ * @param runtimeMode Backend runtime mode for diagnostics.
+ * @param databaseFilePath SQLite file path for diagnostics.
+ * @returns Promise that resolves after successful client connection.
+ */
+const connectPrismaClient = async (
+  client: PrismaClientType,
+  runtimeMode: RuntimeMode,
+  databaseFilePath: string,
+): Promise<void> => {
+  try {
+    await client.$connect();
+  } catch (error: unknown) {
+    withDbError(
+      'DB_CONNECT_FAILED',
+      'Failed to connect Prisma client to database.',
+      { runtimeMode, databaseFilePath },
+      error,
+    );
+  }
+};
+
+/**
+ * Applies required SQLite pragmas for reliability and runtime locking behavior.
+ *
+ * @param client Active Prisma client.
+ * @param runtimeMode Current backend runtime mode.
+ * @param databaseKey Resolved database encryption key.
+ * @param sqlCipherEnabled Whether SQLCipher mode is currently active.
+ * @returns Promise that resolves after all pragmas are applied.
+ */
 const applyPragmas = async (
   client: PrismaClientType,
   runtimeMode: RuntimeMode,
@@ -382,101 +524,48 @@ const applyPragmas = async (
   }
 };
 
-const ensureSchema = async (client: PrismaClientType): Promise<void> => {
-  const statements = [
-    `CREATE TABLE IF NOT EXISTS "SshFolder" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "name" TEXT NOT NULL,
-      "note" TEXT,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );`,
-    'CREATE UNIQUE INDEX IF NOT EXISTS "SshFolder_name_key" ON "SshFolder"("name");',
-    `CREATE TABLE IF NOT EXISTS "SshTag" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "name" TEXT NOT NULL,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );`,
-    'CREATE UNIQUE INDEX IF NOT EXISTS "SshTag_name_key" ON "SshTag"("name");',
-    `CREATE TABLE IF NOT EXISTS "SshServer" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "name" TEXT NOT NULL,
-      "host" TEXT NOT NULL,
-      "port" INTEGER NOT NULL DEFAULT 22,
-      "username" TEXT NOT NULL,
-      "authType" TEXT NOT NULL,
-      "passwordEncrypted" TEXT,
-      "privateKeyEncrypted" TEXT,
-      "privateKeyPassphraseEncrypted" TEXT,
-      "note" TEXT,
-      "folderId" TEXT,
-      "systemHostname" TEXT,
-      "systemOs" TEXT,
-      "systemArch" TEXT,
-      "systemKernel" TEXT,
-      "lastSystemSyncAt" DATETIME,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY ("folderId") REFERENCES "SshFolder"("id") ON DELETE SET NULL ON UPDATE CASCADE
-    );`,
-    'CREATE UNIQUE INDEX IF NOT EXISTS "SshServer_host_port_username_key" ON "SshServer"("host", "port", "username");',
-    'CREATE INDEX IF NOT EXISTS "SshServer_folderId_idx" ON "SshServer"("folderId");',
-    `CREATE TABLE IF NOT EXISTS "SshKnownHost" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "host" TEXT NOT NULL,
-      "port" INTEGER NOT NULL DEFAULT 22,
-      "keyType" TEXT NOT NULL,
-      "fingerprint" TEXT NOT NULL,
-      "trusted" BOOLEAN NOT NULL DEFAULT true,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );`,
-    'CREATE INDEX IF NOT EXISTS "SshKnownHost_host_port_idx" ON "SshKnownHost"("host", "port");',
-    `CREATE TABLE IF NOT EXISTS "AppSettings" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "scopeAccountId" TEXT NOT NULL DEFAULT '',
-      "scopeDeviceId" TEXT NOT NULL,
-      "payloadJson" TEXT NOT NULL,
-      "revision" INTEGER NOT NULL DEFAULT 1,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );`,
-    'CREATE UNIQUE INDEX IF NOT EXISTS "AppSettings_scopeAccountId_scopeDeviceId_key" ON "AppSettings"("scopeAccountId", "scopeDeviceId");',
-    'CREATE INDEX IF NOT EXISTS "AppSettings_scopeDeviceId_idx" ON "AppSettings"("scopeDeviceId");',
-    `CREATE TABLE IF NOT EXISTS "SshServerTag" (
-      "serverId" TEXT NOT NULL,
-      "tagId" TEXT NOT NULL,
-      PRIMARY KEY ("serverId", "tagId"),
-      FOREIGN KEY ("serverId") REFERENCES "SshServer"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-      FOREIGN KEY ("tagId") REFERENCES "SshTag"("id") ON DELETE CASCADE ON UPDATE CASCADE
-    );`,
-    'CREATE INDEX IF NOT EXISTS "SshServerTag_tagId_idx" ON "SshServerTag"("tagId");',
-    `CREATE TABLE IF NOT EXISTS "SshLoginAudit" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "serverId" TEXT NOT NULL,
-      "attemptedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "result" TEXT NOT NULL,
-      "failureReason" TEXT,
-      "clientIp" TEXT,
-      "sessionId" TEXT,
-      "sessionStartedAt" DATETIME,
-      "sessionEndedAt" DATETIME,
-      "commandCount" INTEGER NOT NULL DEFAULT 0,
-      "metadataJson" TEXT,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY ("serverId") REFERENCES "SshServer"("id") ON DELETE CASCADE ON UPDATE CASCADE
-    );`,
-    'CREATE INDEX IF NOT EXISTS "SshLoginAudit_serverId_attemptedAt_idx" ON "SshLoginAudit"("serverId", "attemptedAt");',
-  ];
+const requiredSchemaTables = [
+  'SshFolder',
+  'SshTag',
+  'SshServer',
+  'SshKnownHost',
+  'AppSettings',
+  'SshServerTag',
+  'SshLoginAudit',
+] as const;
 
-  for (const statement of statements) {
-    await client.$executeRawUnsafe(statement);
+/**
+ * Validates that required Prisma-managed schema objects exist at runtime.
+ *
+ * Schema creation is intentionally delegated to Prisma workflows (`db:push` /
+ * migrations). Runtime only validates schema readiness and fails fast when
+ * tables are missing, preventing silent drift from hand-written DDL.
+ *
+ * @param client Active Prisma client.
+ * @returns Promise that resolves when all required tables are present.
+ */
+const ensureSchema = async (client: PrismaClientType): Promise<void> => {
+  const tableNameLiterals = requiredSchemaTables.map((table) => `'${escapeSqliteLiteral(table)}'`).join(', ');
+  const foundRows = (await client.$queryRawUnsafe(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${tableNameLiterals});`,
+  )) as Array<{ name: string }>;
+
+  const existingTableSet = new Set(foundRows.map((row) => row.name));
+  const missingTables = requiredSchemaTables.filter((table) => !existingTableSet.has(table));
+
+  if (missingTables.length > 0) {
+    throw new Error(
+      `Missing required Prisma schema tables: ${missingTables.join(', ')}. Run prisma schema sync before backend startup (for dev: pnpm --filter @cosmosh/backend run db:push).`,
+    );
   }
 };
 
 /**
  * Initializes Prisma client and database prerequisites with secure bootstrap flow.
+ *
+ * @param options Database initialization options.
+ * @param options.runtimeMode Backend runtime mode used for lock/profile decisions.
+ * @returns Singleton Prisma client ready for runtime operations.
  */
 export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOptions): Promise<PrismaClientType> => {
   if (prismaClient) {
@@ -546,87 +635,21 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
       );
     }
 
-    let client = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const client = createPrismaClient(databaseUrl);
 
-    try {
-      await client.$connect();
-    } catch (error: unknown) {
-      withDbError(
-        'DB_CONNECT_FAILED',
-        'Failed to connect Prisma client to database.',
-        { runtimeMode, databaseFilePath: databaseFilePath! },
-        error,
-      );
-    }
+    await connectPrismaClient(client, runtimeMode, databaseFilePath!);
 
     try {
       await applyPragmas(client, runtimeMode, databaseKey!, sqlCipherEnabled);
     } catch (error: unknown) {
-      const shouldFallbackToCompatibilityMode =
-        !isDevelopmentRuntime() && sqlCipherEnabled && isPrismaSqliteFileUnreadableError(error);
+      await client.$disconnect();
 
-      if (shouldFallbackToCompatibilityMode) {
-        console.warn(
-          '[db:init] Prisma could not read SQLCipher database. Falling back to compatibility mode by decrypting database for Prisma runtime.',
-        );
-        await client.$disconnect();
-        ensureDevelopmentPlaintextDatabase(databaseFilePath!, databaseKey!);
+      const strictModeMessage =
+        !isDevelopmentRuntime() && sqlCipherEnabled && isPrismaSqliteFileUnreadableError(error)
+          ? 'Prisma failed to read SQLCipher database in strict mode. Fix SQLCipher/Prisma compatibility or run approved schema migration flow before startup.'
+          : 'Failed to apply SQLite PRAGMA settings.';
 
-        client = new PrismaClient({
-          datasources: {
-            db: {
-              url: databaseUrl,
-            },
-          },
-        });
-
-        await client.$connect();
-        try {
-          await applyPragmas(client, runtimeMode, databaseKey!, false);
-        } catch (fallbackError: unknown) {
-          if (isPrismaSqliteFileUnreadableError(fallbackError)) {
-            console.warn(
-              '[db:init] Database remains unreadable after compatibility fallback. Backing up corrupted files and reinitializing a fresh database.',
-            );
-            await client.$disconnect();
-            await backupUnreadableDatabaseFiles(databaseFilePath!);
-            await ensureSecureFile(databaseFilePath!);
-
-            client = new PrismaClient({
-              datasources: {
-                db: {
-                  url: databaseUrl,
-                },
-              },
-            });
-
-            await client.$connect();
-            await applyPragmas(client, runtimeMode, databaseKey!, false);
-          } else {
-            await client.$disconnect();
-            withDbError(
-              'DB_PRAGMA_FAILED',
-              'Failed to apply SQLite PRAGMA settings.',
-              { runtimeMode, databaseFilePath: databaseFilePath! },
-              fallbackError,
-            );
-          }
-        }
-      } else {
-        await client.$disconnect();
-        withDbError(
-          'DB_PRAGMA_FAILED',
-          'Failed to apply SQLite PRAGMA settings.',
-          { runtimeMode, databaseFilePath: databaseFilePath! },
-          error,
-        );
-      }
+      withDbError('DB_PRAGMA_FAILED', strictModeMessage, { runtimeMode, databaseFilePath: databaseFilePath! }, error);
     }
 
     try {
@@ -654,6 +677,8 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
 
 /**
  * Shuts down active Prisma client and releases DB resources.
+ *
+ * @returns Promise that resolves after all active/pending clients are disconnected.
  */
 export const shutdownDatabase = async (): Promise<void> => {
   const activeClient = prismaClient;

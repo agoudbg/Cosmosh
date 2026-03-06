@@ -247,15 +247,9 @@ sequenceDiagram
 
   BE->>DB: 尝试 SQLCipher 启动校验
   DB-->>BE: file is not a database / unreadable
-  BE->>BE: 尝试兼容回退（解密为 Prisma 可读格式）
-  alt 仍不可读
-    BE->>DB: 备份 *.db / *.db-wal / *.db-shm 为 *.unreadable-<timestamp>.bak
-    BE->>DB: 重建新数据库文件与初始 schema
-  end
-  BE-->>MAIN: /health ready
+  BE-->>MAIN: 以 DB_PRAGMA_FAILED 失败退出
 ```
 
 处理原则：
 
-- 相比直接崩溃，优先保证应用可启动性。
-- 在重置前先备份不可读数据库文件，保留后续排障与数据恢复可能。
+- 生产环境采用严格策略：SQLCipher/Prisma 不兼容时快速失败，由运维修复。
