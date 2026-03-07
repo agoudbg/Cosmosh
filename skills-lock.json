@@ -1,6 +1,21 @@
 {
   "version": 1,
   "skills": {
+    "google-cl-author": {
+      "source": "agoudbg/google-code-review-skills",
+      "sourceType": "github",
+      "computedHash": "4b5f0acc5c00ea7877dd58fec366a25da31e003899c05478f47bb52d18bebfce"
+    },
+    "google-code-reviewer": {
+      "source": "agoudbg/google-code-review-skills",
+      "sourceType": "github",
+      "computedHash": "539fb1c9709bb11df64c8f3a7d3ffd1e0d3cffee37901cf204b4120c4640b52c"
+    },
+    "google-review-conflict-resolution": {
+      "source": "agoudbg/google-code-review-skills",
+      "sourceType": "github",
+      "computedHash": "0b847b64e6c44530397173b90a70c861668915e96237a9fceaf11965021df006"
+    },
     "vercel-composition-patterns": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",
