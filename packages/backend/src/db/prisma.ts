@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { access, chmod, mkdir, open } from 'node:fs/promises';
+import { access, chmod, mkdir, open, readdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +37,15 @@ export type RuntimeMode = 'standalone' | 'electron-main';
  */
 type InitializeDatabaseOptions = {
   runtimeMode: RuntimeMode;
+};
+
+type RuntimeMigrationFile = {
+  migrationName: string;
+  migrationSqlPath: string;
+};
+
+type RuntimeMigrationRecordRow = {
+  migration_name: string;
 };
 
 /**
@@ -534,17 +544,226 @@ const requiredSchemaTables = [
   'SshLoginAudit',
 ] as const;
 
+const RUNTIME_MIGRATION_TABLE_NAME = '_prisma_migrations';
+
 /**
- * Validates that required Prisma-managed schema objects exist at runtime.
+ * Resolves Prisma migration directory path for the current backend runtime package.
  *
- * Schema creation is intentionally delegated to Prisma workflows (`db:push` /
- * migrations). Runtime only validates schema readiness and fails fast when
- * tables are missing, preventing silent drift from hand-written DDL.
+ * @returns Absolute directory path containing Prisma migrations.
+ */
+const getPrismaMigrationsDirPath = (): string => {
+  return path.join(backendRootDir, 'prisma', 'migrations');
+};
+
+/**
+ * Ensures migration bookkeeping table exists before applying runtime migrations.
+ *
+ * @param client Active Prisma client.
+ * @returns Promise that resolves when migration bookkeeping table is ready.
+ */
+const ensureRuntimeMigrationTable = async (client: PrismaClientType): Promise<void> => {
+  await client.$executeRawUnsafe(
+    `CREATE TABLE IF NOT EXISTS "${RUNTIME_MIGRATION_TABLE_NAME}" ("id" TEXT NOT NULL PRIMARY KEY, "checksum" TEXT NOT NULL, "finished_at" DATETIME, "migration_name" TEXT NOT NULL UNIQUE, "logs" TEXT, "rolled_back_at" DATETIME, "started_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "applied_steps_count" INTEGER UNSIGNED NOT NULL DEFAULT 0);`,
+  );
+};
+
+/**
+ * Builds a deterministic Prisma migration row id from migration metadata.
+ *
+ * @param migrationName Migration directory name.
+ * @param checksum SHA-256 checksum of migration SQL payload.
+ * @returns Stable migration id string.
+ */
+const buildMigrationRecordId = (migrationName: string, checksum: string): string => {
+  return `${migrationName}-${checksum.slice(0, 16)}`;
+};
+
+/**
+ * Discovers migration folders that contain Prisma-generated migration.sql payloads.
+ *
+ * @returns Sorted migration descriptors ready for runtime execution.
+ */
+const listPrismaMigrationFiles = async (): Promise<RuntimeMigrationFile[]> => {
+  const migrationsDirPath = getPrismaMigrationsDirPath();
+
+  let entries;
+  try {
+    entries = await readdir(migrationsDirPath, { withFileTypes: true });
+  } catch (error: unknown) {
+    const errorCode = (error as NodeJS.ErrnoException).code;
+    if (errorCode === 'ENOENT') {
+      return [];
+    }
+
+    throw error;
+  }
+
+  const migrationDirectories = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+
+  const migrationFiles: RuntimeMigrationFile[] = [];
+  for (const migrationName of migrationDirectories) {
+    const migrationSqlPath = path.join(migrationsDirPath, migrationName, 'migration.sql');
+
+    try {
+      await access(migrationSqlPath, fsConstants.R_OK);
+      migrationFiles.push({ migrationName, migrationSqlPath });
+    } catch (error: unknown) {
+      const errorCode = (error as NodeJS.ErrnoException).code;
+      if (errorCode !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  return migrationFiles;
+};
+
+/**
+ * Reads migration names already applied in the current database file.
+ *
+ * @param client Active Prisma client.
+ * @returns Set of migration names already recorded as applied.
+ */
+const readAppliedMigrationSet = async (client: PrismaClientType): Promise<Set<string>> => {
+  const rows = (await client.$queryRawUnsafe(
+    `SELECT "migration_name" FROM "${RUNTIME_MIGRATION_TABLE_NAME}" WHERE "rolled_back_at" IS NULL AND "finished_at" IS NOT NULL ORDER BY "migration_name" ASC;`,
+  )) as RuntimeMigrationRecordRow[];
+
+  return new Set(rows.map((row) => row.migration_name));
+};
+
+/**
+ * Detects whether this DB already has the current schema but no migration ledger yet.
+ *
+ * @param client Active Prisma client.
+ * @returns True when required schema tables already exist.
+ */
+const hasRequiredSchemaTables = async (client: PrismaClientType): Promise<boolean> => {
+  const tableNameLiterals = requiredSchemaTables.map((table) => `'${escapeSqliteLiteral(table)}'`).join(', ');
+  const foundRows = (await client.$queryRawUnsafe(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${tableNameLiterals});`,
+  )) as Array<{ name: string }>;
+
+  return foundRows.length === requiredSchemaTables.length;
+};
+
+/**
+ * Records all migration files as already applied for legacy databases.
+ *
+ * @param client Active Prisma client.
+ * @param migrationFiles Discovered migration file descriptors.
+ * @returns Promise that resolves once baseline records are persisted.
+ */
+const baselineExistingSchemaMigrations = async (
+  client: PrismaClientType,
+  migrationFiles: RuntimeMigrationFile[],
+): Promise<void> => {
+  for (const migrationFile of migrationFiles) {
+    const migrationSql = await readFile(migrationFile.migrationSqlPath, 'utf8');
+    const checksum = createHash('sha256').update(migrationSql).digest('hex');
+    const migrationRecordId = buildMigrationRecordId(migrationFile.migrationName, checksum);
+
+    await client.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO "${RUNTIME_MIGRATION_TABLE_NAME}" ("id", "checksum", "migration_name", "started_at", "finished_at", "applied_steps_count") VALUES ('${escapeSqliteLiteral(migrationRecordId)}', '${escapeSqliteLiteral(checksum)}', '${escapeSqliteLiteral(migrationFile.migrationName)}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1);`,
+    );
+  }
+};
+
+/**
+ * Splits a Prisma migration SQL file into executable statements.
+ *
+ * @param migrationSql Prisma migration.sql file contents.
+ * @returns SQL statements without comments and trailing semicolons.
+ */
+const splitMigrationStatements = (migrationSql: string): string[] => {
+  const sqlWithoutLineComments = migrationSql
+    .split(/\r?\n/)
+    .filter((line) => !line.trimStart().startsWith('--'))
+    .join('\n');
+
+  return sqlWithoutLineComments
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+};
+
+/**
+ * Applies pending Prisma migration files in-order on backend startup.
+ *
+ * @param client Active Prisma client.
+ * @returns Number of migration files discovered in runtime directory.
+ */
+const applyPendingPrismaMigrations = async (client: PrismaClientType): Promise<number> => {
+  await ensureRuntimeMigrationTable(client);
+
+  const migrationFiles = await listPrismaMigrationFiles();
+  const appliedMigrationSet = await readAppliedMigrationSet(client);
+  let appliedCount = 0;
+
+  if (appliedMigrationSet.size === 0 && migrationFiles.length > 0 && (await hasRequiredSchemaTables(client))) {
+    await baselineExistingSchemaMigrations(client, migrationFiles);
+    console.log(
+      `[db:init] Baseline migration ledger created for legacy schema database (${migrationFiles.length} records).`,
+    );
+    return migrationFiles.length;
+  }
+
+  for (const migrationFile of migrationFiles) {
+    if (appliedMigrationSet.has(migrationFile.migrationName)) {
+      continue;
+    }
+
+    const migrationSql = await readFile(migrationFile.migrationSqlPath, 'utf8');
+    const statements = splitMigrationStatements(migrationSql);
+    const checksum = createHash('sha256').update(migrationSql).digest('hex');
+    const migrationRecordId = buildMigrationRecordId(migrationFile.migrationName, checksum);
+    const migrationStartedAt = Date.now();
+
+    await client.$transaction(async (transactionClient) => {
+      for (const statement of statements) {
+        await transactionClient.$executeRawUnsafe(statement);
+      }
+
+      await transactionClient.$executeRawUnsafe(
+        `INSERT INTO "${RUNTIME_MIGRATION_TABLE_NAME}" ("id", "checksum", "migration_name", "started_at", "finished_at", "applied_steps_count") VALUES ('${escapeSqliteLiteral(migrationRecordId)}', '${escapeSqliteLiteral(checksum)}', '${escapeSqliteLiteral(migrationFile.migrationName)}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ${statements.length});`,
+      );
+    });
+
+    console.log(`[db:init] Applied Prisma migration: ${migrationFile.migrationName}`);
+    console.log(
+      `[db:init] Migration ${migrationFile.migrationName} completed in ${Date.now() - migrationStartedAt}ms.`,
+    );
+    appliedCount += 1;
+  }
+
+  console.log(
+    `[db:init] Prisma migration sync complete. discovered=${migrationFiles.length}, applied=${appliedCount}.`,
+  );
+
+  return migrationFiles.length;
+};
+
+/**
+ * Synchronizes and validates required Prisma-managed schema objects at runtime.
+ *
+ * Startup executes pending Prisma migration files before opening HTTP routes,
+ * ensuring install-time and upgrade-time databases are always reconciled.
  *
  * @param client Active Prisma client.
  * @returns Promise that resolves when all required tables are present.
  */
 const ensureSchema = async (client: PrismaClientType): Promise<void> => {
+  const discoveredMigrationCount = await applyPendingPrismaMigrations(client);
+
+  if (discoveredMigrationCount === 0) {
+    throw new Error(
+      `No Prisma migration files found at ${getPrismaMigrationsDirPath()}. Backend startup requires bundled migrations for schema upgrades.`,
+    );
+  }
+
   const tableNameLiterals = requiredSchemaTables.map((table) => `'${escapeSqliteLiteral(table)}'`).join(', ');
   const foundRows = (await client.$queryRawUnsafe(
     `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${tableNameLiterals});`,
@@ -554,9 +773,7 @@ const ensureSchema = async (client: PrismaClientType): Promise<void> => {
   const missingTables = requiredSchemaTables.filter((table) => !existingTableSet.has(table));
 
   if (missingTables.length > 0) {
-    throw new Error(
-      `Missing required Prisma schema tables: ${missingTables.join(', ')}. Run prisma schema sync before backend startup (for dev: pnpm --filter @cosmosh/backend run db:push).`,
-    );
+    throw new Error(`Missing required Prisma schema tables after runtime migrations: ${missingTables.join(', ')}.`);
   }
 };
 

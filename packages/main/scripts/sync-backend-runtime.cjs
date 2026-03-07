@@ -11,6 +11,7 @@ const runtimeCosmoshRoot = path.join(runtimeNodeModulesRoot, '@cosmosh');
 const thirdPartyEntryPackages = [
   '@hono/node-server',
   'hono',
+  'prisma',
   'ssh2',
   'ws',
   'node-pty',
@@ -324,6 +325,26 @@ const syncWorkspaceRuntimePackages = async () => {
       },
     });
     await fs.copyFile(sourcePackageJsonPath, targetPackageJsonPath);
+
+    if (packageName === 'backend') {
+      const sourcePrismaDir = path.join(sourcePackageDir, 'prisma');
+      const targetPrismaDir = path.join(targetPackageDir, 'prisma');
+
+      await fs.access(sourcePrismaDir);
+      await fs.cp(sourcePrismaDir, targetPrismaDir, {
+        recursive: true,
+        force: true,
+        filter: (sourcePath) => {
+          const lowerName = path.basename(sourcePath).toLowerCase();
+
+          if (lowerName.endsWith('.map') || lowerName.endsWith('.d.ts') || lowerName.endsWith('.d.mts')) {
+            return false;
+          }
+
+          return true;
+        },
+      });
+    }
 
     console.log(`[main:prebuild] Synced workspace runtime package: @cosmosh/${packageName}`);
   }

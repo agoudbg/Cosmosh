@@ -38,6 +38,9 @@ flowchart LR
 - 注册幂等的优雅关闭流程，覆盖运行时信号与致命进程事件。
 - 关闭顺序固定：先停 WS 会话服务，再关闭 HTTP 监听，最后断开 Prisma/SQLite 连接句柄。
 - Windows 终止信号（`SIGBREAK`）与 POSIX 信号共用同一路径，降低数据库文件锁残留概率。
+- 启动阶段在 `initializeDatabase(...)` 内执行幂等 Prisma migration 文件同步，因此无论是安装后首次启动还是后续每次启动，都会在开放 HTTP 路由前将本地数据库结构收敛到当前后端契约。
+- Schema 同步采用快速失败策略：若运行时 migration 执行后仍无法满足必需表结构，backend 将中止启动，避免 API 进入部分可用/行为不确定状态。
+- migration 台账元数据采用与 Prisma 兼容的 `_prisma_migrations` 结构，便于后续平滑切换到原生 `prisma migrate deploy/resolve` 工作流。
 
 ### Renderer 进程 (`packages/renderer/src`)
 
@@ -253,3 +256,22 @@ sequenceDiagram
 处理原则：
 
 - 生产环境采用严格策略：SQLCipher/Prisma 不兼容时快速失败，由运维修复。
+
+### 8.5 启动时 Schema 升级路径
+
+```mermaid
+sequenceDiagram
+  participant BE as Backend Bootstrap
+  participant DB as SQLite
+
+  BE->>DB: initializeDatabase(...)
+  BE->>DB: 应用 PRAGMA + 执行待应用 Prisma migration.sql 文件
+  DB-->>BE: schema 对齐完成（或返回错误）
+  BE->>BE: 校验必需表集合
+  BE-->>BE: 仅在校验通过后继续启动
+```
+
+处理原则：
+
+- 运行时 migration 同步是幂等操作，并在每次启动执行。
+- 在修复结构漂移时必须保持现有用户数据不被破坏。

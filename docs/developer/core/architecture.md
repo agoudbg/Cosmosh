@@ -38,6 +38,9 @@ flowchart LR
 - Registers idempotent graceful-shutdown flow for runtime signals and fatal process events.
 - Shutdown order is explicit: stop WS session services, close HTTP listener, then disconnect Prisma/SQLite handles.
 - Windows-specific termination (`SIGBREAK`) is handled in the same path as POSIX signals to reduce stale DB lock cases.
+- Startup includes idempotent Prisma migration-file execution in `initializeDatabase(...)`, so first install launch and every subsequent launch both converge local DB structure to the current backend schema contract before serving HTTP routes.
+- Schema sync is fail-fast: backend startup stops when required tables still cannot be reconciled after runtime migration execution, preventing partial/undefined API behavior.
+- Migration ledger metadata is stored in Prisma-compatible `_prisma_migrations` format to keep a future path open for native `prisma migrate deploy/resolve` workflows.
 
 ### Renderer Process (`packages/renderer/src`)
 
@@ -253,3 +256,22 @@ sequenceDiagram
 Handling principle:
 
 - Production uses strict mode: SQLCipher/Prisma incompatibility fails fast and must be fixed operationally.
+
+### 8.5 Startup Schema Upgrade Path
+
+```mermaid
+sequenceDiagram
+  participant BE as Backend Bootstrap
+  participant DB as SQLite
+
+  BE->>DB: initializeDatabase(...)
+  BE->>DB: apply PRAGMA + pending Prisma migration.sql files
+  DB-->>BE: schema aligned (or error)
+  BE->>BE: validate required table set
+  BE-->>BE: continue startup only when validation passes
+```
+
+Handling principle:
+
+- Runtime migration sync is idempotent and executes on every startup.
+- Existing user data must remain intact while structural drift is repaired incrementally.
