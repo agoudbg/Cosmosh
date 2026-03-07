@@ -25,7 +25,7 @@ export const createBackendApp = (context: BackendAppContext): BackendHttpApp => 
   app.onError((error, c) => {
     console.error('[http][UNHANDLED]', error);
     return c.json(
-      buildErrorPayload(API_CODES.authInvalidToken, getTranslator(c)('errors.common.internalServerError')),
+      buildErrorPayload(API_CODES.commonInternalServerError, getTranslator(c)('errors.common.internalServerError')),
       500,
     );
   });

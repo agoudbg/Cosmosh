@@ -33,6 +33,7 @@ export const API_HEADERS = {
 } as const;
 
 export const API_CODES = {
+  commonInternalServerError: 'COMMON_INTERNAL_SERVER_ERROR',
   authInvalidToken: 'AUTH_INVALID_TOKEN',
   settingsValidationFailed: 'SETTINGS_VALIDATION_FAILED',
   sshValidationFailed: 'SSH_VALIDATION_FAILED',

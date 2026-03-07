@@ -718,6 +718,7 @@ components:
               type: string
               enum:
                 [
+                  "COMMON_INTERNAL_SERVER_ERROR",
                   "AUTH_INVALID_TOKEN",
                   "SETTINGS_VALIDATION_FAILED",
                   "SSH_VALIDATION_FAILED",
