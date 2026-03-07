@@ -728,6 +728,8 @@ components:
                   "SSH_NOT_FOUND",
                   "SSH_HOST_UNTRUSTED",
                   "SSH_SESSION_NOT_FOUND",
+                  "LOCAL_TERMINAL_VALIDATION_FAILED",
+                  "LOCAL_TERMINAL_PROFILE_NOT_FOUND",
                 ]
             success:
               type: boolean

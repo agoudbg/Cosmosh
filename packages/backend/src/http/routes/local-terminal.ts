@@ -45,15 +45,18 @@ export const registerLocalTerminalRoutes = (app: BackendHttpApp, context: Backen
     const cwd = typeof payload?.cwd === 'string' ? payload.cwd : undefined;
 
     if (!profileId) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.profileIdRequired')), 400);
+      return c.json(
+        buildErrorPayload(API_CODES.localTerminalValidationFailed, t('errors.validation.profileIdRequired')),
+        400,
+      );
     }
 
     if (!Number.isInteger(cols) || cols < 20 || cols > 400) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.colsRange')), 400);
+      return c.json(buildErrorPayload(API_CODES.localTerminalValidationFailed, t('errors.validation.colsRange')), 400);
     }
 
     if (!Number.isInteger(rows) || rows < 10 || rows > 200) {
-      return c.json(buildErrorPayload(API_CODES.sshValidationFailed, t('errors.validation.rowsRange')), 400);
+      return c.json(buildErrorPayload(API_CODES.localTerminalValidationFailed, t('errors.validation.rowsRange')), 400);
     }
 
     const result = await context.localTerminalSessionService.createSession({
@@ -66,13 +69,16 @@ export const registerLocalTerminalRoutes = (app: BackendHttpApp, context: Backen
     });
 
     if (result.type === 'not-found') {
-      return c.json(buildErrorPayload(API_CODES.sshNotFound, t('errors.localTerminal.profileNotFound')), 404);
+      return c.json(
+        buildErrorPayload(API_CODES.localTerminalProfileNotFound, t('errors.localTerminal.profileNotFound')),
+        404,
+      );
     }
 
     if (result.type === 'failed') {
       return c.json(
         buildErrorPayload(
-          API_CODES.sshValidationFailed,
+          API_CODES.localTerminalValidationFailed,
           translateValidationMessage(
             result.message,
             t('errors.localTerminal.sessionCreateFailed', { reason: result.message }),

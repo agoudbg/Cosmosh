@@ -43,6 +43,8 @@ export const API_CODES = {
   sshNotFound: 'SSH_NOT_FOUND',
   sshHostUntrusted: 'SSH_HOST_UNTRUSTED',
   sshSessionNotFound: 'SSH_SESSION_NOT_FOUND',
+  localTerminalValidationFailed: 'LOCAL_TERMINAL_VALIDATION_FAILED',
+  localTerminalProfileNotFound: 'LOCAL_TERMINAL_PROFILE_NOT_FOUND',
   testPingOk: 'TEST_PING_OK',
   localTerminalListOk: 'LOCAL_TERMINAL_LIST_OK',
   localTerminalSessionCreateOk: 'LOCAL_TERMINAL_SESSION_CREATE_OK',
