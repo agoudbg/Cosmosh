@@ -748,10 +748,9 @@ components:
           enum: ["cosmosh-backend"]
         mode:
           type: string
-          enum: ["electron-main"]
+          enum: ["electron-main", "standalone"]
         authenticated:
           type: boolean
-          enum: [true]
         capabilities:
           type: array
           items:

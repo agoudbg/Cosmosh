@@ -7,6 +7,7 @@ export type BackendHttpVariables = {
   locale: Locale;
   i18n: I18nInstance;
   t: I18nInstance['t'];
+  authenticated: boolean;
 };
 
 export type BackendHttpEnv = {
@@ -31,6 +32,7 @@ export const registerI18nMiddleware = (app: BackendHttpApp): void => {
     c.set('locale', locale);
     c.set('i18n', i18n);
     c.set('t', i18n.t);
+    c.set('authenticated', false);
 
     await next();
   });

@@ -58,6 +58,7 @@ export const registerCommonMiddleware = (app: BackendHttpApp, context: BackendAp
 
   app.use('/api/v1/*', async (c, next) => {
     if (!context.isSecureLocalMode) {
+      c.set('authenticated', false);
       await next();
       return;
     }
@@ -70,6 +71,7 @@ export const registerCommonMiddleware = (app: BackendHttpApp, context: BackendAp
       );
     }
 
+    c.set('authenticated', true);
     await next();
   });
 };

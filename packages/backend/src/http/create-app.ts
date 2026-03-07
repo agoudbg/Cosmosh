@@ -17,7 +17,7 @@ export const createBackendApp = (context: BackendAppContext): BackendHttpApp => 
   const app = new Hono<BackendHttpEnv>();
 
   registerCommonMiddleware(app, context);
-  registerSystemRoutes(app);
+  registerSystemRoutes(app, context);
   registerSettingsRoutes(app, context);
   registerSshRoutes(app, context);
   registerLocalTerminalRoutes(app, context);

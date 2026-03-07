@@ -7,11 +7,12 @@ import {
 } from '@cosmosh/api-contract';
 
 import { type BackendHttpApp, getTranslator } from '../i18n.js';
+import type { BackendAppContext } from '../types.js';
 
 /**
  * Registers public/system routes (root metadata, health, and connectivity test).
  */
-export const registerSystemRoutes = (app: BackendHttpApp): void => {
+export const registerSystemRoutes = (app: BackendHttpApp, context: BackendAppContext): void => {
   app.get('/', (c) => {
     const t = getTranslator(c);
 
@@ -34,8 +35,8 @@ export const registerSystemRoutes = (app: BackendHttpApp): void => {
       message: t('success.system.backendConnectionHealthy'),
       data: {
         service: 'cosmosh-backend',
-        mode: 'electron-main',
-        authenticated: true,
+        mode: context.runtimeMode,
+        authenticated: c.get('authenticated'),
         capabilities: [...API_CAPABILITIES],
       },
     });

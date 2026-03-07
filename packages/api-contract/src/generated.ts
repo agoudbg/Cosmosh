@@ -294,9 +294,8 @@ export interface components {
             /** @enum {string} */
             service: "cosmosh-backend";
             /** @enum {string} */
-            mode: "electron-main";
-            /** @enum {boolean} */
-            authenticated: true;
+            mode: "electron-main" | "standalone";
+            authenticated: boolean;
             capabilities: ("ssh" | "sftp")[];
         };
         TestPingSuccess: components["schemas"]["ApiMeta"] & {
