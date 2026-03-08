@@ -11,7 +11,6 @@ const runtimeCosmoshRoot = path.join(runtimeNodeModulesRoot, '@cosmosh');
 const thirdPartyEntryPackages = [
   '@hono/node-server',
   'hono',
-  'prisma',
   'ssh2',
   'ws',
   'node-pty',
