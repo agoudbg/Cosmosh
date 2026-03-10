@@ -579,13 +579,6 @@ export const Tabs: React.FC<TabsProps> = ({
                               {t('tabs.closeCurrent')}
                               <ContextMenuShortcut>{closeCurrentTabShortcutLabel}</ContextMenuShortcut>
                             </ContextMenuItem>
-                            <ContextMenuItem
-                              icon={ChevronRight}
-                              disabled={contextTabIndex < 0 || contextTabIndex >= orderedTabs.length - 1}
-                              onSelect={() => contextTab && onCloseRightTabs?.(contextTab.id)}
-                            >
-                              {t('tabs.closeRight')}
-                            </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
                               icon={XIcon}
@@ -593,6 +586,13 @@ export const Tabs: React.FC<TabsProps> = ({
                               onSelect={() => contextTab && onCloseOtherTabs?.(contextTab.id)}
                             >
                               {t('tabs.closeOthers')}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              icon={ChevronRight}
+                              disabled={contextTabIndex < 0 || contextTabIndex >= orderedTabs.length - 1}
+                              onSelect={() => contextTab && onCloseRightTabs?.(contextTab.id)}
+                            >
+                              {t('tabs.closeRight')}
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
