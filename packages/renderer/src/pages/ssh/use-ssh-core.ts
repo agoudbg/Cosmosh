@@ -138,6 +138,10 @@ export type UseSshCoreParams = {
   terminalInitOptions: ITerminalOptions;
   sshConnectionTimeoutSec: number;
   terminalAutoCompleteEnabled: boolean;
+  terminalAutoCompleteHistoryEnabled: boolean;
+  terminalAutoCompleteBuiltInCommandsEnabled: boolean;
+  terminalAutoCompletePathEnabled: boolean;
+  terminalAutoCompletePasswordEnabled: boolean;
   terminalAutoCompleteMinChars: number;
   terminalAutoCompleteMaxItems: number;
   terminalAutoCompleteFuzzyMatch: boolean;
@@ -304,6 +308,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalInitOptions,
     sshConnectionTimeoutSec,
     terminalAutoCompleteEnabled,
+    terminalAutoCompleteHistoryEnabled,
+    terminalAutoCompleteBuiltInCommandsEnabled,
+    terminalAutoCompletePathEnabled,
+    terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
@@ -439,6 +447,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   } = useSshAutocomplete({
     connectionState,
     terminalAutoCompleteEnabled,
+    terminalAutoCompleteHistoryEnabled,
+    terminalAutoCompleteBuiltInCommandsEnabled,
+    terminalAutoCompletePathEnabled,
+    terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,

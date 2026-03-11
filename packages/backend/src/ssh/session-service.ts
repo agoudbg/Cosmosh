@@ -524,6 +524,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         cursorIndex: message.cursorIndex,
         limit: message.limit,
         fuzzyMatch: message.fuzzyMatch,
+        includeHistory: message.includeHistory,
+        includeBuiltInCommands: message.includeBuiltInCommands,
+        includePathSuggestions: message.includePathSuggestions,
+        includePasswordSuggestions: message.includePasswordSuggestions,
         trigger: message.trigger,
       },
       {

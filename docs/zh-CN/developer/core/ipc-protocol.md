@@ -59,7 +59,7 @@ flowchart TB
 
 - 客户端到服务端（`/ws/ssh/{sessionId}` 与 `/ws/local-terminal/{sessionId}`）：
   - `input`、`resize`、`ping`、`close`、`history-delete`
-  - `completion-request`，包含 `requestId`、`linePrefix`、`cursorIndex`、可选 `workingDirectoryHint`、可选 `limit`、可选 `fuzzyMatch`、`trigger`（`typing` 或 `manual`）
+  - `completion-request`，包含 `requestId`、`linePrefix`、`cursorIndex`、可选 `workingDirectoryHint`、可选 `limit`、可选 `fuzzyMatch`、可选来源过滤字段（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`、`includePasswordSuggestions`）、`trigger`（`typing` 或 `manual`）
 - 服务端到客户端：
   - `ready`、`output`、`telemetry`、`history`、`pong`、`error`、`exit`
   - `completion-response`，包含 `requestId`、`replacePrefixLength` 与排序后的候选 `items`

@@ -226,6 +226,10 @@
         "description": "按住 Alt（macOS 为 Option）并点击时，将光标移动到点击位置。",
         "title": "Alt/Option 点击移动光标"
       },
+      "terminalAutoCompleteBuiltInCommandsEnabled": {
+        "description": "在自动补全面板中包含内置命令与选项建议。",
+        "title": "自动补全内置命令建议"
+      },
       "terminalAutoCompleteEnabled": {
         "description": "在终端输入时启用命令自动补全建议。",
         "title": "终端自动补全"
@@ -233,6 +237,10 @@
       "terminalAutoCompleteFuzzyMatch": {
         "description": "除前缀匹配外，额外启用模糊匹配。",
         "title": "自动补全模糊匹配"
+      },
+      "terminalAutoCompleteHistoryEnabled": {
+        "description": "在自动补全面板中包含历史命令建议。",
+        "title": "自动补全历史建议"
       },
       "terminalAutoCompleteMaxItems": {
         "description": "自动补全面板中最多显示的建议数量。",
@@ -243,6 +251,14 @@
         "description": "触发自动补全前所需的最少输入字符数。",
         "placeholder": "1",
         "title": "自动补全触发长度"
+      },
+      "terminalAutoCompletePasswordEnabled": {
+        "description": "检测到安全提示时，在自动补全面板中包含密码填充建议。",
+        "title": "自动补全密码建议"
+      },
+      "terminalAutoCompletePathEnabled": {
+        "description": "在自动补全面板中包含文件与目录路径建议。",
+        "title": "自动补全路径建议"
       },
       "terminalContextLaunchBehavior": {
         "description": "控制通过“在 Cosmosh 中打开终端”或从上下文启动时如何打开终端。",
@@ -423,6 +439,7 @@
       "advancedStyle": "高级样式",
       "advancedTerminal": "高级终端配置",
       "appearance": "外观",
+      "autoComplete": "自动补全",
       "connection": "连接",
       "editorDefaults": "默认值",
       "localization": "本地化",

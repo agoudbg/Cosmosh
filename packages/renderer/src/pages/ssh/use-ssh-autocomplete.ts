@@ -16,6 +16,10 @@ import { resolvePromptWorkingDirectoryHint, resolveTerminalCurrentLinePrefix, se
 type UseSshAutocompleteParams = {
   connectionState: 'connecting' | 'connected' | 'failed';
   terminalAutoCompleteEnabled: boolean;
+  terminalAutoCompleteHistoryEnabled: boolean;
+  terminalAutoCompleteBuiltInCommandsEnabled: boolean;
+  terminalAutoCompletePathEnabled: boolean;
+  terminalAutoCompletePasswordEnabled: boolean;
   terminalAutoCompleteMinChars: number;
   terminalAutoCompleteMaxItems: number;
   terminalAutoCompleteFuzzyMatch: boolean;
@@ -63,6 +67,10 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
   const {
     connectionState,
     terminalAutoCompleteEnabled,
+    terminalAutoCompleteHistoryEnabled,
+    terminalAutoCompleteBuiltInCommandsEnabled,
+    terminalAutoCompletePathEnabled,
+    terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
@@ -226,10 +234,21 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
         workingDirectoryHint: params.workingDirectoryHint ?? undefined,
         limit: terminalAutoCompleteMaxItems,
         fuzzyMatch: terminalAutoCompleteFuzzyMatch,
+        includeHistory: terminalAutoCompleteHistoryEnabled,
+        includeBuiltInCommands: terminalAutoCompleteBuiltInCommandsEnabled,
+        includePathSuggestions: terminalAutoCompletePathEnabled,
+        includePasswordSuggestions: terminalAutoCompletePasswordEnabled,
         trigger: params.trigger,
       });
     },
-    [terminalAutoCompleteFuzzyMatch, terminalAutoCompleteMaxItems],
+    [
+      terminalAutoCompleteBuiltInCommandsEnabled,
+      terminalAutoCompleteFuzzyMatch,
+      terminalAutoCompleteHistoryEnabled,
+      terminalAutoCompleteMaxItems,
+      terminalAutoCompletePasswordEnabled,
+      terminalAutoCompletePathEnabled,
+    ],
   );
 
   const requestAutocomplete = React.useCallback(

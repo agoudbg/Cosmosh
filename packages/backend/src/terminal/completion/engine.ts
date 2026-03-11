@@ -785,12 +785,16 @@ const resolveTerminalCompletionsAsync = async (
   const normalizedLinePrefix = request.linePrefix.slice(0, normalizedCursorIndex);
   const query = normalizedLinePrefix.trimStart();
   const fuzzyMatch = request.fuzzyMatch ?? true;
+  const includeHistory = request.includeHistory ?? true;
+  const includeBuiltInCommands = request.includeBuiltInCommands ?? true;
+  const includePathSuggestions = request.includePathSuggestions ?? true;
+  const includePasswordSuggestions = request.includePasswordSuggestions ?? true;
   const completionLimit = Math.max(1, Math.min(MAX_COMPLETION_LIMIT, request.limit ?? DEFAULT_COMPLETION_LIMIT));
 
   if (!query) {
     return {
       replacePrefixLength: 0,
-      items: collectSecretPromptItem(options.promptState),
+      items: includePasswordSuggestions ? collectSecretPromptItem(options.promptState) : [],
     };
   }
 
@@ -817,61 +821,74 @@ const resolveTerminalCompletionsAsync = async (
       };
   const itemMap = new Map<string, TerminalCompletionItem>();
 
-  options.recentCommands.forEach((command, index) => {
-    const historyItem = toHistoryItem(
-      command,
-      {
-        query,
-        normalizedLinePrefix,
-        currentTokenIndex: currentToken.tokenIndex,
-        currentTokenValue,
-        fuzzyMatch,
-        matchedCommandTokens,
-      },
-      index,
-      options.recentCommands.length,
-    );
-    if (!historyItem) {
-      return;
-    }
+  if (includeHistory) {
+    options.recentCommands.forEach((command, index) => {
+      const historyItem = toHistoryItem(
+        command,
+        {
+          query,
+          normalizedLinePrefix,
+          currentTokenIndex: currentToken.tokenIndex,
+          currentTokenValue,
+          fuzzyMatch,
+          matchedCommandTokens,
+        },
+        index,
+        options.recentCommands.length,
+      );
+      if (!historyItem) {
+        return;
+      }
 
-    addItemWithBestScore(itemMap, historyItem);
-  });
+      addItemWithBestScore(itemMap, historyItem);
+    });
+  }
 
   const shouldSuggestRootCommand = currentToken.tokenIndex <= 0;
 
-  if (shouldSuggestRootCommand) {
-    collectCommandItems(currentTokenValue || query, fuzzyMatch).forEach((item) => addItemWithBestScore(itemMap, item));
-  } else {
-    const spec = specContext?.spec;
-    if (spec) {
-      if (argumentContext.currentOptionValueParent) {
-        collectOptionValueItems(spec, argumentContext.currentOptionValueParent, currentTokenValue, fuzzyMatch).forEach(
-          (item) => addItemWithBestScore(itemMap, item),
-        );
-      } else {
-        const nestedQuery = currentTokenIsPartOfMatchedPath ? '' : currentTokenValue;
-        collectNestedItems(spec, nestedQuery, fuzzyMatch, {
-          usedOptionNames: argumentContext.usedOptionNames,
-        }).forEach((item) => addItemWithBestScore(itemMap, item));
+  if (includeBuiltInCommands) {
+    if (shouldSuggestRootCommand) {
+      collectCommandItems(currentTokenValue || query, fuzzyMatch).forEach((item) =>
+        addItemWithBestScore(itemMap, item),
+      );
+    } else {
+      const spec = specContext?.spec;
+      if (spec) {
+        if (argumentContext.currentOptionValueParent) {
+          collectOptionValueItems(
+            spec,
+            argumentContext.currentOptionValueParent,
+            currentTokenValue,
+            fuzzyMatch,
+          ).forEach((item) => addItemWithBestScore(itemMap, item));
+        } else {
+          const nestedQuery = currentTokenIsPartOfMatchedPath ? '' : currentTokenValue;
+          collectNestedItems(spec, nestedQuery, fuzzyMatch, {
+            usedOptionNames: argumentContext.usedOptionNames,
+          }).forEach((item) => addItemWithBestScore(itemMap, item));
+        }
       }
     }
   }
 
-  const pathContext = resolvePathCompletionContext(
-    tokens,
-    currentToken.tokenIndex,
-    currentTokenValue,
-    fuzzyMatch,
-    completionLimit,
-  );
-  if (pathContext && options.pathProvider) {
-    const pathItems = collectPathItems(await options.pathProvider(pathContext), pathContext);
-    pathItems.forEach((item) => addItemWithBestScore(itemMap, item));
+  if (includePathSuggestions) {
+    const pathContext = resolvePathCompletionContext(
+      tokens,
+      currentToken.tokenIndex,
+      currentTokenValue,
+      fuzzyMatch,
+      completionLimit,
+    );
+    if (pathContext && options.pathProvider) {
+      const pathItems = collectPathItems(await options.pathProvider(pathContext), pathContext);
+      pathItems.forEach((item) => addItemWithBestScore(itemMap, item));
+    }
   }
 
-  const secretItems = collectSecretPromptItem(options.promptState);
-  secretItems.forEach((item) => addItemWithBestScore(itemMap, item));
+  if (includePasswordSuggestions) {
+    const secretItems = collectSecretPromptItem(options.promptState);
+    secretItems.forEach((item) => addItemWithBestScore(itemMap, item));
+  }
 
   const rankedItems = Array.from(itemMap.values())
     .sort((left, right) => {

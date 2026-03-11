@@ -100,6 +100,7 @@ sequenceDiagram
 ### 3.2 Auto-Complete Model
 
 - Renderer triggers `completion-request` with a short typing debounce and also sends an immediate request when user manually presses `Tab`.
+- Renderer also forwards source filter toggles in `completion-request` (`includeHistory`, `includeBuiltInCommands`, `includePathSuggestions`, `includePasswordSuggestions`) based on Settings and defaults each source to enabled.
 - Backend completion engine is shared by SSH and local-terminal session services and merges:
   - current session interactive commands captured from live input stream (history signal, isolated per session),
   - synchronized shell history snapshots merged into completion history cache so completion remains available before fresh interactive input,
@@ -117,6 +118,7 @@ sequenceDiagram
   - built-in command-spec candidates are prioritized above generic history matches,
   - history candidates are filtered by command context and receive dynamic recency bonus based on distance from latest run.
 - Suggestions are rendered as full command paths (for example, `git push --force`).
+- Source-specific toggles are available in Settings runtime section so power users can independently disable history fills, built-in command fills, path fills, or password fills while keeping other completion sources active.
 - Option parsing is argument-aware:
   - repeated option combinations are supported without losing command context,
   - known value-taking options (from Fig `args` metadata) can surface value suggestions,

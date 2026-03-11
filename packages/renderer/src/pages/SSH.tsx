@@ -50,6 +50,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
   const sshConnectionTimeoutSec = settingsValues.sshConnectionTimeoutSec;
   const terminalTextDropMode = settingsValues.terminalTextDropMode;
   const terminalAutoCompleteEnabled = settingsValues.terminalAutoCompleteEnabled;
+  const terminalAutoCompleteHistoryEnabled = settingsValues.terminalAutoCompleteHistoryEnabled;
+  const terminalAutoCompleteBuiltInCommandsEnabled = settingsValues.terminalAutoCompleteBuiltInCommandsEnabled;
+  const terminalAutoCompletePathEnabled = settingsValues.terminalAutoCompletePathEnabled;
+  const terminalAutoCompletePasswordEnabled = settingsValues.terminalAutoCompletePasswordEnabled;
   const terminalAutoCompleteMinChars = settingsValues.terminalAutoCompleteMinChars;
   const terminalAutoCompleteMaxItems = settingsValues.terminalAutoCompleteMaxItems;
   const terminalAutoCompleteFuzzyMatch = settingsValues.terminalAutoCompleteFuzzyMatch;
@@ -138,6 +142,10 @@ const SSH: React.FC<SSHProps> = ({ onTabTitleChange }) => {
     terminalInitOptions,
     sshConnectionTimeoutSec,
     terminalAutoCompleteEnabled,
+    terminalAutoCompleteHistoryEnabled,
+    terminalAutoCompleteBuiltInCommandsEnabled,
+    terminalAutoCompletePathEnabled,
+    terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,

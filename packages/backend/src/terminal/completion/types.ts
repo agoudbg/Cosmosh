@@ -43,6 +43,10 @@ export type TerminalCompletionRequest = {
   cursorIndex: number;
   limit?: number;
   fuzzyMatch?: boolean;
+  includeHistory?: boolean;
+  includeBuiltInCommands?: boolean;
+  includePathSuggestions?: boolean;
+  includePasswordSuggestions?: boolean;
   trigger: TerminalCompletionTrigger;
 };
 

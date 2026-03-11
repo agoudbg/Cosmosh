@@ -40,6 +40,10 @@ export type ClientOutboundMessage =
       workingDirectoryHint?: string;
       limit?: number;
       fuzzyMatch?: boolean;
+      includeHistory?: boolean;
+      includeBuiltInCommands?: boolean;
+      includePathSuggestions?: boolean;
+      includePasswordSuggestions?: boolean;
       trigger: 'typing' | 'manual';
     };
 

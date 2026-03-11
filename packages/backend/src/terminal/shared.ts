@@ -51,6 +51,10 @@ export type TerminalClientInboundMessage =
       workingDirectoryHint?: string;
       limit?: number;
       fuzzyMatch?: boolean;
+      includeHistory?: boolean;
+      includeBuiltInCommands?: boolean;
+      includePathSuggestions?: boolean;
+      includePasswordSuggestions?: boolean;
       trigger: 'typing' | 'manual';
     };
 
@@ -97,6 +101,10 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
       (parsed.workingDirectoryHint === undefined || typeof parsed.workingDirectoryHint === 'string') &&
       (parsed.limit === undefined || typeof parsed.limit === 'number') &&
       (parsed.fuzzyMatch === undefined || typeof parsed.fuzzyMatch === 'boolean') &&
+      (parsed.includeHistory === undefined || typeof parsed.includeHistory === 'boolean') &&
+      (parsed.includeBuiltInCommands === undefined || typeof parsed.includeBuiltInCommands === 'boolean') &&
+      (parsed.includePathSuggestions === undefined || typeof parsed.includePathSuggestions === 'boolean') &&
+      (parsed.includePasswordSuggestions === undefined || typeof parsed.includePasswordSuggestions === 'boolean') &&
       (parsed.trigger === 'typing' || parsed.trigger === 'manual')
     ) {
       return {
@@ -107,6 +115,10 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
         workingDirectoryHint: parsed.workingDirectoryHint,
         limit: parsed.limit,
         fuzzyMatch: parsed.fuzzyMatch,
+        includeHistory: parsed.includeHistory,
+        includeBuiltInCommands: parsed.includeBuiltInCommands,
+        includePathSuggestions: parsed.includePathSuggestions,
+        includePasswordSuggestions: parsed.includePasswordSuggestions,
         trigger: parsed.trigger,
       };
     }

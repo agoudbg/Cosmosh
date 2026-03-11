@@ -61,6 +61,16 @@ type SettingsFormState = {
   [K in keyof AppSettingsValues]: string | boolean;
 };
 
+const AUTOCOMPLETE_DEPENDENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>([
+  'terminalAutoCompleteHistoryEnabled',
+  'terminalAutoCompleteBuiltInCommandsEnabled',
+  'terminalAutoCompletePathEnabled',
+  'terminalAutoCompletePasswordEnabled',
+  'terminalAutoCompleteMinChars',
+  'terminalAutoCompleteMaxItems',
+  'terminalAutoCompleteFuzzyMatch',
+]);
+
 type SettingKey = keyof AppSettingsValues;
 
 type DatabaseSecurityInfo = {
@@ -426,15 +436,26 @@ const Settings: React.FC<{ initialCategoryId?: string; onOpenSettingInEditor?: (
 
   const renderedSettings = React.useMemo(() => {
     const candidate = isSearchMode ? visibleSettings : categorySettings;
+    const isTerminalAutocompleteEnabled = formState.terminalAutoCompleteEnabled === true;
 
     return candidate.filter((item) => {
+      if (AUTOCOMPLETE_DEPENDENT_KEYS.has(item.key) && !isTerminalAutocompleteEnabled) {
+        return false;
+      }
+
       if (item.key === 'terminalSelectionSearchUrlTemplate') {
         return formState.terminalSelectionSearchEngine === 'custom';
       }
 
       return true;
     });
-  }, [categorySettings, formState.terminalSelectionSearchEngine, isSearchMode, visibleSettings]);
+  }, [
+    categorySettings,
+    formState.terminalAutoCompleteEnabled,
+    formState.terminalSelectionSearchEngine,
+    isSearchMode,
+    visibleSettings,
+  ]);
 
   const sections = React.useMemo(() => {
     const grouped = new Map<string, SettingDefinition[]>();

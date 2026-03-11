@@ -226,6 +226,10 @@
         "description": "Use Alt (Option on macOS) + click to move the cursor to the clicked position.",
         "title": "Alt/Option Click Moves Cursor"
       },
+      "terminalAutoCompleteBuiltInCommandsEnabled": {
+        "description": "Include built-in command and option suggestions from command specs.",
+        "title": "Auto Complete Built-in Command Suggestions"
+      },
       "terminalAutoCompleteEnabled": {
         "description": "Enable terminal command auto-complete suggestions while typing.",
         "title": "Terminal Auto Complete"
@@ -233,6 +237,10 @@
       "terminalAutoCompleteFuzzyMatch": {
         "description": "Allow fuzzy matching in addition to strict prefix matching.",
         "title": "Auto Complete Fuzzy Match"
+      },
+      "terminalAutoCompleteHistoryEnabled": {
+        "description": "Include command history suggestions in the auto-complete menu.",
+        "title": "Auto Complete History Suggestions"
       },
       "terminalAutoCompleteMaxItems": {
         "description": "Maximum number of suggestions shown in the auto-complete menu.",
@@ -243,6 +251,14 @@
         "description": "Minimum number of typed characters before auto-complete is triggered.",
         "placeholder": "1",
         "title": "Auto Complete Trigger Length"
+      },
+      "terminalAutoCompletePasswordEnabled": {
+        "description": "Include interactive password fill suggestions when secure prompts are detected.",
+        "title": "Auto Complete Password Suggestions"
+      },
+      "terminalAutoCompletePathEnabled": {
+        "description": "Include file and directory path suggestions in the auto-complete menu.",
+        "title": "Auto Complete Path Suggestions"
       },
       "terminalContextLaunchBehavior": {
         "description": "Controls how terminals are opened from context launch or 'Open terminal in Cosmosh'.",
@@ -423,6 +439,7 @@
       "advancedStyle": "Advanced Style",
       "advancedTerminal": "Advanced Terminal",
       "appearance": "Appearance",
+      "autoComplete": "Auto Complete",
       "connection": "Connection",
       "editorDefaults": "Defaults",
       "localization": "Localization",

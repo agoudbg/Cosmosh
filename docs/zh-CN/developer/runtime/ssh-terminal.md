@@ -100,6 +100,7 @@ sequenceDiagram
 ### 3.2 自动补全模型
 
 - 渲染层会在输入过程中以短延迟去抖触发 `completion-request`，并在用户手动按下 `Tab` 时主动立即触发一次。
+- 渲染层还会在 `completion-request` 中携带来源过滤开关（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`、`includePasswordSuggestions`），其值来自设置项，且默认全部开启。
 - 后端补全引擎由 SSH 与本地终端会话服务共享，候选来源合并为：
   - 当前会话实时输入流提取的交互命令（历史信号，按会话隔离），
   - 同步得到的 shell 历史快照会合并进补全历史缓存，保证在会话初期也能提供历史补全，
@@ -117,6 +118,7 @@ sequenceDiagram
   - 内置命令规范候选优先于通用 history 命中，
   - history 候选会在命令结构相关前提下按“距离最近一次执行的距离”动态加权。
 - 候选展示为完整命令路径（例如 `git push --force`）。
+- 设置页运行时分组提供来源级别开关，允许用户独立关闭历史补全、内置命令补全、路径补全或密码补全，同时保留其他来源。
 - 选项解析具备参数语义感知：
   - 支持多选项连续组合输入且保持命令上下文稳定，
   - 对已知“需要参数值”的选项（来自 Fig `args` 元数据）可返回参数值候选，

@@ -59,7 +59,7 @@ Although terminal stream messages are not Electron IPC channels, they are part o
 
 - Client to server (`/ws/ssh/{sessionId}` and `/ws/local-terminal/{sessionId}`):
   - `input`, `resize`, `ping`, `close`, `history-delete`
-  - `completion-request` with `requestId`, `linePrefix`, `cursorIndex`, optional `workingDirectoryHint`, optional `limit`, optional `fuzzyMatch`, and `trigger` (`typing` or `manual`)
+  - `completion-request` with `requestId`, `linePrefix`, `cursorIndex`, optional `workingDirectoryHint`, optional `limit`, optional `fuzzyMatch`, optional source filters (`includeHistory`, `includeBuiltInCommands`, `includePathSuggestions`, `includePasswordSuggestions`), and `trigger` (`typing` or `manual`)
 - Server to client:
   - `ready`, `output`, `telemetry`, `history`, `pong`, `error`, `exit`
   - `completion-response` with `requestId`, `replacePrefixLength`, and ranked completion `items`
