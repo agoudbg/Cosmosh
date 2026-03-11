@@ -37,6 +37,7 @@ export type ClientOutboundMessage =
       requestId: string;
       linePrefix: string;
       cursorIndex: number;
+      workingDirectoryHint?: string;
       limit?: number;
       fuzzyMatch?: boolean;
       trigger: 'typing' | 'manual';

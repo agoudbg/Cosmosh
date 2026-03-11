@@ -48,6 +48,7 @@ export type TerminalClientInboundMessage =
       requestId: string;
       linePrefix: string;
       cursorIndex: number;
+      workingDirectoryHint?: string;
       limit?: number;
       fuzzyMatch?: boolean;
       trigger: 'typing' | 'manual';
@@ -93,6 +94,7 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
       typeof parsed.requestId === 'string' &&
       typeof parsed.linePrefix === 'string' &&
       typeof parsed.cursorIndex === 'number' &&
+      (parsed.workingDirectoryHint === undefined || typeof parsed.workingDirectoryHint === 'string') &&
       (parsed.limit === undefined || typeof parsed.limit === 'number') &&
       (parsed.fuzzyMatch === undefined || typeof parsed.fuzzyMatch === 'boolean') &&
       (parsed.trigger === 'typing' || parsed.trigger === 'manual')
@@ -102,6 +104,7 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
         requestId: parsed.requestId,
         linePrefix: parsed.linePrefix,
         cursorIndex: parsed.cursorIndex,
+        workingDirectoryHint: parsed.workingDirectoryHint,
         limit: parsed.limit,
         fuzzyMatch: parsed.fuzzyMatch,
         trigger: parsed.trigger,
@@ -220,7 +223,7 @@ export type TerminalInteractiveCompletionState = {
 export const updateInteractiveCompletionState = (
   state: TerminalInteractiveCompletionState,
   inputData: string,
-  options?: { maxEntries?: number },
+  options?: { maxEntries?: number; onCommandSubmitted?: (command: string) => void },
 ): void => {
   const maxEntries = Math.max(1, options?.maxEntries ?? TERMINAL_HISTORY_MAX_ENTRIES);
   let lineBuffer = state.lineBuffer;
@@ -237,6 +240,7 @@ export const updateInteractiveCompletionState = (
       0,
       maxEntries,
     );
+    options?.onCommandSubmitted?.(normalizedCommand);
 
     lineBuffer = '';
   };

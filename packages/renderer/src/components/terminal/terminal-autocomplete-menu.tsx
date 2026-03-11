@@ -1,5 +1,5 @@
 import classNames from 'classnames';
-import { Clock3, Command, ListTree, ToggleRight } from 'lucide-react';
+import { Clock3, Command, File, Folder, KeyRound, ListTree, ToggleRight } from 'lucide-react';
 import React from 'react';
 
 import { ContextMenuShortcut } from '../ui/context-menu';
@@ -11,8 +11,8 @@ type TerminalAutocompleteItem = {
   label: string;
   insertText: string;
   detail: string | null;
-  source: 'history' | 'inshellisense';
-  kind: 'command' | 'subcommand' | 'option' | 'history';
+  source: 'history' | 'inshellisense' | 'runtime';
+  kind: 'command' | 'subcommand' | 'option' | 'history' | 'path' | 'secret';
   score: number;
 };
 
@@ -39,6 +39,14 @@ const resolveItemIcon = (item: TerminalAutocompleteItem): React.ReactNode => {
 
   if (item.kind === 'option') {
     return <ToggleRight className="h-4 w-4" />;
+  }
+
+  if (item.kind === 'path') {
+    return item.insertText.endsWith('/') ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />;
+  }
+
+  if (item.kind === 'secret') {
+    return <KeyRound className="h-4 w-4" />;
   }
 
   if (item.kind === 'subcommand') {

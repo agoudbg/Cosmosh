@@ -7,6 +7,14 @@ import { type RawData } from 'ws';
 import { createI18n, type I18nInstance, type Locale } from '../i18n-bridge.js';
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
+import { createRemotePathProvider } from '../terminal/completion/path-providers.js';
+import {
+  type CompletionPromptState,
+  resolveRemotePromptCwd,
+  updatePromptStateFromInput,
+  updatePromptStateFromOutput,
+  updateRemoteCompletionCwd,
+} from '../terminal/completion/runtime-state.js';
 import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
@@ -15,6 +23,7 @@ import {
   parseTerminalHistoryOutput,
   TERMINAL_HISTORY_MAX_ENTRIES,
   TERMINAL_TELEMETRY_INTERVAL_MS,
+  type TerminalClientInboundMessage,
   updateInteractiveCompletionState,
 } from '../terminal/shared.js';
 import { decryptSensitiveValue } from './crypto.js';
@@ -71,6 +80,7 @@ type OpenShellResult =
       type: 'ready';
       client: Client;
       stream: ClientChannel;
+      completionSecretValue: string | null;
     }
   | {
       type: 'host-untrusted';
@@ -123,8 +133,8 @@ type ServerOutboundMessage =
         label: string;
         insertText: string;
         detail: string | null;
-        source: 'history' | 'inshellisense';
-        kind: 'command' | 'subcommand' | 'option' | 'history';
+        source: 'history' | 'inshellisense' | 'runtime';
+        kind: 'command' | 'subcommand' | 'option' | 'history' | 'path' | 'secret';
         score: number;
       }>;
     };
@@ -148,6 +158,10 @@ type SshLiveSession = TerminalManagedSessionBase & {
   recentCommands: string[];
   completionLineBuffer: string;
   completionRecentCommands: string[];
+  completionWorkingDirectory: string | null;
+  completionHomeDirectory: string | null;
+  completionPromptState: CompletionPromptState;
+  completionSecretValue: string | null;
 };
 
 type ParsedRemoteTelemetry = {
@@ -227,6 +241,18 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       t: i18n.t,
       onOutput: (data) => {
         if (liveSession) {
+          liveSession.completionPromptState = updatePromptStateFromOutput(
+            liveSession.completionPromptState,
+            data,
+            Date.now(),
+          );
+          const promptCwd = resolveRemotePromptCwd(
+            liveSession.completionPromptState.outputTail,
+            liveSession.completionWorkingDirectory,
+          );
+          if (promptCwd) {
+            liveSession.completionWorkingDirectory = promptCwd;
+          }
           this.sendServerMessage(liveSession, {
             type: 'output',
             data,
@@ -301,10 +327,33 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       recentCommands: [],
       completionLineBuffer: '',
       completionRecentCommands: [],
+      completionWorkingDirectory: null,
+      completionHomeDirectory: null,
+      completionPromptState: {
+        outputTail: '',
+        promptDetectedAtMs: 0,
+        shouldSuggestSecret: false,
+      },
+      completionSecretValue: shellResult.completionSecretValue,
       t: i18n.t,
       socket: null,
       disposed: false,
     };
+
+    pendingOutput.forEach((chunk) => {
+      liveSession.completionPromptState = updatePromptStateFromOutput(
+        liveSession.completionPromptState,
+        chunk,
+        Date.now(),
+      );
+      const promptCwd = resolveRemotePromptCwd(
+        liveSession.completionPromptState.outputTail,
+        liveSession.completionWorkingDirectory,
+      );
+      if (promptCwd) {
+        liveSession.completionWorkingDirectory = promptCwd;
+      }
+    });
 
     shellResult.stream.on('close', () => {
       this.disposeSession(sessionId, 'ws.sshStreamClosed');
@@ -418,9 +467,13 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       };
       updateInteractiveCompletionState(interactiveState, message.data, {
         maxEntries: TERMINAL_HISTORY_MAX_ENTRIES,
+        onCommandSubmitted: (command) => {
+          session.completionWorkingDirectory = updateRemoteCompletionCwd(session.completionWorkingDirectory, command);
+        },
       });
       session.completionLineBuffer = interactiveState.lineBuffer;
       session.completionRecentCommands = interactiveState.recentCommands;
+      session.completionPromptState = updatePromptStateFromInput(session.completionPromptState, message.data);
 
       if (/\r|\n/.test(message.data)) {
         const submittedInputCount = message.data.split(/\r\n|[\r\n]/).length - 1;
@@ -449,29 +502,79 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'completion-request') {
-      const completionResult = resolveTerminalCompletions(
-        {
-          linePrefix: message.linePrefix,
-          cursorIndex: message.cursorIndex,
-          limit: message.limit,
-          fuzzyMatch: message.fuzzyMatch,
-          trigger: message.trigger,
-        },
-        {
-          recentCommands: session.completionRecentCommands,
-        },
-      );
-
-      this.sendServerMessage(session, {
-        type: 'completion-response',
-        requestId: message.requestId,
-        replacePrefixLength: completionResult.replacePrefixLength,
-        items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
-      });
+      void this.handleCompletionRequest(session, message);
       return;
     }
 
     this.disposeSession(session.sessionId, 'ws.clientRequestedClose');
+  }
+
+  /**
+   * Resolves and returns localized completion items for one renderer request.
+   */
+  private async handleCompletionRequest(
+    session: SshLiveSession,
+    message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
+  ): Promise<void> {
+    session.completionWorkingDirectory = this.resolveHintedWorkingDirectory(session, message.workingDirectoryHint);
+
+    const completionResult = await resolveTerminalCompletions(
+      {
+        linePrefix: message.linePrefix,
+        cursorIndex: message.cursorIndex,
+        limit: message.limit,
+        fuzzyMatch: message.fuzzyMatch,
+        trigger: message.trigger,
+      },
+      {
+        recentCommands: session.completionRecentCommands,
+        pathProvider: createRemotePathProvider({
+          resolveCwd: async () => {
+            if (!session.completionWorkingDirectory) {
+              session.completionWorkingDirectory = await this.resolveRemoteWorkingDirectoryFallback(session);
+            }
+
+            return session.completionWorkingDirectory;
+          },
+          executeCommand: async (command) => (await this.executeRemoteCommand(session, command)) ?? '',
+        }),
+        promptState: {
+          shouldSuggestSecret: session.completionPromptState.shouldSuggestSecret,
+          secretValue: session.completionSecretValue,
+        },
+      },
+    );
+
+    this.sendServerMessage(session, {
+      type: 'completion-response',
+      requestId: message.requestId,
+      replacePrefixLength: completionResult.replacePrefixLength,
+      items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+    });
+  }
+
+  /**
+   * Resolves per-request cwd hint into effective SSH completion working directory.
+   */
+  private resolveHintedWorkingDirectory(session: SshLiveSession, hintValue: string | undefined): string | null {
+    const hintedCwd = hintValue?.trim() ?? '';
+    if (!hintedCwd) {
+      return session.completionWorkingDirectory;
+    }
+
+    if (hintedCwd.startsWith('/')) {
+      return hintedCwd;
+    }
+
+    if (hintedCwd === '~' && session.completionHomeDirectory) {
+      return session.completionHomeDirectory;
+    }
+
+    if (hintedCwd.startsWith('~/') && session.completionHomeDirectory) {
+      return `${session.completionHomeDirectory}${hintedCwd.slice(1)}`;
+    }
+
+    return session.completionWorkingDirectory;
   }
 
   protected disposeSession(
@@ -666,6 +769,20 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     return parseTerminalHistoryOutput(output);
   }
 
+  private async resolveRemoteWorkingDirectoryFallback(session: SshLiveSession): Promise<string | null> {
+    const stdout = await this.executeRemoteCommand(session, "sh -lc 'pwd'");
+    const resolved =
+      stdout
+        ?.split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0) ?? null;
+    if (resolved && !session.completionHomeDirectory) {
+      session.completionHomeDirectory = resolved;
+    }
+
+    return resolved;
+  }
+
   private async deleteRemoteHistoryEntry(session: SshLiveSession, command: string): Promise<void> {
     const normalizedCommand = command.trim();
     if (normalizedCommand.length === 0) {
@@ -835,6 +952,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       },
     };
 
+    let completionSecretValue: string | null = null;
+
     try {
       if (server.authType === 'password' || server.authType === 'both') {
         if (!server.passwordEncrypted) {
@@ -845,6 +964,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         }
 
         connectConfig.password = decryptSensitiveValue(server.passwordEncrypted, this.credentialEncryptionKey);
+        completionSecretValue = typeof connectConfig.password === 'string' ? connectConfig.password : null;
       }
 
       if (server.authType === 'key' || server.authType === 'both') {
@@ -862,6 +982,9 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
             server.privateKeyPassphraseEncrypted,
             this.credentialEncryptionKey,
           );
+          if (!completionSecretValue && typeof connectConfig.passphrase === 'string') {
+            completionSecretValue = connectConfig.passphrase;
+          }
         }
       }
     } catch {
@@ -912,6 +1035,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
             type: 'ready',
             client,
             stream,
+            completionSecretValue,
           });
         });
       });

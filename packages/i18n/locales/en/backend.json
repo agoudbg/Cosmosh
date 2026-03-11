@@ -5,7 +5,10 @@
   "completion": {
     "labels": {
       "commandSpec": "Command spec",
-      "history": "History"
+      "history": "History",
+      "pathDirectory": "Directory",
+      "pathFile": "File",
+      "secretFill": "Fill password"
     }
   },
   "errors": {

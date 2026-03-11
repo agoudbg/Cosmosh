@@ -11,7 +11,7 @@ import {
   AUTOCOMPLETE_PANEL_ESTIMATED_WIDTH,
   AUTOCOMPLETE_TYPING_DEBOUNCE_MS,
 } from './ssh-types';
-import { resolveTerminalCurrentLinePrefix, sendClientMessage } from './ssh-utils';
+import { resolvePromptWorkingDirectoryHint, resolveTerminalCurrentLinePrefix, sendClientMessage } from './ssh-utils';
 
 type UseSshAutocompleteParams = {
   connectionState: 'connecting' | 'connected' | 'failed';
@@ -80,6 +80,8 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
   const autocompleteRequestSequenceRef = React.useRef<number>(0);
   const autocompleteRequestTimeoutRef = React.useRef<number | null>(null);
   const latestAutocompleteRequestKeyRef = React.useRef<string>('');
+  const latestAutocompleteLinePrefixRef = React.useRef<string>('');
+  const latestAutocompleteWorkingDirectoryHintRef = React.useRef<string | null>(null);
   const latestAutocompleteRequestIdRef = React.useRef<string>('');
   const latestAutocompletePaneIdRef = React.useRef<string>('pane-1');
   const autocompleteReplacePrefixLengthRef = React.useRef<number>(0);
@@ -195,6 +197,41 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    * @param trigger Trigger source (`typing` or `manual`).
    * @returns Nothing.
    */
+  const dispatchCompletionRequest = React.useCallback(
+    (params: {
+      socket: WebSocket;
+      paneId: string;
+      linePrefix: string;
+      cursorRow: number;
+      trigger: 'typing' | 'manual';
+      workingDirectoryHint: string | null;
+    }): void => {
+      const requestKey = `${params.cursorRow}:${params.linePrefix}`;
+      if (params.trigger === 'typing' && requestKey === latestAutocompleteRequestKeyRef.current) {
+        return;
+      }
+
+      latestAutocompleteRequestKeyRef.current = requestKey;
+      const requestId = `cmp-${Date.now()}-${(autocompleteRequestSequenceRef.current += 1)}`;
+      latestAutocompleteRequestIdRef.current = requestId;
+      latestAutocompletePaneIdRef.current = params.paneId;
+      latestAutocompleteLinePrefixRef.current = params.linePrefix;
+      latestAutocompleteWorkingDirectoryHintRef.current = params.workingDirectoryHint;
+
+      sendClientMessage(params.socket, {
+        type: 'completion-request',
+        requestId,
+        linePrefix: params.linePrefix,
+        cursorIndex: params.linePrefix.length,
+        workingDirectoryHint: params.workingDirectoryHint ?? undefined,
+        limit: terminalAutoCompleteMaxItems,
+        fuzzyMatch: terminalAutoCompleteFuzzyMatch,
+        trigger: params.trigger,
+      });
+    },
+    [terminalAutoCompleteFuzzyMatch, terminalAutoCompleteMaxItems],
+  );
+
   const requestAutocomplete = React.useCallback(
     (trigger: 'typing' | 'manual') => {
       const activePaneId = activePaneIdRef.current;
@@ -224,12 +261,8 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       }
 
       const commandPrefix = lineContext.commandPrefix;
-      if (!commandPrefix.trim()) {
-        closeAutocomplete();
-        return;
-      }
-
-      if (commandPrefix.trim().length < terminalAutoCompleteMinChars) {
+      const trimmedCommandPrefix = commandPrefix.trim();
+      if (trimmedCommandPrefix.length > 0 && trimmedCommandPrefix.length < terminalAutoCompleteMinChars) {
         closeAutocomplete();
         return;
       }
@@ -237,37 +270,27 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       latestAutocompleteCommandStartColumnRef.current = lineContext.commandStartColumn;
       latestAutocompleteCursorRowRef.current = lineContext.cursorRow;
 
-      const requestKey = `${lineContext.cursorRow}:${commandPrefix}`;
-      if (trigger === 'typing' && requestKey === latestAutocompleteRequestKeyRef.current) {
-        return;
-      }
-      latestAutocompleteRequestKeyRef.current = requestKey;
-
-      const requestId = `cmp-${Date.now()}-${(autocompleteRequestSequenceRef.current += 1)}`;
-      latestAutocompleteRequestIdRef.current = requestId;
-      latestAutocompletePaneIdRef.current = activePaneId;
-
-      sendClientMessage(socket, {
-        type: 'completion-request',
-        requestId,
+      const workingDirectoryHint =
+        resolvePromptWorkingDirectoryHint(lineContext.fullLinePrefix, lineContext.commandStartColumn) ?? null;
+      dispatchCompletionRequest({
+        socket,
+        paneId: activePaneId,
         linePrefix: commandPrefix,
-        cursorIndex: commandPrefix.length,
-        limit: terminalAutoCompleteMaxItems,
-        fuzzyMatch: terminalAutoCompleteFuzzyMatch,
+        cursorRow: lineContext.cursorRow,
         trigger,
+        workingDirectoryHint,
       });
     },
     [
       activePaneIdRef,
       closeAutocomplete,
       connectionState,
+      dispatchCompletionRequest,
       mirrorPaneRuntimeMapRef,
       primaryPaneIdRef,
       primarySocketRef,
       primaryTerminalRef,
       terminalAutoCompleteEnabled,
-      terminalAutoCompleteFuzzyMatch,
-      terminalAutoCompleteMaxItems,
       terminalAutoCompleteMinChars,
     ],
   );
@@ -323,8 +346,36 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       });
       terminal?.focus();
       closeAutocomplete();
+
+      const previousLinePrefix = latestAutocompleteLinePrefixRef.current;
+      const nextLinePrefix = `${previousLinePrefix.slice(0, Math.max(0, previousLinePrefix.length - deleteCount))}${targetItem.insertText}`;
+
+      const shouldTriggerPathChain = targetItem.kind === 'path' && targetItem.insertText.endsWith('/');
+      const shouldTriggerSecretChain = targetItem.kind === 'secret';
+      if (shouldTriggerPathChain) {
+        dispatchCompletionRequest({
+          socket,
+          paneId: activePaneIdRef.current,
+          linePrefix: nextLinePrefix,
+          cursorRow: latestAutocompleteCursorRowRef.current,
+          trigger: 'manual',
+          workingDirectoryHint: latestAutocompleteWorkingDirectoryHintRef.current,
+        });
+      } else if (shouldTriggerSecretChain) {
+        window.setTimeout(() => {
+          scheduleAutocompleteRequest('manual');
+        }, 180);
+      }
     },
-    [autocompleteItems, closeAutocomplete, socketRef, terminalRef],
+    [
+      autocompleteItems,
+      activePaneIdRef,
+      closeAutocomplete,
+      dispatchCompletionRequest,
+      scheduleAutocompleteRequest,
+      socketRef,
+      terminalRef,
+    ],
   );
 
   /**

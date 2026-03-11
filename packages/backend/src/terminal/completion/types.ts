@@ -1,8 +1,25 @@
 export type TerminalCompletionTrigger = 'typing' | 'manual';
 
-export type TerminalCompletionSource = 'history' | 'inshellisense';
+export type TerminalCompletionSource = 'history' | 'inshellisense' | 'runtime';
 
-export type TerminalCompletionItemKind = 'command' | 'subcommand' | 'option' | 'history';
+export type TerminalCompletionItemKind = 'command' | 'subcommand' | 'option' | 'history' | 'path' | 'secret';
+
+export type TerminalPathEntry = {
+  name: string;
+  kind: 'file' | 'directory';
+};
+
+export type TerminalPathCompletionContext = {
+  partialPath: string;
+  directoriesOnly: boolean;
+  fuzzyMatch: boolean;
+  limit: number;
+};
+
+export type TerminalRuntimePromptState = {
+  shouldSuggestSecret: boolean;
+  secretValue: string | null;
+};
 
 /**
  * Completion item returned to renderer.

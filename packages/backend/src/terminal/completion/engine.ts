@@ -4,10 +4,31 @@ import type {
   TerminalCompletionItem,
   TerminalCompletionRequest,
   TerminalCompletionResponse,
+  TerminalPathCompletionContext,
+  TerminalPathEntry,
+  TerminalRuntimePromptState,
 } from './types.js';
 
 const DEFAULT_COMPLETION_LIMIT = 8;
 const MAX_COMPLETION_LIMIT = 16;
+const MAX_PATH_ITEMS = 40;
+
+type CompletionRuntimeOptions = {
+  recentCommands: string[];
+  pathProvider?: (context: TerminalPathCompletionContext) => Promise<TerminalPathEntry[]>;
+  promptState?: TerminalRuntimePromptState;
+};
+
+type PathCompletionRule = {
+  command: string;
+  directoriesOnly: boolean;
+};
+
+const PATH_COMPLETION_RULES: PathCompletionRule[] = [
+  { command: 'cd', directoriesOnly: true },
+  { command: 'cat', directoriesOnly: false },
+  { command: 'vim', directoriesOnly: false },
+];
 
 const normalizeToken = (value: string): string => value.trim().toLowerCase();
 const COMMAND_PATH_SEPARATOR = ' ';
@@ -631,14 +652,132 @@ const collectOptionValueItems = (
 };
 
 /**
+ * Decides whether path completion should run for the current token and command context.
+ * Returns null when the token is not path-eligible (e.g. option token starting with '-').
+ */
+const resolvePathCompletionContext = (
+  tokens: string[],
+  currentTokenIndex: number,
+  currentTokenValue: string,
+  fuzzyMatch: boolean,
+  completionLimit: number,
+): TerminalPathCompletionContext | null => {
+  const trimmedCurrentToken = currentTokenValue.trim();
+  if (trimmedCurrentToken.startsWith('-')) {
+    return null;
+  }
+
+  const normalizedRootCommand = normalizeToken(tokens[0] ?? '');
+  const isDirectPathCommand =
+    currentTokenIndex === 0 && /^(\.|\/|~)/.test(trimmedCurrentToken || (tokens[0] ?? '').trim());
+  if (isDirectPathCommand) {
+    return {
+      partialPath: currentTokenValue,
+      directoriesOnly: false,
+      fuzzyMatch,
+      limit: Math.min(MAX_PATH_ITEMS, completionLimit * 3),
+    };
+  }
+
+  if (currentTokenIndex <= 0) {
+    return null;
+  }
+
+  const rule = PATH_COMPLETION_RULES.find((entry) => entry.command === normalizedRootCommand);
+  if (!rule) {
+    return null;
+  }
+
+  return {
+    partialPath: currentTokenValue,
+    directoriesOnly: rule.directoriesOnly,
+    fuzzyMatch,
+    limit: Math.min(MAX_PATH_ITEMS, completionLimit * 3),
+  };
+};
+
+/**
+ * Builds runtime path completion items from filesystem provider entries.
+ */
+const collectPathItems = (
+  entries: TerminalPathEntry[],
+  context: TerminalPathCompletionContext,
+): TerminalCompletionItem[] => {
+  const normalizedQuery = context.partialPath.trim();
+  const items: TerminalCompletionItem[] = [];
+
+  entries.forEach((entry, index) => {
+    if (!entry.name.trim()) {
+      return;
+    }
+
+    if (context.directoriesOnly && entry.kind !== 'directory') {
+      return;
+    }
+
+    const baseScore = normalizedQuery
+      ? computeSubsequenceScore(normalizedQuery, entry.name, context.fuzzyMatch)
+      : entry.kind === 'directory'
+        ? 560
+        : 520;
+    if (baseScore <= 0) {
+      return;
+    }
+
+    items.push({
+      id: `path:${index}:${entry.name}`,
+      label: entry.name,
+      insertText: entry.name,
+      detail: null,
+      detailI18nKey: entry.kind === 'directory' ? 'completion.labels.pathDirectory' : 'completion.labels.pathFile',
+      source: 'runtime',
+      kind: 'path',
+      score: baseScore + (entry.kind === 'directory' ? 260 : 220),
+    });
+  });
+
+  return items;
+};
+
+/**
+ * Creates password fill completion entry for active interactive prompts.
+ */
+const collectSecretPromptItem = (promptState: TerminalRuntimePromptState | undefined): TerminalCompletionItem[] => {
+  if (!promptState?.shouldSuggestSecret || !promptState.secretValue) {
+    return [];
+  }
+
+  return [
+    {
+      id: 'runtime:secret-fill',
+      label: 'Fill password',
+      insertText: `${promptState.secretValue}\n`,
+      detail: null,
+      detailI18nKey: 'completion.labels.secretFill',
+      source: 'runtime',
+      kind: 'secret',
+      score: 2_400,
+    },
+  ];
+};
+
+/**
  * Resolves terminal completion candidates using session history and command specs.
  */
 export const resolveTerminalCompletions = (
   request: TerminalCompletionRequest,
-  options: {
-    recentCommands: string[];
-  },
-): TerminalCompletionResponse => {
+  options: CompletionRuntimeOptions,
+): Promise<TerminalCompletionResponse> => {
+  return resolveTerminalCompletionsAsync(request, options);
+};
+
+/**
+ * Resolves completion candidates by combining command specs, history, paths and runtime prompt actions.
+ */
+const resolveTerminalCompletionsAsync = async (
+  request: TerminalCompletionRequest,
+  options: CompletionRuntimeOptions,
+): Promise<TerminalCompletionResponse> => {
   const normalizedCursorIndex = Number.isFinite(request.cursorIndex)
     ? Math.max(0, Math.min(request.linePrefix.length, Math.floor(request.cursorIndex)))
     : request.linePrefix.length;
@@ -651,7 +790,7 @@ export const resolveTerminalCompletions = (
   if (!query) {
     return {
       replacePrefixLength: 0,
-      items: [],
+      items: collectSecretPromptItem(options.promptState),
     };
   }
 
@@ -719,6 +858,21 @@ export const resolveTerminalCompletions = (
     }
   }
 
+  const pathContext = resolvePathCompletionContext(
+    tokens,
+    currentToken.tokenIndex,
+    currentTokenValue,
+    fuzzyMatch,
+    completionLimit,
+  );
+  if (pathContext && options.pathProvider) {
+    const pathItems = collectPathItems(await options.pathProvider(pathContext), pathContext);
+    pathItems.forEach((item) => addItemWithBestScore(itemMap, item));
+  }
+
+  const secretItems = collectSecretPromptItem(options.promptState);
+  secretItems.forEach((item) => addItemWithBestScore(itemMap, item));
+
   const rankedItems = Array.from(itemMap.values())
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -726,7 +880,19 @@ export const resolveTerminalCompletions = (
       }
 
       if (left.source !== right.source) {
-        return left.source === 'inshellisense' ? -1 : 1;
+        const sourcePriority = (source: TerminalCompletionItem['source']): number => {
+          if (source === 'runtime') {
+            return 0;
+          }
+
+          if (source === 'inshellisense') {
+            return 1;
+          }
+
+          return 2;
+        };
+
+        return sourcePriority(left.source) - sourcePriority(right.source);
       }
 
       return left.label.localeCompare(right.label);
@@ -750,14 +916,29 @@ export const localizeTerminalCompletionItems = (
     const translatedDetail = item.detailI18nKey ? translate(item.detailI18nKey) : null;
     const hasTranslatedDetail =
       typeof translatedDetail === 'string' && translatedDetail.length > 0 && translatedDetail !== item.detailI18nKey;
-    const fallbackLabelKey = item.source === 'history' ? 'completion.labels.history' : 'completion.labels.commandSpec';
+    const fallbackLabelKey =
+      item.source === 'history'
+        ? 'completion.labels.history'
+        : item.source === 'runtime'
+          ? item.kind === 'path'
+            ? 'completion.labels.pathFile'
+            : item.kind === 'secret'
+              ? 'completion.labels.secretFill'
+              : 'completion.labels.commandSpec'
+          : 'completion.labels.commandSpec';
     const fallbackLabel = translate(fallbackLabelKey);
     const safeFallbackLabel =
       typeof fallbackLabel === 'string' && fallbackLabel.length > 0 && fallbackLabel !== fallbackLabelKey
         ? fallbackLabel
         : item.source === 'history'
           ? 'History'
-          : 'Command spec';
+          : item.source === 'runtime'
+            ? item.kind === 'secret'
+              ? 'Fill password'
+              : item.kind === 'path'
+                ? 'File'
+                : 'Runtime'
+            : 'Command spec';
 
     return {
       ...item,

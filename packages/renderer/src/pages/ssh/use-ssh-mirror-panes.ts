@@ -6,7 +6,7 @@ import { closeLocalTerminalSession, closeSshSession } from '../../lib/backend';
 import { t } from '../../lib/i18n';
 import { openTerminalSessionSocket } from './ssh-session-connectors';
 import type { MirrorPaneRuntime, ResolvedTerminalTarget, ServerInboundMessage } from './ssh-types';
-import { applyTerminalRuntimeOptions, sendClientMessage } from './ssh-utils';
+import { applyTerminalRuntimeOptions, SECRET_PROMPT_PATTERN, sendClientMessage } from './ssh-utils';
 
 type UseSshMirrorPanesParams = {
   connectionState: 'connecting' | 'connected' | 'failed';
@@ -224,6 +224,9 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
               const payload = JSON.parse(event.data) as ServerInboundMessage;
               if (payload.type === 'output') {
                 terminal.write(payload.data);
+                if (SECRET_PROMPT_PATTERN.test(payload.data.trimEnd())) {
+                  scheduleAutocompleteRequestRef.current('manual');
+                }
                 return;
               }
 

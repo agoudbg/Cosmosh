@@ -59,10 +59,16 @@ Although terminal stream messages are not Electron IPC channels, they are part o
 
 - Client to server (`/ws/ssh/{sessionId}` and `/ws/local-terminal/{sessionId}`):
   - `input`, `resize`, `ping`, `close`, `history-delete`
-  - `completion-request` with `requestId`, `linePrefix`, `cursorIndex`, optional `limit`, optional `fuzzyMatch`, and `trigger` (`typing` or `manual`)
+  - `completion-request` with `requestId`, `linePrefix`, `cursorIndex`, optional `workingDirectoryHint`, optional `limit`, optional `fuzzyMatch`, and `trigger` (`typing` or `manual`)
 - Server to client:
   - `ready`, `output`, `telemetry`, `history`, `pong`, `error`, `exit`
   - `completion-response` with `requestId`, `replacePrefixLength`, and ranked completion `items`
+
+Completion item contract notes:
+
+- `items[].source` includes `history`, `inshellisense`, and runtime-computed `runtime`.
+- `items[].kind` includes existing command-spec/history categories plus runtime categories (`path`, `secret`).
+- Runtime categories are used for path candidates and interactive secret-fill actions while preserving the same `completion-response` envelope.
 
 Current implementation note:
 

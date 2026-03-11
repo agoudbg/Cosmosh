@@ -103,7 +103,8 @@ sequenceDiagram
 - Backend completion engine is shared by SSH and local-terminal session services and merges:
   - current session interactive commands captured from live input stream (history signal, isolated per session),
   - synchronized shell history snapshots merged into completion history cache so completion remains available before fresh interactive input,
-  - command metadata imported from inshellisense/Fig resources (spec signal), generated from full command-path index rather than root-only subset.
+  - command metadata imported from inshellisense/Fig resources (spec signal), generated from full command-path index rather than root-only subset,
+  - runtime providers (path provider and interactive secret-prompt provider) composed in the same ranking pipeline.
 - `packages/backend/scripts/generate-inshellisense.mjs` generates spec dataset plus locale resources with language-specific policy:
   - `packages/backend/src/terminal/completion/generated-inshellisense.ts` keeps command structure and `descriptionI18nKey` only (no duplicated raw description text payload).
   - `packages/i18n/locales/en/backend-inshellisense.json` is fully regenerated from upstream descriptions.
@@ -120,9 +121,16 @@ sequenceDiagram
   - repeated option combinations are supported without losing command context,
   - known value-taking options (from Fig `args` metadata) can surface value suggestions,
   - already used options are deprioritized/filtered to reduce noisy duplicates in the same command line.
+- Path completion is provider-based and command-context-aware:
+  - built-in path rules currently cover `cd` (directory-only), `cat`, `vim`, and direct executable-style path prefixes (`./`, `../`, `/`, `~`) at command position,
+  - relative-path partial input (for example, `cd ../../c`) is resolved against tracked session working directory and ranked with "prefix first, contains fallback" matching,
+  - when current token starts with `-`, option/value suggestions keep priority and path provider is gated off for that token.
+- Interactive secret prompt detection is output-driven:
+  - backend tracks recent output tail and detects common prompts (`sudo` password, `su`/generic password prompts, key passphrase prompts),
+  - when prompt is active and a reusable session secret exists, completion can emit runtime `secret` action item (`Fill password`) for one-step insertion.
 - Acceptance replaces only the active token segment (`replacePrefixLength`) before cursor instead of clearing the entire command line, so multi-argument combinations remain intact.
 - `completion-response` contains `replacePrefixLength` plus items (`label`, `insertText`, `detail`, `source`, `kind`, `score`).
-- Completion `detail` is localized in backend session services before response emission, with fallback chain: translated `detailI18nKey` → localized source label (`History` / `Command spec`).
+- Completion `detail` is localized in backend session services before response emission, with fallback chain: translated `detailI18nKey` → localized source label (`History` / `Command spec` / runtime labels such as `Directory`, `File`, `Fill password`).
 - Renderer keyboard policy when suggestions are visible:
   - `ArrowUp/ArrowDown` changes active suggestion and is consumed by completion navigation,
   - `Tab` accepts active suggestion,

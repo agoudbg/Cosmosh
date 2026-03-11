@@ -12,6 +12,11 @@ const SEARCH_URL_BY_ENGINE: Partial<Record<TerminalSelectionSettings['searchEngi
 const COMMAND_START_TOKENS = ['> ', '$ ', '# ', '❯ ', '➜ ', 'λ '];
 
 /**
+ * Detects common password/passphrase prompt endings in terminal output.
+ */
+export const SECRET_PROMPT_PATTERN = /(password(?: for [^:]+)?:|passphrase(?: for [^:]+)?:)\s*$/i;
+
+/**
  * Formats bytes in a compact terminal-style representation.
  *
  * @param value Input bytes value.
@@ -156,6 +161,36 @@ export const resolveTerminalCurrentLinePrefix = (
     commandStartColumn,
     cursorRow: cursorY,
   };
+};
+
+/**
+ * Parses a best-effort absolute cwd hint from shell prompt prefix.
+ *
+ * @param fullLinePrefix Full terminal line text before cursor.
+ * @param commandStartColumn Command start column resolved from prompt tokens.
+ * @returns Absolute POSIX-like cwd hint or `null` when unavailable.
+ */
+export const resolvePromptWorkingDirectoryHint = (
+  fullLinePrefix: string,
+  commandStartColumn: number,
+): string | null => {
+  const promptSegment = fullLinePrefix.slice(0, Math.max(0, commandStartColumn)).trimEnd();
+  if (!promptSegment) {
+    return null;
+  }
+
+  const hostPromptMatch = /:[\s]*([^\s]+)\s*[#$]$/.exec(promptSegment);
+  const plainPromptMatch = /^([^\s]+)\s*[#$]$/.exec(promptSegment);
+  const candidate = hostPromptMatch?.[1] ?? plainPromptMatch?.[1] ?? '';
+  if (!candidate) {
+    return null;
+  }
+
+  if (candidate === '~' || candidate.startsWith('~/') || candidate.startsWith('/')) {
+    return candidate;
+  }
+
+  return null;
 };
 
 /**

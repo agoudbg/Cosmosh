@@ -11,6 +11,13 @@ import { type RawData } from 'ws';
 import { createI18n, type Locale } from '../i18n-bridge.js';
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
+import { createLocalPathProvider } from '../terminal/completion/path-providers.js';
+import {
+  type CompletionPromptState,
+  updateLocalCompletionCwd,
+  updatePromptStateFromInput,
+  updatePromptStateFromOutput,
+} from '../terminal/completion/runtime-state.js';
 import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
@@ -19,6 +26,7 @@ import {
   parseTerminalHistoryOutput,
   TERMINAL_HISTORY_MAX_ENTRIES,
   TERMINAL_TELEMETRY_INTERVAL_MS,
+  type TerminalClientInboundMessage,
   updateInteractiveCompletionState,
 } from '../terminal/shared.js';
 
@@ -96,8 +104,8 @@ type ServerOutboundMessage =
         label: string;
         insertText: string;
         detail: string | null;
-        source: 'history' | 'inshellisense';
-        kind: 'command' | 'subcommand' | 'option' | 'history';
+        source: 'history' | 'inshellisense' | 'runtime';
+        kind: 'command' | 'subcommand' | 'option' | 'history' | 'path' | 'secret';
         score: number;
       }>;
     };
@@ -113,6 +121,8 @@ type LocalLiveSession = TerminalManagedSessionBase & {
   recentCommands: string[];
   completionLineBuffer: string;
   completionRecentCommands: string[];
+  completionWorkingDirectory: string;
+  completionPromptState: CompletionPromptState;
 };
 
 /**
@@ -313,12 +323,19 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       recentCommands: [],
       completionLineBuffer: '',
       completionRecentCommands: [],
+      completionWorkingDirectory: workingDirectory,
+      completionPromptState: {
+        outputTail: '',
+        promptDetectedAtMs: 0,
+        shouldSuggestSecret: false,
+      },
       t: i18n.t,
       socket: null,
       disposed: false,
     };
 
     pty.onData((data) => {
+      session.completionPromptState = updatePromptStateFromOutput(session.completionPromptState, data, Date.now());
       this.sendServerMessage(session, { type: 'output', data });
     });
 
@@ -370,9 +387,13 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       };
       updateInteractiveCompletionState(interactiveState, message.data, {
         maxEntries: TERMINAL_HISTORY_MAX_ENTRIES,
+        onCommandSubmitted: (command) => {
+          session.completionWorkingDirectory = updateLocalCompletionCwd(session.completionWorkingDirectory, command);
+        },
       });
       session.completionLineBuffer = interactiveState.lineBuffer;
       session.completionRecentCommands = interactiveState.recentCommands;
+      session.completionPromptState = updatePromptStateFromInput(session.completionPromptState, message.data);
 
       if (/\r|\n/.test(message.data)) {
         this.scheduleHistorySync(session.sessionId);
@@ -404,29 +425,54 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
     }
 
     if (message.type === 'completion-request') {
-      const completionResult = resolveTerminalCompletions(
-        {
-          linePrefix: message.linePrefix,
-          cursorIndex: message.cursorIndex,
-          limit: message.limit,
-          fuzzyMatch: message.fuzzyMatch,
-          trigger: message.trigger,
-        },
-        {
-          recentCommands: session.completionRecentCommands,
-        },
-      );
-
-      this.sendServerMessage(session, {
-        type: 'completion-response',
-        requestId: message.requestId,
-        replacePrefixLength: completionResult.replacePrefixLength,
-        items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
-      });
+      void this.handleCompletionRequest(session, message);
       return;
     }
 
     this.disposeSession(session.sessionId, 'ws.clientRequestedClose');
+  }
+
+  /**
+   * Resolves and returns localized completion items for one renderer request.
+   * Keeps async filesystem scans out of the websocket message switch body.
+   */
+  private async handleCompletionRequest(
+    session: LocalLiveSession,
+    message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
+  ): Promise<void> {
+    const hintedCwd = message.workingDirectoryHint?.trim() ?? '';
+    const completionCwd = hintedCwd.startsWith('/')
+      ? hintedCwd
+      : hintedCwd === '~'
+        ? process.env.HOME || session.completionWorkingDirectory
+        : hintedCwd.startsWith('~/')
+          ? `${process.env.HOME || session.completionWorkingDirectory}${hintedCwd.slice(1)}`
+          : session.completionWorkingDirectory;
+
+    const completionResult = await resolveTerminalCompletions(
+      {
+        linePrefix: message.linePrefix,
+        cursorIndex: message.cursorIndex,
+        limit: message.limit,
+        fuzzyMatch: message.fuzzyMatch,
+        trigger: message.trigger,
+      },
+      {
+        recentCommands: session.completionRecentCommands,
+        pathProvider: createLocalPathProvider(completionCwd),
+        promptState: {
+          shouldSuggestSecret: session.completionPromptState.shouldSuggestSecret,
+          secretValue: null,
+        },
+      },
+    );
+
+    this.sendServerMessage(session, {
+      type: 'completion-response',
+      requestId: message.requestId,
+      replacePrefixLength: completionResult.replacePrefixLength,
+      items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+    });
   }
 
   protected disposeSession(

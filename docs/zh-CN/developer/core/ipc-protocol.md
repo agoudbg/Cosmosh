@@ -59,10 +59,16 @@ flowchart TB
 
 - 客户端到服务端（`/ws/ssh/{sessionId}` 与 `/ws/local-terminal/{sessionId}`）：
   - `input`、`resize`、`ping`、`close`、`history-delete`
-  - `completion-request`，包含 `requestId`、`linePrefix`、`cursorIndex`、可选 `limit`、可选 `fuzzyMatch`、`trigger`（`typing` 或 `manual`）
+  - `completion-request`，包含 `requestId`、`linePrefix`、`cursorIndex`、可选 `workingDirectoryHint`、可选 `limit`、可选 `fuzzyMatch`、`trigger`（`typing` 或 `manual`）
 - 服务端到客户端：
   - `ready`、`output`、`telemetry`、`history`、`pong`、`error`、`exit`
   - `completion-response`，包含 `requestId`、`replacePrefixLength` 与排序后的候选 `items`
+
+补全候选契约说明：
+
+- `items[].source` 目前包含 `history`、`inshellisense` 与运行时计算来源 `runtime`。
+- `items[].kind` 在原有命令规范/历史分类之外，新增运行时分类（`path`、`secret`）。
+- 运行时分类用于路径候选与交互式密钥填充动作，但仍复用相同的 `completion-response` 外层结构。
 
 当前实现说明：
 

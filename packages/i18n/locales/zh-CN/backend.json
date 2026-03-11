@@ -5,7 +5,10 @@
   "completion": {
     "labels": {
       "commandSpec": "命令规范",
-      "history": "历史记录"
+      "history": "历史记录",
+      "pathDirectory": "目录",
+      "pathFile": "文件",
+      "secretFill": "填充密码"
     }
   },
   "errors": {

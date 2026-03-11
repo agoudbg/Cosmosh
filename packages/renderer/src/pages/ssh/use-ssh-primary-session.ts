@@ -8,7 +8,7 @@ import { openTerminalSessionSocket } from './ssh-session-connectors';
 import { resolveTerminalTarget } from './ssh-target';
 import type { ResolvedTerminalTarget, ServerInboundMessage, SshTelemetryState } from './ssh-types';
 import { DEFAULT_TELEMETRY_STATE } from './ssh-types';
-import { sendClientMessage } from './ssh-utils';
+import { SECRET_PROMPT_PATTERN, sendClientMessage } from './ssh-utils';
 
 type UseSshPrimarySessionParams = {
   terminalInitOptionsRef: React.RefObject<ITerminalOptions>;
@@ -212,6 +212,9 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
 
         if (payload.type === 'output') {
           terminal.write(payload.data);
+          if (SECRET_PROMPT_PATTERN.test(payload.data.trimEnd())) {
+            scheduleAutocompleteRequestRef.current('manual');
+          }
           return;
         }
 
