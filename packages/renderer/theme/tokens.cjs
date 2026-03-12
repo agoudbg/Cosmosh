@@ -7,6 +7,7 @@ const base = {
     sm: '6px',
     md: '10px',
     lg: '14px',
+    xl: '18px',
   },
   colors: {
     bg: {

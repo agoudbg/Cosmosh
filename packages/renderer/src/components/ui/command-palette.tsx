@@ -322,7 +322,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         ref={panelRef}
         tabIndex={showInput ? undefined : -1}
         data-state={open ? 'open' : 'closed'}
-        className="flex flex-col overflow-hidden rounded-[20px] border border-command-border bg-command-surface shadow-menu-content backdrop-blur-[4px] data-[state=closed]:animate-out data-[state=closed]:fade-out-10 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-top-1"
+        className="flex flex-col overflow-hidden rounded-xl border border-command-border bg-command-surface shadow-menu-content backdrop-blur-[4px] data-[state=closed]:animate-out data-[state=closed]:fade-out-10 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-top-1"
         onKeyDown={showInput ? undefined : handlePanelKeyDown}
       >
         {showInput ? (
@@ -344,12 +344,12 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         <TooltipProvider delayDuration={180}>
           <div
             className={classNames(
-              'overflow-y-auto',
-              showInput ? 'max-h-[min(420px,calc(100vh-180px))] p-1.5' : 'max-h-[min(480px,calc(100vh-140px))] p-2',
+              'overflow-y-auto p-1',
+              showInput ? 'max-h-[min(420px,calc(100vh-180px))]' : 'max-h-[min(480px,calc(100vh-140px))]',
             )}
           >
             {items.length === 0 ? (
-              <div className="rounded-[10px] px-2.5 py-2 text-sm text-command-text-muted">{emptyText}</div>
+              <div className="rounded-lg px-2.5 py-2 text-sm text-command-text-muted">{emptyText}</div>
             ) : (
               items.map((item, index) => {
                 const isActive = index === activeIndex;
