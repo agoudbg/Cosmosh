@@ -757,7 +757,7 @@ const Settings: React.FC<{ initialCategoryId?: string; onOpenSettingInEditor?: (
                   {isSearchMode ? t('settings.searchResults') : t(activeCategory.labelI18nKey)}
                 </h1>
                 {isSearchMode ? (
-                  <p className="text-sm text-home-text-subtle">{`${t('settings.query')}: "${search.trim()}"`}</p>
+                  <p className="ps-2 text-sm text-home-text-subtle">{`${t('settings.query')}: "${search.trim()}"`}</p>
                 ) : null}
               </div>
 
