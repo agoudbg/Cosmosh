@@ -22,7 +22,7 @@
     "docs:build": "pnpm --filter @cosmosh/docs build"
   },
   "devDependencies": {
-    "@types/node": "^25.3.1",
+    "@types/node": "^25.4.0",
     "typescript": "^5.9.3"
   },
   "engines": {
