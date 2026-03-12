@@ -469,7 +469,7 @@ const ComponentsField: React.FC = () => {
             </FormField>
           </div>
 
-          <div className="rounded-[14px] bg-form-control px-2.5 py-2 text-xs text-form-text-muted">
+          <div className="rounded-lg bg-form-control px-2.5 py-2 text-xs text-form-text-muted">
             Palette row/input baseline: height 34px, radius 14px (aligned with Input controls).
           </div>
         </div>

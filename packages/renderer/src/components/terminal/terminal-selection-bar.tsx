@@ -52,7 +52,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
           aria-label={label}
           draggable={draggable}
           data-action-id={dataActionId}
-          className="h-[34px] w-[34px] rounded-[14px]"
+          className="h-[34px] w-[34px] rounded-lg"
           onClick={onClick}
           onDragStart={onDragStart}
         >

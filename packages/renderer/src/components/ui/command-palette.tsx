@@ -327,7 +327,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
       >
         {showInput ? (
           <div className="border-b border-command-divider p-[6px]">
-            <div className="flex items-center gap-2 rounded-[14px] bg-command-input px-2.5 focus-within:ring-2 focus-within:ring-outline">
+            <div className="flex items-center gap-2 rounded-lg bg-command-input px-2.5 focus-within:ring-2 focus-within:ring-outline">
               {resolvedLeadingIcon}
               <Input
                 ref={inputRef}
@@ -358,7 +358,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <div
                     key={item.key}
                     className={classNames(
-                      'group flex min-h-[34px] w-full items-center gap-2 rounded-[14px] px-2.5 py-1.5 text-left outline-none',
+                      'group flex min-h-[34px] w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left outline-none',
                       isActive ? 'bg-command-item-active' : 'hover:bg-command-item-hover',
                     )}
                     onMouseEnter={() => setActiveIndex(index)}
