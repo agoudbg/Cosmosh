@@ -57,7 +57,7 @@ const iconMap: Record<TabIconKey, React.ReactNode> = {
 const DragOverlayTab: React.FC<{ tab: TabItem; width: number }> = ({ tab, width }) => {
   return (
     <div
-      className="box-border inline-flex h-[34px] items-center justify-between gap-1.5 overflow-hidden rounded-md bg-header-tab-active px-2"
+      className="box-border inline-flex h-[34px] items-center justify-between gap-1.5 overflow-hidden rounded-lg bg-header-tab-active px-2"
       style={{ width, minWidth: width, maxWidth: width }}
     >
       <span aria-hidden>{iconMap[tab.iconKey]}</span>
@@ -129,7 +129,7 @@ const SortableTab = React.forwardRef<
           // @ts-expect-error React.CSSProperties
           style={{ WebkitAppRegion: 'no-drag', width, minWidth: width, maxWidth: width }}
           className={classNames(
-            'box-border inline-flex h-full w-full flex-none items-center justify-between gap-1.5 overflow-hidden rounded-md px-2',
+            'box-border inline-flex h-full w-full flex-none items-center justify-between gap-1.5 overflow-hidden rounded-lg px-2',
             isActive ? 'bg-header-tab-active' : 'hover:bg-header-tab-hover',
             isDragging ? 'opacity-0' : '',
           )}
@@ -452,7 +452,7 @@ export const Tabs: React.FC<TabsProps> = ({
             }}
             onMouseDown={handleTopHitAreaMouseDown}
           />
-          <div className="relative h-full overflow-hidden rounded-md">
+          <div className="relative h-full overflow-hidden rounded-lg">
             <button
               type="button"
               aria-label="Scroll tabs left"
@@ -637,7 +637,7 @@ export const Tabs: React.FC<TabsProps> = ({
         />
         <button
           type="button"
-          className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md hover:bg-header-tab-hover"
+          className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-lg hover:bg-header-tab-hover"
           aria-label="Add tab"
           // @ts-expect-error React.CSSProperties
           style={{ WebkitAppRegion: 'no-drag' }}

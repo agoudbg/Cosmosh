@@ -6,7 +6,7 @@ const base = {
   radius: {
     sm: '6px',
     md: '10px',
-    lg: '16px',
+    lg: '14px',
   },
   colors: {
     bg: {
