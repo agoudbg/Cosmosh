@@ -675,6 +675,13 @@ const requestBackend = async <TSuccess>(
     body?: unknown;
   },
 ): Promise<TSuccess | ApiErrorResponse> => {
+  const createBackendTransportError = (message: string): ApiErrorResponse => {
+    return createApiError({
+      code: API_CODES.commonInternalServerError,
+      message,
+    });
+  };
+
   const { port, token } = requireBackendConfig();
   const headers: Record<string, string> = {
     [API_HEADERS.internalToken]: token,
@@ -695,25 +702,18 @@ const requestBackend = async <TSuccess>(
 
   if (!responseText) {
     if (response.ok) {
-      return createApiError({
-        code: API_CODES.authInvalidToken,
-        message: `Backend returned empty response for ${options.method} ${path}.`,
-      });
+      return createBackendTransportError(`Backend returned empty response for ${options.method} ${path}.`);
     }
 
-    return createApiError({
-      code: API_CODES.authInvalidToken,
-      message: `Backend request failed (${response.status}) for ${options.method} ${path}.`,
-    });
+    return createBackendTransportError(`Backend request failed (${response.status}) for ${options.method} ${path}.`);
   }
 
   try {
     return JSON.parse(responseText) as TSuccess | ApiErrorResponse;
   } catch {
-    return createApiError({
-      code: API_CODES.authInvalidToken,
-      message: `Backend returned non-JSON response (${response.status}): ${responseText.slice(0, 180)}`,
-    });
+    return createBackendTransportError(
+      `Backend returned non-JSON response (${response.status}): ${responseText.slice(0, 180)}`,
+    );
   }
 };
 
