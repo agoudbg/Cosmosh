@@ -97,7 +97,8 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
 
   ipcMain.handle('app:get-version-info', async () => {
     const fullVersion = app.getVersion();
-    const [version, buildVersion] = fullVersion.split('+');
+    const [version, rawBuildVersion] = fullVersion.split('+');
+    const buildVersion = rawBuildVersion ?? '';
     const buildTime = await options.resolveBuildTime();
     const commit = resolveCommit();
 
