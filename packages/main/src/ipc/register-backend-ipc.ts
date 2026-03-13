@@ -75,6 +75,39 @@ const requestBackendDeleteSuccess = async (
 };
 
 /**
+ * Replaces one REST-style path token with URL-encoded value.
+ *
+ * @param templatePath API path containing token such as `{sessionId}`.
+ * @param token Token name without braces.
+ * @param value Runtime token value.
+ * @returns Path with encoded token replacement applied.
+ */
+const replacePathToken = (templatePath: string, token: string, value: string): string => {
+  return templatePath.replace(`{${token}}`, encodeURIComponent(value));
+};
+
+/**
+ * Registers a DELETE-based backend IPC handler that maps HTTP 204 to success response.
+ *
+ * @param options Backend runtime dependencies.
+ * @param channel IPC channel name.
+ * @param pathTemplate API path template containing one route parameter.
+ * @param token Path token name in template.
+ * @returns void.
+ */
+const registerDeleteHandler = (
+  options: RegisterBackendIpcHandlersOptions,
+  channel: string,
+  pathTemplate: string,
+  token: string,
+): void => {
+  ipcMain.handle(channel, async (_event, tokenValue: string): Promise<{ success: boolean }> => {
+    const path = replacePathToken(pathTemplate, token, tokenValue);
+    return requestBackendDeleteSuccess(options, path);
+  });
+};
+
+/**
  * Registers all backend-related IPC handlers (settings/SSH/local terminal).
  */
 export const registerBackendIpcHandlers = (options: RegisterBackendIpcHandlersOptions): void => {
@@ -141,7 +174,7 @@ const registerBackendSshAndSettingsHandlers = (options: RegisterBackendIpcHandle
       serverId: string,
       payload: ApiSshUpdateServerRequest,
     ): Promise<ApiSshUpdateServerResponse | ApiErrorResponse> => {
-      const path = API_PATHS.sshUpdateServer.replace('{serverId}', encodeURIComponent(serverId));
+      const path = replacePathToken(API_PATHS.sshUpdateServer, 'serverId', serverId);
       return options.requestBackend<ApiSshUpdateServerResponse>(path, {
         method: 'PUT',
         body: payload,
@@ -152,7 +185,7 @@ const registerBackendSshAndSettingsHandlers = (options: RegisterBackendIpcHandle
   ipcMain.handle(
     'backend:ssh-get-server-credentials',
     async (_event, serverId: string): Promise<ApiSshGetServerCredentialsResponse | ApiErrorResponse> => {
-      const path = API_PATHS.sshGetServerCredentials.replace('{serverId}', encodeURIComponent(serverId));
+      const path = replacePathToken(API_PATHS.sshGetServerCredentials, 'serverId', serverId);
       return options.requestBackend<ApiSshGetServerCredentialsResponse>(path, {
         method: 'GET',
       });
@@ -180,7 +213,7 @@ const registerBackendSshAndSettingsHandlers = (options: RegisterBackendIpcHandle
       folderId: string,
       payload: ApiSshUpdateFolderRequest,
     ): Promise<ApiSshUpdateFolderResponse | ApiErrorResponse> => {
-      const path = API_PATHS.sshUpdateFolder.replace('{folderId}', encodeURIComponent(folderId));
+      const path = replacePathToken(API_PATHS.sshUpdateFolder, 'folderId', folderId);
       return options.requestBackend<ApiSshUpdateFolderResponse>(path, {
         method: 'PUT',
         body: payload,
@@ -233,20 +266,9 @@ const registerBackendSshAndSettingsHandlers = (options: RegisterBackendIpcHandle
     },
   );
 
-  ipcMain.handle('backend:ssh-close-session', async (_event, sessionId: string): Promise<{ success: boolean }> => {
-    const path = API_PATHS.sshCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));
-    return requestBackendDeleteSuccess(options, path);
-  });
-
-  ipcMain.handle('backend:ssh-delete-server', async (_event, serverId: string): Promise<{ success: boolean }> => {
-    const path = API_PATHS.sshDeleteServer.replace('{serverId}', encodeURIComponent(serverId));
-    return requestBackendDeleteSuccess(options, path);
-  });
-
-  ipcMain.handle('backend:ssh-delete-folder', async (_event, folderId: string): Promise<{ success: boolean }> => {
-    const path = API_PATHS.sshDeleteFolder.replace('{folderId}', encodeURIComponent(folderId));
-    return requestBackendDeleteSuccess(options, path);
-  });
+  registerDeleteHandler(options, 'backend:ssh-close-session', API_PATHS.sshCloseSession, 'sessionId');
+  registerDeleteHandler(options, 'backend:ssh-delete-server', API_PATHS.sshDeleteServer, 'serverId');
+  registerDeleteHandler(options, 'backend:ssh-delete-folder', API_PATHS.sshDeleteFolder, 'folderId');
 };
 
 /**
@@ -282,7 +304,7 @@ const registerBackendLocalTerminalHandlers = (options: RegisterBackendIpcHandler
   ipcMain.handle(
     'backend:local-terminal-close-session',
     async (_event, sessionId: string): Promise<{ success: boolean }> => {
-      const path = API_PATHS.localTerminalCloseSession.replace('{sessionId}', encodeURIComponent(sessionId));
+      const path = replacePathToken(API_PATHS.localTerminalCloseSession, 'sessionId', sessionId);
       return requestBackendDeleteSuccess(options, path);
     },
   );
