@@ -30,6 +30,52 @@ import type {
 import { contextBridge, ipcRenderer } from 'electron';
 
 /**
+ * Typed IPC invoke helper used by all bridge methods.
+ * Centralizing this adapter keeps renderer-call transport swappable in future browser builds.
+ *
+ * @param channel IPC channel name.
+ * @param args Optional IPC payload args.
+ * @returns Promise resolving to typed response payload.
+ */
+const invokeIpc = <TResponse>(channel: string, ...args: unknown[]): Promise<TResponse> => {
+  return ipcRenderer.invoke(channel, ...args) as Promise<TResponse>;
+};
+
+/**
+ * Fire-and-forget IPC send helper.
+ *
+ * @param channel IPC channel name.
+ * @param args Optional IPC payload args.
+ * @returns void.
+ */
+const sendIpc = (channel: string, ...args: unknown[]): void => {
+  ipcRenderer.send(channel, ...args);
+};
+
+/**
+ * Subscribes to string payload events and returns an unsubscribe callback.
+ *
+ * @param channel IPC channel name.
+ * @param listener Callback invoked only for valid string payloads.
+ * @returns Unsubscribe callback.
+ */
+const onIpcStringPayload = (channel: string, listener: (payload: string) => void): (() => void) => {
+  const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+    if (typeof payload !== 'string') {
+      return;
+    }
+
+    listener(payload);
+  };
+
+  ipcRenderer.on(channel, handler);
+
+  return () => {
+    ipcRenderer.removeListener(channel, handler);
+  };
+};
+
+/**
  * Exposes a minimal, allow-listed bridge API to renderer.
  * Security boundary: renderer never gets direct access to raw `ipcRenderer`.
  */
@@ -38,19 +84,19 @@ contextBridge.exposeInMainWorld('electron', {
   // App window and locale controls
   // ---------------------------------------------------------------------------
   closeWindow: () => {
-    ipcRenderer.send('app:close-window');
+    sendIpc('app:close-window');
   },
   getLocale: () => {
-    return ipcRenderer.invoke('i18n:get-locale');
+    return invokeIpc<string>('i18n:get-locale');
   },
   setLocale: (locale: string) => {
-    return ipcRenderer.invoke('i18n:set-locale', locale);
+    return invokeIpc<string>('i18n:set-locale', locale);
   },
   getRuntimeUserName: () => {
-    return ipcRenderer.invoke('app:get-runtime-user-name');
+    return invokeIpc<string>('app:get-runtime-user-name');
   },
   getAppVersionInfo: () => {
-    return ipcRenderer.invoke('app:get-version-info') as Promise<{
+    return invokeIpc<{
       appName: string;
       version: string;
       buildVersion: string;
@@ -61,13 +107,13 @@ contextBridge.exposeInMainWorld('electron', {
       node: string;
       v8: string;
       os: string;
-    }>;
+    }>('app:get-version-info');
   },
   getPendingLaunchWorkingDirectory: () => {
-    return ipcRenderer.invoke('app:get-pending-launch-working-directory') as Promise<string | null>;
+    return invokeIpc<string | null>('app:get-pending-launch-working-directory');
   },
   getDatabaseSecurityInfo: () => {
-    return ipcRenderer.invoke('app:get-database-security-info') as Promise<{
+    return invokeIpc<{
       runtimeMode: 'development' | 'production';
       resolverMode: 'development-fixed-key' | 'safe-storage' | 'master-password-fallback';
       safeStorageAvailable: boolean;
@@ -78,114 +124,91 @@ contextBridge.exposeInMainWorld('electron', {
       hasMasterPasswordSalt: boolean;
       hasMasterPasswordEnv: boolean;
       fallbackReady: boolean;
-    }>;
+    }>('app:get-database-security-info');
   },
   /**
    * Subscribes to launch cwd events emitted when a second instance forwards context.
    */
   onLaunchWorkingDirectory: (listener: (cwd: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, cwd: unknown) => {
-      if (typeof cwd !== 'string') {
-        return;
-      }
-
-      listener(cwd);
-    };
-
-    ipcRenderer.on('app:launch-working-directory', handler);
-
-    return () => {
-      ipcRenderer.removeListener('app:launch-working-directory', handler);
-    };
+    return onIpcStringPayload('app:launch-working-directory', listener);
   },
   openDevTools: () => {
-    return ipcRenderer.invoke('app:open-devtools') as Promise<boolean>;
+    return invokeIpc<boolean>('app:open-devtools');
   },
   restartBackendRuntime: () => {
-    return ipcRenderer.invoke('app:restart-backend-runtime') as Promise<boolean>;
+    return invokeIpc<boolean>('app:restart-backend-runtime');
   },
   showInFileManager: (targetPath?: string) => {
-    return ipcRenderer.invoke('app:show-in-file-manager', targetPath) as Promise<boolean>;
+    return invokeIpc<boolean>('app:show-in-file-manager', targetPath);
   },
   openExternalUrl: (targetUrl: string) => {
-    return ipcRenderer.invoke('app:open-external-url', targetUrl) as Promise<boolean>;
+    return invokeIpc<boolean>('app:open-external-url', targetUrl);
   },
   setWindowsSystemMenuSymbolColor: (symbolColor: string) => {
-    return ipcRenderer.invoke('app:set-windows-system-menu-symbol-color', symbolColor) as Promise<boolean>;
+    return invokeIpc<boolean>('app:set-windows-system-menu-symbol-color', symbolColor);
   },
   importPrivateKeyFromFile: () => {
-    return ipcRenderer.invoke('app:import-private-key') as Promise<{ canceled: boolean; content?: string }>;
+    return invokeIpc<{ canceled: boolean; content?: string }>('app:import-private-key');
   },
 
   // ---------------------------------------------------------------------------
   // Backend settings and SSH channels
   // ---------------------------------------------------------------------------
   backendTestPing: () => {
-    return ipcRenderer.invoke('backend:test-ping') as Promise<ApiTestPingResponse | ApiErrorResponse>;
+    return invokeIpc<ApiTestPingResponse | ApiErrorResponse>('backend:test-ping');
   },
   backendSettingsGet: () => {
-    return ipcRenderer.invoke('backend:settings-get') as Promise<ApiSettingsGetResponse | ApiErrorResponse>;
+    return invokeIpc<ApiSettingsGetResponse | ApiErrorResponse>('backend:settings-get');
   },
   backendSettingsUpdate: (payload: ApiSettingsUpdateRequest) => {
-    return ipcRenderer.invoke('backend:settings-update', payload) as Promise<
-      ApiSettingsUpdateResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiSettingsUpdateResponse | ApiErrorResponse>('backend:settings-update', payload);
   },
   backendSshListServers: () => {
-    return ipcRenderer.invoke('backend:ssh-list-servers') as Promise<ApiSshListServersResponse | ApiErrorResponse>;
+    return invokeIpc<ApiSshListServersResponse | ApiErrorResponse>('backend:ssh-list-servers');
   },
   backendSshCreateServer: (payload: ApiSshCreateServerRequest) => {
-    return ipcRenderer.invoke('backend:ssh-create-server', payload) as Promise<
-      ApiSshCreateServerResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiSshCreateServerResponse | ApiErrorResponse>('backend:ssh-create-server', payload);
   },
   backendSshUpdateServer: (serverId: string, payload: ApiSshUpdateServerRequest) => {
-    return ipcRenderer.invoke('backend:ssh-update-server', serverId, payload) as Promise<
-      ApiSshUpdateServerResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiSshUpdateServerResponse | ApiErrorResponse>('backend:ssh-update-server', serverId, payload);
   },
   backendSshGetServerCredentials: (serverId: string) => {
-    return ipcRenderer.invoke('backend:ssh-get-server-credentials', serverId) as Promise<
-      ApiSshGetServerCredentialsResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiSshGetServerCredentialsResponse | ApiErrorResponse>(
+      'backend:ssh-get-server-credentials',
+      serverId,
+    );
   },
   backendSshListFolders: () => {
-    return ipcRenderer.invoke('backend:ssh-list-folders') as Promise<ApiSshListFoldersResponse | ApiErrorResponse>;
+    return invokeIpc<ApiSshListFoldersResponse | ApiErrorResponse>('backend:ssh-list-folders');
   },
   backendSshCreateFolder: (payload: ApiSshCreateFolderRequest) => {
-    return ipcRenderer.invoke('backend:ssh-create-folder', payload) as Promise<
-      ApiSshCreateFolderResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiSshCreateFolderResponse | ApiErrorResponse>('backend:ssh-create-folder', payload);
   },
   backendSshUpdateFolder: (folderId: string, payload: ApiSshUpdateFolderRequest) => {
-    return ipcRenderer.invoke('backend:ssh-update-folder', folderId, payload) as Promise<
-      ApiSshUpdateFolderResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiSshUpdateFolderResponse | ApiErrorResponse>('backend:ssh-update-folder', folderId, payload);
   },
   backendSshListTags: () => {
-    return ipcRenderer.invoke('backend:ssh-list-tags') as Promise<ApiSshListTagsResponse | ApiErrorResponse>;
+    return invokeIpc<ApiSshListTagsResponse | ApiErrorResponse>('backend:ssh-list-tags');
   },
   backendSshCreateTag: (payload: ApiSshCreateTagRequest) => {
-    return ipcRenderer.invoke('backend:ssh-create-tag', payload) as Promise<ApiSshCreateTagResponse | ApiErrorResponse>;
+    return invokeIpc<ApiSshCreateTagResponse | ApiErrorResponse>('backend:ssh-create-tag', payload);
   },
   backendSshCreateSession: (payload: ApiSshCreateSessionRequest) => {
-    return ipcRenderer.invoke('backend:ssh-create-session', payload) as Promise<
+    return invokeIpc<
       ApiSshCreateSessionResponse | ApiSshCreateSessionHostVerificationRequiredResponse | ApiErrorResponse
-    >;
+    >('backend:ssh-create-session', payload);
   },
   backendSshTrustFingerprint: (payload: ApiSshTrustFingerprintRequest) => {
-    return ipcRenderer.invoke('backend:ssh-trust-fingerprint', payload) as Promise<
-      ApiSshTrustFingerprintResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiSshTrustFingerprintResponse | ApiErrorResponse>('backend:ssh-trust-fingerprint', payload);
   },
   backendSshCloseSession: (sessionId: string) => {
-    return ipcRenderer.invoke('backend:ssh-close-session', sessionId) as Promise<{ success: boolean }>;
+    return invokeIpc<{ success: boolean }>('backend:ssh-close-session', sessionId);
   },
   backendSshDeleteServer: (serverId: string) => {
-    return ipcRenderer.invoke('backend:ssh-delete-server', serverId) as Promise<{ success: boolean }>;
+    return invokeIpc<{ success: boolean }>('backend:ssh-delete-server', serverId);
   },
   backendSshDeleteFolder: (folderId: string) => {
-    return ipcRenderer.invoke('backend:ssh-delete-folder', folderId) as Promise<{ success: boolean }>;
+    return invokeIpc<{ success: boolean }>('backend:ssh-delete-folder', folderId);
   },
 
   // ---------------------------------------------------------------------------
@@ -193,17 +216,16 @@ contextBridge.exposeInMainWorld('electron', {
   // ---------------------------------------------------------------------------
   // Local terminal IPC proxy group.
   backendLocalTerminalListProfiles: () => {
-    return ipcRenderer.invoke('backend:local-terminal-list-profiles') as Promise<
-      ApiLocalTerminalListProfilesResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiLocalTerminalListProfilesResponse | ApiErrorResponse>('backend:local-terminal-list-profiles');
   },
   backendLocalTerminalCreateSession: (payload: ApiLocalTerminalCreateSessionRequest) => {
-    return ipcRenderer.invoke('backend:local-terminal-create-session', payload) as Promise<
-      ApiLocalTerminalCreateSessionResponse | ApiErrorResponse
-    >;
+    return invokeIpc<ApiLocalTerminalCreateSessionResponse | ApiErrorResponse>(
+      'backend:local-terminal-create-session',
+      payload,
+    );
   },
   backendLocalTerminalCloseSession: (sessionId: string) => {
-    return ipcRenderer.invoke('backend:local-terminal-close-session', sessionId) as Promise<{ success: boolean }>;
+    return invokeIpc<{ success: boolean }>('backend:local-terminal-close-session', sessionId);
   },
   platform: process.platform,
 });
