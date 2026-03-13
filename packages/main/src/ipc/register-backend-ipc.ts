@@ -121,22 +121,7 @@ export const registerBackendIpcHandlers = (options: RegisterBackendIpcHandlersOp
  */
 const registerBackendSshAndSettingsHandlers = (options: RegisterBackendIpcHandlersOptions): void => {
   ipcMain.handle('backend:test-ping', async (): Promise<ApiTestPingResponse | ApiErrorResponse> => {
-    const { port, token } = options.requireBackendConfig();
-    const response = await fetch(`http://127.0.0.1:${port}${API_PATHS.testPing}`, {
-      method: 'GET',
-      headers: {
-        [API_HEADERS.internalToken]: token,
-        [API_HEADERS.locale]: options.getLocale(),
-      },
-    });
-
-    const payload = (await response.json()) as ApiTestPingResponse | ApiErrorResponse;
-
-    if (!response.ok) {
-      throw new Error(payload.message);
-    }
-
-    return payload;
+    return options.requestBackend<ApiTestPingResponse>(API_PATHS.testPing, { method: 'GET' });
   });
 
   ipcMain.handle('backend:settings-get', async (): Promise<ApiSettingsGetResponse | ApiErrorResponse> => {
