@@ -32,6 +32,16 @@ export type RegisterAppUtilityIpcHandlersOptions = {
 };
 
 /**
+ * Returns the best available app window for dialog and webContents operations.
+ *
+ * @param options Runtime dependencies for app utility handlers.
+ * @returns Focused window first, otherwise current main window reference.
+ */
+const resolveTargetWindow = (options: RegisterAppUtilityIpcHandlersOptions): BrowserWindow | null => {
+  return BrowserWindow.getFocusedWindow() ?? options.getMainWindow();
+};
+
+/**
  * Registers shell/window/i18n utility channels exposed to renderer.
  */
 export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHandlersOptions): void => {
@@ -65,7 +75,7 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
   };
 
   ipcMain.on('app:close-window', () => {
-    const targetWindow = BrowserWindow.getFocusedWindow() ?? options.getMainWindow();
+    const targetWindow = resolveTargetWindow(options);
     targetWindow?.close();
   });
 
@@ -118,7 +128,7 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
       return false;
     }
 
-    const targetWindow = BrowserWindow.getFocusedWindow() ?? options.getMainWindow();
+    const targetWindow = resolveTargetWindow(options);
 
     if (!targetWindow || targetWindow.isDestroyed()) {
       return false;
@@ -183,7 +193,7 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
   });
 
   ipcMain.handle('app:import-private-key', async (): Promise<{ canceled: boolean; content?: string }> => {
-    const targetWindow = BrowserWindow.getFocusedWindow() ?? options.getMainWindow();
+    const targetWindow = resolveTargetWindow(options);
 
     const dialogOptions: OpenDialogOptions = {
       title: 'Import Private Key',
@@ -217,7 +227,7 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
         content,
       };
     } catch {
-      return { canceled: false };
+      return { canceled: true };
     }
   });
 };
