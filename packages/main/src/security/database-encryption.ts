@@ -42,6 +42,20 @@ const getSecurityConfigPath = (): string => {
   return path.join(app.getPath('userData'), CONFIG_FILE_NAME);
 };
 
+/**
+ * Narrows unknown errors to Node errno-compatible errors.
+ *
+ * @param error Unknown thrown value.
+ * @returns `true` when an errno code is available.
+ */
+const isErrnoError = (error: unknown): error is NodeJS.ErrnoException => {
+  return typeof error === 'object' && error !== null && typeof (error as NodeJS.ErrnoException).code === 'string';
+};
+
+/**
+ * Reads persisted security configuration from userData.
+ * Missing config is treated as first-run state; malformed config is treated as fatal.
+ */
 const readSecurityConfig = async (): Promise<DatabaseSecurityConfig> => {
   const configPath = getSecurityConfigPath();
 
@@ -53,8 +67,15 @@ const readSecurityConfig = async (): Promise<DatabaseSecurityConfig> => {
       masterPasswordHash: parsed.masterPasswordHash,
       masterPasswordSalt: parsed.masterPasswordSalt,
     };
-  } catch {
-    return {};
+  } catch (error) {
+    if (isErrnoError(error) && error.code === 'ENOENT') {
+      return {};
+    }
+
+    throw new Error(
+      `[db:key] Failed to read security config at ${configPath}. Refusing to rotate database key automatically.`,
+      { cause: error },
+    );
   }
 };
 
