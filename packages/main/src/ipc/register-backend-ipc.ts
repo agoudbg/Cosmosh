@@ -60,18 +60,24 @@ const requestBackendDeleteSuccess = async (
   options: RegisterBackendIpcHandlersOptions,
   path: string,
 ): Promise<{ success: boolean }> => {
-  const { port, token } = options.requireBackendConfig();
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-    method: 'DELETE',
-    headers: {
-      [API_HEADERS.internalToken]: token,
-      [API_HEADERS.locale]: options.getLocale(),
-    },
-  });
+  try {
+    const { port, token } = options.requireBackendConfig();
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method: 'DELETE',
+      headers: {
+        [API_HEADERS.internalToken]: token,
+        [API_HEADERS.locale]: options.getLocale(),
+      },
+    });
 
-  return {
-    success: response.status === 204,
-  };
+    return {
+      success: response.status === 204,
+    };
+  } catch {
+    return {
+      success: false,
+    };
+  }
 };
 
 /**
