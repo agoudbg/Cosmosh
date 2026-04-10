@@ -445,7 +445,8 @@ const SSH: React.FC<SSHProps> = ({
   }, [clearTerminalScreen, focusActiveTerminal]);
 
   /**
-   * Keeps query-driven search responsive by jumping to first match on input update.
+   * Keeps query-driven search responsive by debouncing first-match jump with
+   * `TERMINAL_SEARCH_DEBOUNCE_MS` while users are typing in the palette input.
    */
   React.useEffect(() => {
     if (!terminalSearchOpen || !terminalSearchQuery.trim()) {
