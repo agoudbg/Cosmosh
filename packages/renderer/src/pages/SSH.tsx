@@ -2,13 +2,14 @@ import '@xterm/xterm/css/xterm.css';
 
 import { type ITerminalOptions } from '@xterm/xterm';
 import classNames from 'classnames';
-import { RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronsDown, ChevronsUp, ChevronUp, RefreshCw } from 'lucide-react';
 import React from 'react';
 
 import { TerminalAutocompleteMenu } from '../components/terminal/terminal-autocomplete-menu';
 import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
 import { TerminalTextDropZone } from '../components/terminal/terminal-text-drop-zone';
 import { Button } from '../components/ui/button';
+import { CommandPalette, type CommandPaletteItem } from '../components/ui/command-palette';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ import { INTERNAL_TERMINAL_TEXT_DRAG_MIME, type TerminalSelectionSettings } from
 import { parseOptionalNumberSetting, resolveSearchUrl, resolveTerminalFontWeightSetting } from './ssh/ssh-utils';
 import { SSHSidebar } from './ssh/SSHSidebar';
 import { SSHTerminalPaneLayout } from './ssh/SSHTerminalPaneLayout';
-import { useSshCore } from './ssh/use-ssh-core';
+import { type TerminalSearchDirection, useSshCore } from './ssh/use-ssh-core';
 
 /**
  * SSH page props.
@@ -210,6 +211,7 @@ const SSH: React.FC<SSHProps> = ({
       getSelectionText,
       focusActiveTerminal,
       clearTerminalScreen,
+      findActiveTerminalText,
       setPaneContainerElement,
       setPrimaryPaneContainer,
       resolveHostFingerprintPrompt,
@@ -219,6 +221,8 @@ const SSH: React.FC<SSHProps> = ({
     refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
   } = sshCore;
   const terminalPaneIdsRef = React.useRef<string[]>(terminalPaneIds);
+  const [terminalSearchOpen, setTerminalSearchOpen] = React.useState<boolean>(false);
+  const [terminalSearchQuery, setTerminalSearchQuery] = React.useState<string>('');
 
   React.useEffect(() => {
     terminalPaneIdsRef.current = terminalPaneIds;
@@ -371,9 +375,38 @@ const SSH: React.FC<SSHProps> = ({
     openSearchForText(selectionText);
   }, [getSelectionText, openSearchForText]);
 
+  /**
+   * Opens in-terminal search palette and optionally seeds query text.
+   *
+   * @param seedQuery Optional initial query from selection/context menu.
+   * @returns Nothing.
+   */
+  const openTerminalSearchPalette = React.useCallback((seedQuery?: string): void => {
+    if (seedQuery && seedQuery.trim()) {
+      setTerminalSearchQuery(seedQuery);
+    }
+
+    setTerminalSearchOpen(true);
+  }, []);
+
+  /**
+   * Executes one in-terminal search action and keeps terminal focus.
+   *
+   * @param direction Search direction or boundary jump.
+   * @returns `true` when a match is found.
+   */
+  const runTerminalSearch = React.useCallback(
+    (direction: TerminalSearchDirection): boolean => {
+      const didMatch = findActiveTerminalText(terminalSearchQuery, direction);
+      focusActiveTerminal();
+      return didMatch;
+    },
+    [findActiveTerminalText, focusActiveTerminal, terminalSearchQuery],
+  );
+
   const handleContextMenuFind = React.useCallback(() => {
-    notifyWarning(t('ssh.contextMenuFindComingSoon'));
-  }, [notifyWarning]);
+    openTerminalSearchPalette(getSelectionText());
+  }, [getSelectionText, openTerminalSearchPalette]);
 
   const handleContextMenuSelectAll = React.useCallback(() => {
     selectAll();
@@ -383,6 +416,37 @@ const SSH: React.FC<SSHProps> = ({
     clearTerminalScreen();
     focusActiveTerminal();
   }, [clearTerminalScreen, focusActiveTerminal]);
+
+  React.useEffect(() => {
+    if (!terminalSearchOpen || !terminalSearchQuery.trim()) {
+      return;
+    }
+
+    runTerminalSearch('first');
+  }, [runTerminalSearch, terminalSearchOpen, terminalSearchQuery]);
+
+  React.useEffect(() => {
+    const handleSearchShortcut = (event: KeyboardEvent): void => {
+      if (!isActive || event.repeat || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'f') {
+        return;
+      }
+
+      const hasModifier = navigator.platform.toLowerCase().includes('mac') ? event.metaKey : event.ctrlKey;
+      if (!hasModifier) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      openTerminalSearchPalette(getSelectionText());
+    };
+
+    window.addEventListener('keydown', handleSearchShortcut, true);
+
+    return () => {
+      window.removeEventListener('keydown', handleSearchShortcut, true);
+    };
+  }, [getSelectionText, isActive, openTerminalSearchPalette]);
 
   const handleDeleteRecentCommand = React.useCallback(
     (command: string) => {
@@ -537,6 +601,43 @@ const SSH: React.FC<SSHProps> = ({
     notifyWarning(t('ssh.selectionBarAskAiComingSoon'));
   }, [notifyWarning]);
 
+  const terminalSearchItems = React.useMemo<CommandPaletteItem[]>(() => {
+    return [
+      {
+        key: 'previous',
+        title: t('ssh.terminalSearchPrevious'),
+        icon: <ChevronUp className="h-4 w-4" />,
+        onSelect: () => {
+          runTerminalSearch('previous');
+        },
+      },
+      {
+        key: 'next',
+        title: t('ssh.terminalSearchNext'),
+        icon: <ChevronDown className="h-4 w-4" />,
+        onSelect: () => {
+          runTerminalSearch('next');
+        },
+      },
+      {
+        key: 'first',
+        title: t('ssh.terminalSearchFirst'),
+        icon: <ChevronsUp className="h-4 w-4" />,
+        onSelect: () => {
+          runTerminalSearch('first');
+        },
+      },
+      {
+        key: 'last',
+        title: t('ssh.terminalSearchLast'),
+        icon: <ChevronsDown className="h-4 w-4" />,
+        onSelect: () => {
+          runTerminalSearch('last');
+        },
+      },
+    ];
+  }, [runTerminalSearch]);
+
   const handleTerminalTextDrop = React.useCallback(
     (droppedText: string) => {
       pasteInput(droppedText);
@@ -639,6 +740,18 @@ const SSH: React.FC<SSHProps> = ({
         items={autocompleteItems}
         onItemSelect={acceptAutocompleteAtIndex}
       />
+
+      {connectionState === 'connected' ? (
+        <CommandPalette
+          closeOnEsc
+          open={terminalSearchOpen}
+          query={terminalSearchQuery}
+          placeholder={t('ssh.terminalSearchPlaceholder')}
+          items={terminalSearchItems}
+          onOpenChange={setTerminalSearchOpen}
+          onQueryChange={setTerminalSearchQuery}
+        />
+      ) : null}
 
       {connectionState === 'connected' &&
       terminalSelectionSettings.enabled &&

@@ -1,3 +1,4 @@
+import { type SearchAddon } from '@xterm/addon-search';
 import { type ITerminalOptions, type Terminal } from '@xterm/xterm';
 import React from 'react';
 
@@ -24,6 +25,7 @@ import { useSshSelectionBar } from './use-ssh-selection-bar';
  * Connection lifecycle states for SSH page sessions.
  */
 export type SshConnectionState = 'connecting' | 'connected' | 'failed';
+export type TerminalSearchDirection = 'previous' | 'next' | 'first' | 'last';
 
 /**
  * Runtime-only mutable resources that should not trigger React renders.
@@ -45,6 +47,7 @@ class SshRuntimeCoordinator {
   public paneIdSequence = 1;
   public activeTerminal: Terminal | null = null;
   public primaryTerminal: Terminal | null = null;
+  public primarySearchAddon: SearchAddon | null = null;
   public activeSocket: WebSocket | null = null;
   public primarySocket: WebSocket | null = null;
   public activeContainer: HTMLDivElement | null = null;
@@ -253,6 +256,14 @@ export type SshCoreActions = {
    */
   clearTerminalScreen: () => void;
   /**
+   * Runs active-pane terminal text search and updates the highlighted match.
+   *
+   * @param query Search text.
+   * @param direction Navigation direction or boundary jump.
+   * @returns `true` when at least one match is found.
+   */
+  findActiveTerminalText: (query: string, direction: TerminalSearchDirection) => boolean;
+  /**
    * Registers pane container element for runtime routing and layout sync.
    *
    * @param paneId Logical pane identifier.
@@ -378,6 +389,13 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     (runtime) => runtime.primaryTerminal,
     (runtime, value) => {
       runtime.primaryTerminal = value;
+    },
+  );
+  const primarySearchAddonRef = useRuntimeFieldRef(
+    runtimeRef,
+    (runtime) => runtime.primarySearchAddon,
+    (runtime, value) => {
+      runtime.primarySearchAddon = value;
     },
   );
   const primarySocketRef = useRuntimeFieldRef(
@@ -702,6 +720,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalContainerRef,
     terminalRef,
     primaryTerminalRef,
+    primarySearchAddonRef,
     primaryPaneIdRef,
     activePaneIdRef,
     primarySocketRef,
@@ -907,6 +926,71 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     sendInput('\x0c');
   }, [sendInput]);
 
+  /**
+   * Resolves active-pane search resources from primary or mirror runtime state.
+   *
+   * @returns Active terminal/search-addon pair or `null` when unavailable.
+   */
+  const resolveActiveSearchResources = React.useCallback((): { addon: SearchAddon; terminal: Terminal } | null => {
+    if (activePaneIdRef.current === primaryPaneIdRef.current) {
+      const addon = primarySearchAddonRef.current;
+      const terminal = primaryTerminalRef.current;
+      if (!addon || !terminal) {
+        return null;
+      }
+
+      return { addon, terminal };
+    }
+
+    const runtime = mirrorPaneRuntimeMapRef.current.get(activePaneIdRef.current);
+    if (!runtime) {
+      return null;
+    }
+
+    return {
+      addon: runtime.searchAddon,
+      terminal: runtime.terminal,
+    };
+  }, [activePaneIdRef, mirrorPaneRuntimeMapRef, primaryPaneIdRef, primarySearchAddonRef, primaryTerminalRef]);
+
+  /**
+   * Finds and highlights text in active terminal by direction semantics.
+   *
+   * @param query Search text.
+   * @param direction Navigation direction or boundary jump.
+   * @returns `true` when a match is found.
+   */
+  const findActiveTerminalText = React.useCallback(
+    (query: string, direction: TerminalSearchDirection): boolean => {
+      const normalizedQuery = query.trim();
+      if (!normalizedQuery) {
+        return false;
+      }
+
+      const resources = resolveActiveSearchResources();
+      if (!resources) {
+        return false;
+      }
+
+      const { addon, terminal } = resources;
+
+      if (direction === 'first') {
+        terminal.clearSelection();
+        terminal.scrollToTop();
+      }
+
+      if (direction === 'last') {
+        terminal.clearSelection();
+        terminal.scrollToBottom();
+      }
+
+      return direction === 'previous' || direction === 'last'
+        ? addon.findPrevious(normalizedQuery)
+        : addon.findNext(normalizedQuery);
+    },
+    [resolveActiveSearchResources],
+  );
+
   return {
     state: {
       terminalPaneIds,
@@ -934,6 +1018,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       getSelectionText,
       focusActiveTerminal,
       clearTerminalScreen,
+      findActiveTerminalText,
       setPaneContainerElement,
       setPrimaryPaneContainer,
       resolveHostFingerprintPrompt,

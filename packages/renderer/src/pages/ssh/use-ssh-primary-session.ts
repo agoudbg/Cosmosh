@@ -1,4 +1,5 @@
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import { type ITerminalOptions, Terminal } from '@xterm/xterm';
 import React from 'react';
 
@@ -25,6 +26,7 @@ type UseSshPrimarySessionParams = {
   terminalContainerRef: React.RefObject<HTMLDivElement | null>;
   terminalRef: React.RefObject<Terminal | null>;
   primaryTerminalRef: React.RefObject<Terminal | null>;
+  primarySearchAddonRef: React.RefObject<SearchAddon | null>;
   primaryPaneIdRef: React.RefObject<string>;
   activePaneIdRef: React.RefObject<string>;
   primarySocketRef: React.RefObject<WebSocket | null>;
@@ -78,6 +80,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     terminalContainerRef,
     terminalRef,
     primaryTerminalRef,
+    primarySearchAddonRef,
     primaryPaneIdRef,
     activePaneIdRef,
     primarySocketRef,
@@ -129,17 +132,21 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
   React.useEffect(() => {
     const terminal = new Terminal(terminalInitOptionsRef.current);
     const fitAddon = new FitAddon();
+    const searchAddon = new SearchAddon();
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(searchAddon);
 
     const containerElement = terminalContainerRef.current;
     if (!containerElement) {
       terminalRef.current = null;
+      primarySearchAddonRef.current = null;
       terminal.dispose();
       return;
     }
 
     terminal.open(containerElement);
     primaryTerminalRef.current = terminal;
+    primarySearchAddonRef.current = searchAddon;
     terminalRef.current = terminal;
     let disposed = false;
     let retryFitFrameId: number | null = null;
@@ -553,6 +560,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
       resumeConnectRef.current = null;
       scheduleFitAndResizeSyncRef.current = null;
       primaryTerminalRef.current = null;
+      primarySearchAddonRef.current = null;
       terminalRef.current = null;
       selectionPointerClientXRef.current = null;
       clearSelectionOverlay();
@@ -581,6 +589,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     primaryPaneIdRef,
     primarySocketRef,
     primaryTerminalRef,
+    primarySearchAddonRef,
     refreshSelectionAnchor,
     requestHostFingerprintTrust,
     resolvedTerminalTargetRef,

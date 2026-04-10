@@ -1,5 +1,6 @@
 import type { components, SettingsValues } from '@cosmosh/api-contract';
 import type { FitAddon } from '@xterm/addon-fit';
+import type { SearchAddon } from '@xterm/addon-search';
 import type { Terminal } from '@xterm/xterm';
 
 import type { TerminalAutocompleteItem } from '../../components/terminal/terminal-autocomplete-menu';
@@ -181,6 +182,7 @@ export type TerminalSelectionBounds = Pick<
 export type MirrorPaneRuntime = {
   terminal: Terminal;
   fitAddon: FitAddon;
+  searchAddon: SearchAddon;
   containerElement: HTMLDivElement;
   socket: WebSocket | null;
   sessionId: string | null;

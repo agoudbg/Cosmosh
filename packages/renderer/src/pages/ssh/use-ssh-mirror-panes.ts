@@ -1,4 +1,5 @@
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import { type ITerminalOptions, Terminal } from '@xterm/xterm';
 import React from 'react';
 
@@ -110,12 +111,15 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
 
       const terminal = new Terminal(terminalInitOptionsRef.current);
       const fitAddon = new FitAddon();
+      const searchAddon = new SearchAddon();
       terminal.loadAddon(fitAddon);
+      terminal.loadAddon(searchAddon);
       terminal.open(containerElement);
 
       const runtime: MirrorPaneRuntime = {
         terminal,
         fitAddon,
+        searchAddon,
         containerElement,
         socket: null,
         sessionId: null,
