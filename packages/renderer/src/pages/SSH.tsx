@@ -401,9 +401,7 @@ const SSH: React.FC<SSHProps> = ({
   const runTerminalSearch = React.useCallback(
     (direction: TerminalSearchDirection): boolean => {
       const didMatch = findActiveTerminalText(terminalSearchQuery, direction);
-      if (didMatch) {
-        dismissSelectionBar();
-      }
+      dismissSelectionBar();
 
       return didMatch;
     },
@@ -733,6 +731,7 @@ const SSH: React.FC<SSHProps> = ({
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 overflow-hidden rounded-[18px] p-1';
+  const isTerminalSearchActive = terminalSearchOpen && terminalSearchQuery.trim().length > 0;
 
   return (
     <div
@@ -825,7 +824,7 @@ const SSH: React.FC<SSHProps> = ({
       terminalSelectionSettings.enabled &&
       selectionAnchor &&
       selectionBarPosition &&
-      !(terminalSearchOpen && terminalSearchQuery.trim()) &&
+      !isTerminalSearchActive &&
       dismissedSelectionText !== selectionAnchor.selectionText ? (
         <div
           className="pointer-events-none absolute z-40"
