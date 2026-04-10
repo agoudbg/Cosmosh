@@ -174,7 +174,6 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
         {/* Find is not yet implemented; disabled to signal coming-soon state. */}
         <ContextMenuItem
           icon={ScanSearch}
-          disabled={true}
           onSelect={onFind}
         >
           {findLabel}
