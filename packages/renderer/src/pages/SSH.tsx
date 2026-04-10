@@ -226,6 +226,7 @@ const SSH: React.FC<SSHProps> = ({
   const terminalPaneIdsRef = React.useRef<string[]>(terminalPaneIds);
   const [terminalSearchOpen, setTerminalSearchOpen] = React.useState<boolean>(false);
   const [terminalSearchQuery, setTerminalSearchQuery] = React.useState<string>('');
+  const lastAutoSearchKeyRef = React.useRef<string>('');
 
   React.useEffect(() => {
     terminalPaneIdsRef.current = terminalPaneIds;
@@ -450,11 +451,19 @@ const SSH: React.FC<SSHProps> = ({
    * `TERMINAL_SEARCH_DEBOUNCE_MS` while users are typing in the palette input.
    */
   React.useEffect(() => {
-    if (!terminalSearchOpen || !terminalSearchQuery.trim()) {
+    const normalizedQuery = terminalSearchQuery.trim();
+    if (!terminalSearchOpen || !normalizedQuery) {
+      lastAutoSearchKeyRef.current = '';
+      return;
+    }
+
+    const autoSearchKey = `${terminalSearchOpen ? 'open' : 'closed'}:${normalizedQuery}`;
+    if (lastAutoSearchKeyRef.current === autoSearchKey) {
       return;
     }
 
     const timer = window.setTimeout(() => {
+      lastAutoSearchKeyRef.current = autoSearchKey;
       runTerminalSearch('first');
     }, TERMINAL_SEARCH_DEBOUNCE_MS);
 
@@ -667,34 +676,30 @@ const SSH: React.FC<SSHProps> = ({
     <div className="flex flex-wrap items-center justify-end gap-1.5">
       <Button
         variant="ghost"
-        className="h-7 px-2 text-xs"
         onClick={handleTerminalSearchPrevious}
       >
-        <ChevronUp className="h-3.5 w-3.5" />
+        <ChevronUp className="h-4 w-4" />
         {t('ssh.terminalSearchPrevious')}
       </Button>
       <Button
         variant="ghost"
-        className="h-7 px-2 text-xs"
         onClick={handleTerminalSearchNext}
       >
-        <ChevronDown className="h-3.5 w-3.5" />
+        <ChevronDown className="h-4 w-4" />
         {t('ssh.terminalSearchNext')}
       </Button>
       <Button
         variant="ghost"
-        className="h-7 px-2 text-xs"
         onClick={handleTerminalSearchFirst}
       >
-        <ChevronsUp className="h-3.5 w-3.5" />
+        <ChevronsUp className="h-4 w-4" />
         {t('ssh.terminalSearchFirst')}
       </Button>
       <Button
         variant="ghost"
-        className="h-7 px-2 text-xs"
         onClick={handleTerminalSearchLast}
       >
-        <ChevronsDown className="h-3.5 w-3.5" />
+        <ChevronsDown className="h-4 w-4" />
         {t('ssh.terminalSearchLast')}
       </Button>
     </div>
