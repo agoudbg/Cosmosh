@@ -937,7 +937,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   /**
    * Resolves active-pane search resources from primary or mirror runtime state.
    *
-   * @returns Active terminal/search-addon pair or `null` when unavailable.
+   * @returns Active terminal/search-addon pair, or `null` when the active pane runtime
+   * is not initialized or its search resources are unavailable.
    */
   const resolveActiveSearchResources = React.useCallback((): ActiveSearchResources | null => {
     if (activePaneIdRef.current === primaryPaneIdRef.current) {

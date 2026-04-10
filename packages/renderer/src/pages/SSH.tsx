@@ -44,6 +44,9 @@ type SSHProps = {
   onTabVisualChange?: (visual: { iconKey: TabIconKey; iconColorKey?: TabIconColorKey }) => void;
 };
 
+/** Delay used to debounce query-driven xterm search jumps while typing. */
+const TERMINAL_SEARCH_DEBOUNCE_MS = 80;
+
 /**
  * SSH page that orchestrates terminal lifecycle, websocket sessions,
  * split-pane mirroring, and interaction overlays.
@@ -427,7 +430,7 @@ const SSH: React.FC<SSHProps> = ({
 
     const timer = window.setTimeout(() => {
       runTerminalSearch('first');
-    }, 80);
+    }, TERMINAL_SEARCH_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);
