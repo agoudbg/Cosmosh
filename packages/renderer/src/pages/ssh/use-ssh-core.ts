@@ -994,6 +994,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         terminal.scrollToBottom();
       }
 
+      // "last" reuses backward scan from bottom so the nearest trailing match is highlighted first.
       return direction === 'previous' || direction === 'last'
         ? addon.findPrevious(normalizedQuery)
         : addon.findNext(normalizedQuery);

@@ -407,6 +407,30 @@ const SSH: React.FC<SSHProps> = ({
     [findActiveTerminalText, focusActiveTerminal, terminalSearchQuery],
   );
 
+  /**
+   * Determines whether keyboard event target is an editable text surface.
+   *
+   * @param target Native keyboard event target.
+   * @returns `true` when the target can receive free-form text input.
+   */
+  const isEditableKeyboardTarget = React.useCallback((target: EventTarget | null): boolean => {
+    return (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      (target instanceof HTMLElement && target.isContentEditable)
+    );
+  }, []);
+
+  /**
+   * Resolves whether keyboard event contains the Cmd/Ctrl modifier for find shortcut.
+   *
+   * @param event Native keyboard event.
+   * @returns `true` when Cmd or Ctrl is pressed.
+   */
+  const hasFindShortcutModifier = React.useCallback((event: KeyboardEvent): boolean => {
+    return event.metaKey || event.ctrlKey;
+  }, []);
+
   const handleContextMenuFind = React.useCallback(() => {
     openTerminalSearchPalette(getSelectionText());
   }, [getSelectionText, openTerminalSearchPalette]);
@@ -442,11 +466,7 @@ const SSH: React.FC<SSHProps> = ({
    */
   React.useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent): void => {
-      const eventTarget = event.target;
-      const isEditableTarget =
-        eventTarget instanceof HTMLInputElement ||
-        eventTarget instanceof HTMLTextAreaElement ||
-        (eventTarget instanceof HTMLElement && eventTarget.isContentEditable);
+      const isEditableTarget = isEditableKeyboardTarget(event.target);
       if (isEditableTarget && !terminalSearchOpen) {
         return;
       }
@@ -455,7 +475,7 @@ const SSH: React.FC<SSHProps> = ({
         return;
       }
 
-      const hasModifier = event.metaKey || event.ctrlKey;
+      const hasModifier = hasFindShortcutModifier(event);
       if (!hasModifier) {
         return;
       }
@@ -470,7 +490,14 @@ const SSH: React.FC<SSHProps> = ({
     return () => {
       window.removeEventListener('keydown', handleSearchShortcut, true);
     };
-  }, [getSelectionText, isActive, openTerminalSearchPalette, terminalSearchOpen]);
+  }, [
+    getSelectionText,
+    hasFindShortcutModifier,
+    isActive,
+    isEditableKeyboardTarget,
+    openTerminalSearchPalette,
+    terminalSearchOpen,
+  ]);
 
   const handleDeleteRecentCommand = React.useCallback(
     (command: string) => {
