@@ -431,7 +431,7 @@ const SSH: React.FC<SSHProps> = ({
         return;
       }
 
-      const hasModifier = navigator.platform.toLowerCase().includes('mac') ? event.metaKey : event.ctrlKey;
+      const hasModifier = event.metaKey || event.ctrlKey;
       if (!hasModifier) {
         return;
       }
