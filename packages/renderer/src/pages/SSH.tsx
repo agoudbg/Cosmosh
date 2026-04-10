@@ -425,7 +425,13 @@ const SSH: React.FC<SSHProps> = ({
       return;
     }
 
-    runTerminalSearch('first');
+    const timer = window.setTimeout(() => {
+      runTerminalSearch('first');
+    }, 80);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [runTerminalSearch, terminalSearchOpen, terminalSearchQuery]);
 
   /**
@@ -433,6 +439,15 @@ const SSH: React.FC<SSHProps> = ({
    */
   React.useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent): void => {
+      const eventTarget = event.target;
+      const isEditableTarget =
+        eventTarget instanceof HTMLInputElement ||
+        eventTarget instanceof HTMLTextAreaElement ||
+        (eventTarget instanceof HTMLElement && eventTarget.isContentEditable);
+      if (isEditableTarget && !terminalSearchOpen) {
+        return;
+      }
+
       if (!isActive || event.repeat || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'f') {
         return;
       }
@@ -452,7 +467,7 @@ const SSH: React.FC<SSHProps> = ({
     return () => {
       window.removeEventListener('keydown', handleSearchShortcut, true);
     };
-  }, [getSelectionText, isActive, openTerminalSearchPalette]);
+  }, [getSelectionText, isActive, openTerminalSearchPalette, terminalSearchOpen]);
 
   const handleDeleteRecentCommand = React.useCallback(
     (command: string) => {

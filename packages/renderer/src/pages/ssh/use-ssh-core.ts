@@ -966,7 +966,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    *
    * @param query Search text.
    * @param direction Navigation direction or boundary jump.
-   * @returns `true` when a match is found.
+   * @returns `true` when a match is found. Returns `false` when search resources are unavailable
+   * or when no match exists for the current query/direction.
    */
   const findActiveTerminalText = React.useCallback(
     (query: string, direction: TerminalSearchDirection): boolean => {
