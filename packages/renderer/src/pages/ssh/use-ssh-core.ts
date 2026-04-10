@@ -984,13 +984,15 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
 
       const { addon, terminal } = resources;
 
-      if (direction === 'first') {
+      if (direction === 'first' || direction === 'last') {
         terminal.clearSelection();
+      }
+
+      if (direction === 'first') {
         terminal.scrollToTop();
       }
 
       if (direction === 'last') {
-        terminal.clearSelection();
         terminal.scrollToBottom();
       }
 

@@ -468,7 +468,7 @@ const SSH: React.FC<SSHProps> = ({
   React.useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent): void => {
       const isEditableTarget = isEditableKeyboardTarget(event.target);
-      if (isEditableTarget && !terminalSearchOpen) {
+      if (isEditableTarget) {
         return;
       }
 
@@ -491,14 +491,7 @@ const SSH: React.FC<SSHProps> = ({
     return () => {
       window.removeEventListener('keydown', handleSearchShortcut, true);
     };
-  }, [
-    getSelectionText,
-    hasFindShortcutModifier,
-    isActive,
-    isEditableKeyboardTarget,
-    openTerminalSearchPalette,
-    terminalSearchOpen,
-  ]);
+  }, [getSelectionText, hasFindShortcutModifier, isActive, isEditableKeyboardTarget, openTerminalSearchPalette]);
 
   const handleDeleteRecentCommand = React.useCallback(
     (command: string) => {
