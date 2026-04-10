@@ -231,10 +231,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         return;
       }
 
-      if (items.length === 0) {
-        return;
-      }
-
       if (event.key === 'Tab') {
         markKeyboardInteraction();
         event.preventDefault();

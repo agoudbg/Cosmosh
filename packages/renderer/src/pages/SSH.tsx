@@ -665,44 +665,42 @@ const SSH: React.FC<SSHProps> = ({
     runTerminalSearch('last');
   }, [runTerminalSearch]);
 
-  const terminalSearchFooter = React.useMemo(() => {
-    return (
-      <div className="flex flex-wrap items-center justify-end gap-1.5">
-        <Button
-          variant="ghost"
-          className="h-7 px-2 text-xs"
-          onClick={handleTerminalSearchPrevious}
-        >
-          <ChevronUp className="h-3.5 w-3.5" />
-          {t('ssh.terminalSearchPrevious')}
-        </Button>
-        <Button
-          variant="ghost"
-          className="h-7 px-2 text-xs"
-          onClick={handleTerminalSearchNext}
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-          {t('ssh.terminalSearchNext')}
-        </Button>
-        <Button
-          variant="ghost"
-          className="h-7 px-2 text-xs"
-          onClick={handleTerminalSearchFirst}
-        >
-          <ChevronsUp className="h-3.5 w-3.5" />
-          {t('ssh.terminalSearchFirst')}
-        </Button>
-        <Button
-          variant="ghost"
-          className="h-7 px-2 text-xs"
-          onClick={handleTerminalSearchLast}
-        >
-          <ChevronsDown className="h-3.5 w-3.5" />
-          {t('ssh.terminalSearchLast')}
-        </Button>
-      </div>
-    );
-  }, [handleTerminalSearchFirst, handleTerminalSearchLast, handleTerminalSearchNext, handleTerminalSearchPrevious]);
+  const terminalSearchFooter = (
+    <div className="flex flex-wrap items-center justify-end gap-1.5">
+      <Button
+        variant="ghost"
+        className="h-7 px-2 text-xs"
+        onClick={handleTerminalSearchPrevious}
+      >
+        <ChevronUp className="h-3.5 w-3.5" />
+        {t('ssh.terminalSearchPrevious')}
+      </Button>
+      <Button
+        variant="ghost"
+        className="h-7 px-2 text-xs"
+        onClick={handleTerminalSearchNext}
+      >
+        <ChevronDown className="h-3.5 w-3.5" />
+        {t('ssh.terminalSearchNext')}
+      </Button>
+      <Button
+        variant="ghost"
+        className="h-7 px-2 text-xs"
+        onClick={handleTerminalSearchFirst}
+      >
+        <ChevronsUp className="h-3.5 w-3.5" />
+        {t('ssh.terminalSearchFirst')}
+      </Button>
+      <Button
+        variant="ghost"
+        className="h-7 px-2 text-xs"
+        onClick={handleTerminalSearchLast}
+      >
+        <ChevronsDown className="h-3.5 w-3.5" />
+        {t('ssh.terminalSearchLast')}
+      </Button>
+    </div>
+  );
 
   const handleTerminalTextDrop = React.useCallback(
     (droppedText: string) => {
