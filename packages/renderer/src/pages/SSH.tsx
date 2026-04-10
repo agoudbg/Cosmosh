@@ -417,6 +417,9 @@ const SSH: React.FC<SSHProps> = ({
     focusActiveTerminal();
   }, [clearTerminalScreen, focusActiveTerminal]);
 
+  /**
+   * Keeps query-driven search responsive by jumping to first match on input update.
+   */
   React.useEffect(() => {
     if (!terminalSearchOpen || !terminalSearchQuery.trim()) {
       return;
@@ -425,6 +428,9 @@ const SSH: React.FC<SSHProps> = ({
     runTerminalSearch('first');
   }, [runTerminalSearch, terminalSearchOpen, terminalSearchQuery]);
 
+  /**
+   * Registers Cmd/Ctrl+F shortcut to open in-terminal search for the active SSH page.
+   */
   React.useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent): void => {
       if (!isActive || event.repeat || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'f') {

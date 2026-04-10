@@ -39,6 +39,14 @@ type PaneSessionRuntime = {
 };
 
 /**
+ * Active-pane terminal search resources used to execute xterm search actions.
+ */
+type ActiveSearchResources = {
+  addon: SearchAddon;
+  terminal: Terminal;
+};
+
+/**
  * Runtime session coordinator for pane-level socket/terminal routing.
  */
 class SshRuntimeCoordinator {
@@ -931,7 +939,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    *
    * @returns Active terminal/search-addon pair or `null` when unavailable.
    */
-  const resolveActiveSearchResources = React.useCallback((): { addon: SearchAddon; terminal: Terminal } | null => {
+  const resolveActiveSearchResources = React.useCallback((): ActiveSearchResources | null => {
     if (activePaneIdRef.current === primaryPaneIdRef.current) {
       const addon = primarySearchAddonRef.current;
       const terminal = primaryTerminalRef.current;
