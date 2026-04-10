@@ -245,7 +245,7 @@ Notes:
 - Closing a pane only affects renderer layout state; backend session lifecycle remains unchanged until the page-level session closes.
 - Closing a pane disposes only that pane’s session/socket; the remaining panes continue running.
 - Completion popup anchoring is resolved against the currently active pane container, and primary-pane ref updates must not overwrite active mirror-pane geometry after rerenders.
-- In-terminal text search is implemented with xterm `SearchAddon` in both primary and mirror panes. `Find...` opens a command-palette input, and list actions (`Previous` / `Next` / `First` / `Last`) navigate and highlight matches in the active pane.
+- In-terminal text search is implemented with xterm `SearchAddon` in both primary and mirror panes. `Find...` opens a command-palette input, and footer button actions (`Previous` / `Next` / `First` / `Last`) navigate and highlight matches in the active pane.
 
 ## 7. Developer Debug Checklist
 

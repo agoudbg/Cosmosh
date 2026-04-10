@@ -34,7 +34,11 @@ type CommandPaletteProps = {
   topOffset?: number;
   inputLeadingIcon?: React.ReactNode;
   metadataLayout?: 'stacked' | 'inline';
+  hideItemList?: boolean;
+  footer?: React.ReactNode;
   closeOnEsc?: boolean;
+  onInputArrowUp?: () => void;
+  onInputArrowDown?: () => void;
   onActiveIndexChange?: (index: number) => void;
   onOpenChange?: (open: boolean) => void;
   className?: string;
@@ -56,7 +60,11 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
   topOffset = 50,
   inputLeadingIcon,
   metadataLayout = 'stacked',
+  hideItemList = false,
+  footer,
   closeOnEsc = false,
+  onInputArrowUp,
+  onInputArrowDown,
   onActiveIndexChange,
   onOpenChange,
   className,
@@ -191,14 +199,39 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         return;
       }
 
-      if (items.length === 0) {
-        return;
-      }
-
       if (event.key === 'ArrowDown') {
         markKeyboardInteraction();
         event.preventDefault();
+        if (onInputArrowDown) {
+          onInputArrowDown();
+          return;
+        }
+
+        if (items.length === 0) {
+          return;
+        }
+
         setActiveIndex((previous) => (previous + 1) % items.length);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        markKeyboardInteraction();
+        event.preventDefault();
+        if (onInputArrowUp) {
+          onInputArrowUp();
+          return;
+        }
+
+        if (items.length === 0) {
+          return;
+        }
+
+        setActiveIndex((previous) => (previous - 1 + items.length) % items.length);
+        return;
+      }
+
+      if (items.length === 0) {
         return;
       }
 
@@ -221,13 +254,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         return;
       }
 
-      if (event.key === 'ArrowUp') {
-        markKeyboardInteraction();
-        event.preventDefault();
-        setActiveIndex((previous) => (previous - 1 + items.length) % items.length);
-        return;
-      }
-
       if (event.key === 'Enter') {
         markKeyboardInteraction();
         event.preventDefault();
@@ -235,7 +261,17 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         return;
       }
     },
-    [activeIndex, closeOnEsc, getActiveActionButtons, items, markKeyboardInteraction, onOpenChange, setActiveIndex],
+    [
+      activeIndex,
+      closeOnEsc,
+      getActiveActionButtons,
+      items,
+      markKeyboardInteraction,
+      onInputArrowDown,
+      onInputArrowUp,
+      onOpenChange,
+      setActiveIndex,
+    ],
   );
 
   const handlePanelKeyDown = React.useCallback(
@@ -392,136 +428,144 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
           </div>
         ) : null}
 
-        <TooltipProvider delayDuration={180}>
-          <div
-            className={classNames(
-              'overflow-y-auto p-1',
-              showInput ? 'max-h-[min(420px,calc(100vh-180px))]' : 'max-h-[min(480px,calc(100vh-140px))]',
-            )}
-            onPointerMoveCapture={recordMouseInteraction}
-          >
-            {items.length === 0 ? (
-              <div className="rounded-lg px-2.5 py-2 text-sm text-command-text-muted">{emptyText}</div>
-            ) : (
-              items.map((item, index) => {
-                const isActive = index === activeIndex;
-                const shouldUseRowColorVisual = Boolean(item.rowClassName);
-                const rowOverlayClassName =
-                  shouldUseRowColorVisual && !isActive
-                    ? "relative overflow-hidden before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:bg-black/50 before:content-[''] hover:before:bg-black/35"
-                    : '';
-                const contentForegroundClassName = shouldUseRowColorVisual && !isActive ? 'relative z-[1]' : '';
-                const iconColorClassName = shouldUseRowColorVisual ? '' : 'text-command-text-muted';
-                const titleColorClassName = shouldUseRowColorVisual ? '' : 'text-command-text';
-                const subtitleColorClassName = shouldUseRowColorVisual ? 'opacity-80' : 'text-command-text-muted';
-                const actionColorClassName = shouldUseRowColorVisual
-                  ? 'text-inherit hover:bg-black/10 hover:text-inherit'
-                  : 'text-command-text-muted hover:bg-command-action-hover hover:text-command-text';
+        {!hideItemList ? (
+          <TooltipProvider delayDuration={180}>
+            <div
+              className={classNames(
+                'overflow-y-auto p-1',
+                showInput ? 'max-h-[min(420px,calc(100vh-180px))]' : 'max-h-[min(480px,calc(100vh-140px))]',
+              )}
+              onPointerMoveCapture={recordMouseInteraction}
+            >
+              {items.length === 0 ? (
+                <div className="rounded-lg px-2.5 py-2 text-sm text-command-text-muted">{emptyText}</div>
+              ) : (
+                items.map((item, index) => {
+                  const isActive = index === activeIndex;
+                  const shouldUseRowColorVisual = Boolean(item.rowClassName);
+                  const rowOverlayClassName =
+                    shouldUseRowColorVisual && !isActive
+                      ? "relative overflow-hidden before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:bg-black/50 before:content-[''] hover:before:bg-black/35"
+                      : '';
+                  const contentForegroundClassName = shouldUseRowColorVisual && !isActive ? 'relative z-[1]' : '';
+                  const iconColorClassName = shouldUseRowColorVisual ? '' : 'text-command-text-muted';
+                  const titleColorClassName = shouldUseRowColorVisual ? '' : 'text-command-text';
+                  const subtitleColorClassName = shouldUseRowColorVisual ? 'opacity-80' : 'text-command-text-muted';
+                  const actionColorClassName = shouldUseRowColorVisual
+                    ? 'text-inherit hover:bg-black/10 hover:text-inherit'
+                    : 'text-command-text-muted hover:bg-command-action-hover hover:text-command-text';
 
-                return (
-                  <div
-                    key={item.key}
-                    ref={(el) => {
-                      if (el) {
-                        itemRefs.current.set(index, el);
-                      } else {
-                        itemRefs.current.delete(index);
-                      }
-                    }}
-                    className={classNames(
-                      'group flex min-h-[34px] w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left outline-none',
-                      shouldUseRowColorVisual ? item.rowClassName : '',
-                      shouldUseRowColorVisual
-                        ? rowOverlayClassName
-                        : isActive
-                          ? 'bg-command-item-active'
-                          : 'hover:bg-command-item-hover',
-                    )}
-                    onMouseEnter={() => {
-                      if (!shouldActivateByHover()) {
-                        return;
-                      }
-
-                      setActiveIndex(index);
-                    }}
-                    onClick={item.onSelect}
-                  >
-                    <span
+                  return (
+                    <div
+                      key={item.key}
+                      ref={(el) => {
+                        if (el) {
+                          itemRefs.current.set(index, el);
+                        } else {
+                          itemRefs.current.delete(index);
+                        }
+                      }}
                       className={classNames(
-                        'inline-flex h-5 w-5 shrink-0 items-center justify-center',
-                        iconColorClassName,
-                        contentForegroundClassName,
+                        'group flex min-h-[34px] w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left outline-none',
+                        shouldUseRowColorVisual ? item.rowClassName : '',
+                        shouldUseRowColorVisual
+                          ? rowOverlayClassName
+                          : isActive
+                            ? 'bg-command-item-active'
+                            : 'hover:bg-command-item-hover',
                       )}
-                    >
-                      {item.icon}
-                    </span>
+                      onMouseEnter={() => {
+                        if (!shouldActivateByHover()) {
+                          return;
+                        }
 
-                    <span className={classNames('min-w-0 flex-1', contentForegroundClassName)}>
+                        setActiveIndex(index);
+                      }}
+                      onClick={item.onSelect}
+                    >
                       <span
                         className={classNames(
-                          'flex items-center gap-1.5',
-                          metadataLayout === 'inline' && 'justify-between',
+                          'inline-flex h-5 w-5 shrink-0 items-center justify-center',
+                          iconColorClassName,
+                          contentForegroundClassName,
                         )}
                       >
-                        {item.titleTooltip ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className={classNames('truncate text-sm', titleColorClassName)}>{item.title}</span>
-                            </TooltipTrigger>
-                            <TooltipContent>{item.titleTooltip}</TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <span className={classNames('truncate text-sm', titleColorClassName)}>{item.title}</span>
-                        )}
+                        {item.icon}
+                      </span>
 
-                        {item.subtitle && metadataLayout === 'inline' ? (
-                          <span className={classNames('ml-3 truncate text-xs', subtitleColorClassName)}>
+                      <span className={classNames('min-w-0 flex-1', contentForegroundClassName)}>
+                        <span
+                          className={classNames(
+                            'flex items-center gap-1.5',
+                            metadataLayout === 'inline' && 'justify-between',
+                          )}
+                        >
+                          {item.titleTooltip ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className={classNames('truncate text-sm', titleColorClassName)}>
+                                  {item.title}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>{item.titleTooltip}</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className={classNames('truncate text-sm', titleColorClassName)}>{item.title}</span>
+                          )}
+
+                          {item.subtitle && metadataLayout === 'inline' ? (
+                            <span className={classNames('ml-3 truncate text-xs', subtitleColorClassName)}>
+                              {item.subtitle}
+                            </span>
+                          ) : null}
+                        </span>
+
+                        {item.subtitle && metadataLayout === 'stacked' ? (
+                          <span className={classNames('block truncate text-xs', subtitleColorClassName)}>
                             {item.subtitle}
                           </span>
                         ) : null}
                       </span>
 
-                      {item.subtitle && metadataLayout === 'stacked' ? (
-                        <span className={classNames('block truncate text-xs', subtitleColorClassName)}>
-                          {item.subtitle}
+                      {item.actions && item.actions.length > 0 ? (
+                        <span
+                          className={classNames('-me-1 ml-auto flex items-center gap-1', contentForegroundClassName)}
+                        >
+                          {item.actions.map((action, actionIndex) => (
+                            <Tooltip key={action.key}>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  data-command-action="true"
+                                  data-command-active={isActive ? 'true' : 'false'}
+                                  tabIndex={isActive ? 0 : -1}
+                                  className={classNames(
+                                    'inline-flex h-6 w-6 items-center justify-center rounded-[8px] outline-none',
+                                    actionColorClassName,
+                                  )}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    action.onSelect();
+                                  }}
+                                  onKeyDown={(event) => handleActionButtonKeyDown(event, actionIndex)}
+                                >
+                                  {action.icon}
+                                </button>
+                              </TooltipTrigger>
+                              {action.tooltip ? <TooltipContent>{action.tooltip}</TooltipContent> : null}
+                            </Tooltip>
+                          ))}
                         </span>
                       ) : null}
-                    </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </TooltipProvider>
+        ) : null}
 
-                    {item.actions && item.actions.length > 0 ? (
-                      <span className={classNames('-me-1 ml-auto flex items-center gap-1', contentForegroundClassName)}>
-                        {item.actions.map((action, actionIndex) => (
-                          <Tooltip key={action.key}>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                data-command-action="true"
-                                data-command-active={isActive ? 'true' : 'false'}
-                                tabIndex={isActive ? 0 : -1}
-                                className={classNames(
-                                  'inline-flex h-6 w-6 items-center justify-center rounded-[8px] outline-none',
-                                  actionColorClassName,
-                                )}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  action.onSelect();
-                                }}
-                                onKeyDown={(event) => handleActionButtonKeyDown(event, actionIndex)}
-                              >
-                                {action.icon}
-                              </button>
-                            </TooltipTrigger>
-                            {action.tooltip ? <TooltipContent>{action.tooltip}</TooltipContent> : null}
-                          </Tooltip>
-                        ))}
-                      </span>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </TooltipProvider>
+        {footer ? <div className="border-t border-command-divider p-[6px]">{footer}</div> : null}
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ import { TerminalAutocompleteMenu } from '../components/terminal/terminal-autoco
 import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
 import { TerminalTextDropZone } from '../components/terminal/terminal-text-drop-zone';
 import { Button } from '../components/ui/button';
-import { CommandPalette, type CommandPaletteItem } from '../components/ui/command-palette';
+import { CommandPalette } from '../components/ui/command-palette';
 import {
   Dialog,
   DialogContent,
@@ -393,7 +393,7 @@ const SSH: React.FC<SSHProps> = ({
   }, []);
 
   /**
-   * Executes one in-terminal search action and keeps terminal focus.
+   * Executes one in-terminal search action.
    *
    * @param direction Search direction or boundary jump.
    * @returns `true` when a match is found.
@@ -401,10 +401,13 @@ const SSH: React.FC<SSHProps> = ({
   const runTerminalSearch = React.useCallback(
     (direction: TerminalSearchDirection): boolean => {
       const didMatch = findActiveTerminalText(terminalSearchQuery, direction);
-      focusActiveTerminal();
+      if (didMatch) {
+        dismissSelectionBar();
+      }
+
       return didMatch;
     },
-    [findActiveTerminalText, focusActiveTerminal, terminalSearchQuery],
+    [dismissSelectionBar, findActiveTerminalText, terminalSearchQuery],
   );
 
   /**
@@ -646,42 +649,60 @@ const SSH: React.FC<SSHProps> = ({
     notifyWarning(t('ssh.selectionBarAskAiComingSoon'));
   }, [notifyWarning]);
 
-  const terminalSearchItems = React.useMemo<CommandPaletteItem[]>(() => {
-    return [
-      {
-        key: 'previous',
-        title: t('ssh.terminalSearchPrevious'),
-        icon: <ChevronUp className="h-4 w-4" />,
-        onSelect: () => {
-          runTerminalSearch('previous');
-        },
-      },
-      {
-        key: 'next',
-        title: t('ssh.terminalSearchNext'),
-        icon: <ChevronDown className="h-4 w-4" />,
-        onSelect: () => {
-          runTerminalSearch('next');
-        },
-      },
-      {
-        key: 'first',
-        title: t('ssh.terminalSearchFirst'),
-        icon: <ChevronsUp className="h-4 w-4" />,
-        onSelect: () => {
-          runTerminalSearch('first');
-        },
-      },
-      {
-        key: 'last',
-        title: t('ssh.terminalSearchLast'),
-        icon: <ChevronsDown className="h-4 w-4" />,
-        onSelect: () => {
-          runTerminalSearch('last');
-        },
-      },
-    ];
+  const handleTerminalSearchPrevious = React.useCallback(() => {
+    runTerminalSearch('previous');
   }, [runTerminalSearch]);
+
+  const handleTerminalSearchNext = React.useCallback(() => {
+    runTerminalSearch('next');
+  }, [runTerminalSearch]);
+
+  const handleTerminalSearchFirst = React.useCallback(() => {
+    runTerminalSearch('first');
+  }, [runTerminalSearch]);
+
+  const handleTerminalSearchLast = React.useCallback(() => {
+    runTerminalSearch('last');
+  }, [runTerminalSearch]);
+
+  const terminalSearchFooter = React.useMemo(() => {
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <Button
+          variant="ghost"
+          className="h-7 px-2 text-xs"
+          onClick={handleTerminalSearchPrevious}
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+          {t('ssh.terminalSearchPrevious')}
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-7 px-2 text-xs"
+          onClick={handleTerminalSearchNext}
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+          {t('ssh.terminalSearchNext')}
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-7 px-2 text-xs"
+          onClick={handleTerminalSearchFirst}
+        >
+          <ChevronsUp className="h-3.5 w-3.5" />
+          {t('ssh.terminalSearchFirst')}
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-7 px-2 text-xs"
+          onClick={handleTerminalSearchLast}
+        >
+          <ChevronsDown className="h-3.5 w-3.5" />
+          {t('ssh.terminalSearchLast')}
+        </Button>
+      </div>
+    );
+  }, [handleTerminalSearchFirst, handleTerminalSearchLast, handleTerminalSearchNext, handleTerminalSearchPrevious]);
 
   const handleTerminalTextDrop = React.useCallback(
     (droppedText: string) => {
@@ -789,10 +810,14 @@ const SSH: React.FC<SSHProps> = ({
       {connectionState === 'connected' ? (
         <CommandPalette
           closeOnEsc
+          hideItemList
           open={terminalSearchOpen}
           query={terminalSearchQuery}
           placeholder={t('ssh.terminalSearchPlaceholder')}
-          items={terminalSearchItems}
+          items={[]}
+          footer={terminalSearchFooter}
+          onInputArrowUp={handleTerminalSearchPrevious}
+          onInputArrowDown={handleTerminalSearchNext}
           onOpenChange={setTerminalSearchOpen}
           onQueryChange={setTerminalSearchQuery}
         />
@@ -802,6 +827,7 @@ const SSH: React.FC<SSHProps> = ({
       terminalSelectionSettings.enabled &&
       selectionAnchor &&
       selectionBarPosition &&
+      !(terminalSearchOpen && terminalSearchQuery.trim()) &&
       dismissedSelectionText !== selectionAnchor.selectionText ? (
         <div
           className="pointer-events-none absolute z-40"
