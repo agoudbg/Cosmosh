@@ -199,26 +199,15 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         return;
       }
 
-      if (event.key === 'ArrowDown') {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         markKeyboardInteraction();
         event.preventDefault();
-        if (onInputArrowDown) {
+        if (event.key === 'ArrowDown' && onInputArrowDown) {
           onInputArrowDown();
           return;
         }
 
-        if (items.length === 0) {
-          return;
-        }
-
-        setActiveIndex((previous) => (previous + 1) % items.length);
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        markKeyboardInteraction();
-        event.preventDefault();
-        if (onInputArrowUp) {
+        if (event.key === 'ArrowUp' && onInputArrowUp) {
           onInputArrowUp();
           return;
         }
@@ -227,7 +216,9 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
           return;
         }
 
-        setActiveIndex((previous) => (previous - 1 + items.length) % items.length);
+        setActiveIndex((previous) =>
+          event.key === 'ArrowDown' ? (previous + 1) % items.length : (previous - 1 + items.length) % items.length,
+        );
         return;
       }
 
