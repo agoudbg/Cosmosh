@@ -456,6 +456,16 @@ const SSH: React.FC<SSHProps> = ({
   }, []);
 
   /**
+   * Detects whether keyboard target is xterm's hidden capture textarea.
+   *
+   * @param target Native keyboard event target.
+   * @returns `true` when target is the terminal input capture textarea.
+   */
+  const isTerminalKeyboardCaptureTarget = React.useCallback((target: EventTarget | null): boolean => {
+    return target instanceof HTMLTextAreaElement && target.classList.contains('xterm-helper-textarea');
+  }, []);
+
+  /**
    * Resolves whether keyboard event contains the Cmd/Ctrl modifier for find shortcut.
    *
    * @param event Native keyboard event.
@@ -536,8 +546,9 @@ const SSH: React.FC<SSHProps> = ({
    */
   React.useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent): void => {
+      const isTerminalCaptureTarget = isTerminalKeyboardCaptureTarget(event.target);
       const isEditableTarget = isEditableKeyboardTarget(event.target);
-      if (isEditableTarget) {
+      if (isEditableTarget && !isTerminalCaptureTarget) {
         return;
       }
 
@@ -560,7 +571,14 @@ const SSH: React.FC<SSHProps> = ({
     return () => {
       window.removeEventListener('keydown', handleSearchShortcut, true);
     };
-  }, [getSelectionText, hasFindShortcutModifier, isActive, isEditableKeyboardTarget, openTerminalSearchPalette]);
+  }, [
+    getSelectionText,
+    hasFindShortcutModifier,
+    isActive,
+    isEditableKeyboardTarget,
+    isTerminalKeyboardCaptureTarget,
+    openTerminalSearchPalette,
+  ]);
 
   React.useEffect(() => {
     return () => {

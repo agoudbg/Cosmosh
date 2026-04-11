@@ -94,9 +94,10 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
 
   const handleOpenChange = React.useCallback((open: boolean): void => {
     if (!open) {
-      preventCloseAutoFocusRef.current = false;
       return;
     }
+
+    preventCloseAutoFocusRef.current = false;
 
     void navigator.clipboard
       .readText()
@@ -133,6 +134,7 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
     }
 
     event.preventDefault();
+    preventCloseAutoFocusRef.current = false;
   }, []);
 
   React.useEffect(() => {
