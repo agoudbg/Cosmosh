@@ -232,11 +232,12 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchQuery, setTerminalSearchQuery] = React.useState<string>('');
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
-  /** Resolves platform-specific modifier behavior for find shortcuts. */
+  /** Detects macOS platform for platform-specific find shortcut modifiers. */
   const isMacOS = window.electron?.platform === 'darwin';
   /** Platform-resolved find shortcut label shown in terminal context menus. */
   const terminalFindShortcutLabel = isMacOS ? TERMINAL_FIND_SHORTCUT_LABEL_MAC : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT;
   const lastAutoSearchKeyRef = React.useRef<string>('');
+  const deferredFindOpenTimeoutRef = React.useRef<number | null>(null);
   const terminalSearchOptions = React.useMemo(
     () => ({
       caseSensitive: terminalSearchCaseSensitive,
@@ -467,7 +468,12 @@ const SSH: React.FC<SSHProps> = ({
     const seedQuery = getSelectionText();
     // Defer opening via macrotask so Radix context-menu focus restoration has
     // completed first; this keeps focus on the find palette input.
-    window.setTimeout(() => {
+    if (deferredFindOpenTimeoutRef.current !== null) {
+      window.clearTimeout(deferredFindOpenTimeoutRef.current);
+    }
+
+    deferredFindOpenTimeoutRef.current = window.setTimeout(() => {
+      deferredFindOpenTimeoutRef.current = null;
       openTerminalSearchPalette(seedQuery);
     }, 0);
   }, [getSelectionText, openTerminalSearchPalette]);
@@ -550,6 +556,15 @@ const SSH: React.FC<SSHProps> = ({
       window.removeEventListener('keydown', handleSearchShortcut, true);
     };
   }, [getSelectionText, hasFindShortcutModifier, isActive, isEditableKeyboardTarget, openTerminalSearchPalette]);
+
+  React.useEffect(() => {
+    return () => {
+      if (deferredFindOpenTimeoutRef.current !== null) {
+        window.clearTimeout(deferredFindOpenTimeoutRef.current);
+        deferredFindOpenTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const handleDeleteRecentCommand = React.useCallback(
     (command: string) => {
