@@ -233,11 +233,9 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
   /** Resolves platform-specific modifier behavior for find shortcuts. */
-  const isDarwinPlatform = window.electron?.platform === 'darwin';
+  const isMacOS = window.electron?.platform === 'darwin';
   /** Platform-resolved find shortcut label shown in terminal context menus. */
-  const terminalFindShortcutLabel = isDarwinPlatform
-    ? TERMINAL_FIND_SHORTCUT_LABEL_MAC
-    : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT;
+  const terminalFindShortcutLabel = isMacOS ? TERMINAL_FIND_SHORTCUT_LABEL_MAC : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT;
   const lastAutoSearchKeyRef = React.useRef<string>('');
   const terminalSearchOptions = React.useMemo(
     () => ({
@@ -460,9 +458,9 @@ const SSH: React.FC<SSHProps> = ({
    */
   const hasFindShortcutModifier = React.useCallback(
     (event: KeyboardEvent): boolean => {
-      return isDarwinPlatform ? event.metaKey : event.ctrlKey;
+      return isMacOS ? event.metaKey : event.ctrlKey;
     },
-    [isDarwinPlatform],
+    [isMacOS],
   );
 
   const handleContextMenuFind = React.useCallback(() => {
