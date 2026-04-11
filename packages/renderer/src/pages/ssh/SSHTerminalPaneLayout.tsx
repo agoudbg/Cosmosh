@@ -68,7 +68,9 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   onSplitPane,
   onClosePane,
 }) => {
+  /** Whether the current renderer runtime is macOS. */
   const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
+  /** Platform-specific "Find in terminal" shortcut label shown in context menu. */
   const findShortcutLabel = React.useMemo(() => (isMacPlatform ? '⇧⌘F' : 'Ctrl+Shift+F'), [isMacPlatform]);
 
   const renderTerminalPane = (paneId: string, isPrimaryPane: boolean): React.ReactNode => {

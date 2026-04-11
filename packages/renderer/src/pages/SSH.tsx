@@ -230,6 +230,7 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchQuery, setTerminalSearchQuery] = React.useState<string>('');
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
+  /** Resolves platform-specific modifier behavior for find shortcuts. */
   const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
   const lastAutoSearchKeyRef = React.useRef<string>('');
   const terminalSearchOptions = React.useMemo(
@@ -460,6 +461,8 @@ const SSH: React.FC<SSHProps> = ({
 
   const handleContextMenuFind = React.useCallback(() => {
     const seedQuery = getSelectionText();
+    // Defer opening to the next tick so Radix context-menu focus restoration
+    // finishes first; this keeps focus on the find palette input.
     window.setTimeout(() => {
       openTerminalSearchPalette(seedQuery);
     }, 0);
