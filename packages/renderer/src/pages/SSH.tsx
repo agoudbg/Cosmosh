@@ -47,6 +47,8 @@ type SSHProps = {
 
 /** Delay used to debounce query-driven xterm search jumps while typing. */
 const TERMINAL_SEARCH_DEBOUNCE_MS = 80;
+const TERMINAL_FIND_SHORTCUT_LABEL_MAC = '⇧⌘F';
+const TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT = 'Ctrl+Shift+F';
 
 /**
  * SSH page that orchestrates terminal lifecycle, websocket sessions,
@@ -232,6 +234,11 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
   /** Resolves platform-specific modifier behavior for find shortcuts. */
   const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
+  /** Platform-resolved find shortcut label shown in terminal context menus. */
+  const terminalFindShortcutLabel = React.useMemo(
+    () => (isMacPlatform ? TERMINAL_FIND_SHORTCUT_LABEL_MAC : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT),
+    [isMacPlatform],
+  );
   const lastAutoSearchKeyRef = React.useRef<string>('');
   const terminalSearchOptions = React.useMemo(
     () => ({
@@ -817,6 +824,7 @@ const SSH: React.FC<SSHProps> = ({
           hasSelection={!!selectionAnchor?.selectionText}
           isConnected={connectionState === 'connected'}
           canSplitTerminal={canSplitTerminal}
+          findShortcutLabel={terminalFindShortcutLabel}
           setPaneContainerElement={setPaneContainerElement}
           setPrimaryPaneContainer={setPrimaryPaneContainer}
           onPaneActivate={activatePane}

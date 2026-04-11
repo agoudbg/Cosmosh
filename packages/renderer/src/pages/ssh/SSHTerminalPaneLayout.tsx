@@ -12,6 +12,7 @@ type SSHTerminalPaneLayoutProps = {
   hasSelection: boolean;
   isConnected: boolean;
   canSplitTerminal: boolean;
+  findShortcutLabel: string;
   setPaneContainerElement: (paneId: string, element: HTMLDivElement | null) => void;
   setPrimaryPaneContainer: (element: HTMLDivElement | null) => void;
   onPaneActivate: PaneActionHandler;
@@ -56,6 +57,7 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   hasSelection,
   isConnected,
   canSplitTerminal,
+  findShortcutLabel,
   setPaneContainerElement,
   setPrimaryPaneContainer,
   onPaneActivate,
@@ -68,11 +70,6 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   onSplitPane,
   onClosePane,
 }) => {
-  /** Whether the current renderer runtime is macOS. */
-  const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
-  /** Platform-specific "Find in terminal" shortcut label shown in context menu. */
-  const findShortcutLabel = React.useMemo(() => (isMacPlatform ? '⇧⌘F' : 'Ctrl+Shift+F'), [isMacPlatform]);
-
   const renderTerminalPane = (paneId: string, isPrimaryPane: boolean): React.ReactNode => {
     return (
       <div className="h-full min-h-0 w-full min-w-0 overflow-hidden">
