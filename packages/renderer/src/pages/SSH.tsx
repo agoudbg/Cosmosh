@@ -407,13 +407,17 @@ const SSH: React.FC<SSHProps> = ({
    * @param seedQuery Optional initial query from selection/context menu.
    * @returns Nothing.
    */
-  const openTerminalSearchPalette = React.useCallback((seedQuery?: string): void => {
-    if (seedQuery && seedQuery.trim()) {
-      setTerminalSearchQuery(seedQuery);
-    }
+  const openTerminalSearchPalette = React.useCallback(
+    (seedQuery?: string): void => {
+      if (seedQuery && seedQuery.trim()) {
+        setTerminalSearchQuery(seedQuery);
+      }
 
-    setTerminalSearchOpen(true);
-  }, []);
+      dismissSelectionBar();
+      setTerminalSearchOpen(true);
+    },
+    [dismissSelectionBar],
+  );
 
   /**
    * Executes one in-terminal search action.
@@ -464,6 +468,19 @@ const SSH: React.FC<SSHProps> = ({
   const isTerminalKeyboardCaptureTarget = React.useCallback((target: EventTarget | null): boolean => {
     return target instanceof HTMLTextAreaElement && target.classList.contains('xterm-helper-textarea');
   }, []);
+
+  /**
+   * Detects whether keyboard target belongs to the active terminal surface.
+   *
+   * @param target Native keyboard event target.
+   * @returns `true` when target is inside the terminal container subtree.
+   */
+  const isTerminalKeyboardTarget = React.useCallback(
+    (target: EventTarget | null): boolean => {
+      return target instanceof Node && Boolean(terminalContainerRef.current?.contains(target));
+    },
+    [terminalContainerRef],
+  );
 
   /**
    * Resolves whether keyboard event contains the Cmd/Ctrl modifier for find shortcut.
@@ -538,8 +555,7 @@ const SSH: React.FC<SSHProps> = ({
     }
 
     clearActiveTerminalSearch();
-    dismissSelectionBar();
-  }, [clearActiveTerminalSearch, dismissSelectionBar, terminalSearchOpen, terminalSearchQuery]);
+  }, [clearActiveTerminalSearch, terminalSearchOpen, terminalSearchQuery]);
 
   /**
    * Registers Cmd/Ctrl+Shift+F shortcut to open in-terminal search for the active SSH page.
@@ -547,12 +563,14 @@ const SSH: React.FC<SSHProps> = ({
   React.useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent): void => {
       const isTerminalCaptureTarget = isTerminalKeyboardCaptureTarget(event.target);
+      const isTerminalTarget = isTerminalKeyboardTarget(event.target);
       const isEditableTarget = isEditableKeyboardTarget(event.target);
-      if (isEditableTarget && !isTerminalCaptureTarget) {
+      if (isEditableTarget && !isTerminalCaptureTarget && !isTerminalTarget) {
         return;
       }
 
-      if (!isActive || event.repeat || event.altKey || !event.shiftKey || event.key.toLowerCase() !== 'f') {
+      const isFindKey = event.code === 'KeyF' || event.key.toLowerCase() === 'f';
+      if (!isActive || event.repeat || event.altKey || !event.shiftKey || !isFindKey) {
         return;
       }
 
@@ -577,6 +595,7 @@ const SSH: React.FC<SSHProps> = ({
     isActive,
     isEditableKeyboardTarget,
     isTerminalKeyboardCaptureTarget,
+    isTerminalKeyboardTarget,
     openTerminalSearchPalette,
   ]);
 
