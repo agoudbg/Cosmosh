@@ -12,6 +12,7 @@ import { formStyles } from './form-styles';
  * - `onPressedChange`: callback fired when pressed state changes.
  *
  * @param props Radix toggle root props including `pressed` and `onPressedChange`.
+ * @param ref Forwarded ref to the underlying Radix toggle root element.
  * @returns Toggle root element.
  */
 const Toggle = React.forwardRef<

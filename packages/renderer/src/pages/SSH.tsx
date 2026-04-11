@@ -421,20 +421,14 @@ const SSH: React.FC<SSHProps> = ({
   );
 
   /**
-   * Builds a stable cache key for query-driven auto-search dedupe.
-   *
-   * @param normalizedQuery Trimmed search query.
-   * @returns Stable key for current query + toggle configuration.
+   * Stable key prefix for query-driven auto-search dedupe across toggle/open state changes.
    */
-  const buildTerminalSearchAutoKey = React.useCallback(
-    (normalizedQuery: string): string => {
-      const openToken = terminalSearchOpen ? 'open' : 'closed';
-      const caseToken = terminalSearchCaseSensitive ? 'case' : 'nocase';
-      const regexToken = terminalSearchRegex ? 'regex' : 'plain';
-      return [openToken, normalizedQuery, caseToken, regexToken].join(':');
-    },
-    [terminalSearchCaseSensitive, terminalSearchOpen, terminalSearchRegex],
-  );
+  const terminalSearchAutoKeyPrefix = React.useMemo((): string => {
+    const openToken = terminalSearchOpen ? 'open' : 'closed';
+    const caseToken = terminalSearchCaseSensitive ? 'case' : 'nocase';
+    const regexToken = terminalSearchRegex ? 'regex' : 'plain';
+    return [openToken, caseToken, regexToken].join(':');
+  }, [terminalSearchCaseSensitive, terminalSearchOpen, terminalSearchRegex]);
 
   /**
    * Determines whether keyboard event target is an editable text surface.
@@ -484,7 +478,7 @@ const SSH: React.FC<SSHProps> = ({
       return;
     }
 
-    const autoSearchKey = buildTerminalSearchAutoKey(normalizedQuery);
+    const autoSearchKey = `${terminalSearchAutoKeyPrefix}:${normalizedQuery}`;
     if (lastAutoSearchKeyRef.current === autoSearchKey) {
       return;
     }
@@ -497,7 +491,7 @@ const SSH: React.FC<SSHProps> = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [buildTerminalSearchAutoKey, runTerminalSearch, terminalSearchOpen, terminalSearchQuery]);
+  }, [runTerminalSearch, terminalSearchAutoKeyPrefix, terminalSearchOpen, terminalSearchQuery]);
 
   /**
    * Clears search highlights when query is empty or palette is closed.
