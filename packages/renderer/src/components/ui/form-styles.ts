@@ -15,6 +15,8 @@ export const formStyles = {
     'menu-menubar-field inline-flex h-[34px] items-center justify-center gap-2 rounded-lg bg-form-text px-3 text-sm text-bg outline-none hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',
   buttonGhost:
     'menu-menubar-field inline-flex h-[34px] items-center justify-center gap-2 rounded-lg bg-transparent px-3 text-sm text-form-text outline-none hover:bg-form-control-hover disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',
+  toggle:
+    'menu-menubar-field inline-flex h-[34px] items-center justify-center gap-2 rounded-lg bg-transparent px-3 text-sm text-form-text outline-none hover:bg-form-control-hover data-[state=on]:bg-form-control-hover data-[state=on]:text-form-text disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',
   checkbox:
     'peer inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[8px] bg-form-control text-form-text outline-none hover:bg-form-control-hover data-[state=checked]:bg-form-active data-[state=unchecked]:text-form-text-muted disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',
   switchRoot:

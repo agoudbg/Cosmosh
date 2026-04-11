@@ -1,4 +1,4 @@
-import { type SearchAddon } from '@xterm/addon-search';
+import { type ISearchOptions, type SearchAddon } from '@xterm/addon-search';
 import { type ITerminalOptions, type Terminal } from '@xterm/xterm';
 import React from 'react';
 
@@ -26,6 +26,7 @@ import { useSshSelectionBar } from './use-ssh-selection-bar';
  */
 export type SshConnectionState = 'connecting' | 'connected' | 'failed';
 export type TerminalSearchDirection = 'previous' | 'next' | 'first' | 'last';
+export type TerminalSearchOptions = Pick<ISearchOptions, 'caseSensitive' | 'regex'>;
 
 /**
  * Runtime-only mutable resources that should not trigger React renders.
@@ -268,9 +269,20 @@ export type SshCoreActions = {
    *
    * @param query Search text.
    * @param direction Navigation direction or boundary jump.
+   * @param options Search behavior flags shared by command-palette toggles.
    * @returns `true` when at least one match is found.
    */
-  findActiveTerminalText: (query: string, direction: TerminalSearchDirection) => boolean;
+  findActiveTerminalText: (
+    query: string,
+    direction: TerminalSearchDirection,
+    options: TerminalSearchOptions,
+  ) => boolean;
+  /**
+   * Clears active-pane search decorations and search-driven selection highlight.
+   *
+   * @returns Nothing.
+   */
+  clearActiveTerminalSearch: () => void;
   /**
    * Registers pane container element for runtime routing and layout sync.
    *
@@ -963,15 +975,30 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   }, [activePaneIdRef, mirrorPaneRuntimeMapRef, primaryPaneIdRef, primarySearchAddonRef, primaryTerminalRef]);
 
   /**
+   * Clears active-pane search decorations when search UI exits or query is empty.
+   *
+   * @returns Nothing.
+   */
+  const clearActiveTerminalSearch = React.useCallback((): void => {
+    const resources = resolveActiveSearchResources();
+    if (!resources) {
+      return;
+    }
+
+    resources.addon.clearDecorations();
+  }, [resolveActiveSearchResources]);
+
+  /**
    * Finds and highlights text in active terminal by direction semantics.
    *
    * @param query Search text.
    * @param direction Navigation direction or boundary jump.
+   * @param options Search behavior flags from command-palette toggles.
    * @returns `true` when a match is found. Returns `false` when search resources are unavailable
    * or when no match exists for the current query/direction.
    */
   const findActiveTerminalText = React.useCallback(
-    (query: string, direction: TerminalSearchDirection): boolean => {
+    (query: string, direction: TerminalSearchDirection, options: TerminalSearchOptions): boolean => {
       const normalizedQuery = query.trim();
       if (!normalizedQuery) {
         return false;
@@ -996,10 +1023,19 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         terminal.scrollToBottom();
       }
 
-      // "last" reuses backward scan from bottom so the nearest trailing match is highlighted first.
-      return direction === 'previous' || direction === 'last'
-        ? addon.findPrevious(normalizedQuery)
-        : addon.findNext(normalizedQuery);
+      const searchOptions: ISearchOptions = {
+        caseSensitive: options.caseSensitive,
+        regex: options.regex,
+      };
+
+      try {
+        // "last" reuses backward scan from bottom so the nearest trailing match is highlighted first.
+        return direction === 'previous' || direction === 'last'
+          ? addon.findPrevious(normalizedQuery, searchOptions)
+          : addon.findNext(normalizedQuery, searchOptions);
+      } catch {
+        return false;
+      }
     },
     [resolveActiveSearchResources],
   );
@@ -1032,6 +1068,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       focusActiveTerminal,
       clearTerminalScreen,
       findActiveTerminalText,
+      clearActiveTerminalSearch,
       setPaneContainerElement,
       setPrimaryPaneContainer,
       resolveHostFingerprintPrompt,

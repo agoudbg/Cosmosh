@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import { Menubar } from '../components/ui/menubar';
+import { Toggle } from '../components/ui/toggle';
 import { t } from '../lib/i18n';
 import { useSettingsValues } from '../lib/settings-store';
 import { useToast } from '../lib/toast-context';
@@ -215,6 +216,7 @@ const SSH: React.FC<SSHProps> = ({
       focusActiveTerminal,
       clearTerminalScreen,
       findActiveTerminalText,
+      clearActiveTerminalSearch,
       setPaneContainerElement,
       setPrimaryPaneContainer,
       resolveHostFingerprintPrompt,
@@ -226,7 +228,16 @@ const SSH: React.FC<SSHProps> = ({
   const terminalPaneIdsRef = React.useRef<string[]>(terminalPaneIds);
   const [terminalSearchOpen, setTerminalSearchOpen] = React.useState<boolean>(false);
   const [terminalSearchQuery, setTerminalSearchQuery] = React.useState<string>('');
+  const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
+  const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
   const lastAutoSearchKeyRef = React.useRef<string>('');
+  const terminalSearchOptions = React.useMemo(
+    () => ({
+      caseSensitive: terminalSearchCaseSensitive,
+      regex: terminalSearchRegex,
+    }),
+    [terminalSearchCaseSensitive, terminalSearchRegex],
+  );
 
   React.useEffect(() => {
     terminalPaneIdsRef.current = terminalPaneIds;
@@ -401,12 +412,12 @@ const SSH: React.FC<SSHProps> = ({
    */
   const runTerminalSearch = React.useCallback(
     (direction: TerminalSearchDirection): boolean => {
-      const didMatch = findActiveTerminalText(terminalSearchQuery, direction);
+      const didMatch = findActiveTerminalText(terminalSearchQuery, direction, terminalSearchOptions);
       dismissSelectionBar();
 
       return didMatch;
     },
-    [dismissSelectionBar, findActiveTerminalText, terminalSearchQuery],
+    [dismissSelectionBar, findActiveTerminalText, terminalSearchOptions, terminalSearchQuery],
   );
 
   /**
@@ -457,7 +468,7 @@ const SSH: React.FC<SSHProps> = ({
       return;
     }
 
-    const autoSearchKey = `${terminalSearchOpen ? 'open' : 'closed'}:${normalizedQuery}`;
+    const autoSearchKey = `${terminalSearchOpen ? 'open' : 'closed'}:${normalizedQuery}:${terminalSearchCaseSensitive ? 'case' : 'nocase'}:${terminalSearchRegex ? 'regex' : 'plain'}`;
     if (lastAutoSearchKeyRef.current === autoSearchKey) {
       return;
     }
@@ -470,7 +481,20 @@ const SSH: React.FC<SSHProps> = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [runTerminalSearch, terminalSearchOpen, terminalSearchQuery]);
+  }, [runTerminalSearch, terminalSearchCaseSensitive, terminalSearchOpen, terminalSearchQuery, terminalSearchRegex]);
+
+  /**
+   * Clears search highlights when query is empty or palette is closed.
+   */
+  React.useEffect(() => {
+    const hasQuery = terminalSearchQuery.trim().length > 0;
+    if (terminalSearchOpen && hasQuery) {
+      return;
+    }
+
+    clearActiveTerminalSearch();
+    dismissSelectionBar();
+  }, [clearActiveTerminalSearch, dismissSelectionBar, terminalSearchOpen, terminalSearchQuery]);
 
   /**
    * Registers Cmd/Ctrl+F shortcut to open in-terminal search for the active SSH page.
@@ -673,7 +697,19 @@ const SSH: React.FC<SSHProps> = ({
   }, [runTerminalSearch]);
 
   const terminalSearchFooter = (
-    <div className="flex flex-wrap items-center justify-end">
+    <div className="flex flex-wrap items-center justify-end gap-1.5">
+      <Toggle
+        pressed={terminalSearchCaseSensitive}
+        onPressedChange={setTerminalSearchCaseSensitive}
+      >
+        {t('ssh.terminalSearchCaseSensitive')}
+      </Toggle>
+      <Toggle
+        pressed={terminalSearchRegex}
+        onPressedChange={setTerminalSearchRegex}
+      >
+        {t('ssh.terminalSearchRegex')}
+      </Toggle>
       <Button
         variant="ghost"
         onClick={handleTerminalSearchPrevious}
@@ -736,7 +772,7 @@ const SSH: React.FC<SSHProps> = ({
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 overflow-hidden rounded-[18px] p-1';
-  const isTerminalSearchActive = terminalSearchOpen && terminalSearchQuery.trim().length > 0;
+  const isTerminalSearchActive = terminalSearchOpen;
 
   return (
     <div
@@ -820,7 +856,12 @@ const SSH: React.FC<SSHProps> = ({
           footer={terminalSearchFooter}
           onInputArrowUp={handleTerminalSearchPrevious}
           onInputArrowDown={handleTerminalSearchNext}
-          onOpenChange={setTerminalSearchOpen}
+          onOpenChange={(open) => {
+            setTerminalSearchOpen(open);
+            if (!open) {
+              setTerminalSearchQuery('');
+            }
+          }}
           onQueryChange={setTerminalSearchQuery}
         />
       ) : null}
