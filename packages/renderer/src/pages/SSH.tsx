@@ -2,7 +2,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { type ITerminalOptions } from '@xterm/xterm';
 import classNames from 'classnames';
-import { ChevronDown, ChevronsDown, ChevronsUp, ChevronUp, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronsDown, ChevronsUp, ChevronUp, RefreshCw, ScanSearch, TextSelect } from 'lucide-react';
 import React from 'react';
 
 import { TerminalAutocompleteMenu } from '../components/terminal/terminal-autocomplete-menu';
@@ -707,47 +707,57 @@ const SSH: React.FC<SSHProps> = ({
   }, [runTerminalSearch]);
 
   const terminalSearchFooter = (
-    <div className="flex flex-wrap items-center justify-end gap-1.5">
-      <Toggle
-        pressed={terminalSearchCaseSensitive}
-        onPressedChange={setTerminalSearchCaseSensitive}
-      >
-        {t('ssh.terminalSearchCaseSensitive')}
-      </Toggle>
-      <Toggle
-        pressed={terminalSearchRegex}
-        onPressedChange={setTerminalSearchRegex}
-      >
-        {t('ssh.terminalSearchRegex')}
-      </Toggle>
-      <Button
-        variant="ghost"
-        onClick={handleTerminalSearchPrevious}
-      >
-        <ChevronUp className="h-4 w-4" />
-        {t('ssh.terminalSearchPrevious')}
-      </Button>
-      <Button
-        variant="ghost"
-        onClick={handleTerminalSearchNext}
-      >
-        <ChevronDown className="h-4 w-4" />
-        {t('ssh.terminalSearchNext')}
-      </Button>
-      <Button
-        variant="ghost"
-        onClick={handleTerminalSearchFirst}
-      >
-        <ChevronsUp className="h-4 w-4" />
-        {t('ssh.terminalSearchFirst')}
-      </Button>
-      <Button
-        variant="ghost"
-        onClick={handleTerminalSearchLast}
-      >
-        <ChevronsDown className="h-4 w-4" />
-        {t('ssh.terminalSearchLast')}
-      </Button>
+    <div className="flex w-full items-center gap-2">
+      <div className="flex items-center gap-1.5">
+        <Toggle
+          pressed={terminalSearchCaseSensitive}
+          onPressedChange={setTerminalSearchCaseSensitive}
+        >
+          <TextSelect className="h-4 w-4" />
+          {t('ssh.terminalSearchCaseSensitive')}
+        </Toggle>
+        <Toggle
+          pressed={terminalSearchRegex}
+          onPressedChange={setTerminalSearchRegex}
+        >
+          <ScanSearch className="h-4 w-4" />
+          {t('ssh.terminalSearchRegex')}
+        </Toggle>
+      </div>
+      <div className="ml-auto flex items-center gap-1">
+        <Button
+          aria-label={t('ssh.terminalSearchFirst')}
+          className="w-[34px] !p-0"
+          variant="ghost"
+          onClick={handleTerminalSearchFirst}
+        >
+          <ChevronsUp className="h-4 w-4" />
+        </Button>
+        <Button
+          aria-label={t('ssh.terminalSearchPrevious')}
+          className="w-[34px] !p-0"
+          variant="ghost"
+          onClick={handleTerminalSearchPrevious}
+        >
+          <ChevronUp className="h-4 w-4" />
+        </Button>
+        <Button
+          aria-label={t('ssh.terminalSearchNext')}
+          className="w-[34px] !p-0"
+          variant="ghost"
+          onClick={handleTerminalSearchNext}
+        >
+          <ChevronDown className="h-4 w-4" />
+        </Button>
+        <Button
+          aria-label={t('ssh.terminalSearchLast')}
+          className="w-[34px] !p-0"
+          variant="ghost"
+          onClick={handleTerminalSearchLast}
+        >
+          <ChevronsDown className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 
