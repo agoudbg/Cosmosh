@@ -1033,7 +1033,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         return direction === 'previous' || direction === 'last'
           ? addon.findPrevious(normalizedQuery, searchOptions)
           : addon.findNext(normalizedQuery, searchOptions);
-      } catch {
+      } catch (error: unknown) {
+        console.warn('Failed to execute terminal search.', error);
         return false;
       }
     },
