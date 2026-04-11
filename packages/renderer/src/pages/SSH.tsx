@@ -727,32 +727,28 @@ const SSH: React.FC<SSHProps> = ({
       <div className="ml-auto flex items-center gap-1">
         <Button
           aria-label={t('ssh.terminalSearchFirst')}
-          className="w-[34px] !p-0"
-          variant="ghost"
+          variant="ghostIcon"
           onClick={handleTerminalSearchFirst}
         >
           <ChevronsUp className="h-4 w-4" />
         </Button>
         <Button
           aria-label={t('ssh.terminalSearchPrevious')}
-          className="w-[34px] !p-0"
-          variant="ghost"
+          variant="ghostIcon"
           onClick={handleTerminalSearchPrevious}
         >
           <ChevronUp className="h-4 w-4" />
         </Button>
         <Button
           aria-label={t('ssh.terminalSearchNext')}
-          className="w-[34px] !p-0"
-          variant="ghost"
+          variant="ghostIcon"
           onClick={handleTerminalSearchNext}
         >
           <ChevronDown className="h-4 w-4" />
         </Button>
         <Button
           aria-label={t('ssh.terminalSearchLast')}
-          className="w-[34px] !p-0"
-          variant="ghost"
+          variant="ghostIcon"
           onClick={handleTerminalSearchLast}
         >
           <ChevronsDown className="h-4 w-4" />

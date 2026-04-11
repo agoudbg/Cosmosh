@@ -3,7 +3,7 @@ import React from 'react';
 
 import { formStyles } from './form-styles';
 
-type ButtonVariant = 'default' | 'ghost' | 'icon' | 'inverted';
+type ButtonVariant = 'default' | 'ghost' | 'icon' | 'ghostIcon' | 'inverted';
 type ButtonPadding = 'default' | 'mid' | 'wide';
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -21,10 +21,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       className={classNames(
         variant === 'ghost'
           ? formStyles.buttonGhost
-          : variant === 'inverted'
-            ? formStyles.buttonInverted
-            : formStyles.button,
-        variant === 'icon' && 'h-[34px] w-[34px] flex-shrink-0 !p-0',
+          : variant === 'ghostIcon'
+            ? formStyles.buttonGhost
+            : variant === 'inverted'
+              ? formStyles.buttonInverted
+              : formStyles.button,
+        (variant === 'icon' || variant === 'ghostIcon') && 'h-[34px] w-[34px] flex-shrink-0 p-0',
         padding === 'mid' && variant !== 'icon' && 'px-[15px]',
         padding === 'wide' && variant !== 'icon' && 'px-[18px]',
         className,
