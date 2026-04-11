@@ -68,6 +68,9 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   onSplitPane,
   onClosePane,
 }) => {
+  const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
+  const findShortcutLabel = React.useMemo(() => (isMacPlatform ? '⇧⌘F' : 'Ctrl+Shift+F'), [isMacPlatform]);
+
   const renderTerminalPane = (paneId: string, isPrimaryPane: boolean): React.ReactNode => {
     return (
       <div className="h-full min-h-0 w-full min-w-0 overflow-hidden">
@@ -78,6 +81,7 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
           pasteLabel={t('ssh.contextMenuPaste')}
           searchOnlineLabel={t('ssh.contextMenuSearchOnline')}
           findLabel={t('ssh.contextMenuFind')}
+          findShortcutLabel={findShortcutLabel}
           selectAllLabel={t('ssh.contextMenuSelectAll')}
           clearTerminalLabel={t('ssh.contextMenuClearTerminal')}
           splitTerminalLabel={t('ssh.contextMenuSplitTerminal')}

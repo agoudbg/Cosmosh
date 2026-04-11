@@ -230,6 +230,7 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchQuery, setTerminalSearchQuery] = React.useState<string>('');
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
+  const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
   const lastAutoSearchKeyRef = React.useRef<string>('');
   const terminalSearchOptions = React.useMemo(
     () => ({
@@ -450,12 +451,18 @@ const SSH: React.FC<SSHProps> = ({
    * @param event Native keyboard event.
    * @returns `true` when Cmd or Ctrl is pressed.
    */
-  const hasFindShortcutModifier = React.useCallback((event: KeyboardEvent): boolean => {
-    return event.metaKey || event.ctrlKey;
-  }, []);
+  const hasFindShortcutModifier = React.useCallback(
+    (event: KeyboardEvent): boolean => {
+      return isMacPlatform ? event.metaKey : event.ctrlKey;
+    },
+    [isMacPlatform],
+  );
 
   const handleContextMenuFind = React.useCallback(() => {
-    openTerminalSearchPalette(getSelectionText());
+    const seedQuery = getSelectionText();
+    window.setTimeout(() => {
+      openTerminalSearchPalette(seedQuery);
+    }, 0);
   }, [getSelectionText, openTerminalSearchPalette]);
 
   const handleContextMenuSelectAll = React.useCallback(() => {
@@ -507,7 +514,7 @@ const SSH: React.FC<SSHProps> = ({
   }, [clearActiveTerminalSearch, dismissSelectionBar, terminalSearchOpen, terminalSearchQuery]);
 
   /**
-   * Registers Cmd/Ctrl+F shortcut to open in-terminal search for the active SSH page.
+   * Registers Cmd/Ctrl+Shift+F shortcut to open in-terminal search for the active SSH page.
    */
   React.useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent): void => {
@@ -516,7 +523,7 @@ const SSH: React.FC<SSHProps> = ({
         return;
       }
 
-      if (!isActive || event.repeat || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'f') {
+      if (!isActive || event.repeat || event.altKey || !event.shiftKey || event.key.toLowerCase() !== 'f') {
         return;
       }
 

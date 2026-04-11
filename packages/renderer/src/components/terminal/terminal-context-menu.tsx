@@ -6,6 +6,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from '../ui/context-menu';
 
@@ -22,6 +23,8 @@ type TerminalContextMenuProps = {
   searchOnlineLabel: string;
   /** Label for the "Find" menu item. */
   findLabel: string;
+  /** Optional shortcut hint shown on the "Find" menu item. */
+  findShortcutLabel?: string;
   /** Label for the "Select All" menu item. */
   selectAllLabel: string;
   /** Label for the "Clear Terminal" menu item. */
@@ -37,7 +40,7 @@ type TerminalContextMenuProps = {
   onCopy: () => void;
   onPaste: () => void;
   onSearchOnline: () => void;
-  /** Called when "Find" is selected. Expected to be a no-op or coming-soon handler until the feature is implemented. */
+  /** Called when "Find" is selected. */
   onFind: () => void;
   onSelectAll: () => void;
   onClearTerminal: () => void;
@@ -53,6 +56,7 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
   pasteLabel,
   searchOnlineLabel,
   findLabel,
+  findShortcutLabel,
   selectAllLabel,
   clearTerminalLabel,
   splitTerminalLabel,
@@ -171,12 +175,12 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
           {searchOnlineLabel}
         </ContextMenuItem>
 
-        {/* Find is not yet implemented; disabled to signal coming-soon state. */}
         <ContextMenuItem
           icon={ScanSearch}
           onSelect={onFind}
         >
           {findLabel}
+          {findShortcutLabel ? <ContextMenuShortcut>{findShortcutLabel}</ContextMenuShortcut> : null}
         </ContextMenuItem>
 
         <ContextMenuSeparator />
