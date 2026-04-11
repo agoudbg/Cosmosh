@@ -40,7 +40,7 @@ type TerminalContextMenuProps = {
   onCopy: () => void;
   onPaste: () => void;
   onSearchOnline: () => void;
-  /** Called when "Find" is selected. */
+  /** Called when "Find" is selected; parent flow may defer panel open for focus safety. */
   onFind: () => void;
   onSelectAll: () => void;
   onClearTerminal: () => void;

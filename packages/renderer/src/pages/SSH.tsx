@@ -236,7 +236,9 @@ const SSH: React.FC<SSHProps> = ({
   const isMacOS = window.electron?.platform === 'darwin';
   /** Platform-resolved find shortcut label shown in terminal context menus. */
   const terminalFindShortcutLabel = isMacOS ? TERMINAL_FIND_SHORTCUT_LABEL_MAC : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT;
+  /** Tracks last auto-search key to prevent debounce-triggered first-match resets. */
   const lastAutoSearchKeyRef = React.useRef<string>('');
+  /** Holds deferred find-open timer id so pending callbacks can be canceled on unmount. */
   const deferredFindOpenTimeoutRef = React.useRef<number | null>(null);
   const terminalSearchOptions = React.useMemo(
     () => ({
