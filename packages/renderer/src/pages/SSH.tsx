@@ -48,7 +48,7 @@ type SSHProps = {
 /** Delay used to debounce query-driven xterm search jumps while typing. */
 const TERMINAL_SEARCH_DEBOUNCE_MS = 80;
 const TERMINAL_FIND_SHORTCUT_LABEL_MAC = '⇧⌘F';
-const TERMINAL_FIND_SHORTCUT_LABEL_WIN_LINUX = 'Ctrl+Shift+F';
+const TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT = 'Ctrl+Shift+F';
 
 /**
  * SSH page that orchestrates terminal lifecycle, websocket sessions,
@@ -233,9 +233,11 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
   /** Resolves platform-specific modifier behavior for find shortcuts. */
-  const isMacOS = window.electron?.platform === 'darwin';
+  const isDarwinPlatform = window.electron?.platform === 'darwin';
   /** Platform-resolved find shortcut label shown in terminal context menus. */
-  const terminalFindShortcutLabel = isMacOS ? TERMINAL_FIND_SHORTCUT_LABEL_MAC : TERMINAL_FIND_SHORTCUT_LABEL_WIN_LINUX;
+  const terminalFindShortcutLabel = isDarwinPlatform
+    ? TERMINAL_FIND_SHORTCUT_LABEL_MAC
+    : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT;
   const lastAutoSearchKeyRef = React.useRef<string>('');
   const terminalSearchOptions = React.useMemo(
     () => ({
@@ -458,15 +460,15 @@ const SSH: React.FC<SSHProps> = ({
    */
   const hasFindShortcutModifier = React.useCallback(
     (event: KeyboardEvent): boolean => {
-      return isMacOS ? event.metaKey : event.ctrlKey;
+      return isDarwinPlatform ? event.metaKey : event.ctrlKey;
     },
-    [isMacOS],
+    [isDarwinPlatform],
   );
 
   const handleContextMenuFind = React.useCallback(() => {
     const seedQuery = getSelectionText();
-    // Defer opening to the next tick so Radix context-menu focus restoration
-    // finishes first; this keeps focus on the find palette input.
+    // Defer opening via macrotask so Radix context-menu focus restoration has
+    // completed first; this keeps focus on the find palette input.
     window.setTimeout(() => {
       openTerminalSearchPalette(seedQuery);
     }, 0);
