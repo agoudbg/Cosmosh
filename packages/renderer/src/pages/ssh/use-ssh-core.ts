@@ -280,7 +280,7 @@ export type SshCoreActions = {
   /**
    * Clears active-pane search decorations and search-driven selection highlight.
    *
-   * @returns Nothing.
+   * @returns void.
    */
   clearActiveTerminalSearch: () => void;
   /**
@@ -977,7 +977,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   /**
    * Clears active-pane search decorations when search UI exits or query is empty.
    *
-   * @returns Nothing.
+   * @returns void.
    */
   const clearActiveTerminalSearch = React.useCallback((): void => {
     const resources = resolveActiveSearchResources();
