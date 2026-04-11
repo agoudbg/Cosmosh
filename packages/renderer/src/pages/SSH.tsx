@@ -788,7 +788,7 @@ const SSH: React.FC<SSHProps> = ({
 
   // Card style
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 overflow-hidden rounded-[18px] p-1';
-  const isTerminalSearchActive = terminalSearchOpen;
+  const shouldSuppressOrbitBar = terminalSearchOpen;
 
   return (
     <div
@@ -886,7 +886,7 @@ const SSH: React.FC<SSHProps> = ({
       terminalSelectionSettings.enabled &&
       selectionAnchor &&
       selectionBarPosition &&
-      !isTerminalSearchActive &&
+      !shouldSuppressOrbitBar &&
       dismissedSelectionText !== selectionAnchor.selectionText ? (
         <div
           className="pointer-events-none absolute z-40"

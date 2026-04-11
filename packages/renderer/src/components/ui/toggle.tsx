@@ -7,7 +7,11 @@ import { formStyles } from './form-styles';
 /**
  * Shared pressed-state toggle control styled with form tokens.
  *
- * @param props Radix toggle root props.
+ * Key controlled props:
+ * - `pressed`: current on/off state.
+ * - `onPressedChange`: callback fired when pressed state changes.
+ *
+ * @param props Radix toggle root props including `pressed` and `onPressedChange`.
  * @returns Toggle root element.
  */
 const Toggle = React.forwardRef<
