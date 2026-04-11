@@ -233,12 +233,11 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
   /** Resolves platform-specific modifier behavior for find shortcuts. */
-  const isMacPlatform = React.useMemo(() => window.electron?.platform === 'darwin', []);
+  const isMacPlatform = window.electron?.platform === 'darwin';
   /** Platform-resolved find shortcut label shown in terminal context menus. */
-  const terminalFindShortcutLabel = React.useMemo(
-    () => (isMacPlatform ? TERMINAL_FIND_SHORTCUT_LABEL_MAC : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT),
-    [isMacPlatform],
-  );
+  const terminalFindShortcutLabel = isMacPlatform
+    ? TERMINAL_FIND_SHORTCUT_LABEL_MAC
+    : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT;
   const lastAutoSearchKeyRef = React.useRef<string>('');
   const terminalSearchOptions = React.useMemo(
     () => ({
