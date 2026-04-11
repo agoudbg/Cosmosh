@@ -47,7 +47,9 @@ type SSHProps = {
 
 /** Delay used to debounce query-driven xterm search jumps while typing. */
 const TERMINAL_SEARCH_DEBOUNCE_MS = 80;
+/** macOS find shortcut label rendered in terminal context-menu hint slot. */
 const TERMINAL_FIND_SHORTCUT_LABEL_MAC = '⇧⌘F';
+/** Non-macOS find shortcut label rendered in terminal context-menu hint slot. */
 const TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT = 'Ctrl+Shift+F';
 
 /**
@@ -232,7 +234,7 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchQuery, setTerminalSearchQuery] = React.useState<string>('');
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
-  /** Detects macOS platform for platform-specific find shortcut modifiers. */
+  /** Detects macOS so find uses the correct modifier path (Meta vs Ctrl). */
   const isMacOS = window.electron?.platform === 'darwin';
   /** Platform-resolved find shortcut label shown in terminal context menus. */
   const terminalFindShortcutLabel = isMacOS ? TERMINAL_FIND_SHORTCUT_LABEL_MAC : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT;
@@ -475,6 +477,7 @@ const SSH: React.FC<SSHProps> = ({
     }
 
     deferredFindOpenTimeoutRef.current = window.setTimeout(() => {
+      // Clear ref first so cleanup logic remains source-of-truth for pending timer state.
       deferredFindOpenTimeoutRef.current = null;
       openTerminalSearchPalette(seedQuery);
     }, 0);

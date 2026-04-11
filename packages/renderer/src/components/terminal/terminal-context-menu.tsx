@@ -40,7 +40,11 @@ type TerminalContextMenuProps = {
   onCopy: () => void;
   onPaste: () => void;
   onSearchOnline: () => void;
-  /** Called when "Find" is selected; parent flow may defer panel open for focus safety. */
+  /**
+   * Called when "Find" is selected.
+   * Parent may defer opening to next macrotask so menu-close focus restore
+   * does not steal focus from the search panel input.
+   */
   onFind: () => void;
   onSelectAll: () => void;
   onClearTerminal: () => void;
