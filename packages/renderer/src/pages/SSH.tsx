@@ -48,7 +48,7 @@ type SSHProps = {
 /** Delay used to debounce query-driven xterm search jumps while typing. */
 const TERMINAL_SEARCH_DEBOUNCE_MS = 80;
 const TERMINAL_FIND_SHORTCUT_LABEL_MAC = '⇧⌘F';
-const TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT = 'Ctrl+Shift+F';
+const TERMINAL_FIND_SHORTCUT_LABEL_WIN_LINUX = 'Ctrl+Shift+F';
 
 /**
  * SSH page that orchestrates terminal lifecycle, websocket sessions,
@@ -233,11 +233,9 @@ const SSH: React.FC<SSHProps> = ({
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
   /** Resolves platform-specific modifier behavior for find shortcuts. */
-  const isMacPlatform = window.electron?.platform === 'darwin';
+  const isMacOS = window.electron?.platform === 'darwin';
   /** Platform-resolved find shortcut label shown in terminal context menus. */
-  const terminalFindShortcutLabel = isMacPlatform
-    ? TERMINAL_FIND_SHORTCUT_LABEL_MAC
-    : TERMINAL_FIND_SHORTCUT_LABEL_DEFAULT;
+  const terminalFindShortcutLabel = isMacOS ? TERMINAL_FIND_SHORTCUT_LABEL_MAC : TERMINAL_FIND_SHORTCUT_LABEL_WIN_LINUX;
   const lastAutoSearchKeyRef = React.useRef<string>('');
   const terminalSearchOptions = React.useMemo(
     () => ({
@@ -460,9 +458,9 @@ const SSH: React.FC<SSHProps> = ({
    */
   const hasFindShortcutModifier = React.useCallback(
     (event: KeyboardEvent): boolean => {
-      return isMacPlatform ? event.metaKey : event.ctrlKey;
+      return isMacOS ? event.metaKey : event.ctrlKey;
     },
-    [isMacPlatform],
+    [isMacOS],
   );
 
   const handleContextMenuFind = React.useCallback(() => {
