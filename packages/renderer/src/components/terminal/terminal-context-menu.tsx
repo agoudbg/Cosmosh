@@ -79,6 +79,12 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
 }) => {
   const triggerHostRef = React.useRef<HTMLDivElement | null>(null);
   const menuContentRef = React.useRef<HTMLDivElement | null>(null);
+  /**
+   * Tracks whether menu close should skip focus restoration to trigger host.
+   * This is set by the Find action so the terminal does not reclaim focus while
+   * the command-palette search input is opening.
+   */
+  const preventCloseAutoFocusRef = React.useRef<boolean>(false);
 
   // Track whether the system clipboard contains text. Checked lazily on each
   // menu open to avoid polling. Defaults to true so that the item renders
@@ -87,6 +93,10 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
   const [clipboardHasContent, setClipboardHasContent] = React.useState(true);
 
   const handleOpenChange = React.useCallback((open: boolean): void => {
+    if (!open) {
+      preventCloseAutoFocusRef.current = false;
+    }
+
     if (!open) {
       return;
     }
@@ -101,6 +111,32 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
         // rather than falsely disabling the item.
         setClipboardHasContent(true);
       });
+  }, []);
+
+  /**
+   * Handles Find selection and marks this menu close cycle to skip trigger
+   * auto-focus restoration so focus can remain on search input.
+   *
+   * @returns Nothing.
+   */
+  const handleFindSelect = React.useCallback((): void => {
+    preventCloseAutoFocusRef.current = true;
+    onFind();
+  }, [onFind]);
+
+  /**
+   * Suppresses Radix trigger auto-focus restoration after Find selection.
+   *
+   * @param event Focus event emitted during menu close.
+   * @returns Nothing.
+   */
+  const handleCloseAutoFocus = React.useCallback((event: Event): void => {
+    if (!preventCloseAutoFocusRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    preventCloseAutoFocusRef.current = false;
   }, []);
 
   React.useEffect(() => {
@@ -149,7 +185,10 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
           {children}
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent ref={menuContentRef}>
+      <ContextMenuContent
+        ref={menuContentRef}
+        onCloseAutoFocus={handleCloseAutoFocus}
+      >
         {/* Copy is only useful when there is an active terminal selection. */}
         <ContextMenuItem
           icon={Copy}
@@ -181,7 +220,7 @@ const TerminalContextMenu: React.FC<TerminalContextMenuProps> = ({
 
         <ContextMenuItem
           icon={ScanSearch}
-          onSelect={onFind}
+          onSelect={handleFindSelect}
         >
           {findLabel}
           {findShortcutLabel ? <ContextMenuShortcut>{findShortcutLabel}</ContextMenuShortcut> : null}
