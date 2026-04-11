@@ -12,28 +12,32 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'default', padding = 'default', type = 'button', ...props }, ref) => (
-    <button
-      ref={ref}
-      type={type}
-      data-button-variant={variant}
-      data-button-padding={padding}
-      className={classNames(
-        variant === 'ghost'
-          ? formStyles.buttonGhost
-          : variant === 'ghostIcon'
+  ({ className, variant = 'default', padding = 'default', type = 'button', ...props }, ref) => {
+    const isIconVariant = variant === 'icon' || variant === 'ghostIcon';
+
+    return (
+      <button
+        ref={ref}
+        type={type}
+        data-button-variant={variant}
+        data-button-padding={padding}
+        className={classNames(
+          variant === 'ghost'
             ? formStyles.buttonGhost
-            : variant === 'inverted'
-              ? formStyles.buttonInverted
-              : formStyles.button,
-        (variant === 'icon' || variant === 'ghostIcon') && 'h-[34px] w-[34px] flex-shrink-0 p-0',
-        padding === 'mid' && variant !== 'icon' && 'px-[15px]',
-        padding === 'wide' && variant !== 'icon' && 'px-[18px]',
-        className,
-      )}
-      {...props}
-    />
-  ),
+            : variant === 'ghostIcon'
+              ? formStyles.buttonGhost
+              : variant === 'inverted'
+                ? formStyles.buttonInverted
+                : formStyles.button,
+          isIconVariant && 'h-[34px] w-[34px] flex-shrink-0 p-0',
+          padding === 'mid' && variant !== 'icon' && 'px-[15px]',
+          padding === 'wide' && variant !== 'icon' && 'px-[18px]',
+          className,
+        )}
+        {...props}
+      />
+    );
+  },
 );
 Button.displayName = 'Button';
 
