@@ -28,6 +28,7 @@ flowchart LR
 - 应用启动阶段并行拉起 BrowserWindow 与 backend 预热流程。
 - 维护单例的后端启动中的 Promise，避免并发触发重复拉起。
 - Main 到 backend 的代理请求会在转发前确保 backend 已就绪。
+- 启动诊断会追加写入 Electron `userData/logs` 下的 `startup.log`；main 记录 app/window/backend 就绪耗时，将 backend stdout/stderr 汇总到同一文件，并在日志达到 1 MiB 时轮转。
 - 在开发启动路径中，Main 采用增量预检（`packages/main/scripts/dev-preflight.cjs`），当产物是最新时会跳过 `@cosmosh/api-contract` / `@cosmosh/i18n` 的重复构建。
 - Main 会以仅运行时且非 watch 的命令（`dev:runtime`）拉起 backend，避免嵌套 `predev` 重构建并降低笔记本持续风扇噪音。
 - 持有应用级能力：语言持久化（内存）、窗口/开发者工具/文件管理器操作。
@@ -42,6 +43,7 @@ flowchart LR
 - Windows 终止信号（`SIGBREAK`）与 POSIX 信号共用同一路径，降低数据库文件锁残留概率。
 - 本地终端 profile 发现改为短时内存缓存 + 并行探测，降低 Home/Settings 首次加载时重复扫描带来的等待。
 - 启动阶段在 `initializeDatabase(...)` 内执行幂等 Prisma migration 文件同步，因此无论是安装后首次启动还是后续每次启动，都会在开放 HTTP 路由前将本地数据库结构收敛到当前后端契约。
+- Backend 启动会输出粗粒度 bootstrap timing，以及数据库初始化阶段 timing，包括安全目录/文件准备、SQLCipher bootstrap、Prisma connect、PRAGMA 应用与 schema 同步。
 - 简单的 Prisma `ALTER TABLE ... ADD COLUMN` migration 会先对照实时 SQLite 表元数据；若列已存在但 `_prisma_migrations` 缺少记录，启动会补记该 migration，而不是再次执行重复 DDL；非简单 migration 漂移仍然快速失败。
 - Schema 同步采用快速失败策略：若运行时 migration 执行后仍无法满足必需表结构，backend 将中止启动，避免 API 进入部分可用/行为不确定状态。
 - migration 台账元数据采用与 Prisma 兼容的 `_prisma_migrations` 结构，便于后续平滑切换到原生 `prisma migrate deploy/resolve` 工作流。

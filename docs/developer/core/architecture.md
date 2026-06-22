@@ -28,6 +28,7 @@ flowchart LR
 - Starts BrowserWindow and backend warmup in parallel during app bootstrap.
 - Keeps a single in-flight backend startup promise to deduplicate concurrent startup triggers.
 - Main-process backend proxy requests now ensure backend readiness before forwarding HTTP calls.
+- Startup diagnostics are appended to `startup.log` under Electron `userData/logs`; main records app/window/backend readiness timing, mirrors backend stdout/stderr into the same file, and rotates the log at 1 MiB.
 - In development startup, main uses an incremental preflight (`packages/main/scripts/dev-preflight.cjs`) and skips `@cosmosh/api-contract` / `@cosmosh/i18n` rebuilds when outputs are fresh.
 - Main launches backend with a runtime-only non-watch command (`dev:runtime`) to avoid duplicate `predev` rebuilds and reduce sustained CPU noise on laptops.
 - Owns app-level capabilities: locale persistence (in-memory), window/devtools/file-manager actions.
@@ -42,6 +43,7 @@ flowchart LR
 - Windows-specific termination (`SIGBREAK`) is handled in the same path as POSIX signals to reduce stale DB lock cases.
 - Local terminal profile discovery now uses short-lived in-memory caching and parallel probing, reducing repeated profile scan latency on Home/Settings first-load paths.
 - Startup includes idempotent Prisma migration-file execution in `initializeDatabase(...)`, so first install launch and every subsequent launch both converge local DB structure to the current backend schema contract before serving HTTP routes.
+- Backend startup emits coarse bootstrap timing plus database initialization phase timing for secure directory/file preparation, SQLCipher bootstrap, Prisma connect, PRAGMA application, and schema synchronization.
 - Simple Prisma `ALTER TABLE ... ADD COLUMN` migrations are reconciled against live SQLite table metadata before execution. If a column already exists but `_prisma_migrations` lacks the row, startup records the migration as applied instead of re-running duplicate DDL; non-simple migration drift still fails fast.
 - Schema sync is fail-fast: backend startup stops when required tables still cannot be reconciled after runtime migration execution, preventing partial/undefined API behavior.
 - Migration ledger metadata is stored in Prisma-compatible `_prisma_migrations` format to keep a future path open for native `prisma migrate deploy/resolve` workflows.

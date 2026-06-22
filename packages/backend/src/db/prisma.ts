@@ -123,6 +123,16 @@ let initializingClientPromise: Promise<PrismaClientType> | null = null;
 let cachedSqlCipherDriver: BetterSqlite3LikeConstructor | null | undefined;
 
 /**
+ * Formats elapsed database startup timing in milliseconds.
+ *
+ * @param startedAt Epoch millisecond timestamp captured before the measured work.
+ * @returns Human-readable elapsed duration in milliseconds.
+ */
+const formatDbElapsedMs = (startedAt: number): string => {
+  return `${Date.now() - startedAt}ms`;
+};
+
+/**
  * Lazily resolves the optional SQLCipher-capable sqlite driver.
  *
  * @returns SQLCipher driver constructor when available, otherwise null.
@@ -1003,25 +1013,37 @@ const ensureSchema = async (client: PrismaClientType): Promise<void> => {
  */
 export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOptions): Promise<PrismaClientType> => {
   if (prismaClient) {
+    console.log('[startup][backend][db] Reusing initialized Prisma client.');
     return prismaClient;
   }
 
   if (initializingClientPromise) {
-    return initializingClientPromise;
+    const awaitExistingStartedAt = Date.now();
+    const client = await initializingClientPromise;
+    console.log(
+      `[startup][backend][db] Reused in-flight database initialization after ${formatDbElapsedMs(awaitExistingStartedAt)}.`,
+    );
+    return client;
   }
 
   initializingClientPromise = (async () => {
+    const initializationStartedAt = Date.now();
+    console.log(`[startup][backend][db] initializeDatabase begin. runtimeMode=${runtimeMode}.`);
     let databaseFilePath: string;
     let databaseKey: string;
 
     try {
+      const pathStartedAt = Date.now();
       databaseFilePath = getDatabasePath();
+      console.log(`[startup][backend][db] Database path resolved in ${formatDbElapsedMs(pathStartedAt)}.`);
     } catch (error: unknown) {
       withDbError('DB_PATH_RESOLVE_FAILED', 'Failed to resolve database path.', { runtimeMode }, error);
     }
 
     try {
+      const keyStartedAt = Date.now();
       databaseKey = getDatabaseEncryptionKey();
+      console.log(`[startup][backend][db] Database key resolved in ${formatDbElapsedMs(keyStartedAt)}.`);
     } catch (error: unknown) {
       withDbError('DB_KEY_RESOLVE_FAILED', 'Failed to resolve database encryption key.', { runtimeMode }, error);
     }
@@ -1030,7 +1052,11 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
     const databaseUrl = toPrismaSqliteUrl(databaseFilePath!);
 
     try {
+      const directoryStartedAt = Date.now();
       await ensureSecureDirectory(databaseDirPath);
+      console.log(
+        `[startup][backend][db] Secure database directory prepared in ${formatDbElapsedMs(directoryStartedAt)}.`,
+      );
     } catch (error: unknown) {
       withDbError(
         'DB_DIRECTORY_PREPARE_FAILED',
@@ -1041,7 +1067,9 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
     }
 
     try {
+      const fileStartedAt = Date.now();
       await ensureSecureFile(databaseFilePath!);
+      console.log(`[startup][backend][db] Secure database file prepared in ${formatDbElapsedMs(fileStartedAt)}.`);
     } catch (error: unknown) {
       withDbError(
         'DB_FILE_PREPARE_FAILED',
@@ -1054,12 +1082,16 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
     let sqlCipherEnabled = false;
 
     try {
+      const sqlCipherStartedAt = Date.now();
       if (isDevelopmentRuntime()) {
         ensureDevelopmentPlaintextDatabase(databaseFilePath!, databaseKey!);
         sqlCipherEnabled = false;
       } else {
         sqlCipherEnabled = bootstrapSqlCipher(databaseFilePath!, databaseKey!);
       }
+      console.log(
+        `[startup][backend][db] SQLCipher bootstrap completed in ${formatDbElapsedMs(sqlCipherStartedAt)}. enabled=${sqlCipherEnabled}.`,
+      );
     } catch (error: unknown) {
       withDbError(
         'DB_SQLCIPHER_BOOTSTRAP_FAILED',
@@ -1069,12 +1101,18 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
       );
     }
 
+    const clientCreatedAt = Date.now();
     const client = createPrismaClient(databaseUrl);
+    console.log(`[startup][backend][db] Prisma client created in ${formatDbElapsedMs(clientCreatedAt)}.`);
 
+    const connectStartedAt = Date.now();
     await connectPrismaClient(client, runtimeMode, databaseFilePath!);
+    console.log(`[startup][backend][db] Prisma client connected in ${formatDbElapsedMs(connectStartedAt)}.`);
 
     try {
+      const pragmaStartedAt = Date.now();
       await applyPragmas(client, runtimeMode, databaseKey!, sqlCipherEnabled);
+      console.log(`[startup][backend][db] SQLite pragmas applied in ${formatDbElapsedMs(pragmaStartedAt)}.`);
     } catch (error: unknown) {
       await client.$disconnect();
 
@@ -1087,7 +1125,9 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
     }
 
     try {
+      const schemaStartedAt = Date.now();
       await ensureSchema(client);
+      console.log(`[startup][backend][db] Schema sync completed in ${formatDbElapsedMs(schemaStartedAt)}.`);
     } catch (error: unknown) {
       await client.$disconnect();
       withDbError(
@@ -1099,6 +1139,7 @@ export const initializeDatabase = async ({ runtimeMode }: InitializeDatabaseOpti
     }
 
     prismaClient = client;
+    console.log(`[startup][backend][db] initializeDatabase complete in ${formatDbElapsedMs(initializationStartedAt)}.`);
     return client;
   })();
 

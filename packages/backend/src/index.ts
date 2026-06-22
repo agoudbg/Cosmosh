@@ -91,6 +91,16 @@ if (!credentialEncryptionKeySource) {
 
 const credentialEncryptionKey = createHash('sha256').update(credentialEncryptionKeySource).digest();
 
+/**
+ * Formats elapsed backend startup timing in milliseconds.
+ *
+ * @param startedAt Epoch millisecond timestamp captured before the measured work.
+ * @returns Human-readable elapsed duration in milliseconds.
+ */
+const formatStartupElapsedMs = (startedAt: number): string => {
+  return `${Date.now() - startedAt}ms`;
+};
+
 let dbClient: PrismaClient | null = null;
 
 /**
@@ -214,17 +224,29 @@ const registerShutdownHooks = (): void => {
  * 3) Start HTTP listener
  */
 const bootstrap = async (): Promise<void> => {
+  const bootstrapStartedAt = Date.now();
+  console.log(`[startup][backend] Bootstrap begin. runtimeMode=${runtimeMode}.`);
+
+  const i18nStartedAt = Date.now();
   disableI18nHotReload = await enableI18nDevHotReload({ localeRootDir: i18nLocaleRootDir });
+  console.log(`[startup][backend] i18n hot reload setup completed in ${formatStartupElapsedMs(i18nStartedAt)}.`);
 
   // Database initialization is intentionally done before starting the HTTP server,
   // so runtime fails fast when persistence is not ready.
+  const databaseStartedAt = Date.now();
   dbClient = await initializeDatabase({ runtimeMode });
+  console.log(`[startup][backend] Database initialization returned in ${formatStartupElapsedMs(databaseStartedAt)}.`);
+
+  const serviceConstructionStartedAt = Date.now();
   auditEventService = new AuditEventService({
     getDbClient,
   });
 
   const sshWebSocketPort = await findAvailablePort();
   const localTerminalWebSocketPort = await findAvailablePort();
+  console.log(
+    `[startup][backend] WebSocket ports reserved in ${formatStartupElapsedMs(serviceConstructionStartedAt)}.`,
+  );
 
   sshSessionService = new SshSessionService({
     host: '127.0.0.1',
@@ -250,7 +272,11 @@ const bootstrap = async (): Promise<void> => {
     host: '127.0.0.1',
     port: localTerminalWebSocketPort,
   });
+  console.log(
+    `[startup][backend] Session services constructed in ${formatStartupElapsedMs(serviceConstructionStartedAt)}.`,
+  );
 
+  const appComposeStartedAt = Date.now();
   const app = createBackendApp({
     runtimeMode,
     isSecureLocalMode,
@@ -263,11 +289,17 @@ const bootstrap = async (): Promise<void> => {
     portForwardSessionService,
     localTerminalSessionService,
   });
+  console.log(`[startup][backend] Hono app composed in ${formatStartupElapsedMs(appComposeStartedAt)}.`);
 
   console.log(`🚀 Cosmosh Backend starting on http://${BACKEND_BIND_HOST}:${port} (${runtimeMode})`);
+  const shutdownHookStartedAt = Date.now();
   registerShutdownHooks();
+  console.log(`[startup][backend] Shutdown hooks registered in ${formatStartupElapsedMs(shutdownHookStartedAt)}.`);
 
+  const listenStartedAt = Date.now();
   httpServer = startBackendHttpServer(app, port);
+  console.log(`[startup][backend] HTTP server listen invoked in ${formatStartupElapsedMs(listenStartedAt)}.`);
+  console.log(`[startup][backend] Bootstrap complete in ${formatStartupElapsedMs(bootstrapStartedAt)}.`);
 };
 
 /**

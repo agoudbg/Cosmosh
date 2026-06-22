@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import type { Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
@@ -51,6 +52,10 @@ const sftpDownloadTargetAuthorizations = new SftpDownloadTargetAuthorizationRegi
 let isAppShutdownInProgress = false;
 
 let appLocale = resolveLocale(process.env.COSMOSH_LOCALE, 'en');
+const mainProcessStartedAt = Date.now();
+let startupLogPath: string | null = null;
+let startupLogWriteChain: Promise<void> = Promise.resolve();
+let appReadyAt: number | null = null;
 const mainProcessMessages = createMessages({
   en: { main: mainEn },
   'zh-CN': { main: mainZhCN },
@@ -63,6 +68,10 @@ const WINDOWS_TITLE_BAR_OVERLAY_HEIGHT = 50;
 const DOCUMENTATION_URL = 'https://github.com/agoudbg/cosmosh/tree/main/docs';
 const GITHUB_REPOSITORY_URL = 'https://github.com/agoudbg/cosmosh';
 const SFTP_PROPERTIES_WINDOW_ROUTE_PARAM = 'sftp-entry-properties';
+const STARTUP_LOG_DIRECTORY_NAME = 'logs';
+const STARTUP_LOG_FILE_NAME = 'startup.log';
+const STARTUP_LOG_MAX_BYTES = 1024 * 1024;
+const STARTUP_BACKEND_REQUEST_TRACE_WINDOW_MS = 120000;
 
 type TrustedRendererWindowOpenTarget = {
   origin: string;
@@ -427,6 +436,138 @@ const consumePendingLaunchWorkingDirectory = (): string | null => {
   const current = pendingLaunchWorkingDirectory;
   pendingLaunchWorkingDirectory = null;
   return current;
+};
+
+/**
+ * Formats elapsed startup timing in a consistent millisecond representation.
+ *
+ * @param startedAt Epoch millisecond timestamp captured before the measured work.
+ * @returns Human-readable elapsed duration in milliseconds.
+ */
+const formatElapsedMs = (startedAt: number): string => {
+  return `${Date.now() - startedAt}ms`;
+};
+
+/**
+ * Returns the packaged-app startup log path inside userData.
+ *
+ * @returns Absolute log file path for main/backend startup diagnostics.
+ */
+const getStartupLogPath = (): string => {
+  return path.join(app.getPath('userData'), STARTUP_LOG_DIRECTORY_NAME, STARTUP_LOG_FILE_NAME);
+};
+
+/**
+ * Rotates a previous startup log when it grows beyond the diagnostic size cap.
+ *
+ * @param logFilePath Absolute startup log path.
+ * @returns Promise that resolves after rotation is complete.
+ */
+const rotateStartupLogIfNeeded = async (logFilePath: string): Promise<void> => {
+  let stats: Stats;
+
+  try {
+    stats = await fs.stat(logFilePath);
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      return;
+    }
+
+    throw error;
+  }
+
+  if (stats.size <= STARTUP_LOG_MAX_BYTES) {
+    return;
+  }
+
+  await fs.rename(logFilePath, `${logFilePath}.1`).catch(async (error: unknown) => {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      await fs.rm(`${logFilePath}.1`, { force: true });
+      await fs.rename(logFilePath, `${logFilePath}.1`);
+    }
+  });
+};
+
+/**
+ * Initializes the startup log destination and writes a session delimiter.
+ *
+ * @returns Promise that resolves after the log path is ready.
+ */
+const initializeStartupLog = async (): Promise<void> => {
+  const logFilePath = getStartupLogPath();
+  await fs.mkdir(path.dirname(logFilePath), { recursive: true });
+  await rotateStartupLogIfNeeded(logFilePath);
+  startupLogPath = logFilePath;
+  await fs.appendFile(
+    logFilePath,
+    `\n--- Cosmosh startup ${new Date().toISOString()} pid=${process.pid} packaged=${app.isPackaged} ---\n`,
+    'utf8',
+  );
+};
+
+/**
+ * Appends a startup diagnostic line to the on-disk log without blocking callers.
+ *
+ * @param level Log severity label.
+ * @param message Diagnostic message.
+ * @returns void.
+ */
+const appendStartupLogLine = (level: 'INFO' | 'WARN' | 'ERROR', message: string): void => {
+  if (!startupLogPath) {
+    return;
+  }
+
+  const line = `${new Date().toISOString()} [main] [${level}] ${message}\n`;
+  startupLogWriteChain = startupLogWriteChain
+    .catch(() => undefined)
+    .then(() => fs.appendFile(startupLogPath!, line, 'utf8'));
+};
+
+/**
+ * Emits a startup diagnostic message to console and the packaged log file.
+ *
+ * @param message Diagnostic message.
+ * @returns void.
+ */
+const logStartupInfo = (message: string): void => {
+  console.log(message);
+  appendStartupLogLine('INFO', message);
+};
+
+/**
+ * Emits a warning startup diagnostic message to console and the packaged log file.
+ *
+ * @param message Diagnostic message.
+ * @param error Optional original error for console context.
+ * @returns void.
+ */
+const logStartupWarn = (message: string, error?: unknown): void => {
+  if (error === undefined) {
+    console.warn(message);
+  } else {
+    console.warn(message, error);
+  }
+
+  appendStartupLogLine('WARN', `${message}${error === undefined ? '' : ` ${String(error)}`}`);
+};
+
+/**
+ * Emits an error startup diagnostic message to console and the packaged log file.
+ *
+ * @param message Diagnostic message.
+ * @param error Optional original error for console context.
+ * @returns void.
+ */
+const logStartupError = (message: string, error?: unknown): void => {
+  if (error === undefined) {
+    console.error(message);
+  } else {
+    console.error(message, error);
+  }
+
+  appendStartupLogLine('ERROR', `${message}${error === undefined ? '' : ` ${String(error)}`}`);
 };
 
 const resolveBuildTime = async (): Promise<string> => {
@@ -881,19 +1022,44 @@ const startBackendService = async (): Promise<void> => {
   }
 
   if (backendStartupPromise) {
+    const awaitExistingStartedAt = Date.now();
     await backendStartupPromise;
+    logStartupInfo(
+      `[startup][main] Reused in-flight backend startup after ${formatElapsedMs(awaitExistingStartedAt)}.`,
+    );
     return;
   }
 
   backendStartupPromise = (async () => {
+    const backendStartupStartedAt = Date.now();
+    logStartupInfo(`[startup][main] Backend startup begin at +${Date.now() - mainProcessStartedAt}ms.`);
+
+    const databasePathStartedAt = Date.now();
     const databasePath = getDatabasePath();
     const databaseUrl = toPrismaSqliteUrl(databasePath);
+    logStartupInfo(`[startup][main] Database path resolved in ${formatElapsedMs(databasePathStartedAt)}.`);
+
     const token = randomBytes(32).toString('hex');
+    const preparationStartedAt = Date.now();
+    const portPromise = findAvailablePort().then((port) => {
+      logStartupInfo(`[startup][main] Backend port reserved in ${formatElapsedMs(preparationStartedAt)}.`);
+      return port;
+    });
+    const databaseEncryptionKeyPromise = getDatabaseEncryptionKey().then((databaseEncryptionKey) => {
+      logStartupInfo(`[startup][main] Database encryption key resolved in ${formatElapsedMs(preparationStartedAt)}.`);
+      return databaseEncryptionKey;
+    });
+    const secretKeyPromise = resolveBackendSecretKey().then((secretKey) => {
+      logStartupInfo(`[startup][main] Backend secret key resolved in ${formatElapsedMs(preparationStartedAt)}.`);
+      return secretKey;
+    });
     const [port, databaseEncryptionKey, secretKey] = await Promise.all([
-      findAvailablePort(),
-      getDatabaseEncryptionKey(),
-      resolveBackendSecretKey(),
+      portPromise,
+      databaseEncryptionKeyPromise,
+      secretKeyPromise,
     ]);
+    logStartupInfo(`[startup][main] Backend preparation group completed in ${formatElapsedMs(preparationStartedAt)}.`);
+
     const isDev = !app.isPackaged;
     const workspaceRoot = resolveWorkspaceRoot();
     const packagedBackendEntryPath = path.join(
@@ -923,25 +1089,32 @@ const startBackendService = async (): Promise<void> => {
     let backendProcessCwd = workspaceRoot;
 
     if (isDev) {
+      const devDatabaseCheckStartedAt = Date.now();
       const hasExistingDatabase = await fileExists(databasePath);
+      logStartupInfo(
+        `[startup][main] Development database existence check completed in ${formatElapsedMs(devDatabaseCheckStartedAt)}.`,
+      );
 
       if (!hasExistingDatabase) {
-        console.log('[backend:init] Preparing development database schema...');
+        logStartupInfo('[backend:init] Preparing development database schema...');
+        const dbPushStartedAt = Date.now();
         await runCommand('pnpm --filter @cosmosh/backend run db:push', {
           cwd: workspaceRoot,
           env: backendEnv,
           logPrefix: '[backend:init]',
           shell: true,
         });
-        console.log('[backend:init] Development database schema is ready.');
+        logStartupInfo(`[backend:init] Development database schema is ready in ${formatElapsedMs(dbPushStartedAt)}.`);
       } else {
-        console.log(
+        logStartupInfo(
           '[backend:init] Development database exists. Skipping prisma db:push to avoid encrypted DB mismatch.',
         );
       }
 
       const backendDevEntryPath = path.join(workspaceRoot, 'packages', 'backend', 'src', 'index.ts');
+      const entryAccessStartedAt = Date.now();
       await fs.access(backendDevEntryPath);
+      logStartupInfo(`[startup][main] Development backend entry verified in ${formatElapsedMs(entryAccessStartedAt)}.`);
       backendProcessCwd = path.join(workspaceRoot, 'packages', 'backend');
 
       // Launch backend as a direct child process to guarantee deterministic shutdown on Windows.
@@ -952,7 +1125,9 @@ const startBackendService = async (): Promise<void> => {
       backendEnv.ELECTRON_RUN_AS_NODE = '1';
       backendEnv.NODE_ENV = 'development';
     } else {
+      const entryAccessStartedAt = Date.now();
       await fs.access(packagedBackendEntryPath);
+      logStartupInfo(`[startup][main] Packaged backend entry verified in ${formatElapsedMs(entryAccessStartedAt)}.`);
       command = process.execPath;
       args = [packagedBackendEntryPath];
       backendProcessCwd = process.resourcesPath;
@@ -960,6 +1135,7 @@ const startBackendService = async (): Promise<void> => {
       backendEnv.NODE_ENV = 'production';
     }
 
+    const spawnStartedAt = Date.now();
     const spawnedBackendProcess = spawn(command, args, {
       cwd: backendProcessCwd,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -969,20 +1145,26 @@ const startBackendService = async (): Promise<void> => {
     });
 
     backendProcess = spawnedBackendProcess;
-    console.log(
-      `[backend] Backend process started. Awaiting health check on http://127.0.0.1:${port}${API_PATHS.health}`,
+    logStartupInfo(
+      `[backend] Backend process started in ${formatElapsedMs(spawnStartedAt)} (pid=${spawnedBackendProcess.pid ?? 'unknown'}). Awaiting health check on http://127.0.0.1:${port}${API_PATHS.health}`,
     );
 
     spawnedBackendProcess.stdout.on('data', (chunk: Buffer) => {
-      console.log(`[backend] ${chunk.toString().trim()}`);
+      const message = chunk.toString().trim();
+      if (message.length > 0) {
+        logStartupInfo(`[backend] ${message}`);
+      }
     });
 
     spawnedBackendProcess.stderr.on('data', (chunk: Buffer) => {
-      console.error(`[backend] ${chunk.toString().trim()}`);
+      const message = chunk.toString().trim();
+      if (message.length > 0) {
+        logStartupError(`[backend] ${message}`);
+      }
     });
 
     spawnedBackendProcess.once('exit', (code, signal) => {
-      console.warn(`Backend process exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
+      logStartupWarn(`Backend process exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
       backendProcess = null;
       backendPort = null;
       backendToken = null;
@@ -994,10 +1176,12 @@ const startBackendService = async (): Promise<void> => {
       () => spawnedBackendProcess.exitCode === null && !spawnedBackendProcess.killed,
       resolveBackendHealthCheckTimeoutMs(isDev),
     );
-    console.log(`[backend] Health check passed in ${Date.now() - healthCheckStartedAt}ms.`);
+    logStartupInfo(`[backend] Health check passed in ${formatElapsedMs(healthCheckStartedAt)}.`);
     backendPort = port;
     backendToken = token;
-    console.log(`Backend service is ready on http://127.0.0.1:${port}`);
+    logStartupInfo(
+      `[startup][main] Backend startup complete in ${formatElapsedMs(backendStartupStartedAt)} at http://127.0.0.1:${port}.`,
+    );
   })();
 
   try {
@@ -1045,7 +1229,16 @@ const requestBackend = async <TSuccess>(
     body?: unknown;
   },
 ): Promise<TSuccess | ApiErrorResponse> => {
+  const shouldTraceStartupRequest = Date.now() - mainProcessStartedAt <= STARTUP_BACKEND_REQUEST_TRACE_WINDOW_MS;
+  const requestStartedAt = Date.now();
+  const backendReadyStartedAt = Date.now();
   await startBackendService();
+
+  if (shouldTraceStartupRequest) {
+    logStartupInfo(
+      `[startup][main] Backend ready wait for ${options.method} ${path} completed in ${formatElapsedMs(backendReadyStartedAt)}.`,
+    );
+  }
 
   const createBackendTransportError = (message: string): ApiErrorResponse => {
     return createApiError({
@@ -1064,6 +1257,7 @@ const requestBackend = async <TSuccess>(
     headers['Content-Type'] = 'application/json';
   }
 
+  const httpStartedAt = Date.now();
   const response = await fetch(`http://127.0.0.1:${port}${path}`, {
     method: options.method,
     headers,
@@ -1071,6 +1265,12 @@ const requestBackend = async <TSuccess>(
   });
 
   const responseText = await response.text();
+
+  if (shouldTraceStartupRequest) {
+    logStartupInfo(
+      `[startup][main] Backend HTTP ${options.method} ${path} status=${response.status} http=${formatElapsedMs(httpStartedAt)} total=${formatElapsedMs(requestStartedAt)}.`,
+    );
+  }
 
   if (!responseText) {
     if (response.ok) {
@@ -1190,9 +1390,11 @@ const registerRendererWindowOpenPolicy = (
  * Creates the primary desktop window and loads renderer entry according to runtime mode.
  */
 const createWindow = async (): Promise<void> => {
+  const createWindowStartedAt = Date.now();
   const isDev = !app.isPackaged;
   const preloadPath = path.join(__dirname, 'preload.js');
 
+  logStartupInfo(`[startup][main] createWindow begin at +${Date.now() - mainProcessStartedAt}ms.`);
   mainWindow = new BrowserWindow({
     title: getMainI18n().t('app.title'),
     width: 1200,
@@ -1222,14 +1424,21 @@ const createWindow = async (): Promise<void> => {
 
   // Load renderer based on environment
   if (isDev) {
+    const rendererLoadStartedAt = Date.now();
     await mainWindow.loadURL(`http://localhost:${resolveRendererDevPort()}`);
+    logStartupInfo(`[startup][main] Renderer dev URL loaded in ${formatElapsedMs(rendererLoadStartedAt)}.`);
     mainWindow.webContents.openDevTools();
   } else {
     const rendererEntryPath = path.join(process.resourcesPath, 'renderer', 'index.html');
+    const rendererEntryAccessStartedAt = Date.now();
     await fs.access(rendererEntryPath);
+    logStartupInfo(`[startup][main] Renderer entry verified in ${formatElapsedMs(rendererEntryAccessStartedAt)}.`);
+    const rendererLoadStartedAt = Date.now();
     await mainWindow.loadFile(rendererEntryPath);
+    logStartupInfo(`[startup][main] Renderer file loaded in ${formatElapsedMs(rendererLoadStartedAt)}.`);
   }
 
+  logStartupInfo(`[startup][main] createWindow complete in ${formatElapsedMs(createWindowStartedAt)}.`);
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -1268,30 +1477,51 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     try {
+      appReadyAt = Date.now();
+      await initializeStartupLog();
+      logStartupInfo(
+        `[startup][main] Electron app ready at +${appReadyAt - mainProcessStartedAt}ms. Startup log: ${startupLogPath ?? 'unavailable'}`,
+      );
+
+      const applicationMenuStartedAt = Date.now();
       installApplicationMenu();
+      logStartupInfo(`[startup][main] Application menu installed in ${formatElapsedMs(applicationMenuStartedAt)}.`);
+
+      const cliCommandStartedAt = Date.now();
       await ensureMacOsCliCommand();
+      logStartupInfo(`[startup][main] CLI command check completed in ${formatElapsedMs(cliCommandStartedAt)}.`);
+
+      const workingDirectoryStartedAt = Date.now();
       setPendingLaunchWorkingDirectory(await resolveWorkingDirectoryFromArgv(process.argv));
+      logStartupInfo(
+        `[startup][main] Launch working directory resolved in ${formatElapsedMs(workingDirectoryStartedAt)}.`,
+      );
 
       if (!app.isPackaged) {
+        const i18nHotReloadStartedAt = Date.now();
         disableI18nHotReload = await enableI18nDevHotReload({
           localeRootDir: path.join(resolveWorkspaceRoot(), 'packages', 'i18n', 'locales'),
           resources: mainProcessMessages,
           scopes: ['main'],
         });
+        logStartupInfo(`[startup][main] Main i18n hot reload enabled in ${formatElapsedMs(i18nHotReloadStartedAt)}.`);
       }
 
+      const parallelStartupStartedAt = Date.now();
       const windowStartupTask = createWindow();
       const backendStartupTask = startBackendService();
       await windowStartupTask;
+      logStartupInfo(`[startup][main] Window startup task resolved in ${formatElapsedMs(parallelStartupStartedAt)}.`);
       await backendStartupTask;
+      logStartupInfo(`[startup][main] Backend startup task resolved in ${formatElapsedMs(parallelStartupStartedAt)}.`);
     } catch (error) {
-      console.error('Failed to start Cosmosh application.', error);
+      logStartupError('Failed to start Cosmosh application.', error);
       showStartupFailureDialog(error);
       app.quit();
       return;
     }
 
-    console.log('Main window is ready');
+    logStartupInfo(`[startup][main] Main window is ready at +${Date.now() - mainProcessStartedAt}ms.`);
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
