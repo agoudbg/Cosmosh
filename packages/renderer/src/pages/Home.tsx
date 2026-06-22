@@ -144,6 +144,9 @@ type HomeViewPreference = {
   groupMode: GroupMode;
   sortMode: SortMode;
 };
+type HomeDataResourceKey = 'folders' | 'servers' | 'keychains' | 'localTerminalProfiles' | 'portForwardRules';
+type HomeDataLoadingState = Record<HomeDataResourceKey, boolean>;
+type HomeDataErrorState = Partial<Record<HomeDataResourceKey, string>>;
 
 type ServerGroup = {
   key: string;
@@ -216,6 +219,13 @@ const DEFAULT_HOME_VIEW_PREFERENCES: Record<HomeMode, HomeViewPreference> = {
     sortMode: 'lastUsed',
   },
 };
+const HOME_DATA_LOADING_STARTED_STATE: HomeDataLoadingState = {
+  folders: true,
+  servers: true,
+  keychains: true,
+  localTerminalProfiles: true,
+  portForwardRules: true,
+};
 
 const homeModeEntityKindMap: Record<HomeMode, HomeEntityKind> = {
   ssh: 'server',
@@ -240,6 +250,34 @@ const homeModeItems: Array<{ value: HomeMode; icon: React.ComponentType<{ classN
     labelKey: 'home.modePortForwarding',
   },
 ];
+
+/**
+ * Converts an unknown Home data load failure into a user-facing message.
+ *
+ * @param error Error thrown by a backend list request.
+ * @param fallbackMessage Message used when the thrown value has no readable message.
+ * @returns Displayable error message for the active Home surface.
+ */
+const resolveHomeDataErrorMessage = (error: unknown, fallbackMessage: string): string => {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return fallbackMessage;
+};
+
+/**
+ * Removes a stale resource error after that resource loads successfully.
+ *
+ * @param errors Existing resource error map.
+ * @param resourceKey Resource whose error should be cleared.
+ * @returns New error map without the resource-specific error.
+ */
+const clearHomeDataError = (errors: HomeDataErrorState, resourceKey: HomeDataResourceKey): HomeDataErrorState => {
+  const nextErrors = { ...errors };
+  delete nextErrors[resourceKey];
+  return nextErrors;
+};
 
 /**
  * Checks whether a tag is the internal "favorite" tag.
@@ -1262,8 +1300,8 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, isActive }) => {
   const [folders, setFolders] = React.useState<SshFolder[]>([]);
   const [portForwardRules, setPortForwardRules] = React.useState<PortForwardRuleListItem[]>([]);
   const [localTerminalProfiles, setLocalTerminalProfiles] = React.useState<LocalTerminalProfile[]>([]);
-  const [isLoading, setIsLoading] = React.useState<boolean>(true);
-  const [errorMessage, setErrorMessage] = React.useState<string>('');
+  const [homeDataLoading, setHomeDataLoading] = React.useState<HomeDataLoadingState>(HOME_DATA_LOADING_STARTED_STATE);
+  const [homeDataErrors, setHomeDataErrors] = React.useState<HomeDataErrorState>({});
   const [activeFolderId, setActiveFolderId] = React.useState<string>('all');
   const [activeTag, setActiveTag] = React.useState<string>('all');
   const [search, setSearch] = React.useState<string>('');
@@ -1300,6 +1338,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, isActive }) => {
   const [draggingServerId, setDraggingServerId] = React.useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = React.useState<string | null>(null);
   const previousIsActiveRef = React.useRef<boolean>(isActive);
+  const homeDataLoadSequenceRef = React.useRef<number>(0);
   const sshViewPreference = viewPreferences.ssh;
   const keychainViewPreference = viewPreferences.keychains;
   const portForwardingViewPreference = viewPreferences.portForwarding;
@@ -1319,34 +1358,81 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, isActive }) => {
     [activeHomeMode],
   );
 
-  const reloadHomeData = React.useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage('');
+  const reloadHomeData = React.useCallback((): void => {
+    const loadSequence = homeDataLoadSequenceRef.current + 1;
+    homeDataLoadSequenceRef.current = loadSequence;
+    setHomeDataLoading(HOME_DATA_LOADING_STARTED_STATE);
+    setHomeDataErrors({});
 
-    try {
-      const [
-        foldersResponse,
-        serversResponse,
-        keychainsResponse,
-        localTerminalProfilesResponse,
-        portForwardRulesResponse,
-      ] = await Promise.all([
-        listSshFolders(),
-        listSshServers(),
-        listSshKeychains(),
-        listLocalTerminalProfiles(),
-        listPortForwardRules(),
-      ]);
-      setFolders(foldersResponse.data.items);
-      setServers(serversResponse.data.items);
-      setKeychains(filterSharedKeychains(keychainsResponse.data.items));
-      setLocalTerminalProfiles(localTerminalProfilesResponse.data.items);
-      setPortForwardRules(portForwardRulesResponse.data.items);
-    } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to load home data.');
-    } finally {
-      setIsLoading(false);
+    const isCurrentLoad = (): boolean => homeDataLoadSequenceRef.current === loadSequence;
+
+    function loadHomeResource<Response>(
+      resourceKey: HomeDataResourceKey,
+      request: () => Promise<Response>,
+      onSuccess: (response: Response) => void,
+      fallbackMessage: string,
+    ): void {
+      void request()
+        .then((response) => {
+          if (!isCurrentLoad()) {
+            return;
+          }
+
+          onSuccess(response);
+          setHomeDataErrors((previousErrors) => clearHomeDataError(previousErrors, resourceKey));
+        })
+        .catch((error: unknown) => {
+          if (!isCurrentLoad()) {
+            return;
+          }
+
+          setHomeDataErrors((previousErrors) => ({
+            ...previousErrors,
+            [resourceKey]: resolveHomeDataErrorMessage(error, fallbackMessage),
+          }));
+        })
+        .finally(() => {
+          if (!isCurrentLoad()) {
+            return;
+          }
+
+          setHomeDataLoading((previousLoading) => ({
+            ...previousLoading,
+            [resourceKey]: false,
+          }));
+        });
     }
+
+    loadHomeResource(
+      'folders',
+      listSshFolders,
+      (foldersResponse) => setFolders(foldersResponse.data.items),
+      'Failed to load SSH folders.',
+    );
+    loadHomeResource(
+      'servers',
+      listSshServers,
+      (serversResponse) => setServers(serversResponse.data.items),
+      'Failed to load SSH servers.',
+    );
+    loadHomeResource(
+      'keychains',
+      listSshKeychains,
+      (keychainsResponse) => setKeychains(filterSharedKeychains(keychainsResponse.data.items)),
+      'Failed to load SSH keychains.',
+    );
+    loadHomeResource(
+      'localTerminalProfiles',
+      listLocalTerminalProfiles,
+      (localTerminalProfilesResponse) => setLocalTerminalProfiles(localTerminalProfilesResponse.data.items),
+      'Failed to load local terminal profiles.',
+    );
+    loadHomeResource(
+      'portForwardRules',
+      listPortForwardRules,
+      (portForwardRulesResponse) => setPortForwardRules(portForwardRulesResponse.data.items),
+      'Failed to load port forwarding rules.',
+    );
   }, []);
 
   /**
@@ -2809,6 +2895,23 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, isActive }) => {
       isScopeFilter: tagName === 'all',
     }));
   }, [selectedGroupName, tags]);
+  const sshContentLoading =
+    activeFolderId === LOCAL_TERMINAL_FOLDER_ID ? homeDataLoading.localTerminalProfiles : homeDataLoading.servers;
+  const sshContentErrorMessage =
+    activeFolderId === LOCAL_TERMINAL_FOLDER_ID ? homeDataErrors.localTerminalProfiles : homeDataErrors.servers;
+  const activeHomeContentLoading =
+    activeHomeMode === 'portForwarding'
+      ? homeDataLoading.portForwardRules
+      : activeHomeMode === 'keychains'
+        ? homeDataLoading.keychains
+        : sshContentLoading;
+  const activeHomeContentErrorMessage =
+    activeHomeMode === 'portForwarding'
+      ? homeDataErrors.portForwardRules
+      : activeHomeMode === 'keychains'
+        ? homeDataErrors.keychains
+        : sshContentErrorMessage;
+  const canRenderActiveHomeContent = !activeHomeContentErrorMessage;
 
   return (
     <SplitWorkbenchLayout
@@ -3126,10 +3229,12 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, isActive }) => {
           }
           body={
             <>
-              {isLoading ? <div className="text-home-text-subtle">{t('home.loading')}</div> : null}
-              {errorMessage ? <div className="text-form-message-error">{errorMessage}</div> : null}
+              {activeHomeContentLoading ? <div className="text-home-text-subtle">{t('home.loading')}</div> : null}
+              {activeHomeContentErrorMessage ? (
+                <div className="text-form-message-error">{activeHomeContentErrorMessage}</div>
+              ) : null}
 
-              {!isLoading && !errorMessage ? (
+              {canRenderActiveHomeContent ? (
                 activeHomeMode === 'portForwarding' ? (
                   <HomePortForwardingContent
                     groups={groupedPortForwardRules}
@@ -3186,8 +3291,8 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, isActive }) => {
                 )
               ) : null}
 
-              {!isLoading &&
-              !errorMessage &&
+              {!homeDataLoading.servers &&
+              !homeDataErrors.servers &&
               activeHomeMode === 'ssh' &&
               activeFolderId !== LOCAL_TERMINAL_FOLDER_ID &&
               filteredServers.length === 0 ? (
@@ -3197,8 +3302,8 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, isActive }) => {
                 />
               ) : null}
 
-              {!isLoading &&
-              !errorMessage &&
+              {!homeDataLoading.localTerminalProfiles &&
+              !homeDataErrors.localTerminalProfiles &&
               activeHomeMode === 'ssh' &&
               activeFolderId === LOCAL_TERMINAL_FOLDER_ID &&
               filteredLocalTerminalProfiles.length === 0 ? (
@@ -3208,7 +3313,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, isActive }) => {
                 />
               ) : null}
 
-              {!isLoading && !errorMessage && activeHomeMode === 'keychains' && filteredKeychains.length === 0 ? (
+              {!homeDataLoading.keychains &&
+              !homeDataErrors.keychains &&
+              activeHomeMode === 'keychains' &&
+              filteredKeychains.length === 0 ? (
                 <HomeEmptyState
                   text={t('sshKeychain.empty')}
                   icon={PackageOpen}
