@@ -10,7 +10,6 @@ import { type RawData } from 'ws';
 
 import { createI18n, type Locale } from '../i18n-bridge.js';
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
-import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import { createLocalPathProvider } from '../terminal/completion/path-providers.js';
 import {
   type CompletionPromptState,
@@ -387,6 +386,7 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
         shouldSuggestSecret: false,
       },
       t: i18n.t,
+      locale: input.locale,
       socket: null,
       disposed: false,
     };
@@ -506,6 +506,8 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
           ? `${process.env.HOME || session.completionWorkingDirectory}${hintedCwd.slice(1)}`
           : session.completionWorkingDirectory;
 
+    const [{ localizeTerminalCompletionItems, resolveTerminalCompletions }, { resolveInshellisenseDescription }] =
+      await Promise.all([import('../terminal/completion/engine.js'), import('../terminal/completion/descriptions.js')]);
     const completionResult = await resolveTerminalCompletions(
       {
         linePrefix: message.linePrefix,
@@ -528,12 +530,17 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
         },
       },
     );
+    const localizedItems = await localizeTerminalCompletionItems(
+      completionResult.items,
+      (key) => session.t(key),
+      (key) => resolveInshellisenseDescription(session.locale, key),
+    );
 
     this.sendServerMessage(session, {
       type: 'completion-response',
       requestId: message.requestId,
       replacePrefixLength: completionResult.replacePrefixLength,
-      items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+      items: localizedItems,
     });
   }
 

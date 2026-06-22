@@ -153,6 +153,7 @@ const createMockSession = (sessionId: string): MockSession => {
     pendingOutputDropCount: 0,
     attachTimeout: setTimeout(() => undefined, 60_000),
     t: ((key: string) => key) as MockSession['t'],
+    locale: 'en',
     socket: null,
     disposed: false,
     telemetryInterval: null,

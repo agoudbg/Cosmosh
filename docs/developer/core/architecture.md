@@ -42,6 +42,7 @@ flowchart LR
 - Shutdown order is explicit: stop WS session services, close HTTP listener, then disconnect Prisma/SQLite handles.
 - Windows-specific termination (`SIGBREAK`) is handled in the same path as POSIX signals to reduce stale DB lock cases.
 - Local terminal profile discovery now uses short-lived in-memory caching and parallel probing, reducing repeated profile scan latency on Home/Settings first-load paths.
+- Generated terminal completion command specs and inshellisense description catalogs are lazy-loaded on the first completion request instead of during backend bootstrap, keeping large generated resources out of the Home/server-list startup path.
 - Startup includes idempotent Prisma migration-file execution in `initializeDatabase(...)`, so first install launch and every subsequent launch both converge local DB structure to the current backend schema contract before serving HTTP routes.
 - Backend startup emits coarse bootstrap timing plus database initialization phase timing for secure directory/file preparation, SQLCipher bootstrap, Prisma connect, PRAGMA application, and schema synchronization.
 - Simple Prisma `ALTER TABLE ... ADD COLUMN` migrations are reconciled against live SQLite table metadata before execution. If a column already exists but `_prisma_migrations` lacks the row, startup records the migration as applied instead of re-running duplicate DDL; non-simple migration drift still fails fast.

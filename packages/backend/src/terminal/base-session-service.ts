@@ -1,6 +1,6 @@
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 
-import { createI18n, type I18nInstance } from '../i18n-bridge.js';
+import { createI18n, type I18nInstance, type Locale } from '../i18n-bridge.js';
 
 /**
  * Minimal common fields required by terminal-like live sessions.
@@ -13,6 +13,7 @@ export type TerminalLiveSessionBase = {
   pendingOutputDropCount: number;
   attachTimeout: NodeJS.Timeout;
   t: I18nInstance['t'];
+  locale: Locale;
   socket: WebSocket | null;
   disposed: boolean;
 };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { resolveTerminalCompletions } from './engine.js';
+import { localizeTerminalCompletionItems, resolveTerminalCompletions } from './engine.js';
 import type { TerminalPathCompletionContext, TerminalPathEntry } from './types.js';
 
 /**
@@ -101,4 +101,46 @@ test('commands without path rules do not invoke path provider', async () => {
 
   assert.equal(invokeCount, 0);
   assert.equal(result.items.length, 0);
+});
+
+test('localizeTerminalCompletionItems uses generated description resolver before backend i18n', async () => {
+  const items = await localizeTerminalCompletionItems(
+    [
+      {
+        id: 'git',
+        label: 'git',
+        insertText: 'git',
+        detail: null,
+        detailI18nKey: 'completion.inshellisenseDescriptions.git_123',
+        source: 'inshellisense',
+        kind: 'command',
+        score: 100,
+      },
+    ],
+    (key) => key,
+    async (key) => (key === 'completion.inshellisenseDescriptions.git_123' ? 'Generated Git description' : null),
+  );
+
+  assert.equal(items[0]?.detail, 'Generated Git description');
+});
+
+test('localizeTerminalCompletionItems falls back to backend labels when generated description is absent', async () => {
+  const items = await localizeTerminalCompletionItems(
+    [
+      {
+        id: 'git',
+        label: 'git',
+        insertText: 'git',
+        detail: null,
+        detailI18nKey: 'completion.inshellisenseDescriptions.git_123',
+        source: 'inshellisense',
+        kind: 'command',
+        score: 100,
+      },
+    ],
+    (key) => (key === 'completion.labels.commandSpec' ? 'Command spec label' : key),
+    async () => null,
+  );
+
+  assert.equal(items[0]?.detail, 'Command spec label');
 });

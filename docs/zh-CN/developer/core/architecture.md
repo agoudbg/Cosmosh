@@ -42,6 +42,7 @@ flowchart LR
 - 关闭顺序固定：先停 WS 会话服务，再关闭 HTTP 监听，最后断开 Prisma/SQLite 连接句柄。
 - Windows 终止信号（`SIGBREAK`）与 POSIX 信号共用同一路径，降低数据库文件锁残留概率。
 - 本地终端 profile 发现改为短时内存缓存 + 并行探测，降低 Home/Settings 首次加载时重复扫描带来的等待。
+- 生成的终端补全命令规格与 inshellisense 描述 catalog 会在第一次补全请求时按需加载，而不是在 backend bootstrap 阶段加载，避免大型生成资源进入 Home/服务器列表启动路径。
 - 启动阶段在 `initializeDatabase(...)` 内执行幂等 Prisma migration 文件同步，因此无论是安装后首次启动还是后续每次启动，都会在开放 HTTP 路由前将本地数据库结构收敛到当前后端契约。
 - Backend 启动会输出粗粒度 bootstrap timing，以及数据库初始化阶段 timing，包括安全目录/文件准备、SQLCipher bootstrap、Prisma connect、PRAGMA 应用与 schema 同步。
 - 简单的 Prisma `ALTER TABLE ... ADD COLUMN` migration 会先对照实时 SQLite 表元数据；若列已存在但 `_prisma_migrations` 缺少记录，启动会补记该 migration，而不是再次执行重复 DDL；非简单 migration 漂移仍然快速失败。

@@ -1008,44 +1008,50 @@ const resolveTerminalCompletionsAsync = async (
   };
 };
 
+type CompletionDescriptionResolver = (key: string) => Promise<string | null>;
+
 /**
- * Localizes completion item detail text using backend i18n translator with safe fallback.
+ * Localizes completion item detail text using backend i18n and lazy generated descriptions.
  */
-export const localizeTerminalCompletionItems = (
+export const localizeTerminalCompletionItems = async (
   items: ReadonlyArray<TerminalCompletionItem>,
   translate: (key: string) => string,
-): TerminalCompletionItem[] => {
-  return items.map((item) => {
-    const translatedDetail = item.detailI18nKey ? translate(item.detailI18nKey) : null;
-    const hasTranslatedDetail =
-      typeof translatedDetail === 'string' && translatedDetail.length > 0 && translatedDetail !== item.detailI18nKey;
-    const fallbackLabelKey =
-      item.source === 'history'
-        ? 'completion.labels.history'
-        : item.source === 'runtime'
-          ? item.kind === 'path'
-            ? 'completion.labels.pathFile'
-            : item.kind === 'secret'
-              ? 'completion.labels.secretFill'
-              : 'completion.labels.commandSpec'
-          : 'completion.labels.commandSpec';
-    const fallbackLabel = translate(fallbackLabelKey);
-    const safeFallbackLabel =
-      typeof fallbackLabel === 'string' && fallbackLabel.length > 0 && fallbackLabel !== fallbackLabelKey
-        ? fallbackLabel
-        : item.source === 'history'
-          ? 'History'
+  resolveDescription: CompletionDescriptionResolver,
+): Promise<TerminalCompletionItem[]> => {
+  return await Promise.all(
+    items.map(async (item) => {
+      const generatedDetail = item.detailI18nKey ? await resolveDescription(item.detailI18nKey) : null;
+      const translatedDetail = generatedDetail ?? (item.detailI18nKey ? translate(item.detailI18nKey) : null);
+      const hasTranslatedDetail =
+        typeof translatedDetail === 'string' && translatedDetail.length > 0 && translatedDetail !== item.detailI18nKey;
+      const fallbackLabelKey =
+        item.source === 'history'
+          ? 'completion.labels.history'
           : item.source === 'runtime'
-            ? item.kind === 'secret'
-              ? 'Fill password'
-              : item.kind === 'path'
-                ? 'File'
-                : 'Runtime'
-            : 'Command spec';
+            ? item.kind === 'path'
+              ? 'completion.labels.pathFile'
+              : item.kind === 'secret'
+                ? 'completion.labels.secretFill'
+                : 'completion.labels.commandSpec'
+            : 'completion.labels.commandSpec';
+      const fallbackLabel = translate(fallbackLabelKey);
+      const safeFallbackLabel =
+        typeof fallbackLabel === 'string' && fallbackLabel.length > 0 && fallbackLabel !== fallbackLabelKey
+          ? fallbackLabel
+          : item.source === 'history'
+            ? 'History'
+            : item.source === 'runtime'
+              ? item.kind === 'secret'
+                ? 'Fill password'
+                : item.kind === 'path'
+                  ? 'File'
+                  : 'Runtime'
+              : 'Command spec';
 
-    return {
-      ...item,
-      detail: hasTranslatedDetail ? translatedDetail : item.detail?.trim() || safeFallbackLabel,
-    };
-  });
+      return {
+        ...item,
+        detail: hasTranslatedDetail ? translatedDetail : item.detail?.trim() || safeFallbackLabel,
+      };
+    }),
+  );
 };

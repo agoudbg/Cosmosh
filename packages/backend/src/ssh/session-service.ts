@@ -13,7 +13,6 @@ import {
   TERMINAL_PENDING_OUTPUT_MAX_CHUNKS,
   type TerminalManagedSessionBase,
 } from '../terminal/base-session-service.js';
-import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import { createRemotePathProvider } from '../terminal/completion/path-providers.js';
 import {
   type CompletionPromptState,
@@ -448,6 +447,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       },
       completionSecretValue: shellResult.completionSecretValue,
       t: i18n.t,
+      locale: input.locale,
       socket: null,
       disposed: false,
     };
@@ -665,6 +665,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   ): Promise<void> {
     session.completionWorkingDirectory = this.resolveHintedWorkingDirectory(session, message.workingDirectoryHint);
 
+    const [{ localizeTerminalCompletionItems, resolveTerminalCompletions }, { resolveInshellisenseDescription }] =
+      await Promise.all([import('../terminal/completion/engine.js'), import('../terminal/completion/descriptions.js')]);
     const completionResult = await resolveTerminalCompletions(
       {
         linePrefix: message.linePrefix,
@@ -696,12 +698,17 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         },
       },
     );
+    const localizedItems = await localizeTerminalCompletionItems(
+      completionResult.items,
+      (key) => session.t(key),
+      (key) => resolveInshellisenseDescription(session.locale, key),
+    );
 
     this.sendServerMessage(session, {
       type: 'completion-response',
       requestId: message.requestId,
       replacePrefixLength: completionResult.replacePrefixLength,
-      items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+      items: localizedItems,
     });
   }
 
