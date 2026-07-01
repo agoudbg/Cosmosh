@@ -86,7 +86,7 @@ Shared protocol constants, request/response types, OpenAPI source, generated con
 Locale JSON source files and i18n runtime package for main/backend/renderer scopes.
 
 - Runtime core is payload-agnostic. Consumers import only required locale JSON files and register them through `createMessages(...)` + `createI18n(...)`.
-- Backend scope can merge generated completion locale data (for example `backend-inshellisense.json`) via `mergeTranslationTrees(...)` before registration.
+- Backend scope loads base `backend.json` at startup. Generated completion descriptions stay as readable locale source files but backend runtime resolves them from compressed completion resources on demand.
 
 ## 3. Feature Placement Rules
 

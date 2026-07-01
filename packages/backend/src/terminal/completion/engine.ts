@@ -1,4 +1,4 @@
-import { INSHELLISENSE_COMMAND_SPECS } from './generated-inshellisense.js';
+import { loadInshellisenseCommandSpecs, resolveInshellisenseDescription } from './resource-loader.js';
 import type {
   TerminalCommandSpec,
   TerminalCompletionItem,
@@ -25,6 +25,11 @@ type CompletionRuntimeOptions = {
 };
 
 type TerminalTokenizerMode = 'posix' | 'powershell' | 'cmd';
+type CompletionLocale = 'en' | 'zh-CN';
+type CommandSpecIndex = {
+  specs: ReadonlyArray<TerminalCommandSpec>;
+  byCommandPath: ReadonlyMap<string, TerminalCommandSpec>;
+};
 
 type PathCompletionRule = {
   command: string;
@@ -270,7 +275,7 @@ const toCommandPathLabel = (baseCommand: string, suffixToken: string): string =>
 
 const buildCommandPath = (tokens: string[]): string => tokens.join(COMMAND_PATH_SEPARATOR).trim();
 
-const SPEC_BY_COMMAND_PATH = (() => {
+const buildCommandSpecIndex = (specs: ReadonlyArray<TerminalCommandSpec>): CommandSpecIndex => {
   const specMap = new Map<string, TerminalCommandSpec>();
 
   const registerSpec = (commandPath: string, spec: TerminalCommandSpec): void => {
@@ -282,7 +287,7 @@ const SPEC_BY_COMMAND_PATH = (() => {
     specMap.set(normalizedPath, spec);
   };
 
-  INSHELLISENSE_COMMAND_SPECS.forEach((entry) => {
+  specs.forEach((entry) => {
     registerSpec(entry.command, entry);
 
     const normalizedCommand = normalizeToken(entry.command);
@@ -297,22 +302,29 @@ const SPEC_BY_COMMAND_PATH = (() => {
     }
   });
 
-  return specMap;
-})();
+  return {
+    specs,
+    byCommandPath: specMap,
+  };
+};
 
-const resolveSpecByCommandPath = (commandPath: string): TerminalCommandSpec | undefined => {
+const resolveSpecByCommandPath = (
+  commandPath: string,
+  commandSpecIndex: CommandSpecIndex,
+): TerminalCommandSpec | undefined => {
   const normalizedPath = normalizeToken(commandPath);
   if (!normalizedPath) {
     return undefined;
   }
 
-  return SPEC_BY_COMMAND_PATH.get(normalizedPath);
+  return commandSpecIndex.byCommandPath.get(normalizedPath);
 };
 
 const resolveBestSpecContext = (
   tokens: string[],
   currentTokenIndex: number,
   currentTokenValue: string,
+  commandSpecIndex: CommandSpecIndex,
 ): {
   spec: TerminalCommandSpec;
   matchedTokens: string[];
@@ -326,7 +338,7 @@ const resolveBestSpecContext = (
 
   for (let length = fixedTokens.length; length >= 1; length -= 1) {
     const candidateTokens = fixedTokens.slice(0, length);
-    const candidateSpec = resolveSpecByCommandPath(buildCommandPath(candidateTokens));
+    const candidateSpec = resolveSpecByCommandPath(buildCommandPath(candidateTokens), commandSpecIndex);
     if (candidateSpec) {
       if (length < fixedTokens.length) {
         const nextToken = fixedTokens[length] ?? '';
@@ -343,7 +355,7 @@ const resolveBestSpecContext = (
   }
 
   const firstToken = fixedTokens[0] ?? '';
-  const rootSpec = resolveSpecByCommandPath(firstToken);
+  const rootSpec = resolveSpecByCommandPath(firstToken, commandSpecIndex);
   if (!rootSpec) {
     return null;
   }
@@ -358,7 +370,7 @@ const resolveBestSpecContext = (
     }
 
     if (index === 1) {
-      const compoundAliasSpec = resolveSpecByCommandPath(`${firstToken}-${token}`);
+      const compoundAliasSpec = resolveSpecByCommandPath(`${firstToken}-${token}`, commandSpecIndex);
       if (compoundAliasSpec) {
         matchedTokens.push(token);
         cursor = compoundAliasSpec;
@@ -594,11 +606,15 @@ const addItemWithBestScore = (target: Map<string, TerminalCompletionItem>, item:
   }
 };
 
-const collectCommandItems = (query: string, fuzzyMatch: boolean): TerminalCompletionItem[] => {
+const collectCommandItems = (
+  commandSpecs: ReadonlyArray<TerminalCommandSpec>,
+  query: string,
+  fuzzyMatch: boolean,
+): TerminalCompletionItem[] => {
   const items: TerminalCompletionItem[] = [];
   const dedupe = new Set<string>();
 
-  INSHELLISENSE_COMMAND_SPECS.forEach((spec, index) => {
+  commandSpecs.forEach((spec, index) => {
     const commandCandidates = new Set<string>([spec.command]);
     (spec.subcommands ?? []).forEach((subcommand) => {
       const fullSubcommand = toCommandPathLabel(spec.command, subcommand.name);
@@ -884,12 +900,15 @@ const resolveTerminalCompletionsAsync = async (
     };
   }
 
+  const commandSpecs = includeBuiltInCommands ? await loadInshellisenseCommandSpecs() : [];
+  const commandSpecIndex = buildCommandSpecIndex(commandSpecs);
+
   const parsedTokens = parseCommandTokens(normalizedLinePrefix, tokenizerMode);
   const tokens = parsedTokens.map((token) => token.value);
   const currentToken = resolveCurrentToken(normalizedLinePrefix, parsedTokens);
   const currentTokenValue = currentToken.token;
   const replacePrefixLength = currentToken.replacePrefixLength;
-  const specContext = resolveBestSpecContext(tokens, currentToken.tokenIndex, currentTokenValue);
+  const specContext = resolveBestSpecContext(tokens, currentToken.tokenIndex, currentTokenValue, commandSpecIndex);
   const matchedCommandTokens = specContext?.matchedTokens ?? [];
   const currentTokenIsPartOfMatchedPath =
     currentTokenValue.trim().length > 0 && matchedCommandTokens.length === currentToken.tokenIndex + 1;
@@ -937,7 +956,7 @@ const resolveTerminalCompletionsAsync = async (
 
   if (includeBuiltInCommands) {
     if (shouldSuggestRootCommand) {
-      collectCommandItems(currentTokenValue || query, fuzzyMatch).forEach((item) =>
+      collectCommandItems(commandSpecs, currentTokenValue || query, fuzzyMatch).forEach((item) =>
         addItemWithBestScore(itemMap, item),
       );
     } else {
@@ -1022,38 +1041,45 @@ const resolveTerminalCompletionsAsync = async (
 export const localizeTerminalCompletionItems = (
   items: ReadonlyArray<TerminalCompletionItem>,
   translate: (key: string) => string,
-): TerminalCompletionItem[] => {
-  return items.map((item) => {
-    const translatedDetail = item.detailI18nKey ? translate(item.detailI18nKey) : null;
-    const hasTranslatedDetail =
-      typeof translatedDetail === 'string' && translatedDetail.length > 0 && translatedDetail !== item.detailI18nKey;
-    const fallbackLabelKey =
-      item.source === 'history'
-        ? 'completion.labels.history'
-        : item.source === 'runtime'
-          ? item.kind === 'path'
-            ? 'completion.labels.pathFile'
-            : item.kind === 'secret'
-              ? 'completion.labels.secretFill'
-              : 'completion.labels.commandSpec'
-          : 'completion.labels.commandSpec';
-    const fallbackLabel = translate(fallbackLabelKey);
-    const safeFallbackLabel =
-      typeof fallbackLabel === 'string' && fallbackLabel.length > 0 && fallbackLabel !== fallbackLabelKey
-        ? fallbackLabel
-        : item.source === 'history'
-          ? 'History'
+  locale: CompletionLocale,
+): Promise<TerminalCompletionItem[]> => {
+  return Promise.all(
+    items.map(async (item) => {
+      const generatedDetail =
+        item.source === 'inshellisense' && item.detailI18nKey
+          ? await resolveInshellisenseDescription(item.detailI18nKey, locale)
+          : undefined;
+      const translatedDetail = generatedDetail ?? (item.detailI18nKey ? translate(item.detailI18nKey) : null);
+      const hasTranslatedDetail =
+        typeof translatedDetail === 'string' && translatedDetail.length > 0 && translatedDetail !== item.detailI18nKey;
+      const fallbackLabelKey =
+        item.source === 'history'
+          ? 'completion.labels.history'
           : item.source === 'runtime'
-            ? item.kind === 'secret'
-              ? 'Fill password'
-              : item.kind === 'path'
-                ? 'File'
-                : 'Runtime'
-            : 'Command spec';
+            ? item.kind === 'path'
+              ? 'completion.labels.pathFile'
+              : item.kind === 'secret'
+                ? 'completion.labels.secretFill'
+                : 'completion.labels.commandSpec'
+            : 'completion.labels.commandSpec';
+      const fallbackLabel = translate(fallbackLabelKey);
+      const safeFallbackLabel =
+        typeof fallbackLabel === 'string' && fallbackLabel.length > 0 && fallbackLabel !== fallbackLabelKey
+          ? fallbackLabel
+          : item.source === 'history'
+            ? 'History'
+            : item.source === 'runtime'
+              ? item.kind === 'secret'
+                ? 'Fill password'
+                : item.kind === 'path'
+                  ? 'File'
+                  : 'Runtime'
+              : 'Command spec';
 
-    return {
-      ...item,
-      detail: hasTranslatedDetail ? translatedDetail : item.detail?.trim() || safeFallbackLabel,
-    };
-  });
+      return {
+        ...item,
+        detail: hasTranslatedDetail ? translatedDetail : item.detail?.trim() || safeFallbackLabel,
+      };
+    }),
+  );
 };

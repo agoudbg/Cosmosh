@@ -86,7 +86,7 @@ flowchart TB
 main/backend/renderer 作用域共用的语言 JSON 源与运行时 i18n 包。
 
 - 运行时核心与具体文案资源解耦。消费端通过 `createMessages(...)` + `createI18n(...)` 显式注册所需语言 JSON。
-- backend 作用域可在注册前通过 `mergeTranslationTrees(...)` 合并生成语料（如 `backend-inshellisense.json`）。
+- backend 作用域启动时只加载基础 `backend.json`。生成的补全说明仍保留为可读语言源文件，但 backend runtime 会按需从压缩补全资源解析。
 
 ## 3. 功能落位规则
 

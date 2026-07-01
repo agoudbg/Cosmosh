@@ -1,8 +1,66 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { resolveTerminalCompletions } from './engine.js';
-import type { TerminalPathCompletionContext, TerminalPathEntry } from './types.js';
+import { localizeTerminalCompletionItems, resolveTerminalCompletions } from './engine.js';
+import {
+  loadInshellisenseCommandSpecs,
+  resetCompletionResourceLoaderForTests,
+  resolveInshellisenseDescription,
+  setCompletionResourceLoaderOverridesForTests,
+} from './resource-loader.js';
+import type { TerminalCommandSpec, TerminalPathCompletionContext, TerminalPathEntry } from './types.js';
+
+const fixtureCommandSpecs: ReadonlyArray<TerminalCommandSpec> = [
+  {
+    command: 'git',
+    descriptionI18nKey: 'completion.inshellisenseDescriptions.git_00000000',
+    subcommands: [
+      {
+        name: 'push',
+        descriptionI18nKey: 'completion.inshellisenseDescriptions.git_push_00000000',
+        options: [
+          {
+            name: '--force',
+            descriptionI18nKey: 'completion.inshellisenseDescriptions.git_push_--force_00000000',
+          },
+          {
+            name: '--set-upstream',
+            descriptionI18nKey: 'completion.inshellisenseDescriptions.git_push_--set-upstream_00000000',
+            takesValue: true,
+            valueSuggestions: ['origin'],
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const useFixtureCompletionResources = (options?: {
+  specLoader?: () => Promise<ReadonlyArray<TerminalCommandSpec>>;
+}) => {
+  setCompletionResourceLoaderOverridesForTests({
+    specs: options?.specLoader ?? (async () => fixtureCommandSpecs),
+    descriptions: {
+      en: async () => ({
+        completion: {
+          inshellisenseDescriptions: {
+            git_00000000: 'Git command',
+            git_push_00000000: 'Update remote refs',
+            'git_push_--force_00000000': 'Force push',
+            'git_push_--set-upstream_00000000': 'Set upstream branch',
+          },
+        },
+      }),
+      'zh-CN': async () => ({
+        completion: {
+          inshellisenseDescriptions: {
+            git_00000000: 'Git 命令',
+          },
+        },
+      }),
+    },
+  });
+};
 
 /**
  * Runs completion with deterministic runtime options for path-provider behavior tests.
@@ -37,6 +95,186 @@ const runPathCompletion = async (
     },
   );
 };
+
+test.afterEach(() => {
+  resetCompletionResourceLoaderForTests();
+});
+
+test('generated completion resources are readable Brotli payloads', async () => {
+  resetCompletionResourceLoaderForTests();
+
+  const specs = await loadInshellisenseCommandSpecs();
+  const gitSpec = specs.find((spec) => spec.command === 'git');
+
+  assert.ok(gitSpec);
+  assert.ok(gitSpec.descriptionI18nKey);
+  assert.ok(gitSpec.subcommands?.some((subcommand) => subcommand.name === 'push'));
+
+  const description = await resolveInshellisenseDescription(gitSpec.descriptionI18nKey, 'zh-CN');
+
+  assert.ok(description);
+});
+
+test('built-in command completion loads lazy specs for root and nested candidates', async () => {
+  let loadCount = 0;
+  useFixtureCompletionResources({
+    specLoader: async () => {
+      loadCount += 1;
+      return fixtureCommandSpecs;
+    },
+  });
+
+  const rootResult = await resolveTerminalCompletions(
+    {
+      linePrefix: 'git p',
+      cursorIndex: 'git p'.length,
+      trigger: 'manual',
+      includeHistory: false,
+      includeBuiltInCommands: true,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: [],
+      tokenizerMode: 'posix',
+    },
+  );
+  const nestedResult = await resolveTerminalCompletions(
+    {
+      linePrefix: 'git push -',
+      cursorIndex: 'git push -'.length,
+      trigger: 'manual',
+      includeHistory: false,
+      includeBuiltInCommands: true,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: [],
+      tokenizerMode: 'posix',
+    },
+  );
+
+  assert.ok(loadCount >= 1);
+  assert.ok(rootResult.items.some((item) => item.label === 'git push'));
+  assert.ok(nestedResult.items.some((item) => item.label === 'git push --force'));
+  assert.ok(nestedResult.items.some((item) => item.label === 'git push --set-upstream'));
+});
+
+test('built-in command completion can be disabled without loading specs', async () => {
+  let loadCount = 0;
+  useFixtureCompletionResources({
+    specLoader: async () => {
+      loadCount += 1;
+      return fixtureCommandSpecs;
+    },
+  });
+
+  const result = await resolveTerminalCompletions(
+    {
+      linePrefix: 'git',
+      cursorIndex: 'git'.length,
+      trigger: 'manual',
+      includeHistory: true,
+      includeBuiltInCommands: false,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: ['git status'],
+      tokenizerMode: 'posix',
+    },
+  );
+
+  assert.equal(loadCount, 0);
+  assert.deepEqual(
+    result.items.map((item) => item.label),
+    ['git status'],
+  );
+});
+
+test('built-in command loading failure degrades to history completion', async () => {
+  useFixtureCompletionResources({
+    specLoader: async () => [],
+  });
+
+  const result = await resolveTerminalCompletions(
+    {
+      linePrefix: 'git',
+      cursorIndex: 'git'.length,
+      trigger: 'manual',
+      includeHistory: true,
+      includeBuiltInCommands: true,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: ['git status'],
+      tokenizerMode: 'posix',
+    },
+  );
+
+  assert.deepEqual(
+    result.items.map((item) => item.label),
+    ['git status'],
+  );
+});
+
+test('option value suggestions remain available from lazy command specs', async () => {
+  useFixtureCompletionResources();
+
+  const result = await resolveTerminalCompletions(
+    {
+      linePrefix: 'git push --set-upstream ',
+      cursorIndex: 'git push --set-upstream '.length,
+      trigger: 'manual',
+      includeHistory: false,
+      includeBuiltInCommands: true,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: [],
+      tokenizerMode: 'posix',
+    },
+  );
+
+  assert.ok(result.items.some((item) => item.label === 'git push --set-upstream origin'));
+});
+
+test('completion descriptions resolve generated locale and fall back to English', async () => {
+  useFixtureCompletionResources();
+
+  const localizedItems = await localizeTerminalCompletionItems(
+    [
+      {
+        id: 'cmd:0:git',
+        label: 'git',
+        insertText: 'git',
+        detail: null,
+        detailI18nKey: 'completion.inshellisenseDescriptions.git_00000000',
+        source: 'inshellisense',
+        kind: 'command',
+        score: 1,
+      },
+      {
+        id: 'cmd:0:git push',
+        label: 'git push',
+        insertText: 'git push',
+        detail: null,
+        detailI18nKey: 'completion.inshellisenseDescriptions.git_push_00000000',
+        source: 'inshellisense',
+        kind: 'subcommand',
+        score: 1,
+      },
+    ],
+    (key) => (key === 'completion.labels.commandSpec' ? '命令规范' : key),
+    'zh-CN',
+  );
+
+  assert.equal(localizedItems[0]?.detail, 'Git 命令');
+  assert.equal(localizedItems[1]?.detail, 'Update remote refs');
+});
 
 test('cd keeps directory-only path completion', async () => {
   const contexts: TerminalPathCompletionContext[] = [];

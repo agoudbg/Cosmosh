@@ -165,6 +165,7 @@ type ServerOutboundMessage =
     };
 
 type SshLiveSession = TerminalManagedSessionBase & {
+  locale: Locale;
   serverId: string;
   loginAuditId: string | null;
   client: Client;
@@ -468,6 +469,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         shouldSuggestSecret: false,
       },
       completionSecretValue: shellResult.completionSecretValue,
+      locale: i18n.getLocale(),
       t: i18n.t,
       socket: null,
       disposed: false,
@@ -747,7 +749,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       type: 'completion-response',
       requestId: message.requestId,
       replacePrefixLength: completionResult.replacePrefixLength,
-      items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+      items: await localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key), session.locale),
     });
   }
 

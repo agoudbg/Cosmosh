@@ -447,9 +447,14 @@ const syncWorkspaceRuntimePackages = async () => {
       recursive: true,
       force: true,
       filter: (sourcePath) => {
+        const relativePath = path.relative(sourceDistDir, sourcePath).split(path.sep).join('/');
         const lowerName = path.basename(sourcePath).toLowerCase();
 
         if (lowerName.endsWith('.map') || lowerName.endsWith('.d.ts') || lowerName.endsWith('.d.mts')) {
+          return false;
+        }
+
+        if (packageName === 'i18n' && relativePath.includes('backend-inshellisense.json')) {
           return false;
         }
 
@@ -463,6 +468,12 @@ const syncWorkspaceRuntimePackages = async () => {
 
     await copyExportedRuntimeAssets(sourcePackageDir, targetPackageDir, sourcePackageJsonObject);
     if (packageName === 'i18n') {
+      await fs.rm(path.join(targetPackageDir, 'locales', 'en', 'backend-inshellisense.json'), {
+        force: true,
+      });
+      await fs.rm(path.join(targetPackageDir, 'locales', 'zh-CN', 'backend-inshellisense.json'), {
+        force: true,
+      });
       await minifyJsonFilesInDirectory(path.join(targetPackageDir, 'locales'));
     }
     await fs.copyFile(sourcePackageJsonPath, targetPackageJsonPath);

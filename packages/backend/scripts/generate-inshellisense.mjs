@@ -3,12 +3,27 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { brotliCompress, constants as zlibConstants } from 'node:zlib';
+import { promisify } from 'node:util';
 
 const OUTPUT_FILE = new URL('../src/terminal/completion/generated-inshellisense.ts', import.meta.url);
+const RESOURCE_DIR = new URL('../src/terminal/completion/resources/', import.meta.url);
+const SPECS_RESOURCE_FILE_NAME = 'inshellisense-specs.json.br';
+const DESCRIPTIONS_EN_RESOURCE_FILE_NAME = 'inshellisense-descriptions.en.json.br';
+const DESCRIPTIONS_ZH_CN_RESOURCE_FILE_NAME = 'inshellisense-descriptions.zh-CN.json.br';
+const SPECS_RESOURCE_FILE = new URL(SPECS_RESOURCE_FILE_NAME, RESOURCE_DIR);
+const DESCRIPTIONS_EN_RESOURCE_FILE = new URL(DESCRIPTIONS_EN_RESOURCE_FILE_NAME, RESOURCE_DIR);
+const DESCRIPTIONS_ZH_CN_RESOURCE_FILE = new URL(DESCRIPTIONS_ZH_CN_RESOURCE_FILE_NAME, RESOURCE_DIR);
 const I18N_EN_OUTPUT_FILE = new URL('../../i18n/locales/en/backend-inshellisense.json', import.meta.url);
 const I18N_ZH_CN_OUTPUT_FILE = new URL('../../i18n/locales/zh-CN/backend-inshellisense.json', import.meta.url);
 const require = createRequire(import.meta.url);
 const DESCRIPTION_I18N_KEY_PREFIX = 'completion.inshellisenseDescriptions.';
+const brotliCompressAsync = promisify(brotliCompress);
+const brotliOptions = {
+  params: {
+    [zlibConstants.BROTLI_PARAM_QUALITY]: 8,
+  },
+};
 
 const toArray = (value) => {
   if (!value) {
@@ -156,6 +171,31 @@ const readJsonFileOrDefault = async (fileUrl, fallbackValue) => {
   } catch {
     return fallbackValue;
   }
+};
+
+const writeCompressedJsonFile = async (fileUrl, value) => {
+  const rawJson = Buffer.from(JSON.stringify(value), 'utf8');
+  const compressed = await brotliCompressAsync(rawJson, brotliOptions);
+  await fs.writeFile(fileUrl, compressed);
+  return {
+    rawBytes: rawJson.byteLength,
+    compressedBytes: compressed.byteLength,
+    sha256: createHash('sha256').update(rawJson).digest('hex'),
+  };
+};
+
+const countTranslationLeaves = (target) => {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) {
+    return 0;
+  }
+
+  return Object.values(target).reduce((count, value) => {
+    if (typeof value === 'string') {
+      return count + 1;
+    }
+
+    return count + countTranslationLeaves(value);
+  }, 0);
 };
 
 const normalizeSpecRoot = (specValue) => {
@@ -557,7 +597,43 @@ const generate = async () => {
   });
 
   const compactEntries = entries.map(toCompactCommandSpec);
-  const fileContent = `/* eslint-disable */\n/* prettier-ignore */\nimport type {\n  TerminalCommandSpec,\n  TerminalCommandSpecOption,\n  TerminalCommandSpecSubcommand,\n} from './types.js';\n\nconst DESCRIPTION_I18N_KEY_PREFIX = '${DESCRIPTION_I18N_KEY_PREFIX}';\n\ntype CompactOption = readonly [\n  name: string,\n  descriptionKey?: string | null,\n  takesValue?: 1 | null,\n  insertText?: string | null,\n  valueSuggestions?: readonly string[] | null,\n];\n\ntype CompactSubcommand = readonly [\n  name: string,\n  descriptionKey?: string | null,\n  subcommands?: readonly CompactSubcommand[] | null,\n  options?: readonly CompactOption[] | null,\n];\n\ntype CompactCommandSpec = readonly [\n  command: string,\n  descriptionKey?: string | null,\n  subcommands?: readonly CompactSubcommand[] | null,\n  options?: readonly CompactOption[] | null,\n];\n\nconst expandDescriptionI18nKey = (descriptionKey: string | null | undefined): string | undefined => {\n  if (!descriptionKey) {\n    return undefined;\n  }\n\n  return descriptionKey.includes('.') ? descriptionKey : \`\${DESCRIPTION_I18N_KEY_PREFIX}\${descriptionKey}\`;\n};\n\nconst inflateOptions = (options: readonly CompactOption[] | null | undefined): TerminalCommandSpecOption[] | undefined => {\n  if (!options) {\n    return undefined;\n  }\n\n  return options.map(([name, descriptionKey, takesValue, insertText, valueSuggestions]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      name,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(takesValue === 1 ? { takesValue: true } : {}),\n      ...(typeof insertText === 'string' ? { insertText } : {}),\n      ...(Array.isArray(valueSuggestions) ? { valueSuggestions: [...valueSuggestions] } : {}),\n    };\n  });\n};\n\nconst inflateSubcommands = (\n  subcommands: readonly CompactSubcommand[] | null | undefined,\n): TerminalCommandSpecSubcommand[] | undefined => {\n  if (!subcommands) {\n    return undefined;\n  }\n\n  return subcommands.map(([name, descriptionKey, nestedSubcommands, options]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      name,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(Array.isArray(nestedSubcommands) ? { subcommands: inflateSubcommands(nestedSubcommands) ?? [] } : {}),\n      ...(Array.isArray(options) ? { options: inflateOptions(options) ?? [] } : {}),\n    };\n  });\n};\n\nconst inflateCommandSpecs = (specs: readonly CompactCommandSpec[]): ReadonlyArray<TerminalCommandSpec> => {\n  return specs.map(([command, descriptionKey, subcommands, options]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      command,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(Array.isArray(subcommands) ? { subcommands: inflateSubcommands(subcommands) ?? [] } : {}),\n      ...(Array.isArray(options) ? { options: inflateOptions(options) ?? [] } : {}),\n    };\n  });\n};\n\n/**\n * Auto-generated from @withfig/autocomplete resources.\n * Run \`pnpm --filter @cosmosh/backend completion:generate\` to refresh.\n */\nexport const INSHELLISENSE_COMMAND_SPECS: ReadonlyArray<TerminalCommandSpec> = inflateCommandSpecs(${JSON.stringify(compactEntries)});\n`;
+  await fs.mkdir(RESOURCE_DIR, { recursive: true });
+  const specResourceStats = await writeCompressedJsonFile(SPECS_RESOURCE_FILE, compactEntries);
+  const enDescriptionResourceStats = await writeCompressedJsonFile(DESCRIPTIONS_EN_RESOURCE_FILE, enInshellisenseLocaleTree);
+  const zhCnDescriptionResourceStats = await writeCompressedJsonFile(
+    DESCRIPTIONS_ZH_CN_RESOURCE_FILE,
+    zhCnInshellisenseLocaleTree,
+  );
+  const fileContent = `/* eslint-disable */\n/* prettier-ignore */\n\n/**\n * Auto-generated from @withfig/autocomplete resources.\n * Run \`pnpm --filter @cosmosh/backend completion:generate\` to refresh.\n */\nexport const INSHELLISENSE_RESOURCE_MANIFEST = ${JSON.stringify(
+    {
+      descriptionI18nKeyPrefix: DESCRIPTION_I18N_KEY_PREFIX,
+      specs: {
+        fileName: SPECS_RESOURCE_FILE_NAME,
+        commandCount: compactEntries.length,
+        rawBytes: specResourceStats.rawBytes,
+        compressedBytes: specResourceStats.compressedBytes,
+        sha256: specResourceStats.sha256,
+      },
+      descriptions: {
+        en: {
+          fileName: DESCRIPTIONS_EN_RESOURCE_FILE_NAME,
+          keyCount: countTranslationLeaves(enInshellisenseLocaleTree),
+          rawBytes: enDescriptionResourceStats.rawBytes,
+          compressedBytes: enDescriptionResourceStats.compressedBytes,
+          sha256: enDescriptionResourceStats.sha256,
+        },
+        'zh-CN': {
+          fileName: DESCRIPTIONS_ZH_CN_RESOURCE_FILE_NAME,
+          keyCount: countTranslationLeaves(zhCnInshellisenseLocaleTree),
+          rawBytes: zhCnDescriptionResourceStats.rawBytes,
+          compressedBytes: zhCnDescriptionResourceStats.compressedBytes,
+          sha256: zhCnDescriptionResourceStats.sha256,
+        },
+      },
+    },
+    null,
+    2,
+  )} as const;\n`;
   const safeFileContent = fileContent.replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
   const enLocaleContent = `${JSON.stringify(enInshellisenseLocaleTree, null, 2)}\n`;
   const zhCnLocaleContent = `${JSON.stringify(zhCnInshellisenseLocaleTree, null, 2)}\n`;
@@ -566,7 +642,7 @@ const generate = async () => {
   await fs.writeFile(I18N_EN_OUTPUT_FILE, enLocaleContent, 'utf8');
   await fs.writeFile(I18N_ZH_CN_OUTPUT_FILE, zhCnLocaleContent, 'utf8');
   process.stdout.write(
-    `Generated ${entries.length} command specs and ${descriptionCatalog.size} inshellisense description locales.\n`,
+    `Generated ${entries.length} command specs, ${descriptionCatalog.size} inshellisense description locales, and compressed completion resources.\n`,
   );
 };
 
