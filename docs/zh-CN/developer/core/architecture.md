@@ -31,7 +31,7 @@ flowchart LR
 - 在开发启动路径中，Main 采用增量预检（`packages/main/scripts/dev-preflight.cjs`），当产物是最新时会跳过 `@cosmosh/api-contract` / `@cosmosh/i18n` 的重复构建。
 - 开发身份由 `pnpm dev:profile`（`scripts/dev-profile.mjs`）管理。当选中身份或通过 `COSMOSH_DEV_PROFILE` 指定身份时，Main 会在窗口/backend 启动前应用该身份，使 Electron `userData`、SQLite 文件和 backend 专用 secret 存储都落到 `.cosmosh/dev-profiles/<name>/` 下。
 - Main 会以仅运行时且非 watch 的命令（`dev:runtime`）拉起 backend，避免嵌套 `predev` 重构建并降低笔记本持续风扇噪音。
-- 生产打包不依赖 app asar 解析 backend package。Main prebuild 会将已构建的 backend/api-contract/i18n 产物，以及经过筛选并递归同步的第三方运行时依赖复制到 `packages/main/resources-runtime/node_modules`，然后校验每个非 workspace 的 `@cosmosh/backend` 生产依赖都能从该目录解析。任何新增 backend 生产依赖都必须覆盖到 `packages/main/scripts/sync-backend-runtime.cjs`，否则安装包构建会在发布前失败，而不是发出启动后才缺模块的产物。
+- 生产打包不依赖 app asar 解析 backend package。Main prebuild 会将已构建的 backend/api-contract/i18n 产物、补全 MessagePack 等生成运行时资产，以及经过筛选并递归同步的第三方运行时依赖复制到 `packages/main/resources-runtime/node_modules`，然后校验每个非 workspace 的 `@cosmosh/backend` 生产依赖都能从该目录解析。任何新增 backend 生产依赖或运行时资产类别都必须覆盖到 `packages/main/scripts/sync-backend-runtime.cjs`，否则安装包构建会在发布前失败，而不是发出启动后才缺模块的产物。
 - 持有应用级能力：语言持久化（内存）、窗口/开发者工具/文件管理器操作。
 - 将渲染层请求代理到后端端点，并注入：
   - 作为内部鉴权头的 `COSMOSH_INTERNAL_TOKEN`。

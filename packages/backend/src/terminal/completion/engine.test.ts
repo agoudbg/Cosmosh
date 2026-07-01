@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import { resolveTerminalCompletions } from './engine.js';
+import {
+  INSHELLISENSE_COMMAND_SPECS_COMPACT_SHA256,
+  loadCompactInshellisenseCommandSpecs,
+} from './generated-inshellisense.js';
 import type { TerminalPathCompletionContext, TerminalPathEntry } from './types.js';
 
 /**
@@ -37,6 +42,117 @@ const runPathCompletion = async (
     },
   );
 };
+
+test('generated inshellisense MessagePack payload matches generation hash', () => {
+  const compactSpecs = loadCompactInshellisenseCommandSpecs();
+  const actualHash = createHash('sha256').update(JSON.stringify(compactSpecs)).digest('hex');
+
+  assert.equal(actualHash, INSHELLISENSE_COMMAND_SPECS_COMPACT_SHA256);
+});
+
+test('built-in completion keeps root command, subcommand and option suggestions', async () => {
+  const rootResult = await resolveTerminalCompletions(
+    {
+      linePrefix: 'gi',
+      cursorIndex: 'gi'.length,
+      trigger: 'manual',
+      includeHistory: false,
+      includeBuiltInCommands: true,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: [],
+      tokenizerMode: 'posix',
+    },
+  );
+  assert.ok(rootResult.items.some((item) => item.label === 'git'));
+
+  const subcommandResult = await resolveTerminalCompletions(
+    {
+      linePrefix: 'git pu',
+      cursorIndex: 'git pu'.length,
+      trigger: 'manual',
+      includeHistory: false,
+      includeBuiltInCommands: true,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: [],
+      tokenizerMode: 'posix',
+    },
+  );
+  assert.ok(subcommandResult.items.some((item) => item.label === 'git push'));
+
+  const optionResult = await resolveTerminalCompletions(
+    {
+      linePrefix: 'git push --f',
+      cursorIndex: 'git push --f'.length,
+      trigger: 'manual',
+      includeHistory: false,
+      includeBuiltInCommands: true,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: [],
+      tokenizerMode: 'posix',
+    },
+  );
+  assert.ok(optionResult.items.some((item) => item.label === 'git push --force'));
+});
+
+test('built-in completion keeps option value suggestions', async () => {
+  const result = await resolveTerminalCompletions(
+    {
+      linePrefix: 'adb push -z b',
+      cursorIndex: 'adb push -z b'.length,
+      trigger: 'manual',
+      includeHistory: false,
+      includeBuiltInCommands: true,
+      includePathSuggestions: false,
+      includePasswordSuggestions: false,
+    },
+    {
+      recentCommands: [],
+      tokenizerMode: 'posix',
+    },
+  );
+
+  assert.ok(result.items.some((item) => item.label === 'adb push -z brotli' && item.insertText === 'brotli'));
+});
+
+test('completion keeps history, path and secret sources in one response', async () => {
+  const result = await resolveTerminalCompletions(
+    {
+      linePrefix: 'cat con',
+      cursorIndex: 'cat con'.length,
+      trigger: 'manual',
+      includeHistory: true,
+      includeBuiltInCommands: false,
+      includePathSuggestions: true,
+      includePasswordSuggestions: true,
+    },
+    {
+      recentCommands: ['cat config.old'],
+      tokenizerMode: 'posix',
+      promptState: {
+        shouldSuggestSecret: true,
+        secretValue: 'secret-value',
+      },
+      pathProvider: async () => [{ name: 'config.json', kind: 'file' }],
+    },
+  );
+
+  assert.ok(result.items.some((item) => item.source === 'history' && item.label === 'cat config.old'));
+  assert.ok(
+    result.items.some((item) => item.source === 'runtime' && item.kind === 'path' && item.label === 'config.json'),
+  );
+  assert.ok(
+    result.items.some((item) => item.source === 'runtime' && item.kind === 'secret' && item.label === 'Fill password'),
+  );
+});
 
 test('cd keeps directory-only path completion', async () => {
   const contexts: TerminalPathCompletionContext[] = [];

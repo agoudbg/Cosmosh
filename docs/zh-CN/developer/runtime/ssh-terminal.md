@@ -130,10 +130,10 @@ sequenceDiagram
   - 在同一排序流水线中组合的运行时 provider（路径补全 provider 与交互式密钥提示 provider）。
 - 补全引擎的 token 解析按会话 shell 类型区分：SSH 使用 POSIX 规则；本地 PowerShell/CMD 使用 Windows 友好规则，反斜杠会作为路径字面字符保留，而不是通用转义符。
 - `packages/backend/scripts/generate-inshellisense.mjs` 会生成规范数据与按语言策略处理的补全说明资源：
-  - `packages/backend/src/terminal/completion/generated-inshellisense.ts` 会以紧凑 tuple 载荷保留命令结构，并在模块加载时还原；生成条目仅保留 `descriptionI18nKey` 引用（不再冗余内嵌原始英文说明文本）。
-  - `packages/i18n/locales/en/backend-inshellisense.json` 会根据上游说明全量重建。
-  - `packages/i18n/locales/zh-CN/backend-inshellisense.json` 仅保留“英文源文本未变化”的手工翻译键；新键不会自动回填，英文源变化或删除时会自动清理对应中文键。
-- backend 作用域 i18n 会将 `backend-inshellisense.json` 合并到 `backend.json`，从而支持补全说明翻译，同时保持基础 backend 语料与生成语料分离。
+  - `packages/backend/src/terminal/completion/generated-inshellisense.ts` 是小型 loader，会解码 `generated-inshellisense.msgpack`，再在模块加载时还原同一份紧凑 tuple 载荷；生成条目仅保留 `descriptionI18nKey` 引用（不再冗余内嵌原始英文说明文本）。
+  - `packages/i18n/locales/en/backend-inshellisense.json` 会根据上游说明全量重建，用于源码审阅与翻译维护；旁路生成的 `backend-inshellisense.msgpack` 供打包运行时加载。
+  - `packages/i18n/locales/zh-CN/backend-inshellisense.json` 仅保留“英文源文本未变化”的手工翻译键；新键不会自动回填，英文源变化或删除时会自动清理对应中文键。对应的 MessagePack 资产会镜像这棵过滤后的语料树。
+- backend 作用域 i18n 会将生成的 MessagePack `backend-inshellisense` 语料树合并到 `backend.json`，从而支持补全说明翻译，同时保持基础 backend 语料与生成语料分离。开发热重载仍读取 JSON 源文件，以保证翻译工作流可检查。
 - 生成器会清理 LS/PS Unicode 分隔符（`U+2028`/`U+2029`），避免生成 TypeScript 文件触发异常行终止符警告。
 - 当前排序策略：
   - 先做命令路径感知匹配（例如 `git push -` 优先解析 `git push` 规范，再回退到根命令 `git`），

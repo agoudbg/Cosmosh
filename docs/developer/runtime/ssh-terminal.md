@@ -130,10 +130,10 @@ sequenceDiagram
   - runtime providers (path provider and interactive secret-prompt provider) composed in the same ranking pipeline.
 - Token parsing is shell-aware in completion engine: SSH uses POSIX tokenization, local PowerShell/CMD sessions use Windows-friendly tokenization where backslash is preserved as a literal path character instead of generic escape.
 - `packages/backend/scripts/generate-inshellisense.mjs` generates spec dataset plus locale resources with language-specific policy:
-  - `packages/backend/src/terminal/completion/generated-inshellisense.ts` keeps command structure as a compact tuple payload and inflates it at module load; generated entries keep `descriptionI18nKey` references only (no duplicated raw description text payload).
-  - `packages/i18n/locales/en/backend-inshellisense.json` is fully regenerated from upstream descriptions.
-  - `packages/i18n/locales/zh-CN/backend-inshellisense.json` keeps only manually translated keys whose English source text is unchanged; new keys are not auto-filled, and keys are pruned when source text changes or is removed.
-- Backend scope i18n merges `backend-inshellisense.json` into `backend.json`, so completion descriptions can be translated without mixing generated keys into base backend locale files.
+  - `packages/backend/src/terminal/completion/generated-inshellisense.ts` is a small loader that decodes `generated-inshellisense.msgpack`, then inflates the same compact tuple payload at module load; generated entries keep `descriptionI18nKey` references only (no duplicated raw description text payload).
+  - `packages/i18n/locales/en/backend-inshellisense.json` is fully regenerated from upstream descriptions for source review and translation maintenance, and `backend-inshellisense.msgpack` is generated beside it for packaged runtime loading.
+  - `packages/i18n/locales/zh-CN/backend-inshellisense.json` keeps only manually translated keys whose English source text is unchanged; new keys are not auto-filled, and keys are pruned when source text changes or is removed. Its matching MessagePack asset mirrors that filtered tree.
+- Backend scope i18n merges the generated MessagePack `backend-inshellisense` tree into `backend.json`, so completion descriptions can be translated without mixing generated keys into base backend locale files. Development hot reload still reads the JSON source files to keep translator workflow inspectable.
 - Generator sanitizes LS/PS Unicode separators (`U+2028`/`U+2029`) to keep generated TypeScript files free of unusual-line-terminator warnings.
 - Ranking strategy in current implementation:
   - command-path-aware matching first (for example, `git push -` resolves against `git push` spec before falling back to root `git`),

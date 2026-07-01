@@ -4,9 +4,14 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
+import { decode, encode } from '@msgpack/msgpack';
+
 const OUTPUT_FILE = new URL('../src/terminal/completion/generated-inshellisense.ts', import.meta.url);
+const MSGPACK_OUTPUT_FILE = new URL('../src/terminal/completion/generated-inshellisense.msgpack', import.meta.url);
 const I18N_EN_OUTPUT_FILE = new URL('../../i18n/locales/en/backend-inshellisense.json', import.meta.url);
 const I18N_ZH_CN_OUTPUT_FILE = new URL('../../i18n/locales/zh-CN/backend-inshellisense.json', import.meta.url);
+const I18N_EN_MSGPACK_OUTPUT_FILE = new URL('../../i18n/locales/en/backend-inshellisense.msgpack', import.meta.url);
+const I18N_ZH_CN_MSGPACK_OUTPUT_FILE = new URL('../../i18n/locales/zh-CN/backend-inshellisense.msgpack', import.meta.url);
 const require = createRequire(import.meta.url);
 const DESCRIPTION_I18N_KEY_PREFIX = 'completion.inshellisenseDescriptions.';
 
@@ -66,6 +71,59 @@ const trimTrailingEmptyFields = (fields) => {
   }
 
   return fields;
+};
+
+const formatBytes = (bytes) => `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
+
+const formatReduction = (originalBytes, nextBytes) => {
+  if (!Number.isFinite(originalBytes) || originalBytes <= 0) {
+    return 'n/a';
+  }
+
+  const reducedPercent = ((originalBytes - nextBytes) / originalBytes) * 100;
+  return `${reducedPercent.toFixed(1)}%`;
+};
+
+const encodeMessagePack = (value) => Buffer.from(encode(value));
+
+const encodeVerifiedMessagePack = (value, assetLabel) => {
+  const encoded = encodeMessagePack(value);
+
+  try {
+    decode(encoded);
+  } catch (error) {
+    throw new Error(`Generated MessagePack payload failed decode verification: ${assetLabel}`, {
+      cause: error,
+    });
+  }
+
+  return encoded;
+};
+
+const verifyMessagePackAssetFile = async (fileUrl, assetLabel) => {
+  try {
+    decode(await fs.readFile(fileUrl));
+  } catch (error) {
+    throw new Error(`Generated MessagePack asset failed on-disk decode verification: ${assetLabel}`, {
+      cause: error,
+    });
+  }
+};
+
+const sortObjectDeep = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortObjectDeep(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const entries = Object.entries(value)
+    .map(([key, nestedValue]) => [key, sortObjectDeep(nestedValue)])
+    .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+
+  return Object.fromEntries(entries);
 };
 
 const toCompactOption = (option) =>
@@ -557,16 +615,44 @@ const generate = async () => {
   });
 
   const compactEntries = entries.map(toCompactCommandSpec);
-  const fileContent = `/* eslint-disable */\n/* prettier-ignore */\nimport type {\n  TerminalCommandSpec,\n  TerminalCommandSpecOption,\n  TerminalCommandSpecSubcommand,\n} from './types.js';\n\nconst DESCRIPTION_I18N_KEY_PREFIX = '${DESCRIPTION_I18N_KEY_PREFIX}';\n\ntype CompactOption = readonly [\n  name: string,\n  descriptionKey?: string | null,\n  takesValue?: 1 | null,\n  insertText?: string | null,\n  valueSuggestions?: readonly string[] | null,\n];\n\ntype CompactSubcommand = readonly [\n  name: string,\n  descriptionKey?: string | null,\n  subcommands?: readonly CompactSubcommand[] | null,\n  options?: readonly CompactOption[] | null,\n];\n\ntype CompactCommandSpec = readonly [\n  command: string,\n  descriptionKey?: string | null,\n  subcommands?: readonly CompactSubcommand[] | null,\n  options?: readonly CompactOption[] | null,\n];\n\nconst expandDescriptionI18nKey = (descriptionKey: string | null | undefined): string | undefined => {\n  if (!descriptionKey) {\n    return undefined;\n  }\n\n  return descriptionKey.includes('.') ? descriptionKey : \`\${DESCRIPTION_I18N_KEY_PREFIX}\${descriptionKey}\`;\n};\n\nconst inflateOptions = (options: readonly CompactOption[] | null | undefined): TerminalCommandSpecOption[] | undefined => {\n  if (!options) {\n    return undefined;\n  }\n\n  return options.map(([name, descriptionKey, takesValue, insertText, valueSuggestions]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      name,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(takesValue === 1 ? { takesValue: true } : {}),\n      ...(typeof insertText === 'string' ? { insertText } : {}),\n      ...(Array.isArray(valueSuggestions) ? { valueSuggestions: [...valueSuggestions] } : {}),\n    };\n  });\n};\n\nconst inflateSubcommands = (\n  subcommands: readonly CompactSubcommand[] | null | undefined,\n): TerminalCommandSpecSubcommand[] | undefined => {\n  if (!subcommands) {\n    return undefined;\n  }\n\n  return subcommands.map(([name, descriptionKey, nestedSubcommands, options]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      name,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(Array.isArray(nestedSubcommands) ? { subcommands: inflateSubcommands(nestedSubcommands) ?? [] } : {}),\n      ...(Array.isArray(options) ? { options: inflateOptions(options) ?? [] } : {}),\n    };\n  });\n};\n\nconst inflateCommandSpecs = (specs: readonly CompactCommandSpec[]): ReadonlyArray<TerminalCommandSpec> => {\n  return specs.map(([command, descriptionKey, subcommands, options]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      command,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(Array.isArray(subcommands) ? { subcommands: inflateSubcommands(subcommands) ?? [] } : {}),\n      ...(Array.isArray(options) ? { options: inflateOptions(options) ?? [] } : {}),\n    };\n  });\n};\n\n/**\n * Auto-generated from @withfig/autocomplete resources.\n * Run \`pnpm --filter @cosmosh/backend completion:generate\` to refresh.\n */\nexport const INSHELLISENSE_COMMAND_SPECS: ReadonlyArray<TerminalCommandSpec> = inflateCommandSpecs(${JSON.stringify(compactEntries)});\n`;
+  const compactEntriesJson = JSON.stringify(compactEntries);
+  const compactEntriesHash = createHash('sha256').update(compactEntriesJson).digest('hex');
+  const sortedEnInshellisenseLocaleTree = sortObjectDeep(enInshellisenseLocaleTree);
+  const sortedZhCnInshellisenseLocaleTree = sortObjectDeep(zhCnInshellisenseLocaleTree);
+  const fileContent = `/* eslint-disable */\n/* prettier-ignore */\nimport { readFileSync } from 'node:fs';\nimport { dirname, resolve } from 'node:path';\nimport { fileURLToPath } from 'node:url';\n\nimport { decode } from '@msgpack/msgpack';\n\nimport type {\n  TerminalCommandSpec,\n  TerminalCommandSpecOption,\n  TerminalCommandSpecSubcommand,\n} from './types.js';\n\nconst DESCRIPTION_I18N_KEY_PREFIX = '${DESCRIPTION_I18N_KEY_PREFIX}';\nconst COMPACT_SPECS_ASSET_PATH = resolve(dirname(fileURLToPath(import.meta.url)), 'generated-inshellisense.msgpack');\n\nexport const INSHELLISENSE_COMMAND_SPECS_COMPACT_SHA256 = '${compactEntriesHash}';\n\ntype CompactOption = readonly [\n  name: string,\n  descriptionKey?: string | null,\n  takesValue?: 1 | null,\n  insertText?: string | null,\n  valueSuggestions?: readonly string[] | null,\n];\n\ntype CompactSubcommand = readonly [\n  name: string,\n  descriptionKey?: string | null,\n  subcommands?: readonly CompactSubcommand[] | null,\n  options?: readonly CompactOption[] | null,\n];\n\ntype CompactCommandSpec = readonly [\n  command: string,\n  descriptionKey?: string | null,\n  subcommands?: readonly CompactSubcommand[] | null,\n  options?: readonly CompactOption[] | null,\n];\n\nconst expandDescriptionI18nKey = (descriptionKey: string | null | undefined): string | undefined => {\n  if (!descriptionKey) {\n    return undefined;\n  }\n\n  return descriptionKey.includes('.') ? descriptionKey : \`\${DESCRIPTION_I18N_KEY_PREFIX}\${descriptionKey}\`;\n};\n\nconst inflateOptions = (options: readonly CompactOption[] | null | undefined): TerminalCommandSpecOption[] | undefined => {\n  if (!options) {\n    return undefined;\n  }\n\n  return options.map(([name, descriptionKey, takesValue, insertText, valueSuggestions]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      name,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(takesValue === 1 ? { takesValue: true } : {}),\n      ...(typeof insertText === 'string' ? { insertText } : {}),\n      ...(Array.isArray(valueSuggestions) ? { valueSuggestions: [...valueSuggestions] } : {}),\n    };\n  });\n};\n\nconst inflateSubcommands = (\n  subcommands: readonly CompactSubcommand[] | null | undefined,\n): TerminalCommandSpecSubcommand[] | undefined => {\n  if (!subcommands) {\n    return undefined;\n  }\n\n  return subcommands.map(([name, descriptionKey, nestedSubcommands, options]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      name,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(Array.isArray(nestedSubcommands) ? { subcommands: inflateSubcommands(nestedSubcommands) ?? [] } : {}),\n      ...(Array.isArray(options) ? { options: inflateOptions(options) ?? [] } : {}),\n    };\n  });\n};\n\nexport const inflateCommandSpecs = (specs: readonly CompactCommandSpec[]): ReadonlyArray<TerminalCommandSpec> => {\n  return specs.map(([command, descriptionKey, subcommands, options]) => {\n    const descriptionI18nKey = expandDescriptionI18nKey(descriptionKey);\n\n    return {\n      command,\n      ...(descriptionI18nKey ? { descriptionI18nKey } : {}),\n      ...(Array.isArray(subcommands) ? { subcommands: inflateSubcommands(subcommands) ?? [] } : {}),\n      ...(Array.isArray(options) ? { options: inflateOptions(options) ?? [] } : {}),\n    };\n  });\n};\n\n/**\n * Loads compact inshellisense command specs from the generated MessagePack asset.\n * @returns Compact command specs decoded from the generated runtime asset.\n */\nexport const loadCompactInshellisenseCommandSpecs = (): readonly CompactCommandSpec[] => {\n  try {\n    const decoded = decode(readFileSync(COMPACT_SPECS_ASSET_PATH));\n    if (!Array.isArray(decoded)) {\n      throw new Error('Decoded payload is not an array.');\n    }\n\n    return decoded as CompactCommandSpec[];\n  } catch (error: unknown) {\n    throw new Error(\`Failed to load generated inshellisense MessagePack asset: \${COMPACT_SPECS_ASSET_PATH}\`, {\n      cause: error,\n    });\n  }\n};\n\n/**\n * Auto-generated from @withfig/autocomplete resources.\n * Run \`pnpm --filter @cosmosh/backend completion:generate\` to refresh.\n */\nexport const INSHELLISENSE_COMMAND_SPECS: ReadonlyArray<TerminalCommandSpec> = inflateCommandSpecs(\n  loadCompactInshellisenseCommandSpecs(),\n);\n`;
   const safeFileContent = fileContent.replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
-  const enLocaleContent = `${JSON.stringify(enInshellisenseLocaleTree, null, 2)}\n`;
-  const zhCnLocaleContent = `${JSON.stringify(zhCnInshellisenseLocaleTree, null, 2)}\n`;
+  const enLocaleContent = `${JSON.stringify(sortedEnInshellisenseLocaleTree, null, 2)}\n`;
+  const zhCnLocaleContent = `${JSON.stringify(sortedZhCnInshellisenseLocaleTree, null, 2)}\n`;
+  const compactEntriesMessagePack = encodeVerifiedMessagePack(compactEntries, 'generated-inshellisense.msgpack');
+  const enLocaleMessagePack = encodeVerifiedMessagePack(
+    sortedEnInshellisenseLocaleTree,
+    'en/backend-inshellisense.msgpack',
+  );
+  const zhCnLocaleMessagePack = encodeVerifiedMessagePack(
+    sortedZhCnInshellisenseLocaleTree,
+    'zh-CN/backend-inshellisense.msgpack',
+  );
 
   await fs.writeFile(OUTPUT_FILE, safeFileContent, 'utf8');
+  await fs.writeFile(MSGPACK_OUTPUT_FILE, compactEntriesMessagePack);
   await fs.writeFile(I18N_EN_OUTPUT_FILE, enLocaleContent, 'utf8');
   await fs.writeFile(I18N_ZH_CN_OUTPUT_FILE, zhCnLocaleContent, 'utf8');
+  await fs.writeFile(I18N_EN_MSGPACK_OUTPUT_FILE, enLocaleMessagePack);
+  await fs.writeFile(I18N_ZH_CN_MSGPACK_OUTPUT_FILE, zhCnLocaleMessagePack);
+  await verifyMessagePackAssetFile(MSGPACK_OUTPUT_FILE, 'generated-inshellisense.msgpack');
+  await verifyMessagePackAssetFile(I18N_EN_MSGPACK_OUTPUT_FILE, 'en/backend-inshellisense.msgpack');
+  await verifyMessagePackAssetFile(I18N_ZH_CN_MSGPACK_OUTPUT_FILE, 'zh-CN/backend-inshellisense.msgpack');
+  const compactEntriesJsonBytes = Buffer.byteLength(compactEntriesJson, 'utf8');
+  const enLocaleJsonBytes = Buffer.byteLength(enLocaleContent, 'utf8');
+  const zhCnLocaleJsonBytes = Buffer.byteLength(zhCnLocaleContent, 'utf8');
   process.stdout.write(
-    `Generated ${entries.length} command specs and ${descriptionCatalog.size} inshellisense description locales.\n`,
+    [
+      `Generated ${entries.length} command specs and ${descriptionCatalog.size} inshellisense description locales.`,
+      `Command specs: JSON ${formatBytes(compactEntriesJsonBytes)} -> MessagePack ${formatBytes(compactEntriesMessagePack.byteLength)} (${formatReduction(compactEntriesJsonBytes, compactEntriesMessagePack.byteLength)} smaller).`,
+      `English locale: JSON ${formatBytes(enLocaleJsonBytes)} -> MessagePack ${formatBytes(enLocaleMessagePack.byteLength)} (${formatReduction(enLocaleJsonBytes, enLocaleMessagePack.byteLength)} smaller).`,
+      `Chinese locale: JSON ${formatBytes(zhCnLocaleJsonBytes)} -> MessagePack ${formatBytes(zhCnLocaleMessagePack.byteLength)} (${formatReduction(zhCnLocaleJsonBytes, zhCnLocaleMessagePack.byteLength)} smaller).`,
+      '',
+    ].join('\n'),
   );
 };
 

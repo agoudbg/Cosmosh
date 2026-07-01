@@ -4,7 +4,7 @@
   "private": true,
   "description": "Shared i18n core for Cosmosh main, renderer and backend",
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ./scripts/copy-runtime-assets.mjs",
     "dev": "tsup --watch",
     "check": "node ./scripts/check-locales.mjs",
     "sort": "node ./scripts/sort-locales.mjs --write",

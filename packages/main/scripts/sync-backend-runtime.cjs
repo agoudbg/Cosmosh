@@ -10,6 +10,7 @@ const runtimeCosmoshRoot = path.join(runtimeNodeModulesRoot, '@cosmosh');
 
 const thirdPartyEntryPackages = [
   '@hono/node-server',
+  '@msgpack/msgpack',
   'hono',
   'ssh2',
   'ws',
@@ -311,6 +312,18 @@ const normalizeExportAssetPath = (exportPath) => {
   return normalized;
 };
 
+const isGeneratedInshellisenseJsonAsset = (sourcePath) => {
+  return path.basename(sourcePath).toLowerCase() === 'backend-inshellisense.json';
+};
+
+const isGeneratedInshellisenseDistAsset = (packageName, sourcePath) => {
+  if (packageName !== 'i18n' || path.basename(sourcePath).toLowerCase() !== 'backend-inshellisense.msgpack') {
+    return false;
+  }
+
+  return normalizeRelativePath(sourcePath, path.join(workspaceRoot, 'packages', packageName)).startsWith('dist/locales/');
+};
+
 const copyExportedRuntimeAssets = async (sourcePackageDir, targetPackageDir, packageJsonObject) => {
   const exportTargetPaths = new Set();
   collectExportTargetPaths(packageJsonObject.exports, exportTargetPaths);
@@ -335,8 +348,13 @@ const copyExportedRuntimeAssets = async (sourcePackageDir, targetPackageDir, pac
         await fs.cp(sourceAssetPath, targetAssetPath, {
           recursive: true,
           force: true,
+          filter: (nestedSourcePath) => !isGeneratedInshellisenseJsonAsset(nestedSourcePath),
         });
       } else {
+        if (isGeneratedInshellisenseJsonAsset(sourceAssetPath)) {
+          continue;
+        }
+
         await fs.mkdir(path.dirname(targetAssetPath), { recursive: true });
         await fs.copyFile(sourceAssetPath, targetAssetPath);
       }
@@ -449,7 +467,13 @@ const syncWorkspaceRuntimePackages = async () => {
       filter: (sourcePath) => {
         const lowerName = path.basename(sourcePath).toLowerCase();
 
-        if (lowerName.endsWith('.map') || lowerName.endsWith('.d.ts') || lowerName.endsWith('.d.mts')) {
+        if (
+          lowerName.endsWith('.map') ||
+          lowerName.endsWith('.d.ts') ||
+          lowerName.endsWith('.d.mts') ||
+          isGeneratedInshellisenseJsonAsset(sourcePath) ||
+          isGeneratedInshellisenseDistAsset(packageName, sourcePath)
+        ) {
           return false;
         }
 
