@@ -132,8 +132,8 @@ sequenceDiagram
 - `packages/backend/scripts/generate-inshellisense.mjs` 会生成规范数据和仅英文的生成说明资源：
   - `packages/i18n/locales/en/backend-inshellisense.json` 仍作为可读的英文重生成/审阅源保留。
   - `packages/backend/src/terminal/completion/resources/inshellisense-manifest.json` 是压缩资源的运行时 manifest。
-  - `packages/backend/src/terminal/completion/resources/inshellisense-command-specs.json.br` 保存紧凑命令 tuple 载荷，并在首次需要内置命令候选时解压加载。
-  - `packages/backend/src/terminal/completion/resources/inshellisense-descriptions.json.br` 保存生成的英文说明文本，仅在解析 inshellisense 详情时加载；资源读取失败只会禁用该生成来源，并回退到稳定的来源标签。
+  - `packages/backend/src/terminal/completion/resources/inshellisense-command-specs.json.zst` 使用 zstd level 10 压缩保存紧凑命令 tuple 载荷，并在首次需要内置命令候选时解压加载。
+  - `packages/backend/src/terminal/completion/resources/inshellisense-descriptions.json.zst` 使用 zstd level 10 压缩保存生成的英文说明文本，仅在解析 inshellisense 详情时加载；资源读取失败只会禁用该生成来源，并回退到稳定的来源标签。
   - manifest 与压缩资源是被忽略的构建产物。开发预检与 CI/打包构建会通过 `packages/backend/scripts/prepare-completion-resources.mjs` 重新生成；packaged backend runtime 会排除 `backend-inshellisense.json`，只复制压缩运行时资源。
   - 生成的补全说明有意不再提供翻译 locale 文件，也不保留翻译回填/保留逻辑。
 - backend 作用域 i18n 启动时只加载基础 `backend.json`。补全说明由补全资源 loader 解析，避免 backend 冷启动解析生成说明字典。

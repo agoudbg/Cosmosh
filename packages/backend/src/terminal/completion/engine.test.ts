@@ -91,7 +91,7 @@ test.afterEach(() => {
   resetCompletionResourceLoaderForTests();
 });
 
-test('generated completion resources are readable Brotli payloads', async () => {
+test('generated completion resources are readable zstd payloads', async () => {
   resetCompletionResourceLoaderForTests();
 
   const specs = await loadInshellisenseCommandSpecs();

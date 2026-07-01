@@ -2,8 +2,8 @@ import fs from 'node:fs/promises';
 
 const REQUIRED_FILES = [
   new URL('../src/terminal/completion/resources/inshellisense-manifest.json', import.meta.url),
-  new URL('../src/terminal/completion/resources/inshellisense-command-specs.json.br', import.meta.url),
-  new URL('../src/terminal/completion/resources/inshellisense-descriptions.json.br', import.meta.url),
+  new URL('../src/terminal/completion/resources/inshellisense-command-specs.json.zst', import.meta.url),
+  new URL('../src/terminal/completion/resources/inshellisense-descriptions.json.zst', import.meta.url),
 ];
 
 const fileExists = async (fileUrl) => {

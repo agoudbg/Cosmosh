@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import { brotliDecompress } from 'node:zlib';
+import { zstdDecompress } from 'node:zlib';
 
 import type { TerminalCommandSpec, TerminalCommandSpecOption, TerminalCommandSpecSubcommand } from './types.js';
 
@@ -54,7 +54,7 @@ type CompactCommandSpec = readonly [
   options?: readonly CompactOption[] | null,
 ];
 
-const brotliDecompressAsync = promisify(brotliDecompress);
+const zstdDecompressAsync = promisify(zstdDecompress);
 const MANIFEST_FILE_NAME = 'inshellisense-manifest.json';
 const FALLBACK_DESCRIPTION_I18N_KEY_PREFIX = 'completion.inshellisenseDescriptions.';
 const warningKeys = new Set<string>();
@@ -100,7 +100,7 @@ const loadResourceManifest = async (): Promise<CompletionResourceManifest> => {
 const readCompressedJsonResource = async <T>(fileName: string, expectedSha256: string): Promise<T> => {
   const resourceUrl = new URL(`./resources/${fileName}`, import.meta.url);
   const compressed = await readFile(resourceUrl);
-  const rawBuffer = await brotliDecompressAsync(compressed);
+  const rawBuffer = await zstdDecompressAsync(compressed);
   const actualSha256 = createHash('sha256').update(rawBuffer).digest('hex');
 
   if (actualSha256 !== expectedSha256) {

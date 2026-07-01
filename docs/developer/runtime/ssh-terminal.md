@@ -132,8 +132,8 @@ sequenceDiagram
 - `packages/backend/scripts/generate-inshellisense.mjs` generates the spec dataset plus English-only generated description resources:
   - `packages/i18n/locales/en/backend-inshellisense.json` remains the readable English source for regeneration and review.
   - `packages/backend/src/terminal/completion/resources/inshellisense-manifest.json` is the runtime manifest for compressed resources.
-  - `packages/backend/src/terminal/completion/resources/inshellisense-command-specs.json.br` stores the compact command tuple payload and is decompressed on the first request that needs built-in command suggestions.
-  - `packages/backend/src/terminal/completion/resources/inshellisense-descriptions.json.br` stores generated English description text and is loaded only while resolving inshellisense details; failed resource reads disable only that generated source and fall back to stable source labels.
+  - `packages/backend/src/terminal/completion/resources/inshellisense-command-specs.json.zst` stores the compact command tuple payload with zstd level 10 compression and is decompressed on the first request that needs built-in command suggestions.
+  - `packages/backend/src/terminal/completion/resources/inshellisense-descriptions.json.zst` stores generated English description text with zstd level 10 compression and is loaded only while resolving inshellisense details; failed resource reads disable only that generated source and fall back to stable source labels.
   - The manifest and compressed resources are ignored build artifacts. Development preflight and CI/package builds regenerate them through `packages/backend/scripts/prepare-completion-resources.mjs`; packaged backend runtime excludes `backend-inshellisense.json` and copies only the compressed runtime resources.
   - Generated completion descriptions intentionally do not have translated locale files or fallback translation preservation logic.
 - Backend scope i18n loads only base `backend.json` during startup. Completion descriptions are resolved by the completion resource loader so backend cold start does not parse the generated description dictionary.

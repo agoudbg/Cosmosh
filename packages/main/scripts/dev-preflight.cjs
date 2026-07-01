@@ -86,7 +86,7 @@ const checks = [
     ],
     outputs: [
       path.join(repoRoot, 'packages', 'backend', 'src', 'terminal', 'completion', 'resources', 'inshellisense-manifest.json'),
-      path.join(repoRoot, 'packages', 'backend', 'src', 'terminal', 'completion', 'resources', 'inshellisense-specs.json.br'),
+      path.join(repoRoot, 'packages', 'backend', 'src', 'terminal', 'completion', 'resources', 'inshellisense-command-specs.json.zst'),
       path.join(
         repoRoot,
         'packages',
@@ -95,7 +95,7 @@ const checks = [
         'terminal',
         'completion',
         'resources',
-        'inshellisense-descriptions.json.br',
+        'inshellisense-descriptions.json.zst',
       ),
     ],
   },

@@ -3,23 +3,23 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { brotliCompress, constants as zlibConstants } from 'node:zlib';
+import { constants as zlibConstants, zstdCompress } from 'node:zlib';
 import { promisify } from 'node:util';
 
 const RESOURCE_DIR = new URL('../src/terminal/completion/resources/', import.meta.url);
 const MANIFEST_RESOURCE_FILE_NAME = 'inshellisense-manifest.json';
-const SPECS_RESOURCE_FILE_NAME = 'inshellisense-command-specs.json.br';
-const DESCRIPTIONS_RESOURCE_FILE_NAME = 'inshellisense-descriptions.json.br';
+const SPECS_RESOURCE_FILE_NAME = 'inshellisense-command-specs.json.zst';
+const DESCRIPTIONS_RESOURCE_FILE_NAME = 'inshellisense-descriptions.json.zst';
 const MANIFEST_RESOURCE_FILE = new URL(MANIFEST_RESOURCE_FILE_NAME, RESOURCE_DIR);
 const SPECS_RESOURCE_FILE = new URL(SPECS_RESOURCE_FILE_NAME, RESOURCE_DIR);
 const DESCRIPTIONS_RESOURCE_FILE = new URL(DESCRIPTIONS_RESOURCE_FILE_NAME, RESOURCE_DIR);
 const I18N_EN_OUTPUT_FILE = new URL('../../i18n/locales/en/backend-inshellisense.json', import.meta.url);
 const require = createRequire(import.meta.url);
 const DESCRIPTION_I18N_KEY_PREFIX = 'completion.inshellisenseDescriptions.';
-const brotliCompressAsync = promisify(brotliCompress);
-const brotliOptions = {
+const zstdCompressAsync = promisify(zstdCompress);
+const zstdOptions = {
   params: {
-    [zlibConstants.BROTLI_PARAM_QUALITY]: 8,
+    [zlibConstants.ZSTD_c_compressionLevel]: 10,
   },
 };
 
@@ -142,7 +142,7 @@ const registerDescriptionEntry = (catalog, seed, description) => {
 
 const writeCompressedJsonFile = async (fileUrl, value) => {
   const rawJson = Buffer.from(JSON.stringify(value), 'utf8');
-  const compressed = await brotliCompressAsync(rawJson, brotliOptions);
+  const compressed = await zstdCompressAsync(rawJson, zstdOptions);
   await fs.writeFile(fileUrl, compressed);
   return {
     rawBytes: rawJson.byteLength,
