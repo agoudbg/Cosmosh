@@ -3,18 +3,33 @@ import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { brotliDecompress } from 'node:zlib';
 
-import { INSHELLISENSE_RESOURCE_MANIFEST } from './generated-inshellisense.js';
 import type { TerminalCommandSpec, TerminalCommandSpecOption, TerminalCommandSpecSubcommand } from './types.js';
-
-type CompletionLocale = 'en' | 'zh-CN';
 
 type JsonTranslationTree = {
   [key: string]: string | JsonTranslationTree;
 };
 
+type CompletionResourceManifest = {
+  descriptionI18nKeyPrefix: string;
+  specs: {
+    fileName: string;
+    commandCount: number;
+    rawBytes: number;
+    compressedBytes: number;
+    sha256: string;
+  };
+  descriptions: {
+    fileName: string;
+    keyCount: number;
+    rawBytes: number;
+    compressedBytes: number;
+    sha256: string;
+  };
+};
+
 type CompletionResourceLoaderOverrides = {
   specs?: () => Promise<ReadonlyArray<TerminalCommandSpec>>;
-  descriptions?: Partial<Record<CompletionLocale, () => Promise<JsonTranslationTree>>>;
+  descriptions?: () => Promise<JsonTranslationTree>;
 };
 
 type CompactOption = readonly [
@@ -40,11 +55,13 @@ type CompactCommandSpec = readonly [
 ];
 
 const brotliDecompressAsync = promisify(brotliDecompress);
-const descriptionI18nKeyPrefix = INSHELLISENSE_RESOURCE_MANIFEST.descriptionI18nKeyPrefix;
+const MANIFEST_FILE_NAME = 'inshellisense-manifest.json';
+const FALLBACK_DESCRIPTION_I18N_KEY_PREFIX = 'completion.inshellisenseDescriptions.';
 const warningKeys = new Set<string>();
 
+let manifestPromise: Promise<CompletionResourceManifest> | null = null;
 let specsPromise: Promise<ReadonlyArray<TerminalCommandSpec>> | null = null;
-const descriptionPromises = new Map<CompletionLocale, Promise<JsonTranslationTree>>();
+let descriptionPromise: Promise<JsonTranslationTree> | null = null;
 let testResourceOverrides: CompletionResourceLoaderOverrides | null = null;
 
 /**
@@ -57,6 +74,24 @@ const warnOnce = (key: string, message: string, error: unknown): void => {
 
   warningKeys.add(key);
   console.warn(message, error);
+};
+
+/**
+ * Reads the generated completion manifest from the runtime resources folder.
+ */
+const readResourceManifest = async (): Promise<CompletionResourceManifest> => {
+  const manifestUrl = new URL(`./resources/${MANIFEST_FILE_NAME}`, import.meta.url);
+  const manifestBuffer = await readFile(manifestUrl);
+
+  return JSON.parse(manifestBuffer.toString('utf8')) as CompletionResourceManifest;
+};
+
+/**
+ * Loads the completion resource manifest once per backend process.
+ */
+const loadResourceManifest = async (): Promise<CompletionResourceManifest> => {
+  manifestPromise ??= readResourceManifest();
+  return await manifestPromise;
 };
 
 /**
@@ -83,7 +118,7 @@ const expandDescriptionI18nKey = (descriptionKey: string | null | undefined): st
     return undefined;
   }
 
-  return descriptionKey.includes('.') ? descriptionKey : `${descriptionI18nKeyPrefix}${descriptionKey}`;
+  return descriptionKey.includes('.') ? descriptionKey : `${FALLBACK_DESCRIPTION_I18N_KEY_PREFIX}${descriptionKey}`;
 };
 
 /**
@@ -155,10 +190,10 @@ export const loadInshellisenseCommandSpecs = async (): Promise<ReadonlyArray<Ter
     return testResourceOverrides.specs();
   }
 
-  specsPromise ??= readCompressedJsonResource<CompactCommandSpec[]>(
-    INSHELLISENSE_RESOURCE_MANIFEST.specs.fileName,
-    INSHELLISENSE_RESOURCE_MANIFEST.specs.sha256,
-  )
+  specsPromise ??= loadResourceManifest()
+    .then((manifest) =>
+      readCompressedJsonResource<CompactCommandSpec[]>(manifest.specs.fileName, manifest.specs.sha256),
+    )
     .then((specs) => inflateCommandSpecs(specs))
     .catch((error: unknown) => {
       warnOnce(
@@ -173,33 +208,31 @@ export const loadInshellisenseCommandSpecs = async (): Promise<ReadonlyArray<Ter
 };
 
 /**
- * Loads one compressed description locale on first use.
+ * Loads generated English completion descriptions on first use.
  */
-const loadDescriptionTree = async (locale: CompletionLocale): Promise<JsonTranslationTree> => {
-  const override = testResourceOverrides?.descriptions?.[locale];
-  if (override) {
-    return override();
+const loadDescriptionTree = async (): Promise<JsonTranslationTree> => {
+  if (testResourceOverrides?.descriptions) {
+    return testResourceOverrides.descriptions();
   }
 
-  const existingPromise = descriptionPromises.get(locale);
-  if (existingPromise) {
-    return existingPromise;
+  if (descriptionPromise) {
+    return descriptionPromise;
   }
 
-  const manifest = INSHELLISENSE_RESOURCE_MANIFEST.descriptions[locale];
-  const nextPromise = readCompressedJsonResource<JsonTranslationTree>(manifest.fileName, manifest.sha256).catch(
-    (error: unknown) => {
+  descriptionPromise = loadResourceManifest()
+    .then((manifest) =>
+      readCompressedJsonResource<JsonTranslationTree>(manifest.descriptions.fileName, manifest.descriptions.sha256),
+    )
+    .catch((error: unknown) => {
       warnOnce(
-        `description:${locale}`,
-        `[completion] Failed to load ${locale} inshellisense descriptions. Completion details will use fallback labels.`,
+        'description',
+        '[completion] Failed to load inshellisense descriptions. Completion details will use fallback labels.',
         error,
       );
       return {};
-    },
-  );
-  descriptionPromises.set(locale, nextPromise);
+    });
 
-  return nextPromise;
+  return descriptionPromise;
 };
 
 /**
@@ -218,32 +251,20 @@ const resolveTreeValue = (target: JsonTranslationTree, key: string): string | un
 };
 
 /**
- * Resolves a generated inshellisense description with locale fallback.
+ * Resolves a generated English inshellisense description.
  */
-export const resolveInshellisenseDescription = async (
-  key: string,
-  locale: CompletionLocale,
-): Promise<string | undefined> => {
-  const currentTree = await loadDescriptionTree(locale);
-  const fromCurrent = resolveTreeValue(currentTree, key);
-  if (fromCurrent) {
-    return fromCurrent;
-  }
-
-  if (locale === 'en') {
-    return undefined;
-  }
-
-  const fallbackTree = await loadDescriptionTree('en');
-  return resolveTreeValue(fallbackTree, key);
+export const resolveInshellisenseDescription = async (key: string): Promise<string | undefined> => {
+  const currentTree = await loadDescriptionTree();
+  return resolveTreeValue(currentTree, key);
 };
 
 /**
  * Resets lazy resource state for focused completion-engine tests.
  */
 export const resetCompletionResourceLoaderForTests = (): void => {
+  manifestPromise = null;
   specsPromise = null;
-  descriptionPromises.clear();
+  descriptionPromise = null;
   warningKeys.clear();
   testResourceOverrides = null;
 };

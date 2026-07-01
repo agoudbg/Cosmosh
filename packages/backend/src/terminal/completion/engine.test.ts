@@ -40,25 +40,16 @@ const useFixtureCompletionResources = (options?: {
 }) => {
   setCompletionResourceLoaderOverridesForTests({
     specs: options?.specLoader ?? (async () => fixtureCommandSpecs),
-    descriptions: {
-      en: async () => ({
-        completion: {
-          inshellisenseDescriptions: {
-            git_00000000: 'Git command',
-            git_push_00000000: 'Update remote refs',
-            'git_push_--force_00000000': 'Force push',
-            'git_push_--set-upstream_00000000': 'Set upstream branch',
-          },
+    descriptions: async () => ({
+      completion: {
+        inshellisenseDescriptions: {
+          git_00000000: 'Git command',
+          git_push_00000000: 'Update remote refs',
+          'git_push_--force_00000000': 'Force push',
+          'git_push_--set-upstream_00000000': 'Set upstream branch',
         },
-      }),
-      'zh-CN': async () => ({
-        completion: {
-          inshellisenseDescriptions: {
-            git_00000000: 'Git 命令',
-          },
-        },
-      }),
-    },
+      },
+    }),
   });
 };
 
@@ -110,7 +101,7 @@ test('generated completion resources are readable Brotli payloads', async () => 
   assert.ok(gitSpec.descriptionI18nKey);
   assert.ok(gitSpec.subcommands?.some((subcommand) => subcommand.name === 'push'));
 
-  const description = await resolveInshellisenseDescription(gitSpec.descriptionI18nKey, 'zh-CN');
+  const description = await resolveInshellisenseDescription(gitSpec.descriptionI18nKey);
 
   assert.ok(description);
 });
@@ -242,7 +233,7 @@ test('option value suggestions remain available from lazy command specs', async 
   assert.ok(result.items.some((item) => item.label === 'git push --set-upstream origin'));
 });
 
-test('completion descriptions resolve generated locale and fall back to English', async () => {
+test('completion descriptions resolve generated English source text', async () => {
   useFixtureCompletionResources();
 
   const localizedItems = await localizeTerminalCompletionItems(
@@ -269,10 +260,9 @@ test('completion descriptions resolve generated locale and fall back to English'
       },
     ],
     (key) => (key === 'completion.labels.commandSpec' ? '命令规范' : key),
-    'zh-CN',
   );
 
-  assert.equal(localizedItems[0]?.detail, 'Git 命令');
+  assert.equal(localizedItems[0]?.detail, 'Git command');
   assert.equal(localizedItems[1]?.detail, 'Update remote refs');
 });
 

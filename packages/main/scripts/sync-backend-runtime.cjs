@@ -471,9 +471,6 @@ const syncWorkspaceRuntimePackages = async () => {
       await fs.rm(path.join(targetPackageDir, 'locales', 'en', 'backend-inshellisense.json'), {
         force: true,
       });
-      await fs.rm(path.join(targetPackageDir, 'locales', 'zh-CN', 'backend-inshellisense.json'), {
-        force: true,
-      });
       await minifyJsonFilesInDirectory(path.join(targetPackageDir, 'locales'));
     }
     await fs.copyFile(sourcePackageJsonPath, targetPackageJsonPath);

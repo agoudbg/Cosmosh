@@ -6,16 +6,14 @@ import { pathToFileURL } from 'node:url';
 import { brotliCompress, constants as zlibConstants } from 'node:zlib';
 import { promisify } from 'node:util';
 
-const OUTPUT_FILE = new URL('../src/terminal/completion/generated-inshellisense.ts', import.meta.url);
 const RESOURCE_DIR = new URL('../src/terminal/completion/resources/', import.meta.url);
-const SPECS_RESOURCE_FILE_NAME = 'inshellisense-specs.json.br';
-const DESCRIPTIONS_EN_RESOURCE_FILE_NAME = 'inshellisense-descriptions.en.json.br';
-const DESCRIPTIONS_ZH_CN_RESOURCE_FILE_NAME = 'inshellisense-descriptions.zh-CN.json.br';
+const MANIFEST_RESOURCE_FILE_NAME = 'inshellisense-manifest.json';
+const SPECS_RESOURCE_FILE_NAME = 'inshellisense-command-specs.json.br';
+const DESCRIPTIONS_RESOURCE_FILE_NAME = 'inshellisense-descriptions.json.br';
+const MANIFEST_RESOURCE_FILE = new URL(MANIFEST_RESOURCE_FILE_NAME, RESOURCE_DIR);
 const SPECS_RESOURCE_FILE = new URL(SPECS_RESOURCE_FILE_NAME, RESOURCE_DIR);
-const DESCRIPTIONS_EN_RESOURCE_FILE = new URL(DESCRIPTIONS_EN_RESOURCE_FILE_NAME, RESOURCE_DIR);
-const DESCRIPTIONS_ZH_CN_RESOURCE_FILE = new URL(DESCRIPTIONS_ZH_CN_RESOURCE_FILE_NAME, RESOURCE_DIR);
+const DESCRIPTIONS_RESOURCE_FILE = new URL(DESCRIPTIONS_RESOURCE_FILE_NAME, RESOURCE_DIR);
 const I18N_EN_OUTPUT_FILE = new URL('../../i18n/locales/en/backend-inshellisense.json', import.meta.url);
-const I18N_ZH_CN_OUTPUT_FILE = new URL('../../i18n/locales/zh-CN/backend-inshellisense.json', import.meta.url);
 const require = createRequire(import.meta.url);
 const DESCRIPTION_I18N_KEY_PREFIX = 'completion.inshellisenseDescriptions.';
 const brotliCompressAsync = promisify(brotliCompress);
@@ -131,28 +129,6 @@ const ensureTreePath = (target, pathKey, value) => {
   cursor[segments[segments.length - 1]] = value;
 };
 
-const getTreePathValue = (target, pathKey) => {
-  const segments = String(pathKey || '')
-    .split('.')
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0);
-
-  if (segments.length === 0) {
-    return undefined;
-  }
-
-  let cursor = target;
-  for (const segment of segments) {
-    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor) || !(segment in cursor)) {
-      return undefined;
-    }
-
-    cursor = cursor[segment];
-  }
-
-  return cursor;
-};
-
 const registerDescriptionEntry = (catalog, seed, description) => {
   const normalizedDescription = sanitizeText(description, { trim: true });
   if (!normalizedDescription) {
@@ -162,15 +138,6 @@ const registerDescriptionEntry = (catalog, seed, description) => {
   const key = toDescriptionI18nKey(seed);
   catalog.set(key, normalizedDescription);
   return key;
-};
-
-const readJsonFileOrDefault = async (fileUrl, fallbackValue) => {
-  try {
-    const content = await fs.readFile(fileUrl, 'utf8');
-    return JSON.parse(content);
-  } catch {
-    return fallbackValue;
-  }
 };
 
 const writeCompressedJsonFile = async (fileUrl, value) => {
@@ -196,6 +163,22 @@ const countTranslationLeaves = (target) => {
 
     return count + countTranslationLeaves(value);
   }, 0);
+};
+
+const sortJsonTree = (target) => {
+  if (Array.isArray(target)) {
+    return target.map((entry) => sortJsonTree(entry));
+  }
+
+  if (!target || typeof target !== 'object') {
+    return target;
+  }
+
+  return Object.fromEntries(
+    Object.entries(target)
+      .map(([key, value]) => [key, sortJsonTree(value)])
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey)),
+  );
 };
 
 const normalizeSpecRoot = (specValue) => {
@@ -506,7 +489,7 @@ const collectLinkedSpecPaths = (specNode, parentEntryPath) => {
   return Array.from(linkedPaths);
 };
 
-const generate = async () => {
+export const generateInshellisenseResources = async () => {
   const indexPath = require.resolve('@withfig/autocomplete');
   const buildDir = path.dirname(indexPath);
   const indexModule = await import(pathToFileURL(indexPath).href);
@@ -576,35 +559,14 @@ const generate = async () => {
     ensureTreePath(enInshellisenseLocaleTree, key, description);
   });
 
-  const existingEnInshellisenseLocaleTree = await readJsonFileOrDefault(I18N_EN_OUTPUT_FILE, {});
-  const existingZhCnInshellisenseLocaleTree = await readJsonFileOrDefault(I18N_ZH_CN_OUTPUT_FILE, {});
-  const zhCnInshellisenseLocaleTree = {};
-  descriptionCatalog.forEach((description, key) => {
-    const existingEnglishDescription = getTreePathValue(existingEnInshellisenseLocaleTree, key);
-    const existingTranslation = getTreePathValue(existingZhCnInshellisenseLocaleTree, key);
-
-    const hasManualTranslation =
-      typeof existingTranslation === 'string' &&
-      existingTranslation.trim().length > 0 &&
-      typeof existingEnglishDescription === 'string' &&
-      existingTranslation !== existingEnglishDescription;
-    const englishSourceUnchanged =
-      typeof existingEnglishDescription === 'string' && existingEnglishDescription === description;
-
-    if (hasManualTranslation && englishSourceUnchanged) {
-      ensureTreePath(zhCnInshellisenseLocaleTree, key, existingTranslation);
-    }
-  });
+  const sortedEnglishDescriptionTree = sortJsonTree(enInshellisenseLocaleTree);
 
   const compactEntries = entries.map(toCompactCommandSpec);
+  await fs.rm(RESOURCE_DIR, { recursive: true, force: true });
   await fs.mkdir(RESOURCE_DIR, { recursive: true });
   const specResourceStats = await writeCompressedJsonFile(SPECS_RESOURCE_FILE, compactEntries);
-  const enDescriptionResourceStats = await writeCompressedJsonFile(DESCRIPTIONS_EN_RESOURCE_FILE, enInshellisenseLocaleTree);
-  const zhCnDescriptionResourceStats = await writeCompressedJsonFile(
-    DESCRIPTIONS_ZH_CN_RESOURCE_FILE,
-    zhCnInshellisenseLocaleTree,
-  );
-  const fileContent = `/* eslint-disable */\n/* prettier-ignore */\n\n/**\n * Auto-generated from @withfig/autocomplete resources.\n * Run \`pnpm --filter @cosmosh/backend completion:generate\` to refresh.\n */\nexport const INSHELLISENSE_RESOURCE_MANIFEST = ${JSON.stringify(
+  const descriptionResourceStats = await writeCompressedJsonFile(DESCRIPTIONS_RESOURCE_FILE, sortedEnglishDescriptionTree);
+  const manifestContent = `${JSON.stringify(
     {
       descriptionI18nKeyPrefix: DESCRIPTION_I18N_KEY_PREFIX,
       specs: {
@@ -615,38 +577,30 @@ const generate = async () => {
         sha256: specResourceStats.sha256,
       },
       descriptions: {
-        en: {
-          fileName: DESCRIPTIONS_EN_RESOURCE_FILE_NAME,
-          keyCount: countTranslationLeaves(enInshellisenseLocaleTree),
-          rawBytes: enDescriptionResourceStats.rawBytes,
-          compressedBytes: enDescriptionResourceStats.compressedBytes,
-          sha256: enDescriptionResourceStats.sha256,
-        },
-        'zh-CN': {
-          fileName: DESCRIPTIONS_ZH_CN_RESOURCE_FILE_NAME,
-          keyCount: countTranslationLeaves(zhCnInshellisenseLocaleTree),
-          rawBytes: zhCnDescriptionResourceStats.rawBytes,
-          compressedBytes: zhCnDescriptionResourceStats.compressedBytes,
-          sha256: zhCnDescriptionResourceStats.sha256,
-        },
+        fileName: DESCRIPTIONS_RESOURCE_FILE_NAME,
+        keyCount: countTranslationLeaves(sortedEnglishDescriptionTree),
+        rawBytes: descriptionResourceStats.rawBytes,
+        compressedBytes: descriptionResourceStats.compressedBytes,
+        sha256: descriptionResourceStats.sha256,
       },
     },
     null,
     2,
-  )} as const;\n`;
-  const safeFileContent = fileContent.replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
-  const enLocaleContent = `${JSON.stringify(enInshellisenseLocaleTree, null, 2)}\n`;
-  const zhCnLocaleContent = `${JSON.stringify(zhCnInshellisenseLocaleTree, null, 2)}\n`;
+  )}\n`;
+  const enLocaleContent = `${JSON.stringify(sortedEnglishDescriptionTree, null, 2)}\n`;
 
-  await fs.writeFile(OUTPUT_FILE, safeFileContent, 'utf8');
+  await fs.writeFile(MANIFEST_RESOURCE_FILE, manifestContent, 'utf8');
   await fs.writeFile(I18N_EN_OUTPUT_FILE, enLocaleContent, 'utf8');
-  await fs.writeFile(I18N_ZH_CN_OUTPUT_FILE, zhCnLocaleContent, 'utf8');
   process.stdout.write(
-    `Generated ${entries.length} command specs, ${descriptionCatalog.size} inshellisense description locales, and compressed completion resources.\n`,
+    `Generated ${entries.length} command specs, ${descriptionCatalog.size} English inshellisense descriptions, and compressed completion resources.\n`,
   );
 };
 
-generate().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 1;
-});
+const isCliEntry = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
+
+if (isCliEntry) {
+  generateInshellisenseResources().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}

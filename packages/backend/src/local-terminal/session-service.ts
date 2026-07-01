@@ -129,7 +129,6 @@ type ServerOutboundMessage =
     };
 
 type LocalLiveSession = TerminalManagedSessionBase & {
-  locale: Locale;
   profileId: string;
   pty: IPty;
   telemetryInterval: NodeJS.Timeout | null;
@@ -387,7 +386,6 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
         promptDetectedAtMs: 0,
         shouldSuggestSecret: false,
       },
-      locale: i18n.getLocale(),
       t: i18n.t,
       socket: null,
       disposed: false,
@@ -535,7 +533,7 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       type: 'completion-response',
       requestId: message.requestId,
       replacePrefixLength: completionResult.replacePrefixLength,
-      items: await localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key), session.locale),
+      items: await localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
     });
   }
 

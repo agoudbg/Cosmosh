@@ -25,7 +25,6 @@ type CompletionRuntimeOptions = {
 };
 
 type TerminalTokenizerMode = 'posix' | 'powershell' | 'cmd';
-type CompletionLocale = 'en' | 'zh-CN';
 type CommandSpecIndex = {
   specs: ReadonlyArray<TerminalCommandSpec>;
   byCommandPath: ReadonlyMap<string, TerminalCommandSpec>;
@@ -1041,13 +1040,12 @@ const resolveTerminalCompletionsAsync = async (
 export const localizeTerminalCompletionItems = (
   items: ReadonlyArray<TerminalCompletionItem>,
   translate: (key: string) => string,
-  locale: CompletionLocale,
 ): Promise<TerminalCompletionItem[]> => {
   return Promise.all(
     items.map(async (item) => {
       const generatedDetail =
         item.source === 'inshellisense' && item.detailI18nKey
-          ? await resolveInshellisenseDescription(item.detailI18nKey, locale)
+          ? await resolveInshellisenseDescription(item.detailI18nKey)
           : undefined;
       const translatedDetail = generatedDetail ?? (item.detailI18nKey ? translate(item.detailI18nKey) : null);
       const hasTranslatedDetail =

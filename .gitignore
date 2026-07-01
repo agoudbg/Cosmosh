@@ -145,6 +145,9 @@ packages/main/release-*/
 # Auto-generated NSIS installer string defines (built from i18n locale JSON files)
 packages/main/resources/installer-strings.nsh
 
+# Generated terminal completion runtime assets. CI/package builds regenerate these.
+packages/backend/src/terminal/completion/resources/
+
 # IDE
 .vscode/*
 !.vscode/extensions.json

@@ -129,13 +129,13 @@ sequenceDiagram
   - command metadata imported from inshellisense/Fig resources (spec signal), generated from full command-path index rather than root-only subset,
   - runtime providers (path provider and interactive secret-prompt provider) composed in the same ranking pipeline.
 - Token parsing is shell-aware in completion engine: SSH uses POSIX tokenization, local PowerShell/CMD sessions use Windows-friendly tokenization where backslash is preserved as a literal path character instead of generic escape.
-- `packages/backend/scripts/generate-inshellisense.mjs` generates spec dataset plus locale resources with language-specific policy:
-  - `packages/backend/src/terminal/completion/generated-inshellisense.ts` is a lightweight manifest for compressed resources, not the command dataset itself.
-  - `packages/backend/src/terminal/completion/resources/inshellisense-specs.json.br` stores the compact command tuple payload and is decompressed on the first request that needs built-in command suggestions.
-  - `packages/backend/src/terminal/completion/resources/inshellisense-descriptions.*.json.br` stores generated description text and is loaded only while localizing inshellisense details; failed resource reads disable only that generated source and fall back to stable source labels.
-  - `.gitattributes` marks `.br` files as binary so Git never applies LF normalization to Brotli payloads.
-  - `packages/i18n/locales/en/backend-inshellisense.json` remains the readable regeneration/translation source, while packaged backend runtime excludes it in favor of the compressed completion resources.
-  - `packages/i18n/locales/zh-CN/backend-inshellisense.json` keeps only manually translated keys whose English source text is unchanged; new keys are not auto-filled, and keys are pruned when source text changes or is removed.
+- `packages/backend/scripts/generate-inshellisense.mjs` generates the spec dataset plus English-only generated description resources:
+  - `packages/i18n/locales/en/backend-inshellisense.json` remains the readable English source for regeneration and review.
+  - `packages/backend/src/terminal/completion/resources/inshellisense-manifest.json` is the runtime manifest for compressed resources.
+  - `packages/backend/src/terminal/completion/resources/inshellisense-command-specs.json.br` stores the compact command tuple payload and is decompressed on the first request that needs built-in command suggestions.
+  - `packages/backend/src/terminal/completion/resources/inshellisense-descriptions.json.br` stores generated English description text and is loaded only while resolving inshellisense details; failed resource reads disable only that generated source and fall back to stable source labels.
+  - The manifest and compressed resources are ignored build artifacts. Development preflight and CI/package builds regenerate them through `packages/backend/scripts/prepare-completion-resources.mjs`; packaged backend runtime excludes `backend-inshellisense.json` and copies only the compressed runtime resources.
+  - Generated completion descriptions intentionally do not have translated locale files or fallback translation preservation logic.
 - Backend scope i18n loads only base `backend.json` during startup. Completion descriptions are resolved by the completion resource loader so backend cold start does not parse the generated description dictionary.
 - Generator sanitizes LS/PS Unicode separators (`U+2028`/`U+2029`) to keep generated TypeScript files free of unusual-line-terminator warnings.
 - Ranking strategy in current implementation:

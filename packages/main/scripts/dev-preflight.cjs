@@ -76,6 +76,30 @@ const checks = [
     ],
   },
   {
+    name: '@cosmosh/backend completion resources',
+    buildArgs: ['--filter', '@cosmosh/backend', 'completion:prepare'],
+    inputs: [
+      path.join(repoRoot, 'packages', 'backend', 'scripts', 'generate-inshellisense.mjs'),
+      path.join(repoRoot, 'packages', 'backend', 'scripts', 'prepare-completion-resources.mjs'),
+      path.join(repoRoot, 'packages', 'backend', 'package.json'),
+      path.join(repoRoot, 'pnpm-lock.yaml'),
+    ],
+    outputs: [
+      path.join(repoRoot, 'packages', 'backend', 'src', 'terminal', 'completion', 'resources', 'inshellisense-manifest.json'),
+      path.join(repoRoot, 'packages', 'backend', 'src', 'terminal', 'completion', 'resources', 'inshellisense-specs.json.br'),
+      path.join(
+        repoRoot,
+        'packages',
+        'backend',
+        'src',
+        'terminal',
+        'completion',
+        'resources',
+        'inshellisense-descriptions.json.br',
+      ),
+    ],
+  },
+  {
     name: '@cosmosh/i18n',
     buildArgs: ['--filter', '@cosmosh/i18n', 'build'],
     inputs: [
