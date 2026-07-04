@@ -110,6 +110,14 @@ export type ServerInboundMessage =
       durationMs?: number;
       commandId?: string;
       timestamp: number;
+    }
+  | {
+      type: 'remote-shell-input';
+      event: 'input-change' | 'input-submit' | 'input-clear';
+      timestamp: number;
+      line?: string;
+      command?: string;
+      reason?: 'interrupt' | 'kill-line' | 'secret-prompt' | 'foreground-command';
     };
 
 /**
@@ -123,11 +131,16 @@ export type RemoteBootstrapStatus = Extract<ServerInboundMessage, { type: 'boots
 export type RemoteShellEvent = Extract<ServerInboundMessage, { type: 'remote-shell-event' }>;
 
 /**
+ * Local shell input state tracked from renderer-originated terminal input.
+ */
+export type RemoteShellInput = Extract<ServerInboundMessage, { type: 'remote-shell-input' }>;
+
+/**
  * Timestamped remote enhancement event retained for SSH debug inspection.
  */
 export type RemoteEnhancementsDebugEvent = {
   receivedAt: number;
-  payload: RemoteBootstrapStatus | RemoteShellEvent;
+  payload: RemoteBootstrapStatus | RemoteShellEvent | RemoteShellInput;
 };
 
 /**

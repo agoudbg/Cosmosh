@@ -155,6 +155,7 @@ flowchart TB
   - `completion-response`，包含 `requestId`、`replacePrefixLength` 与排序后的候选 `items`
   - `bootstrap-status`，用于侧通道 Remote Bootstrap 安装/探测状态
   - `remote-shell-event`，用于已安装 helper 通过 OSC 777 发出的运行期 shell 状态
+  - `remote-shell-input`，用于从 renderer `input` 推导出的本地、仅限当前 session 的 shell 行缓冲调试状态
 
 补全候选契约说明：
 
@@ -166,6 +167,7 @@ flowchart TB
 
 - 补全消息在 `SshSessionService` 与 `LocalTerminalSessionService` 中处理，输入规范化由 `terminal/shared.ts` 统一，排序引擎由 `terminal/completion/engine.ts` 共享。
 - `remote-shell-event` 仅用于 SSH session，不会出现在 local-terminal session。Payload 承载 shell、cwd、命令结束 exit code、duration 与 timestamp 等状态字段；不得承载密码、secret、完整终端输出或任意大 payload。Backend 会将每个解码后的 OSC payload 限制在 8 KiB，并在 renderer xterm 输出前剥离合法 Cosmosh OSC。
+- `remote-shell-input` 仅用于 SSH session，并且只存在于当前 live session。它由 renderer `input` 消息本地推导，只显示在远端增强调试面板中，不由远端 shell hook 发送；处于密码/secret prompt 或前台命令期间会清空或暂停。
 
 ## 4. 变更规则
 

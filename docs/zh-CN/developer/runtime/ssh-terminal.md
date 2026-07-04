@@ -378,7 +378,7 @@ sequenceDiagram
 - Bootstrap 会在首次 WebSocket attach 后启动，并且每个 SSH session 只启动一次。
 - 侧通道使用 `ssh2 exec`，并受 `REMOTE_BOOTSTRAP_EXEC_OPTIONS` 限制：60 秒、256 KiB 输出。安装器输出按 JSON lines 解析，永远不会写入交互式终端流。
 - Renderer 会保存最新 `bootstrap-status` 以及当前 session 尝试内的 Remote Enhancements 调试事件历史。启用 Settings `userMenuDebugEntryEnabled` 后，终端右键菜单会显示 `Remote Enhancements Debug`；选择后会在终端右上角打开固定浮层，展示最新 bootstrap phase/state/code/message/version，以及当前 session 尝试中收到的每条 bootstrap 状态和远端 shell 事件原始 JSON payload，内容可选中。
-- 调试浮层只记录状态/事件 payload，不记录 terminal `input`、terminal `output`、密码、私钥材料或完整屏幕输出。
+- 调试浮层记录 bootstrap 状态、shell 状态事件以及仅存在于当前 session 的本地 shell 输入状态；不记录 terminal `output`、密码、私钥材料或完整屏幕输出。
 - Terminal `ready`、`output`、telemetry、history、completion 与 shell-state 消息都与 bootstrap 进度彼此独立。
 
 ### 8.2.1 远端 Shell 事件协议
@@ -419,6 +419,19 @@ type RemoteShellEventMessage = {
 };
 ```
 
+本地 shell 输入调试 payload：
+
+```ts
+type RemoteShellInputMessage = {
+  type: 'remote-shell-input';
+  event: 'input-change' | 'input-submit' | 'input-clear';
+  timestamp: number;
+  line?: string;
+  command?: string;
+  reason?: 'interrupt' | 'kill-line' | 'secret-prompt' | 'foreground-command';
+};
+```
+
 当前第一期 helper 行为：
 
 - Bash 使用 `PROMPT_COMMAND`，保留已有 prompt hook，并在之后发送 `cwd`、`prompt-ready` 和上一轮 prompt 的 `command-end` exit code。受保护的 `DEBUG` trap 会在 prompt 设置完成后，为每条已提交命令行发送一次 `command-start` 与一次 `foreground-command`。
@@ -426,14 +439,15 @@ type RemoteShellEventMessage = {
 - Fish 使用 `fish_preexec`、`fish_prompt`、`fish_postexec` 与 `PWD` variable event。
 - Sh/Ash 降级为仅基于 prompt 的 `cwd`、`prompt-ready` 与 `command-end`，不承诺精准 preexec 行为。
 - 对所有可提取出可执行命令名的已提交命令，helper 都会发送 `command-start` 与 `foreground-command`；事件只携带经过清洗的可执行命令名（例如 `vim`），不携带完整命令行或参数。
-- 第一期刻意不发送完整命令文本、line-buffer 状态、密码输入或原生 shell completion 列表。
+- 远端 helper 刻意不发送完整命令文本、本地 line-buffer 状态、密码输入或原生 shell completion 列表。完整已提交命令只能来自 backend 的当前 session 本地输入跟踪器。
 
 Backend 状态模型：
 
 - 每个 `SshLiveSession` 保存 `remoteShellReady`、`remoteShellCwd`、`remoteShellForegroundCommand`、`lastRemoteCommand`、`lastExitCode` 与 `lastCommandDurationMs`。
+- Backend 还会保存一个仅限当前 session 的本地输入行缓冲和短提交命令队列，来源是 renderer `input` 消息。该本地状态用于在调试浮层显示实时输入，并在远端 helper 只报告 exit code 时，把已提交命令行补到下一条 `command-end` 事件上。
 - `remoteShellCwd` 是 path completion 的优先 cwd 来源；现有 exec probe 与 renderer hint 仍作为 fallback。
 - 收到 `foreground-command` 并设置 `remoteShellForegroundCommand` 后，backend 会返回空 completion response，直到下一个 `prompt-ready`；这能覆盖短命令、长时间前台进程以及未知 TUI/REPL 程序，不需要维护命令白名单。
-- 密码提示与可复用 secret suggestion 继续由本地 backend 基于输出检测；shell hook 永远不捕获密码输入。
+- 密码提示与可复用 secret suggestion 继续由本地 backend 基于输出检测；shell hook 永远不捕获密码输入。本地输入跟踪在 secret prompt 或前台命令期间会清空或暂停，输入调试状态不会持久化，也不会发送给 AI。
 
 ### 8.3 Manifest 与资产契约
 

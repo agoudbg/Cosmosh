@@ -1334,6 +1334,11 @@
       "integration-ready": "集成就绪",
       "prompt-ready": "提示符就绪"
     },
+    "remoteShellInputEvents": {
+      "input-change": "输入变化",
+      "input-clear": "输入清空",
+      "input-submit": "输入提交"
+    },
     "removeTagLabel": "移除 {tagName}",
     "retry": "重试",
     "saveChanges": "保存修改",

@@ -4,7 +4,12 @@ import React from 'react';
 
 import { Button } from '../../components/ui/button';
 import { t } from '../../lib/i18n';
-import type { RemoteBootstrapStatus, RemoteEnhancementsDebugEvent, RemoteShellEvent } from './ssh-types';
+import type {
+  RemoteBootstrapStatus,
+  RemoteEnhancementsDebugEvent,
+  RemoteShellEvent,
+  RemoteShellInput,
+} from './ssh-types';
 
 type RemoteEnhancementsDebugPanelProps = {
   latestStatus: RemoteBootstrapStatus | null;
@@ -64,6 +69,16 @@ const readRemoteShellEventLabel = (event: RemoteShellEvent['event']): string => 
 };
 
 /**
+ * Reads the localized shell input event label.
+ *
+ * @param event Local shell input event identifier.
+ * @returns Localized event label.
+ */
+const readRemoteShellInputLabel = (event: RemoteShellInput['event']): string => {
+  return t(`ssh.remoteShellInputEvents.${event}`);
+};
+
+/**
  * Maps bootstrap state to the same semantic text colors used by the status strip.
  *
  * @param state Latest bootstrap state, when available.
@@ -90,6 +105,10 @@ const resolveStatusTextColor = (state: RemoteBootstrapStatus['state'] | undefine
 const renderEventSummary = (payload: RemoteEnhancementsDebugEvent['payload']): string => {
   if (payload.type === 'bootstrap-status') {
     return `${readBootstrapPhaseLabel(payload.phase)} / ${readBootstrapStateLabel(payload.state)}`;
+  }
+
+  if (payload.type === 'remote-shell-input') {
+    return readRemoteShellInputLabel(payload.event);
   }
 
   return `${payload.shell} / ${readRemoteShellEventLabel(payload.event)}`;

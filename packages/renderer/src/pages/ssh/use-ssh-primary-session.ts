@@ -405,6 +405,17 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
           return;
         }
 
+        if (payload.type === 'remote-shell-input') {
+          setRemoteEnhancementsDebugEvents((previous) => [
+            ...previous,
+            {
+              receivedAt: Date.now(),
+              payload,
+            },
+          ]);
+          return;
+        }
+
         if (payload.type === 'completion-response') {
           handleCompletionResponse(payload, primaryPaneIdRef.current);
           return;

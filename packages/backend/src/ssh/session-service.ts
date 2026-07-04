@@ -45,6 +45,13 @@ import { decryptSensitiveValue } from './crypto.js';
 import { executeBoundedSshCommand } from './exec.js';
 import { prepareSshProxyTransport, SshProxyConnectionError, type SshProxyMetadata } from './proxy.js';
 import { type RemoteShellEventMessage, RemoteShellEventOscParser } from './remote-shell-events.js';
+import {
+  createRemoteShellInputState,
+  type RemoteShellInputMessage,
+  type RemoteShellInputState,
+  takeSubmittedRemoteShellCommand,
+  updateRemoteShellInputState,
+} from './terminal-input-state.js';
 
 type GetDbClient = () => PrismaClient;
 
@@ -171,6 +178,7 @@ type ServerOutboundMessage =
         score: number;
       }>;
     }
+  | RemoteShellInputMessage
   | RemoteShellEventMessage
   | RemoteBootstrapStatus;
 
@@ -201,6 +209,7 @@ type SshLiveSession = TerminalManagedSessionBase & {
   completionPromptState: CompletionPromptState;
   completionSecretValue: string | null;
   remoteShellEventParser: RemoteShellEventOscParser;
+  remoteShellInputState: RemoteShellInputState;
   pendingRemoteShellEvents: RemoteShellEventMessage[];
   remoteShellReady: boolean;
   remoteShellCwd: string | null;
@@ -491,6 +500,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       },
       completionSecretValue: shellResult.completionSecretValue,
       remoteShellEventParser: new RemoteShellEventOscParser(),
+      remoteShellInputState: createRemoteShellInputState(),
       pendingRemoteShellEvents: [],
       remoteShellReady: false,
       remoteShellCwd: null,
@@ -762,6 +772,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (event.event === 'command-end') {
+      const submittedCommand = takeSubmittedRemoteShellCommand(session.remoteShellInputState);
+      if (!event.command) {
+        event.command = submittedCommand ?? undefined;
+      }
       if (event.command) {
         session.lastRemoteCommand = event.command;
       }
@@ -863,6 +877,19 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
+      const suppressedInputReason = session.completionPromptState.shouldSuggestSecret
+        ? 'secret-prompt'
+        : session.remoteShellForegroundCommand
+          ? 'foreground-command'
+          : null;
+      const inputEvents = updateRemoteShellInputState(session.remoteShellInputState, message.data, {
+        timestamp: Date.now(),
+        suppressedReason: suppressedInputReason,
+      });
+      for (const inputEvent of inputEvents) {
+        this.sendServerMessage(session, inputEvent);
+      }
+
       const interactiveState = {
         lineBuffer: session.completionLineBuffer,
         recentCommands: session.completionRecentCommands,

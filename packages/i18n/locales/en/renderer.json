@@ -1334,6 +1334,11 @@
       "integration-ready": "Integration Ready",
       "prompt-ready": "Prompt Ready"
     },
+    "remoteShellInputEvents": {
+      "input-change": "Input Change",
+      "input-clear": "Input Clear",
+      "input-submit": "Input Submit"
+    },
     "removeTagLabel": "Remove {tagName}",
     "retry": "Retry",
     "saveChanges": "Save Changes",

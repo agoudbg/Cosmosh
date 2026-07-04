@@ -379,7 +379,7 @@ sequenceDiagram
 - Bootstrap starts after the first WebSocket attach and only once per SSH session.
 - The side-channel uses `ssh2 exec` with `REMOTE_BOOTSTRAP_EXEC_OPTIONS`: 60 seconds and 256 KiB output. Installer output is parsed as JSON lines and never written into the interactive terminal stream.
 - Renderer stores the latest `bootstrap-status` plus a per-session Remote Enhancements debug event history. When Settings `userMenuDebugEntryEnabled` is enabled, the terminal context menu exposes `Remote Enhancements Debug`; selecting it opens a fixed top-right terminal overlay with the latest bootstrap phase/state/code/message/version plus selectable raw JSON payloads for every received bootstrap status and remote shell event in the current session attempt.
-- The debug overlay records status/event payloads only. It does not record terminal `input`, terminal `output`, passwords, private key material, or full screen output.
+- The debug overlay records bootstrap status, shell-state events, and local session-only shell input state. It does not record terminal `output`, passwords, private key material, or full screen output.
 - Terminal `ready`, `output`, telemetry, history, completion, and shell-state messages remain independent from bootstrap progress.
 
 ### 8.2.1 Remote Shell Event Protocol
@@ -420,6 +420,19 @@ type RemoteShellEventMessage = {
 };
 ```
 
+Local shell input debug payload:
+
+```ts
+type RemoteShellInputMessage = {
+  type: 'remote-shell-input';
+  event: 'input-change' | 'input-submit' | 'input-clear';
+  timestamp: number;
+  line?: string;
+  command?: string;
+  reason?: 'interrupt' | 'kill-line' | 'secret-prompt' | 'foreground-command';
+};
+```
+
 Current first-phase helper behavior:
 
 - Bash uses `PROMPT_COMMAND` to preserve any existing prompt hook and then emit `cwd`, `prompt-ready`, and the previous prompt's `command-end` exit code. A guarded `DEBUG` trap emits one `command-start` and one `foreground-command` per submitted command line after prompt setup finishes.
@@ -427,14 +440,15 @@ Current first-phase helper behavior:
 - Fish uses `fish_preexec`, `fish_prompt`, `fish_postexec`, and `PWD` variable events.
 - Sh/Ash degrade to prompt-based `cwd`, `prompt-ready`, and `command-end` only; they do not claim precise preexec behavior.
 - `command-start` and `foreground-command` are emitted for every submitted command that can be reduced to an executable name; they carry only that sanitized executable name (for example `vim`), not the full command line or arguments.
-- First phase intentionally does not emit full command text, line-buffer state, password input, or native shell completion lists.
+- Remote helpers intentionally do not emit full command text, local line-buffer state, password input, or native shell completion lists. Full submitted commands can only come from the backend's session-local input tracker.
 
 Backend state model:
 
 - Each `SshLiveSession` keeps `remoteShellReady`, `remoteShellCwd`, `remoteShellForegroundCommand`, `lastRemoteCommand`, `lastExitCode`, and `lastCommandDurationMs`.
+- The backend also keeps a session-local input line buffer and a short submitted-command queue derived from renderer `input` messages. This local state displays live input in the debug overlay and attaches the submitted command line to the next `command-end` event when the remote helper only reports the exit code.
 - `remoteShellCwd` is the preferred path-completion cwd source; existing exec probes and renderer hints remain fallback paths.
 - When `remoteShellForegroundCommand` is set by `foreground-command`, backend returns an empty completion response until the next `prompt-ready`; this covers short commands, long-running foreground processes, and unknown TUI/REPL programs without maintaining a command whitelist.
-- Password prompts and reusable secret suggestions remain output-driven local backend behavior; shell hooks never capture password input.
+- Password prompts and reusable secret suggestions remain output-driven local backend behavior; shell hooks never capture password input. Local input tracking is cleared or suppressed while a secret prompt or foreground command is active, and the input debug state is not persisted or sent to AI.
 
 ### 8.3 Manifest and Asset Contract
 
