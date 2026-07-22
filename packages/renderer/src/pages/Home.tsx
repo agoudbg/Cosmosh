@@ -87,6 +87,7 @@ import { Input } from '../components/ui/input';
 import { menuStyles } from '../components/ui/menu-styles';
 import { Menubar, MenubarSeparator, MenuToggleGroup, MenuToggleGroupItem } from '../components/ui/menubar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { HomeBodySkeleton, HomeSidebarSkeleton, Skeleton } from '../components/ui/skeleton';
 import { Textarea } from '../components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import type { LocalTerminalProfile } from '../lib/api/transport';
@@ -168,6 +169,11 @@ type HomeViewPreference = {
   sortMode: SortMode;
 };
 
+/** Controls whether a Home reload may keep the current data snapshot mounted. */
+type ReloadHomeDataOptions = {
+  preserveCurrentContent?: boolean;
+};
+
 type ServerGroup = {
   key: string;
   title: string;
@@ -225,6 +231,7 @@ const LOCAL_TERMINAL_FOLDER_ID = '__local_terminals__';
 const KEYCHAIN_RECENT_LIMIT = 12;
 const LOCAL_TRUSTED_BIND_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const HOME_SECTION_LABEL_CLASS_NAME = 'px-2 pb-2.5 text-xs font-medium leading-4 text-home-text-subtle';
+const HOME_PORT_FORWARDING_GRID_CLASS_NAME = 'grid min-w-[880px] grid-cols-[1.1fr_0.72fr_0.72fr_1fr_1fr_0.9fr_142px]';
 const DEFAULT_HOME_VIEW_PREFERENCES: Record<HomeMode, HomeViewPreference> = {
   ssh: {
     groupMode: 'lastUsed',
@@ -949,6 +956,78 @@ const HomeSshContent: React.FC<HomeSshContentProps> = ({
   );
 };
 
+type HomePortForwardingSkeletonProps = {
+  label: string;
+  showSectionLabel: boolean;
+};
+
+/**
+ * Renders a loading placeholder matching the port-forwarding rules table.
+ *
+ * @param props Port-forwarding loading properties.
+ * @param props.label Localized loading status label.
+ * @param props.showSectionLabel Whether grouped results reserve a section label.
+ * @returns An accessible port-forwarding table skeleton.
+ */
+const HomePortForwardingSkeleton: React.FC<HomePortForwardingSkeletonProps> = ({ label, showSectionLabel }) => {
+  return (
+    <div
+      className="space-y-4 pb-2"
+      role="status"
+      aria-busy="true"
+    >
+      <span className="sr-only">{label}</span>
+      <section>
+        {showSectionLabel ? <Skeleton className="mx-2 mb-2.5 h-3 w-24" /> : null}
+        <div className="overflow-x-auto rounded-sm-2 border border-home-divider">
+          <div
+            className={classNames(
+              HOME_PORT_FORWARDING_GRID_CLASS_NAME,
+              'bg-home-card/70 items-center border-b border-home-divider px-3 py-2',
+            )}
+          >
+            {['70%', '58%', '62%', '80%', '80%', '68%'].map((width, index) => (
+              <Skeleton
+                key={index}
+                className="h-2.5"
+                style={{ width }}
+              />
+            ))}
+            <Skeleton className="h-2.5 w-16 justify-self-end" />
+          </div>
+          <div className="divide-y divide-home-divider">
+            {Array.from({ length: 6 }, (_, rowIndex) => (
+              <div
+                key={rowIndex}
+                className={classNames(
+                  HOME_PORT_FORWARDING_GRID_CLASS_NAME,
+                  'bg-home-card/35 items-center gap-2 px-3 py-2',
+                )}
+              >
+                {['72%', '60%', '66%', '84%', '84%', '70%'].map((width, columnIndex) => (
+                  <Skeleton
+                    key={columnIndex}
+                    className="h-3"
+                    style={{ width }}
+                  />
+                ))}
+                <div className="flex justify-end gap-1">
+                  {Array.from({ length: 4 }, (_, actionIndex) => (
+                    <Skeleton
+                      key={actionIndex}
+                      className="h-8 w-8 rounded-sm-2"
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
 type HomePortForwardingContentProps = {
   groups: PortForwardRuleGroup[];
   servers: SshServerListItem[];
@@ -997,7 +1076,12 @@ const HomePortForwardingContent: React.FC<HomePortForwardingContentProps> = ({
           <section key={group.key}>
             {group.title ? <div className={HOME_SECTION_LABEL_CLASS_NAME}>{group.title}</div> : null}
             <div className="overflow-x-auto rounded-sm-2 border border-home-divider">
-              <div className="bg-home-card/70 grid min-w-[880px] grid-cols-[1.1fr_0.72fr_0.72fr_1fr_1fr_0.9fr_142px] border-b border-home-divider px-3 py-2 text-xs font-medium text-home-text-subtle">
+              <div
+                className={classNames(
+                  HOME_PORT_FORWARDING_GRID_CLASS_NAME,
+                  'bg-home-card/70 border-b border-home-divider px-3 py-2 text-xs font-medium text-home-text-subtle',
+                )}
+              >
                 <div>{t('home.portForwardingColumnRule')}</div>
                 <div>{t('home.portForwardingColumnStatus')}</div>
                 <div>{t('home.portForwardingColumnType')}</div>
@@ -1021,7 +1105,10 @@ const HomePortForwardingContent: React.FC<HomePortForwardingContentProps> = ({
                   return (
                     <div
                       key={rule.id}
-                      className="bg-home-card/35 text-home-text hover:bg-home-card/70 grid min-w-[880px] grid-cols-[1.1fr_0.72fr_0.72fr_1fr_1fr_0.9fr_142px] items-center gap-2 px-3 py-2 text-sm"
+                      className={classNames(
+                        HOME_PORT_FORWARDING_GRID_CLASS_NAME,
+                        'bg-home-card/35 text-home-text hover:bg-home-card/70 items-center gap-2 px-3 py-2 text-sm',
+                      )}
                     >
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
@@ -1377,6 +1464,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
   const [portForwardRules, setPortForwardRules] = React.useState<PortForwardRuleListItem[]>([]);
   const [localTerminalProfiles, setLocalTerminalProfiles] = React.useState<LocalTerminalProfile[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
+  const [hasLoadedHomeData, setHasLoadedHomeData] = React.useState<boolean>(false);
   const [errorMessage, setErrorMessage] = React.useState<string>('');
   const [activeFolderId, setActiveFolderId] = React.useState<string>('all');
   const [activeTag, setActiveTag] = React.useState<string>('all');
@@ -1442,8 +1530,20 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
     [activeHomeMode],
   );
 
-  const reloadHomeData = React.useCallback(async () => {
+  /**
+   * Reloads every Home dataset and invalidates stale post-mutation snapshots by default.
+   *
+   * @param options Reload presentation policy.
+   * @param options.preserveCurrentContent Keeps a still-valid snapshot mounted during passive refreshes.
+   * @returns Resolves after the refresh succeeds or its error state is recorded.
+   */
+  const reloadHomeData = React.useCallback(async (options: ReloadHomeDataOptions = {}): Promise<void> => {
+    const { preserveCurrentContent = false } = options;
+
     setIsLoading(true);
+    if (!preserveCurrentContent) {
+      setHasLoadedHomeData(false);
+    }
     setErrorMessage('');
 
     try {
@@ -1465,6 +1565,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
       setKeychains(filterSharedKeychains(keychainsResponse.data.items));
       setLocalTerminalProfiles(localTerminalProfilesResponse.data.items);
       setPortForwardRules(portForwardRulesResponse.data.items);
+      setHasLoadedHomeData(true);
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to load home data.');
     } finally {
@@ -1535,7 +1636,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
     }
 
     if (becameActive) {
-      void reloadHomeData();
+      void reloadHomeData({ preserveCurrentContent: true });
     }
   }, [isActive, reloadHomeData]);
 
@@ -3022,6 +3123,9 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
     }));
   }, [selectedGroupName, tags]);
 
+  const shouldShowInitialLoading = isLoading && !hasLoadedHomeData;
+  const shouldShowHomeContent = hasLoadedHomeData;
+
   return (
     <SplitWorkbenchLayout
       topSlot={
@@ -3035,137 +3139,141 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
             activeMode={activeHomeMode}
             onModeChange={handleHomeModeChange}
           />
-          <div>
-            <div className="pb-5">
-              <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">{t('home.groupAll')}</div>
-              <EntityCard
-                title={allSidebarCard.title}
-                subtitle={allSidebarCard.subtitle}
-                selected={allSidebarCard.selected}
-                icon={createEntityIconNode(
-                  { iconKey: allSidebarCard.iconKey, colorKey: allSidebarCard.colorKey },
-                  allSidebarCard.title,
-                )}
-                onClick={allSidebarCard.onClick}
-              />
-            </div>
-
-            <div className="pb-5">
-              <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">
-                {t('home.groupFavoriteAndRecent')}
-              </div>
-              <div className="space-y-1.5">
-                {quickSidebarCards.map((item) => (
-                  <EntityCard
-                    key={item.key}
-                    title={item.title}
-                    subtitle={item.subtitle}
-                    selected={item.selected}
-                    icon={createEntityIconNode({ iconKey: item.iconKey, colorKey: item.colorKey }, item.title)}
-                    onClick={item.onClick}
-                  />
-                ))}
-              </div>
-            </div>
-
+          {shouldShowInitialLoading ? (
+            <HomeSidebarSkeleton />
+          ) : (
             <div>
-              <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">{t('home.groupFolders')}</div>
-              <div className="space-y-1.5">
-                {folderSidebarCards.map((item, index) => (
-                  <ContextMenu key={item.key}>
-                    <ContextMenuTrigger className="block">
-                      <EntityCard
-                        {...folderListNavigation.getItemProps(index)}
-                        title={item.title}
-                        subtitle={item.subtitle}
-                        selected={item.selected}
-                        className={dragOverFolderId === item.folderId ? 'bg-home-card-active' : undefined}
-                        icon={createEntityIconNode({ iconKey: item.iconKey, colorKey: item.colorKey }, item.title)}
-                        onDragOver={(event) => {
-                          if (
-                            activeHomeMode !== 'ssh' ||
-                            !item.folderId ||
-                            item.folderId === LOCAL_TERMINAL_FOLDER_ID ||
-                            !draggingServerId
-                          ) {
-                            return;
-                          }
+              <div className="pb-5">
+                <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">{t('home.groupAll')}</div>
+                <EntityCard
+                  title={allSidebarCard.title}
+                  subtitle={allSidebarCard.subtitle}
+                  selected={allSidebarCard.selected}
+                  icon={createEntityIconNode(
+                    { iconKey: allSidebarCard.iconKey, colorKey: allSidebarCard.colorKey },
+                    allSidebarCard.title,
+                  )}
+                  onClick={allSidebarCard.onClick}
+                />
+              </div>
 
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = 'move';
-                          if (dragOverFolderId !== item.folderId) {
-                            setDragOverFolderId(item.folderId);
-                          }
-                        }}
-                        onDragLeave={() => {
-                          if (dragOverFolderId === item.folderId) {
+              <div className="pb-5">
+                <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">
+                  {t('home.groupFavoriteAndRecent')}
+                </div>
+                <div className="space-y-1.5">
+                  {quickSidebarCards.map((item) => (
+                    <EntityCard
+                      key={item.key}
+                      title={item.title}
+                      subtitle={item.subtitle}
+                      selected={item.selected}
+                      icon={createEntityIconNode({ iconKey: item.iconKey, colorKey: item.colorKey }, item.title)}
+                      onClick={item.onClick}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="px-2 pb-2.5 text-xs font-medium text-home-text-subtle">{t('home.groupFolders')}</div>
+                <div className="space-y-1.5">
+                  {folderSidebarCards.map((item, index) => (
+                    <ContextMenu key={item.key}>
+                      <ContextMenuTrigger className="block">
+                        <EntityCard
+                          {...folderListNavigation.getItemProps(index)}
+                          title={item.title}
+                          subtitle={item.subtitle}
+                          selected={item.selected}
+                          className={dragOverFolderId === item.folderId ? 'bg-home-card-active' : undefined}
+                          icon={createEntityIconNode({ iconKey: item.iconKey, colorKey: item.colorKey }, item.title)}
+                          onDragOver={(event) => {
+                            if (
+                              activeHomeMode !== 'ssh' ||
+                              !item.folderId ||
+                              item.folderId === LOCAL_TERMINAL_FOLDER_ID ||
+                              !draggingServerId
+                            ) {
+                              return;
+                            }
+
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = 'move';
+                            if (dragOverFolderId !== item.folderId) {
+                              setDragOverFolderId(item.folderId);
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverFolderId === item.folderId) {
+                              setDragOverFolderId(null);
+                            }
+                          }}
+                          onDrop={(event) => {
+                            if (
+                              activeHomeMode !== 'ssh' ||
+                              !item.folderId ||
+                              item.folderId === LOCAL_TERMINAL_FOLDER_ID
+                            ) {
+                              return;
+                            }
+
+                            event.preventDefault();
+                            const droppedServerId =
+                              event.dataTransfer.getData('application/x-cosmosh-server-id') || draggingServerId;
+                            if (!droppedServerId) {
+                              return;
+                            }
+
                             setDragOverFolderId(null);
-                          }
-                        }}
-                        onDrop={(event) => {
-                          if (
-                            activeHomeMode !== 'ssh' ||
-                            !item.folderId ||
-                            item.folderId === LOCAL_TERMINAL_FOLDER_ID
-                          ) {
-                            return;
-                          }
+                            setDraggingServerId(null);
+                            void handleAssignServerToFolder(droppedServerId, item.folderId);
+                          }}
+                          onClick={item.onClick}
+                        />
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem
+                          icon={FolderOpen}
+                          onSelect={item.onClick}
+                        >
+                          {t('home.contextOpenFolder')}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          icon={Pencil}
+                          disabled={item.folderId === LOCAL_TERMINAL_FOLDER_ID}
+                          onSelect={() => {
+                            const folderId = item.folderId;
+                            if (!folderId || folderId === LOCAL_TERMINAL_FOLDER_ID) {
+                              return;
+                            }
 
-                          event.preventDefault();
-                          const droppedServerId =
-                            event.dataTransfer.getData('application/x-cosmosh-server-id') || draggingServerId;
-                          if (!droppedServerId) {
-                            return;
-                          }
+                            openEditFolderDialog(folderId, item.title, item.iconKey, item.colorKey);
+                          }}
+                        >
+                          {t('home.contextEditFolder')}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          icon={Trash2}
+                          disabled={item.folderId === LOCAL_TERMINAL_FOLDER_ID}
+                          onSelect={() => {
+                            const folderId = item.folderId;
+                            if (!folderId || folderId === LOCAL_TERMINAL_FOLDER_ID) {
+                              return;
+                            }
 
-                          setDragOverFolderId(null);
-                          setDraggingServerId(null);
-                          void handleAssignServerToFolder(droppedServerId, item.folderId);
-                        }}
-                        onClick={item.onClick}
-                      />
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem
-                        icon={FolderOpen}
-                        onSelect={item.onClick}
-                      >
-                        {t('home.contextOpenFolder')}
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        icon={Pencil}
-                        disabled={item.folderId === LOCAL_TERMINAL_FOLDER_ID}
-                        onSelect={() => {
-                          const folderId = item.folderId;
-                          if (!folderId || folderId === LOCAL_TERMINAL_FOLDER_ID) {
-                            return;
-                          }
-
-                          openEditFolderDialog(folderId, item.title, item.iconKey, item.colorKey);
-                        }}
-                      >
-                        {t('home.contextEditFolder')}
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        icon={Trash2}
-                        disabled={item.folderId === LOCAL_TERMINAL_FOLDER_ID}
-                        onSelect={() => {
-                          const folderId = item.folderId;
-                          if (!folderId || folderId === LOCAL_TERMINAL_FOLDER_ID) {
-                            return;
-                          }
-
-                          openDeleteFolderDialog(folderId, item.title, item.iconKey, item.colorKey);
-                        }}
-                      >
-                        {t('home.contextDeleteFolder')}
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
-                ))}
+                            openDeleteFolderDialog(folderId, item.title, item.iconKey, item.colorKey);
+                          }}
+                        >
+                          {t('home.contextDeleteFolder')}
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       }
       main={
@@ -3340,10 +3448,26 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
           }
           body={
             <>
-              {isLoading ? <div className="text-home-text-subtle">{t('home.loading')}</div> : null}
-              {errorMessage ? <div className="text-form-message-error">{errorMessage}</div> : null}
+              {shouldShowInitialLoading ? (
+                activeHomeMode === 'portForwarding' ? (
+                  <HomePortForwardingSkeleton
+                    label={t('home.loading')}
+                    showSectionLabel={groupMode !== 'none'}
+                  />
+                ) : (
+                  <HomeBodySkeleton label={t('home.loading')} />
+                )
+              ) : null}
+              {errorMessage ? (
+                <div
+                  className="text-form-message-error"
+                  role="alert"
+                >
+                  {errorMessage}
+                </div>
+              ) : null}
 
-              {!isLoading && !errorMessage ? (
+              {shouldShowHomeContent ? (
                 activeHomeMode === 'portForwarding' ? (
                   <HomePortForwardingContent
                     groups={groupedPortForwardRules}
@@ -3407,8 +3531,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
                 )
               ) : null}
 
-              {!isLoading &&
-              !errorMessage &&
+              {shouldShowHomeContent &&
               activeHomeMode === 'ssh' &&
               activeFolderId !== LOCAL_TERMINAL_FOLDER_ID &&
               filteredServers.length === 0 ? (
@@ -3418,8 +3541,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
                 />
               ) : null}
 
-              {!isLoading &&
-              !errorMessage &&
+              {shouldShowHomeContent &&
               activeHomeMode === 'ssh' &&
               activeFolderId === LOCAL_TERMINAL_FOLDER_ID &&
               filteredLocalTerminalProfiles.length === 0 ? (
@@ -3429,7 +3551,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
                 />
               ) : null}
 
-              {!isLoading && !errorMessage && activeHomeMode === 'keychains' && filteredKeychains.length === 0 ? (
+              {shouldShowHomeContent && activeHomeMode === 'keychains' && filteredKeychains.length === 0 ? (
                 <HomeEmptyState
                   text={t('sshKeychain.empty')}
                   icon={PackageOpen}

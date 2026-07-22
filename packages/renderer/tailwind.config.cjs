@@ -51,6 +51,10 @@ module.exports = {
           from: { opacity: 0 },
           to: { opacity: 1 },
         },
+        'skeleton-shimmer': {
+          from: { transform: 'translateX(-100%)' },
+          to: { transform: 'translateX(100%)' },
+        },
         'overlay-hide': {
           from: { opacity: 1 },
           to: { opacity: 0 },
@@ -109,6 +113,7 @@ module.exports = {
         'overlay-hide': 'overlay-hide 120ms ease-in',
         'content-show': 'content-show 180ms ease-out',
         'content-hide': 'content-hide 140ms ease-in',
+        'skeleton-shimmer': 'skeleton-shimmer 1.6s linear infinite',
         'toast-in': 'toast-in 200ms ease-out',
         'toast-out': 'toast-out 160ms ease-in',
         'toast-swipe-out': 'toast-swipe-out 160ms ease-out',

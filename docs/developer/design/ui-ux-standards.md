@@ -87,6 +87,14 @@ Implementation principles:
 - Current-directory tree positioning uses flattened logical row geometry and preserves the existing upper-third target when the parent/current/expanded-child context does not fit in the viewport.
 - Directory marquee selection resolves intersections from the complete fixed-row model, including unmounted rows reached through edge auto-scroll. Virtualization must not weaken blank-area selection, modifier extension, drag/drop targeting, inline editing, or dirty-preview protection.
 
+### 6.3 Loading Skeletons
+
+- Shared loading placeholders live in `packages/renderer/src/components/ui/skeleton.tsx`. Feature pages compose these primitives instead of defining page-local shimmer colors or animations.
+- Skeletons replace content only during blocking loads where current content is unavailable. Data-preserving background refreshes keep existing content mounted so focus, selection, and scroll position remain stable. Refreshes after successful mutations treat the pre-mutation snapshot as invalid and return to a blocking loading state until replacement data arrives.
+- Skeleton colors use the `color.skeleton.*` token family. Standard and dark terminal surfaces must not introduce raw opacity colors or arbitrary radius values in feature code.
+- Loading regions expose a localized status with `role="status"` and `aria-busy="true"`; decorative placeholder blocks remain hidden from assistive technology.
+- The shimmer animation must become a static placeholder under `prefers-reduced-motion: reduce`.
+
 ## 7. Orbit Bar Standard
 
 Terminal text selection interactions in SSH pages must follow these rules:

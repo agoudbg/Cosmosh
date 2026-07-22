@@ -88,6 +88,12 @@ const base = {
         'lime-ink': '#e2f8b0',
       },
     },
+    skeleton: {
+      DEFAULT: '#222222cc',
+      shimmer: '#8b95a733',
+      surface: '#ffffff1a',
+      'surface-shimmer': '#ffffff26',
+    },
     windows: {
       'system-menu-symbol': '#f5f7fa',
     },
@@ -295,6 +301,10 @@ const light = {
         lime: '#eef8dc',
         'lime-ink': '#5f7f1f',
       },
+    },
+    skeleton: {
+      DEFAULT: '#efeff3',
+      shimmer: '#6e6e7333',
     },
     windows: {
       'system-menu-symbol': '#111827',

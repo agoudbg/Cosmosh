@@ -1,8 +1,9 @@
 import type { ApiSftpEntry, SftpAuxiliarySidebarMode } from '@cosmosh/api-contract';
-import { AlertTriangle, Code2, File, Image, Info, Loader2 } from 'lucide-react';
+import { AlertTriangle, Code2, File, Image, Info } from 'lucide-react';
 import React from 'react';
 
 import { Button } from '../../components/ui/button';
+import { SurfaceSkeleton } from '../../components/ui/skeleton';
 import { useDateTimeFormatter } from '../../lib/date-time-format';
 import { t } from '../../lib/i18n';
 import { SFTP_CARD_CLASS_NAME } from './sftp-constants';
@@ -149,9 +150,22 @@ export const SftpDetailPanel: React.FC<SftpDetailPanelProps> = ({
   );
 
   const renderEditorLoading = (): React.ReactNode => (
-    <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center text-sm text-home-text-subtle">
-      <Loader2 className="h-4 w-4 animate-spin" />
-      <span>{t('sftp.previewLoading')}</span>
+    <div
+      className="flex h-full flex-col gap-2 px-3 pt-3"
+      role="status"
+      aria-busy="true"
+    >
+      <span className="sr-only">{t('sftp.previewLoading')}</span>
+      <div
+        aria-hidden="true"
+        className="space-y-2.5"
+      >
+        <SurfaceSkeleton className="h-3 w-2/3" />
+        <SurfaceSkeleton className="h-3 w-full" />
+        <SurfaceSkeleton className="h-3 w-5/6" />
+        <SurfaceSkeleton className="h-3 w-3/4" />
+        <SurfaceSkeleton className="h-3 w-1/2" />
+      </div>
     </div>
   );
 
@@ -162,9 +176,23 @@ export const SftpDetailPanel: React.FC<SftpDetailPanelProps> = ({
 
     if (previewState.status === 'loading') {
       return (
-        <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center text-sm text-home-text-subtle">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>{t('sftp.previewLoading')}</span>
+        <div
+          className="flex h-full min-h-0 flex-col gap-2"
+          role="status"
+          aria-busy="true"
+        >
+          <span className="sr-only">{t('sftp.previewLoading')}</span>
+          <div
+            aria-hidden="true"
+            className="flex min-w-0 items-center gap-2"
+          >
+            <SurfaceSkeleton className="h-4 w-4 shrink-0 rounded-sm-2" />
+            <div className="min-w-0 flex-1">
+              <SurfaceSkeleton className="h-3.5 w-1/2" />
+              <SurfaceSkeleton className="mt-1.5 h-2.5 w-1/4" />
+            </div>
+          </div>
+          <SurfaceSkeleton className="-mx-2 -mb-2 min-h-0 flex-1 rounded-lg" />
         </div>
       );
     }

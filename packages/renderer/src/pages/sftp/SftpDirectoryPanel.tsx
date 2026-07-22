@@ -25,13 +25,14 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import classNames from 'classnames';
-import { ArrowDown, ArrowUp, File, Folder, Loader2, ShieldAlert, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, File, Folder, ShieldAlert, Undo2 } from 'lucide-react';
 import React from 'react';
 
 import { Button } from '../../components/ui/button';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '../../components/ui/context-menu';
 import { Input } from '../../components/ui/input';
 import { Menubar } from '../../components/ui/menubar';
+import { SftpFileListSkeleton } from '../../components/ui/skeleton';
 import { useDateTimeFormatter } from '../../lib/date-time-format';
 import { t } from '../../lib/i18n';
 import { PARENT_DIRECTORY_ROW_KEY, SFTP_CARD_CLASS_NAME } from './sftp-constants';
@@ -293,8 +294,16 @@ export const SftpDirectoryPanel = React.forwardRef<SftpDirectoryPanelHandle, Sft
       () => ({ columnGap: SFTP_DIRECTORY_LIST_COLUMN_GAP_PX, gridTemplateColumns: directoryGridTemplate }),
       [directoryGridTemplate],
     );
+    const directoryListMinWidth = React.useMemo(
+      () => resolveSftpDirectoryListMinWidth(visibleColumns),
+      [visibleColumns],
+    );
     const directoryListStyle = React.useMemo<React.CSSProperties>(
-      () => ({ minWidth: resolveSftpDirectoryListMinWidth(visibleColumns) }),
+      () => ({ minWidth: directoryListMinWidth }),
+      [directoryListMinWidth],
+    );
+    const skeletonColumns = React.useMemo(
+      () => visibleColumns.map((column) => ({ id: column.id, align: column.align })),
       [visibleColumns],
     );
     const headerColumnIds = React.useMemo(() => visibleColumns.map((column) => column.id), [visibleColumns]);
@@ -767,9 +776,23 @@ export const SftpDirectoryPanel = React.forwardRef<SftpDirectoryPanelHandle, Sft
             </div>
           </div>
         ) : status === 'connecting' || status === 'loading' ? (
-          <div className="flex h-full min-h-0 items-center justify-center gap-2 px-6 text-center text-sm text-home-text-subtle">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {status === 'connecting' ? t('sftp.connecting') : t('sftp.loading')}
+          <div
+            className="h-full min-h-0 overflow-auto"
+            role="status"
+            aria-busy="true"
+          >
+            <span className="sr-only">{status === 'connecting' ? t('sftp.connecting') : t('sftp.loading')}</span>
+            <div
+              className="flex min-h-full flex-col"
+              style={directoryListStyle}
+            >
+              <SftpFileListSkeleton
+                columnGap={SFTP_DIRECTORY_LIST_COLUMN_GAP_PX}
+                columns={skeletonColumns}
+                gridTemplateColumns={directoryGridTemplate}
+                minWidth={directoryListMinWidth}
+              />
+            </div>
           </div>
         ) : (
           <ContextMenu>

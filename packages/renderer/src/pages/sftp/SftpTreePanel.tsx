@@ -4,6 +4,7 @@ import { ChevronRight, Folder, Loader2 } from 'lucide-react';
 import React from 'react';
 
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '../../components/ui/context-menu';
+import { SftpTreeSkeleton } from '../../components/ui/skeleton';
 import { t } from '../../lib/i18n';
 import { SFTP_CARD_CLASS_NAME } from './sftp-constants';
 import type { SftpDirectoryDropEventHandler, SftpDirectoryDropTarget } from './sftp-drag-drop';
@@ -354,9 +355,13 @@ export const SftpTreePanel = React.forwardRef<SftpTreePanelHandle, SftpTreePanel
           className="min-h-0 flex-1 overflow-auto"
         >
           {status === 'connecting' && visibleTreeRows.length === 0 ? (
-            <div className="flex h-full items-center justify-center gap-2 text-xs text-home-text-subtle">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {t('sftp.connecting')}
+            <div
+              className="h-full"
+              role="status"
+              aria-busy="true"
+            >
+              <span className="sr-only">{t('sftp.connecting')}</span>
+              <SftpTreeSkeleton />
             </div>
           ) : (
             <div
