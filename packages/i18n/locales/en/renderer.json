@@ -419,6 +419,7 @@
       "advanced": "Advanced",
       "connection": "Connection",
       "general": "General",
+      "mcp": "MCP",
       "sftp": "SFTP",
       "terminal": "Terminal",
       "theme": "Theme"
@@ -496,6 +497,14 @@
       "localTerminalClipboardAccess": {
         "description": "Set clipboard access for local terminal programs only.",
         "title": "Allow Local Terminal Clipboard Access"
+      },
+      "mcpCommandPolicy": {
+        "description": "Set the default confirmation policy for commands that AI agents run over MCP connections. Individual servers can override this policy.",
+        "title": "Agent Command Confirmation"
+      },
+      "mcpEnabled": {
+        "description": "Allow external AI agents to connect to Cosmosh through the Model Context Protocol. Opening connections always requires your confirmation, and every operation is written to the audit log.",
+        "title": "Enable Cosmosh MCP"
       },
       "remoteEnhancementsDebugEnabled": {
         "description": "Show pane-specific bootstrap and shell integration diagnostics in SSH terminal menus.",
@@ -847,6 +856,11 @@
         "en": "English",
         "zh-CN": "Chinese (Simplified)"
       },
+      "mcpCommandPolicy": {
+        "allowWithinConnection": "Ask once per connection",
+        "ask": "Ask for every command",
+        "off": "Off (reject commands)"
+      },
       "searchEngine": {
         "baidu": "Baidu",
         "bing": "Bing",
@@ -952,6 +966,8 @@
       "connection": "Connection",
       "editorDefaults": "Defaults",
       "localization": "Localization",
+      "mcpAccess": "Access",
+      "mcpPolicy": "Authorization Policy",
       "proxy": "Proxy",
       "runtime": "Runtime",
       "search": "Search",
@@ -1447,6 +1463,15 @@
     "keychainOptionCreate": "Add Keychain",
     "keychainOptionInline": "Do not use keychain",
     "keychainSelectPlaceholder": "Select keychain",
+    "mcpCommandPolicyHint": "Controls whether AI agent commands over MCP connections to this server need your confirmation.",
+    "mcpCommandPolicyLabel": "MCP Agent Command Confirmation",
+    "mcpCommandPolicyOptions": {
+      "allowWithinConnection": "Ask once per connection",
+      "ask": "Ask for every command",
+      "default": "Use global setting",
+      "off": "Off (reject commands)"
+    },
+    "mcpCommandPolicyPlaceholder": "Select command policy",
     "noFolder": "No folder",
     "noteLabel": "Note",
     "notePlaceholder": "Note",

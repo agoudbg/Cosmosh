@@ -13,6 +13,7 @@
  * and enum sets live here exclusively.
  */
 
+import { DEFAULT_MCP_COMMAND_POLICY, MCP_COMMAND_POLICY_OPTIONS, type McpCommandPolicy } from './mcp';
 import type { GlobalServerProxyMode } from './proxy';
 import {
   DEFAULT_SFTP_AUXILIARY_SIDEBAR_MODE,
@@ -138,6 +139,8 @@ export interface SettingsValues {
   sftpTextPreviewWarningThresholdBytes: number;
   sftpImagePreviewWarningThresholdBytes: number;
   sftpDirectoryListView: SftpDirectoryListViewSetting;
+  mcpEnabled: boolean;
+  mcpCommandPolicy: McpCommandPolicy;
 }
 
 export type SettingKey = keyof SettingsValues;
@@ -202,6 +205,13 @@ export const SETTINGS_CATEGORIES = {
     sections: {
       browser: { labelI18nKey: 'settings.sections.sftpBrowser' },
       safety: { labelI18nKey: 'settings.sections.sftpSafety' },
+    },
+  },
+  mcp: {
+    labelI18nKey: 'settings.categories.mcp',
+    sections: {
+      mcpAccess: { labelI18nKey: 'settings.sections.mcpAccess' },
+      mcpPolicy: { labelI18nKey: 'settings.sections.mcpPolicy' },
     },
   },
   advanced: {
@@ -1654,6 +1664,34 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     inputMode: 'numeric',
     min: 1,
     max: 16,
+  },
+  {
+    key: 'mcpEnabled',
+    valueType: 'boolean',
+    defaultValue: false,
+    nameI18nKey: 'settings.items.mcpEnabled.title',
+    descriptionI18nKey: 'settings.items.mcpEnabled.description',
+    category: SETTINGS_CATEGORIES.mcp,
+    section: SETTINGS_CATEGORIES.mcp.sections.mcpAccess,
+    control: 'switch',
+    path: 'mcp.access.enabled',
+    commandActionId: 'settings.mcp.access.enabled.toggle',
+    searchTerms: ['mcp', 'model context protocol', 'agent', 'ai', 'automation', 'external access'],
+  },
+  {
+    key: 'mcpCommandPolicy',
+    valueType: 'string',
+    defaultValue: DEFAULT_MCP_COMMAND_POLICY,
+    nameI18nKey: 'settings.items.mcpCommandPolicy.title',
+    descriptionI18nKey: 'settings.items.mcpCommandPolicy.description',
+    optionI18nNamespace: 'mcpCommandPolicy',
+    category: SETTINGS_CATEGORIES.mcp,
+    section: SETTINGS_CATEGORIES.mcp.sections.mcpPolicy,
+    control: 'select',
+    path: 'mcp.policy.commandPolicy',
+    commandActionId: 'settings.mcp.policy.commandPolicy.set',
+    searchTerms: ['mcp', 'command policy', 'authorization', 'approval', 'agent commands'],
+    options: MCP_COMMAND_POLICY_OPTIONS.map((value) => ({ value })),
   },
 ];
 

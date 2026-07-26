@@ -8,10 +8,13 @@ import type {
   ApiSshUpdateServerRequest,
 } from '@cosmosh/api-contract';
 import {
+  DEFAULT_MCP_SERVER_COMMAND_POLICY,
   DEFAULT_TERMINAL_CLIPBOARD_ACCESS,
+  isMcpServerCommandPolicy,
   isSshServerProxyMode,
   isTerminalClipboardAccess,
   MAX_SYSTEM_PROXY_RULES_LENGTH,
+  type McpServerCommandPolicy,
   type SshServerProxyMode,
   type TerminalClipboardAccess,
   validateProxyUrl,
@@ -84,6 +87,21 @@ const normalizeOptionalTerminalClipboardAccess = (value: unknown): TerminalClipb
   }
 
   return isTerminalClipboardAccess(normalized) ? normalized : undefined;
+};
+
+/**
+ * Normalizes optional per-server MCP command policy values.
+ *
+ * @param value Raw request value.
+ * @returns Supported policy or undefined when omitted/invalid.
+ */
+const normalizeOptionalMcpServerCommandPolicy = (value: unknown): McpServerCommandPolicy | undefined => {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  return isMcpServerCommandPolicy(normalized) ? normalized : undefined;
 };
 
 /**
@@ -363,6 +381,7 @@ export const parseCreateServerRequest = (payload: unknown): ValidationResult<Api
     payload.disableCharacterWidthCompatibilityMode,
   );
   const terminalClipboardAccess = normalizeOptionalTerminalClipboardAccess(payload.terminalClipboardAccess);
+  const mcpCommandPolicy = normalizeOptionalMcpServerCommandPolicy(payload.mcpCommandPolicy);
   const proxyConfiguration = normalizeServerProxyConfiguration(payload.proxyMode, payload.proxyUrl, 'default');
   if (!proxyConfiguration.value) {
     return { error: proxyConfiguration.error };
@@ -409,6 +428,15 @@ export const parseCreateServerRequest = (payload: unknown): ValidationResult<Api
       error: buildValidationError(
         'errors.validation.terminalClipboardAccessEnum',
         'terminalClipboardAccess must be one of: off, writeAskRead, readWrite, askAlways.',
+      ),
+    };
+  }
+
+  if (payload.mcpCommandPolicy !== undefined && mcpCommandPolicy === undefined) {
+    return {
+      error: buildValidationError(
+        'errors.validation.mcpCommandPolicyEnum',
+        'mcpCommandPolicy must be one of: default, off, ask, allowWithinConnection.',
       ),
     };
   }
@@ -460,6 +488,7 @@ export const parseCreateServerRequest = (payload: unknown): ValidationResult<Api
       remoteEnhancementsEnabled: remoteEnhancementsEnabled ?? true,
       disableCharacterWidthCompatibilityMode: disableCharacterWidthCompatibilityMode ?? false,
       terminalClipboardAccess: terminalClipboardAccess ?? DEFAULT_TERMINAL_CLIPBOARD_ACCESS,
+      mcpCommandPolicy: mcpCommandPolicy ?? DEFAULT_MCP_SERVER_COMMAND_POLICY,
       proxyMode: proxyConfiguration.value.proxyMode,
       proxyUrl: proxyConfiguration.value.proxyUrl,
       folderId,
@@ -534,6 +563,7 @@ export const parseUpdateServerRequest = (payload: unknown): ValidationResult<Api
     payload.disableCharacterWidthCompatibilityMode,
   );
   const terminalClipboardAccess = normalizeOptionalTerminalClipboardAccess(payload.terminalClipboardAccess);
+  const mcpCommandPolicy = normalizeOptionalMcpServerCommandPolicy(payload.mcpCommandPolicy);
   const proxyConfiguration = normalizeServerProxyConfiguration(payload.proxyMode, payload.proxyUrl);
   if (!proxyConfiguration.value) {
     return { error: proxyConfiguration.error };
@@ -580,6 +610,15 @@ export const parseUpdateServerRequest = (payload: unknown): ValidationResult<Api
       error: buildValidationError(
         'errors.validation.terminalClipboardAccessEnum',
         'terminalClipboardAccess must be one of: off, writeAskRead, readWrite, askAlways.',
+      ),
+    };
+  }
+
+  if (payload.mcpCommandPolicy !== undefined && mcpCommandPolicy === undefined) {
+    return {
+      error: buildValidationError(
+        'errors.validation.mcpCommandPolicyEnum',
+        'mcpCommandPolicy must be one of: default, off, ask, allowWithinConnection.',
       ),
     };
   }
@@ -630,6 +669,7 @@ export const parseUpdateServerRequest = (payload: unknown): ValidationResult<Api
       remoteEnhancementsEnabled,
       disableCharacterWidthCompatibilityMode,
       terminalClipboardAccess,
+      mcpCommandPolicy,
       proxyMode: proxyConfiguration.value.proxyMode,
       proxyUrl: proxyConfiguration.value.proxyUrl,
       folderId,

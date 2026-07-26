@@ -2200,6 +2200,232 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/status:
+    get:
+      tags:
+        - mcp
+      summary: Get MCP runtime status for the management UI.
+      operationId: mcpGetStatus
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+      responses:
+        '200':
+          description: MCP status returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpStatusGetSuccess'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/pairing-token:
+    post:
+      tags:
+        - mcp
+      summary: Create or rotate the MCP pairing token.
+      operationId: mcpRotatePairingToken
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+      responses:
+        '200':
+          description: Pairing token created; plaintext is only returned once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpPairingTokenRotateSuccess'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      tags:
+        - mcp
+      summary: Revoke the active MCP pairing token.
+      operationId: mcpRevokePairingToken
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+      responses:
+        '204':
+          description: Pairing token revoked.
+        '404':
+          description: No active pairing token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/clients:
+    get:
+      tags:
+        - mcp
+      summary: List active MCP client sessions.
+      operationId: mcpListClients
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+      responses:
+        '200':
+          description: MCP client sessions listed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpClientListSuccess'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/connections:
+    get:
+      tags:
+        - mcp
+      summary: List active agent-opened MCP SSH connections.
+      operationId: mcpListConnections
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+      responses:
+        '200':
+          description: MCP SSH connections listed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpConnectionListSuccess'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/connections/{connectionId}:
+    delete:
+      tags:
+        - mcp
+      summary: Close one agent-opened MCP SSH connection.
+      operationId: mcpCloseConnection
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: MCP SSH connection closed.
+        '404':
+          description: Connection not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/approvals:
+    get:
+      tags:
+        - mcp
+      summary: List pending MCP authorization requests.
+      operationId: mcpListApprovals
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+      responses:
+        '200':
+          description: Pending approvals listed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpApprovalListSuccess'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/approvals/{approvalId}/decision:
+    post:
+      tags:
+        - mcp
+      summary: Resolve one pending MCP authorization request.
+      operationId: mcpResolveApproval
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+        - name: approvalId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Approval resolved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpApprovalResolveSuccess'
+        '400':
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Approval not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Approval already resolved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/events-channel:
+    post:
+      tags:
+        - mcp
+      summary: Create a WebSocket channel delivering MCP runtime events to the renderer.
+      operationId: mcpCreateEventsChannel
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+      responses:
+        '200':
+          description: Events channel created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpEventsChannelCreateSuccess'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
 components:
   securitySchemes:
     CosmoshInternalToken:
@@ -2290,6 +2516,12 @@ components:
                   'PORT_FORWARD_RULE_ACTIVE',
                   'PORT_FORWARD_START_FAILED',
                   'PORT_FORWARD_STOP_FAILED',
+                  'MCP_DISABLED',
+                  'MCP_VALIDATION_FAILED',
+                  'MCP_APPROVAL_NOT_FOUND',
+                  'MCP_APPROVAL_ALREADY_RESOLVED',
+                  'MCP_CONNECTION_NOT_FOUND',
+                  'MCP_PAIRING_TOKEN_NOT_FOUND',
                 ]
             success:
               type: boolean
@@ -2643,6 +2875,7 @@ components:
         - remoteEnhancementsEnabled
         - disableCharacterWidthCompatibilityMode
         - terminalClipboardAccess
+        - mcpCommandPolicy
         - proxyMode
         - hasPassword
         - hasPrivateKey
@@ -2681,6 +2914,8 @@ components:
           type: boolean
         terminalClipboardAccess:
           $ref: '#/components/schemas/TerminalClipboardAccess'
+        mcpCommandPolicy:
+          $ref: '#/components/schemas/McpServerCommandPolicy'
         proxyMode:
           $ref: '#/components/schemas/SshServerProxyMode'
         proxyUrl:
@@ -2755,6 +2990,8 @@ components:
           type: boolean
         terminalClipboardAccess:
           $ref: '#/components/schemas/TerminalClipboardAccess'
+        mcpCommandPolicy:
+          $ref: '#/components/schemas/McpServerCommandPolicy'
         proxyMode:
           $ref: '#/components/schemas/SshServerProxyMode'
         proxyUrl:
@@ -2874,6 +3111,12 @@ components:
     TerminalClipboardAccess:
       type: string
       enum: ['off', 'writeAskRead', 'readWrite', 'askAlways']
+    McpCommandPolicy:
+      type: string
+      enum: ['off', 'ask', 'allowWithinConnection']
+    McpServerCommandPolicy:
+      type: string
+      enum: ['default', 'off', 'ask', 'allowWithinConnection']
     SshTrustFingerprintRequest:
       type: object
       required:
@@ -4929,3 +5172,330 @@ components:
               enum: [true]
             data:
               $ref: '#/components/schemas/SftpTransferProgressData'
+    McpClientInfo:
+      type: object
+      required:
+        - name
+        - version
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+    McpStatusData:
+      type: object
+      required:
+        - enabled
+        - tokenConfigured
+        - activeClientCount
+        - activeConnectionCount
+        - pendingApprovalCount
+      properties:
+        enabled:
+          type: boolean
+        tokenConfigured:
+          type: boolean
+        discoveryFilePath:
+          type: string
+        bridgeLauncherPath:
+          type: string
+        activeClientCount:
+          type: integer
+          minimum: 0
+        activeConnectionCount:
+          type: integer
+          minimum: 0
+        pendingApprovalCount:
+          type: integer
+          minimum: 0
+    McpStatusGetSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_STATUS_GET_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpStatusData'
+    McpPairingTokenData:
+      type: object
+      required:
+        - token
+        - createdAt
+      properties:
+        token:
+          type: string
+          description: Plaintext pairing token; only returned once at rotation time.
+        createdAt:
+          type: string
+          format: date-time
+    McpPairingTokenRotateSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_PAIRING_TOKEN_ROTATE_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpPairingTokenData'
+    McpClientSession:
+      type: object
+      required:
+        - mcpSessionId
+        - client
+        - startedAt
+        - lastActivityAt
+      properties:
+        mcpSessionId:
+          type: string
+        client:
+          $ref: '#/components/schemas/McpClientInfo'
+        startedAt:
+          type: string
+          format: date-time
+        lastActivityAt:
+          type: string
+          format: date-time
+    McpClientListData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpClientSession'
+    McpClientListSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_CLIENT_LIST_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpClientListData'
+    McpConnectionSummary:
+      type: object
+      required:
+        - connectionId
+        - serverId
+        - serverName
+        - host
+        - port
+        - username
+        - client
+        - openedAt
+        - lastUsedAt
+        - commandCount
+        - commandsPreApproved
+      properties:
+        connectionId:
+          type: string
+        serverId:
+          type: string
+        serverName:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        client:
+          $ref: '#/components/schemas/McpClientInfo'
+        openedAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        commandCount:
+          type: integer
+          minimum: 0
+        commandsPreApproved:
+          type: boolean
+    McpConnectionListData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpConnectionSummary'
+    McpConnectionListSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_CONNECTION_LIST_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpConnectionListData'
+    McpApprovalKind:
+      type: string
+      enum: ['connection-open', 'command-execute']
+    McpPendingApproval:
+      type: object
+      required:
+        - approvalId
+        - kind
+        - createdAt
+        - expiresAt
+        - client
+        - serverId
+        - serverName
+        - host
+        - port
+        - username
+      properties:
+        approvalId:
+          type: string
+        kind:
+          $ref: '#/components/schemas/McpApprovalKind'
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        client:
+          $ref: '#/components/schemas/McpClientInfo'
+        serverId:
+          type: string
+        serverName:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        reason:
+          type: string
+          maxLength: 500
+        command:
+          type: string
+        connectionId:
+          type: string
+    McpApprovalListData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpPendingApproval'
+    McpApprovalListSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_APPROVAL_LIST_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpApprovalListData'
+    McpApprovalDecisionRequest:
+      type: object
+      required:
+        - decision
+      properties:
+        decision:
+          type: string
+          enum: ['approved', 'approvedForConnection', 'denied']
+    McpApprovalResolveData:
+      type: object
+      required:
+        - approvalId
+        - decision
+      properties:
+        approvalId:
+          type: string
+        decision:
+          type: string
+          enum: ['approved', 'approvedForConnection', 'denied']
+    McpApprovalResolveSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_APPROVAL_RESOLVE_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpApprovalResolveData'
+    McpEventsChannelData:
+      type: object
+      required:
+        - websocketUrl
+        - websocketToken
+      properties:
+        websocketUrl:
+          type: string
+        websocketToken:
+          type: string
+    McpEventsChannelCreateSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_EVENTS_CHANNEL_CREATE_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpEventsChannelData'

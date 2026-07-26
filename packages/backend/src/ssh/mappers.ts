@@ -1,5 +1,10 @@
 import type { ApiSshListServersResponse } from '@cosmosh/api-contract';
-import { DEFAULT_TERMINAL_CLIPBOARD_ACCESS, isTerminalClipboardAccess } from '@cosmosh/api-contract';
+import {
+  DEFAULT_MCP_SERVER_COMMAND_POLICY,
+  DEFAULT_TERMINAL_CLIPBOARD_ACCESS,
+  isMcpServerCommandPolicy,
+  isTerminalClipboardAccess,
+} from '@cosmosh/api-contract';
 import type { Prisma } from '@prisma/client';
 
 import { normalizeSshVisualColorKey } from './visuals.js';
@@ -14,6 +19,18 @@ const normalizeTerminalClipboardAccess = (
   value: string,
 ): ApiSshListServersResponse['data']['items'][number]['terminalClipboardAccess'] => {
   return isTerminalClipboardAccess(value) ? value : DEFAULT_TERMINAL_CLIPBOARD_ACCESS;
+};
+
+/**
+ * Normalizes persisted MCP command policy values from SQLite text columns.
+ *
+ * @param value Raw database value.
+ * @returns Supported per-server policy, defaulting to inherit for unknown legacy data.
+ */
+const normalizeMcpServerCommandPolicy = (
+  value: string,
+): ApiSshListServersResponse['data']['items'][number]['mcpCommandPolicy'] => {
+  return isMcpServerCommandPolicy(value) ? value : DEFAULT_MCP_SERVER_COMMAND_POLICY;
 };
 
 /**
@@ -64,6 +81,7 @@ export const mapServerToListItem = (
     remoteEnhancementsEnabled: server.remoteEnhancementsEnabled,
     disableCharacterWidthCompatibilityMode: server.disableCharacterWidthCompatibilityMode,
     terminalClipboardAccess: normalizeTerminalClipboardAccess(server.terminalClipboardAccess),
+    mcpCommandPolicy: normalizeMcpServerCommandPolicy(server.mcpCommandPolicy),
     proxyMode: server.proxyMode,
     proxyUrl: server.proxyUrl ?? undefined,
     keychainId: server.keychain.id,

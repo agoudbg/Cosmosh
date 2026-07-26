@@ -75,6 +75,7 @@ export default defineConfig({
             { text: 'Local-First Audit Events', link: '/developer/runtime/audit-events' },
             { text: 'Database Security', link: '/developer/runtime/database-security' },
             { text: 'SFTP File System', link: '/developer/runtime/sftp-file-system' },
+            { text: 'MCP Server', link: '/developer/runtime/mcp-server' },
           ],
         },
         {
@@ -157,6 +158,7 @@ export default defineConfig({
                 { text: '本地优先审计事件', link: '/zh-CN/developer/runtime/audit-events' },
                 { text: '数据库安全', link: '/zh-CN/developer/runtime/database-security' },
                 { text: 'SFTP 文件系统', link: '/zh-CN/developer/runtime/sftp-file-system' },
+                { text: 'MCP 服务器', link: '/zh-CN/developer/runtime/mcp-server' },
               ],
             },
             {

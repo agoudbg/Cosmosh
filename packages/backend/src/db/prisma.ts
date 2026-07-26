@@ -407,6 +407,7 @@ const requiredSchemaTables = [
   'SshServerTag',
   'SshLoginAudit',
   'PortForwardRule',
+  'McpPairingToken',
 ] as const;
 
 const RUNTIME_MIGRATION_TABLE_NAME = '_prisma_migrations';

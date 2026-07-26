@@ -419,6 +419,7 @@
       "advanced": "高级",
       "connection": "连接",
       "general": "通用",
+      "mcp": "MCP",
       "sftp": "SFTP",
       "terminal": "终端",
       "theme": "主题"
@@ -496,6 +497,14 @@
       "localTerminalClipboardAccess": {
         "description": "仅设置本地终端程序访问本地剪贴板的权限。",
         "title": "允许本地终端访问本地剪贴板"
+      },
+      "mcpCommandPolicy": {
+        "description": "设置 AI Agent 通过 MCP 连接执行命令时的默认确认策略。每台服务器可以单独覆盖此策略。",
+        "title": "Agent 命令确认"
+      },
+      "mcpEnabled": {
+        "description": "允许外部 AI Agent 通过 Model Context Protocol 连接 Cosmosh。建立连接始终需要你的确认，并且所有操作都会写入审计日志。",
+        "title": "启用 Cosmosh MCP"
       },
       "remoteEnhancementsDebugEnabled": {
         "description": "在 SSH 终端菜单中显示当前分屏的引导安装与 Shell 集成诊断信息。",
@@ -847,6 +856,11 @@
         "en": "英语 (English)",
         "zh-CN": "简体中文 (Chinese, Simplified)"
       },
+      "mcpCommandPolicy": {
+        "allowWithinConnection": "每个连接确认一次",
+        "ask": "每条命令都确认",
+        "off": "关闭（拒绝命令）"
+      },
       "searchEngine": {
         "baidu": "百度",
         "bing": "必应",
@@ -952,6 +966,8 @@
       "connection": "连接",
       "editorDefaults": "默认值",
       "localization": "本地化",
+      "mcpAccess": "访问",
+      "mcpPolicy": "授权策略",
       "proxy": "代理",
       "runtime": "运行时",
       "search": "搜索",
@@ -1447,6 +1463,15 @@
     "keychainOptionCreate": "添加钥匙链",
     "keychainOptionInline": "不使用钥匙链",
     "keychainSelectPlaceholder": "选择钥匙链",
+    "mcpCommandPolicyHint": "控制 AI Agent 通过 MCP 连接在此服务器上执行命令时是否需要你的确认。",
+    "mcpCommandPolicyLabel": "MCP Agent 命令确认",
+    "mcpCommandPolicyOptions": {
+      "allowWithinConnection": "每个连接确认一次",
+      "ask": "每条命令都确认",
+      "default": "使用全局设置",
+      "off": "关闭（拒绝命令）"
+    },
+    "mcpCommandPolicyPlaceholder": "选择命令策略",
     "noFolder": "无文件夹",
     "noteLabel": "备注",
     "notePlaceholder": "备注",

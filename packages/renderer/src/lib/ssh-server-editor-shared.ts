@@ -1,6 +1,8 @@
 import type { components } from '@cosmosh/api-contract';
 import {
+  DEFAULT_MCP_SERVER_COMMAND_POLICY,
   DEFAULT_TERMINAL_CLIPBOARD_ACCESS,
+  type McpServerCommandPolicy,
   type SshServerProxyMode,
   type TerminalClipboardAccess,
 } from '@cosmosh/api-contract';
@@ -31,6 +33,7 @@ export type ServerEditorFormState = {
   remoteEnhancementsEnabled: boolean;
   disableCharacterWidthCompatibilityMode: boolean;
   terminalClipboardAccess: TerminalClipboardAccess;
+  mcpCommandPolicy: McpServerCommandPolicy;
   proxyMode: SshServerProxyMode;
   proxyUrl: string;
 };
@@ -124,6 +127,7 @@ export const createInitialServerFormState = (defaultServerNoteTemplate = ''): Se
     remoteEnhancementsEnabled: true,
     disableCharacterWidthCompatibilityMode: false,
     terminalClipboardAccess: DEFAULT_TERMINAL_CLIPBOARD_ACCESS,
+    mcpCommandPolicy: DEFAULT_MCP_SERVER_COMMAND_POLICY,
     proxyMode: 'default',
     proxyUrl: '',
   };
@@ -159,6 +163,7 @@ export const mapServerToFormState = (server: SshServerListItem): ServerEditorFor
     remoteEnhancementsEnabled: server.remoteEnhancementsEnabled,
     disableCharacterWidthCompatibilityMode: server.disableCharacterWidthCompatibilityMode ?? false,
     terminalClipboardAccess: server.terminalClipboardAccess ?? DEFAULT_TERMINAL_CLIPBOARD_ACCESS,
+    mcpCommandPolicy: server.mcpCommandPolicy ?? DEFAULT_MCP_SERVER_COMMAND_POLICY,
     proxyMode: server.proxyMode ?? 'default',
     proxyUrl: server.proxyUrl ?? '',
   };

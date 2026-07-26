@@ -1,5 +1,6 @@
 import { normalizeSettingsValuesStrict, type SettingValidationError } from '@cosmosh/api-contract';
 import {
+  Bot,
   Cloud,
   Folder,
   Info,
@@ -150,6 +151,7 @@ const categoryIconMap: Record<SettingsCategoryId, React.ComponentType<{ classNam
   terminal: Terminal,
   connection: Link2,
   sftp: Folder,
+  mcp: Bot,
   advanced: Wrench,
   about: Info,
 };

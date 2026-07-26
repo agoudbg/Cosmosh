@@ -70,6 +70,7 @@ model SshServer {
   remoteEnhancementsEnabled Boolean @default(true)
   disableCharacterWidthCompatibilityMode Boolean @default(false)
   terminalClipboardAccess String    @default("off")
+  mcpCommandPolicy String          @default("default")
   proxyMode        SshServerProxyMode @default(default)
   proxyUrl         String?
   keychainId       String
@@ -224,6 +225,17 @@ model AuditEvent {
   @@index([category, occurredAt])
   @@index([entityType, entityId, occurredAt])
   @@index([scopeAccountId, scopeDeviceId, occurredAt])
+}
+
+model McpPairingToken {
+  id             String    @id @default(cuid())
+  tokenEncrypted String
+  label          String    @default("default")
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+
+  @@index([revokedAt])
 }
 
 model AuditSyncCursor {

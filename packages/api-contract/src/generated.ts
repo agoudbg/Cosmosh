@@ -783,6 +783,143 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/mcp/status': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get MCP runtime status for the management UI. */
+    get: operations['mcpGetStatus'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/pairing-token': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create or rotate the MCP pairing token. */
+    post: operations['mcpRotatePairingToken'];
+    /** Revoke the active MCP pairing token. */
+    delete: operations['mcpRevokePairingToken'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/clients': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List active MCP client sessions. */
+    get: operations['mcpListClients'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/connections': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List active agent-opened MCP SSH connections. */
+    get: operations['mcpListConnections'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/connections/{connectionId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Close one agent-opened MCP SSH connection. */
+    delete: operations['mcpCloseConnection'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/approvals': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List pending MCP authorization requests. */
+    get: operations['mcpListApprovals'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/approvals/{approvalId}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resolve one pending MCP authorization request. */
+    post: operations['mcpResolveApproval'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/events-channel': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create a WebSocket channel delivering MCP runtime events to the renderer. */
+    post: operations['mcpCreateEventsChannel'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -837,7 +974,13 @@ export interface components {
         | 'PORT_FORWARD_RULE_NOT_FOUND'
         | 'PORT_FORWARD_RULE_ACTIVE'
         | 'PORT_FORWARD_START_FAILED'
-        | 'PORT_FORWARD_STOP_FAILED';
+        | 'PORT_FORWARD_STOP_FAILED'
+        | 'MCP_DISABLED'
+        | 'MCP_VALIDATION_FAILED'
+        | 'MCP_APPROVAL_NOT_FOUND'
+        | 'MCP_APPROVAL_ALREADY_RESOLVED'
+        | 'MCP_CONNECTION_NOT_FOUND'
+        | 'MCP_PAIRING_TOKEN_NOT_FOUND';
       /** @enum {boolean} */
       success: false;
     };
@@ -994,6 +1137,7 @@ export interface components {
       remoteEnhancementsEnabled: boolean;
       disableCharacterWidthCompatibilityMode: boolean;
       terminalClipboardAccess: components['schemas']['TerminalClipboardAccess'];
+      mcpCommandPolicy: components['schemas']['McpServerCommandPolicy'];
       proxyMode: components['schemas']['SshServerProxyMode'];
       proxyUrl?: string;
       hasPassword: boolean;
@@ -1025,6 +1169,7 @@ export interface components {
       remoteEnhancementsEnabled?: boolean;
       disableCharacterWidthCompatibilityMode?: boolean;
       terminalClipboardAccess?: components['schemas']['TerminalClipboardAccess'];
+      mcpCommandPolicy?: components['schemas']['McpServerCommandPolicy'];
       proxyMode?: components['schemas']['SshServerProxyMode'];
       proxyUrl?: string;
       iconKey?: string;
@@ -1072,6 +1217,10 @@ export interface components {
     };
     /** @enum {string} */
     TerminalClipboardAccess: 'off' | 'writeAskRead' | 'readWrite' | 'askAlways';
+    /** @enum {string} */
+    McpCommandPolicy: 'off' | 'ask' | 'allowWithinConnection';
+    /** @enum {string} */
+    McpServerCommandPolicy: 'default' | 'off' | 'ask' | 'allowWithinConnection';
     SshTrustFingerprintRequest: {
       serverId: string;
       fingerprintSha256: string;
@@ -1966,6 +2115,138 @@ export interface components {
       /** @enum {boolean} */
       success: true;
       data: components['schemas']['SftpTransferProgressData'];
+    };
+    McpClientInfo: {
+      name: string;
+      version: string;
+    };
+    McpStatusData: {
+      enabled: boolean;
+      tokenConfigured: boolean;
+      discoveryFilePath?: string;
+      bridgeLauncherPath?: string;
+      activeClientCount: number;
+      activeConnectionCount: number;
+      pendingApprovalCount: number;
+    };
+    McpStatusGetSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_STATUS_GET_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpStatusData'];
+    };
+    McpPairingTokenData: {
+      /** @description Plaintext pairing token; only returned once at rotation time. */
+      token: string;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    McpPairingTokenRotateSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_PAIRING_TOKEN_ROTATE_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpPairingTokenData'];
+    };
+    McpClientSession: {
+      mcpSessionId: string;
+      client: components['schemas']['McpClientInfo'];
+      /** Format: date-time */
+      startedAt: string;
+      /** Format: date-time */
+      lastActivityAt: string;
+    };
+    McpClientListData: {
+      items: components['schemas']['McpClientSession'][];
+    };
+    McpClientListSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_CLIENT_LIST_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpClientListData'];
+    };
+    McpConnectionSummary: {
+      connectionId: string;
+      serverId: string;
+      serverName: string;
+      host: string;
+      port: number;
+      username: string;
+      client: components['schemas']['McpClientInfo'];
+      /** Format: date-time */
+      openedAt: string;
+      /** Format: date-time */
+      lastUsedAt: string;
+      commandCount: number;
+      commandsPreApproved: boolean;
+    };
+    McpConnectionListData: {
+      items: components['schemas']['McpConnectionSummary'][];
+    };
+    McpConnectionListSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_CONNECTION_LIST_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpConnectionListData'];
+    };
+    /** @enum {string} */
+    McpApprovalKind: 'connection-open' | 'command-execute';
+    McpPendingApproval: {
+      approvalId: string;
+      kind: components['schemas']['McpApprovalKind'];
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      expiresAt: string;
+      client: components['schemas']['McpClientInfo'];
+      serverId: string;
+      serverName: string;
+      host: string;
+      port: number;
+      username: string;
+      reason?: string;
+      command?: string;
+      connectionId?: string;
+    };
+    McpApprovalListData: {
+      items: components['schemas']['McpPendingApproval'][];
+    };
+    McpApprovalListSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_APPROVAL_LIST_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpApprovalListData'];
+    };
+    McpApprovalDecisionRequest: {
+      /** @enum {string} */
+      decision: 'approved' | 'approvedForConnection' | 'denied';
+    };
+    McpApprovalResolveData: {
+      approvalId: string;
+      /** @enum {string} */
+      decision: 'approved' | 'approvedForConnection' | 'denied';
+    };
+    McpApprovalResolveSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_APPROVAL_RESOLVE_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpApprovalResolveData'];
+    };
+    McpEventsChannelData: {
+      websocketUrl: string;
+      websocketToken: string;
+    };
+    McpEventsChannelCreateSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_EVENTS_CHANNEL_CREATE_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpEventsChannelData'];
     };
   };
   responses: never;
@@ -4806,6 +5087,334 @@ export interface operations {
       };
       /** @description Rule not found. */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpGetStatus: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MCP status returned. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpStatusGetSuccess'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpRotatePairingToken: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pairing token created; plaintext is only returned once. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpPairingTokenRotateSuccess'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpRevokePairingToken: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pairing token revoked. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description No active pairing token. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpListClients: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MCP client sessions listed. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpClientListSuccess'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpListConnections: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MCP SSH connections listed. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpConnectionListSuccess'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpCloseConnection: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path: {
+        connectionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MCP SSH connection closed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Connection not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpListApprovals: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pending approvals listed. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpApprovalListSuccess'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpResolveApproval: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path: {
+        approvalId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['McpApprovalDecisionRequest'];
+      };
+    };
+    responses: {
+      /** @description Approval resolved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpApprovalResolveSuccess'];
+        };
+      };
+      /** @description Validation failed. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Approval not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Approval already resolved. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpCreateEventsChannel: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Events channel created. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpEventsChannelCreateSuccess'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
         headers: {
           [name: string]: unknown;
         };
