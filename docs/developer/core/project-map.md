@@ -11,6 +11,8 @@ flowchart TB
   ROOT --> API[packages/api-contract]
   ROOT --> I18N[packages/i18n]
   ROOT --> REMOTE[packages/remote-bootstrap]
+  ROOT --> MCPB[packages/mcp-bridge]
+  ROOT --> SKILLS[skills]
   ROOT --> DOCS[docs]
   ROOT --> SCRIPTS[scripts]
   ROOT --> CI[".github/workflows"]
@@ -89,6 +91,7 @@ flowchart TB
   - `src/remote-bootstrap`: pre-shell Remote Enhancements orchestration. It shares concurrent manifest fetches through a five-minute success-only cache, probes the remote platform through a temporary SSH transport isolated from the interactive client, validates installed status, conditionally injects the download wrapper, returns a trusted helper contract, forwards `bootstrap-status`, and logs terminal bootstrap outcomes.
   - `src/port-forward`: SSH port-forwarding rule validation, SOCKS5 parsing, and active runtime session service.
   - `src/sftp`: SFTP browser, download, file-operation, task-scheduling, and remote-archive session logic. `session-service.ts` owns session authorization/lifecycle and ordinary `ssh2.sftp` operations; `task-scheduler.ts` owns per-session total/heavy/mutation admission, POSIX path claims, absolute deadlines, cancellation signals, and memory-only task snapshots; `archive-service.ts` owns fixed POSIX command construction, capability probing, async archive state, staging/commit, conflict merge, cancellation, audit, and cleanup under an exclusive scheduler claim. Single-file transfers retain their existing short-lived byte-progress records.
+  - `src/mcp`: externally-exposed MCP server runtime. `service.ts` is the lifecycle/settings-gated façade; `pairing.ts` owns encrypted pairing tokens and the `<userData>/mcp/bridge.json` discovery file; `http.ts` mounts the Bearer-guarded `/mcp` Streamable HTTP endpoint; `sessions.ts` owns per-client `McpServer` + transport state; `connection-registry.ts` owns bounded MCP-owned SSH clients; `approval-broker.ts` owns the pending-authorization queue with a 120-second deny timeout; `events-service.ts` streams approval/connection/session events to the renderer; `exec.ts` runs bounded commands with stdout/stderr/exit capture; `tools.ts` registers the five MCP tools. Default off via `mcpEnabled`.
   - `src/settings`: settings payload defaults, validation parsers, and shared AppSettings readers used by HTTP routes and runtime services.
   - `src/validation-utils.ts`: shared backend HTTP-boundary validation primitives used by route and domain payload parsers.
   - `src/local-terminal`: local PTY session logic (`node-pty`).
@@ -124,6 +127,19 @@ Go source for the user-scoped remote installer used by Remote Enhancements. This
 - `cmd/cosmosh-bootstrap`: installs the downloaded bootstrap binary and Go-generated shell helper into user-scoped remote directories, or reports the validated installed runtime contract.
 - `internal/wrapper`: validates manifest-derived wrapper inputs and renders POSIX/fish shell source with shell-safe quoting.
 - `internal/install`: owns versioned helper generation, shell-accurate OSC capability declarations, exact helper/binary validation, atomic user-level installation, Bash interactive/login profile coverage, mode/symlink-preserving profile repair, installed status reporting, version marker writes, and line-delimited `bootstrap-status` output.
+
+### `packages/mcp-bridge`
+
+Standalone `cosmosh-mcp` stdio bridge that connects an external MCP client (Claude Code/Desktop, Cursor) to the running app. It performs transport-level JSON-RPC passthrough only and holds no product logic.
+
+- `src/discovery.ts`: resolves `<userData>/mcp/bridge.json` (via `--discovery`, `COSMOSH_MCP_DISCOVERY`, or the platform default) to obtain the loopback port and pairing token.
+- `src/proxy.ts`: bridges `StdioServerTransport` ↔ `StreamableHTTPClientTransport('http://127.0.0.1:<port>/mcp', { Authorization: Bearer })`, re-reading discovery to retry once on disconnect.
+- `src/index.ts`: CLI entry that emits a single actionable stderr line and exits non-zero when the app is not running or MCP is disabled.
+- Built by esbuild into a single-file `dist/cosmosh-mcp.cjs` (CJS, `platform=node`). Main `prebuild` copies it into `packages/main/resources/helpers/mcp-bridge/` (git-ignored) for packaging; the packaged app writes a launcher under `<userData>/bin/` that runs the bundle under Electron as Node.
+
+### `skills`
+
+Repository-hosted agent skills. `skills/cosmosh-mcp/SKILL.md` teaches an external agent how to use the Cosmosh MCP tools, the connection/command authorization model, and the audit/credential ground rules.
 
 ## 3. Feature Placement Rules
 
@@ -257,3 +273,25 @@ flowchart TD
   - `packages/renderer/src/lib/server-proxy.ts` decides whether system resolution is needed before SSH, SFTP, or port-forward startup.
 - Backend runtime:
   - `packages/backend/src/ssh/proxy.ts` owns precedence, PAC result parsing, tunnel construction, timeout sharing, and credential-safe errors.
+
+## 11. MCP Server Ownership Map (2026-07)
+
+- Contract and settings:
+  - `packages/api-contract/src/mcp.ts` owns `McpCommandPolicy` / `McpServerCommandPolicy`, event types, and defaults.
+  - `packages/api-contract/openapi/cosmosh.openapi.yaml` owns the `/api/v1/mcp/*` management endpoints; the `/mcp` JSON-RPC endpoint is intentionally not in OpenAPI.
+  - `packages/api-contract/src/settings-registry.ts` owns `mcpEnabled` (default false) and `mcpCommandPolicy` (default `ask`) under the `mcp` category.
+- Persistent model:
+  - `packages/backend/prisma/schema.prisma` owns `SshServer.mcpCommandPolicy` and the `McpPairingToken` model, with migration `20260726000100_mcp_pairing_and_policy`.
+- Backend runtime:
+  - `packages/backend/src/mcp/*` owns the MCP server, pairing/discovery, connection registry, approval broker, event channel, bounded exec, and tool registration.
+  - `packages/backend/src/http/routes/mcp.ts` owns the management REST surface; `src/mcp/http.ts` owns the `/mcp` endpoint mount and Bearer auth.
+- Stdio bridge and packaging:
+  - `packages/mcp-bridge/*` owns the `cosmosh-mcp` bridge bundle.
+  - `packages/main/scripts/sync-mcp-bridge.cjs` and `packages/main/src/mcp-bridge-launcher.ts` own bundle sync and the per-user launcher script; the launcher path is advertised through `COSMOSH_MCP_BRIDGE_LAUNCHER`.
+- Bridge owner:
+  - `packages/main/src/ipc/register-backend-ipc.ts`, `packages/main/src/preload.ts`, and `packages/renderer/src/vite-env.d.ts` for the `backend:mcp-*` and `app:focus-main-window` channels.
+- Renderer owner:
+  - `packages/renderer/src/pages/Mcp.tsx` for the status/pairing/client-config/connections/approvals panel, plus the global authorization host and `use-mcp-events.ts` event hook.
+  - `packages/renderer/src/components/ssh/SSHServerEditorDialog.tsx` for the per-server command-policy override.
+- Documentation owner:
+  - `docs/developer/runtime/mcp-server.md` and `docs/zh-CN/developer/runtime/mcp-server.md` as the runtime source pages; `skills/cosmosh-mcp/SKILL.md` as the external-agent guide.

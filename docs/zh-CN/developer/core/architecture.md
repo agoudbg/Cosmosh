@@ -257,6 +257,17 @@ sequenceDiagram
 - `ssh-keychain`
 - `port-forward`
 - `settings`
+- `mcp`
+
+## 5.4 MCP 服务器运行时（已实现）
+
+- Cosmosh 对外暴露一个可访问的 MCP 服务器，让外部 Agent（Claude Code/Desktop、Cursor）无需重新输入凭据即可使用已配置的 SSH 服务器。它由 `mcpEnabled` 设置门控，**默认关闭**。
+- 传输为后端回环 Streamable HTTP 端点（`/mcp`，`127.0.0.1`）加上随应用附带、由外部客户端拉起的 `cosmosh-mcp` stdio 桥接；桥接仅做传输层 JSON-RPC 透传。
+- `/mcp` 的认证独立于 `/api/v1/*` 内部令牌守卫：它要求 `Bearer` 配对令牌，禁用时返回 503，并开启 SDK 的 DNS-rebinding 防护，`allowedHosts` 限定为 `127.0.0.1`/`localhost`。会话是有状态的（`sessionIdGenerator: randomUUID`）。
+- 桥接读取 `<userData>/mcp/bridge.json`（`{version, port, token, pid, appVersion, startedAt}`，目录 `0700` / 文件 `0600`）以发现当前端口与配对令牌。该文件仅在 MCP 启用期间存在，轮换时重写、禁用/退出时删除。
+- 暴露五个工具：`list_servers`（不含凭据）、`open_connection`（始终弹窗征询用户）、`list_connections`、`run_command`（受策略门控，stdout/stderr/exitCode 有界）与 `close_connection`。MCP 专属 SSH 客户端有界（最多 8 个，10 分钟闲置超时），且是用户可见/可关闭的应用级资源。
+- 打开连接**始终**弹出应用内授权对话框。命令执行遵循有效策略——当 `server.mcpCommandPolicy` 非 `default` 时取它，否则取全局 `mcpCommandPolicy`——解析为 `off`（拒绝）、`ask`（逐条弹窗）或 `allowWithinConnection`（首条弹窗，其余可在该连接内放行）。未回应的授权在 120 秒后按拒绝超时；若无渲染器窗口在线则只能超时。
+- 每一次 MCP 操作都会以 `mcp` 类别写入审计流。完整的工具契约、端点与审计分类体系参见 [MCP 服务器](../runtime/mcp-server.md)。
 
 ## 6. 核心数据流视图
 

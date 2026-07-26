@@ -257,6 +257,17 @@ Current event categories in runtime wiring include:
 - `ssh-keychain`
 - `port-forward`
 - `settings`
+- `mcp`
+
+## 5.4 MCP Server Runtime (Implemented)
+
+- Cosmosh exposes an externally-reachable MCP server so an external agent (Claude Code/Desktop, Cursor) can use already-configured SSH servers without re-entering credentials. It is gated by the `mcpEnabled` setting and is **off by default**.
+- Transport is a backend loopback Streamable HTTP endpoint (`/mcp`, `127.0.0.1`) plus a bundled `cosmosh-mcp` stdio bridge that external clients spawn. The bridge does transport-level JSON-RPC passthrough only.
+- `/mcp` is authenticated independently from the `/api/v1/*` internal-token guard: it requires a `Bearer` pairing token, returns 503 while disabled, and enables the SDK DNS-rebinding protection with `allowedHosts` restricted to `127.0.0.1`/`localhost`. Sessions are stateful (`sessionIdGenerator: randomUUID`).
+- The bridge reads `<userData>/mcp/bridge.json` (`{version, port, token, pid, appVersion, startedAt}`, dir `0700` / file `0600`) to discover the current port and pairing token. The file exists only while MCP is enabled and is rewritten on rotation and removed on disable/shutdown.
+- Five tools are exposed: `list_servers` (credential-free), `open_connection` (always prompts the user), `list_connections`, `run_command` (policy-gated, bounded stdout/stderr/exit), and `close_connection`. MCP-owned SSH clients are bounded (max 8, 10-minute idle timeout) and are user-visible/closable app resources.
+- Opening a connection **always** raises an in-app authorization dialog. Command execution follows the effective policy — `server.mcpCommandPolicy` when not `default`, otherwise the global `mcpCommandPolicy` — resolving to `off` (rejected), `ask` (per-command prompt), or `allowWithinConnection` (first command prompts, remainder may be allowed for that connection). Unanswered authorizations time out as denials after 120 seconds; if no renderer window is open they can only time out.
+- Every MCP action is written to the audit stream under the `mcp` category. See [MCP Server](../runtime/mcp-server.md) for the full tool schemas, endpoints, and audit taxonomy.
 
 ## 6. Core Data-Flow Views
 
