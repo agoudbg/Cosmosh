@@ -36,6 +36,8 @@ export class McpSessionManager {
 
   private readonly appVersion: string;
 
+  private readonly httpPort: number;
+
   private readonly clock: McpClock;
 
   private readonly transports = new Map<string, WebStandardStreamableHTTPServerTransport>();
@@ -49,12 +51,14 @@ export class McpSessionManager {
     emitEvent: McpEventEmitter;
     auditEventService: AuditEventService;
     appVersion: string;
+    httpPort: number;
     clock?: McpClock;
   }) {
     this.runtime = options.runtime;
     this.emitEvent = options.emitEvent;
     this.auditEventService = options.auditEventService;
     this.appVersion = options.appVersion;
+    this.httpPort = options.httpPort;
     this.clock = options.clock ?? systemMcpClock;
   }
 
@@ -168,7 +172,8 @@ export class McpSessionManager {
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       enableDnsRebindingProtection: true,
-      allowedHosts: ['127.0.0.1', 'localhost'],
+      // The SDK compares the complete Host header, including a non-default port.
+      allowedHosts: [`127.0.0.1:${this.httpPort}`, `localhost:${this.httpPort}`],
       onsessioninitialized: (sid) => {
         sessionIdRef = sid;
         this.transports.set(sid, transport);

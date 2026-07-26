@@ -70,7 +70,7 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 2. 缺失/无效的 `Authorization: Bearer <token>` → **401**（`API_CODES.authInvalidToken`）。令牌以恒定时间（`timingSafeEqual`）与活跃配对令牌比较。
 3. 其余委托给 `McpService.handleRequest(c.req.raw)`。
 
-会话使用 `WebStandardStreamableHTTPServerTransport`（`sessions.ts`），配置 `sessionIdGenerator: randomUUID`、`enableDnsRebindingProtection: true`、`allowedHosts: ['127.0.0.1', 'localhost']`。会话 id 承载于 `mcp-session-id` 头。会话仅由 JSON-RPC `initialize` POST 建立；未知会话 id 返回 JSON-RPC `-32001`（HTTP 404），无会话的非 POST 返回 `-32000`（HTTP 400），JSON 解析失败返回 `-32700`（HTTP 400）。`/mcp` 是 JSON-RPC，**刻意不纳入** OpenAPI schema。
+会话使用 `WebStandardStreamableHTTPServerTransport`（`sessions.ts`），配置 `sessionIdGenerator: randomUUID`、`enableDnsRebindingProtection: true`，并采用精确的运行时白名单 `127.0.0.1:<httpPort>` 与 `localhost:<httpPort>`。MCP SDK 会比较完整的 `Host` 请求头（包括非默认端口），因此 `McpService` 会把当前后端监听端口传入各会话管理器。这样既保持严格的 DNS rebinding 防护，又只允许 Cosmosh 实际绑定的 loopback 端点。会话 id 承载于 `mcp-session-id` 头。会话仅由 JSON-RPC `initialize` POST 建立；未知会话 id 返回 JSON-RPC `-32001`（HTTP 404），无会话的非 POST 返回 `-32000`（HTTP 400），JSON 解析失败返回 `-32700`（HTTP 400）。`/mcp` 是 JSON-RPC，**刻意不纳入** OpenAPI schema。
 
 ## 6. 管理 REST（`/api/v1/mcp/*`）
 
@@ -159,7 +159,7 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 
 ## 12. 测试与验证
 
-- **单元测试**（`tsx --test`）：后端 `test:mcp` 覆盖授权 broker（超时 → 拒绝、只解析一次、shutdown 全拒）、配对（轮换吊销旧令牌、恒定时间比较、发现文件权限）、有界 exec（stdout/stderr/exit/截断）与策略矩阵（`off`/`ask`/`allowWithinConnection` × 全局/每服务器覆盖）。`@cosmosh/mcp-bridge` 包测试发现解析、可达性探测与透传。
+- **单元测试**（`tsx --test`）：后端 `test:mcp` 覆盖授权 broker（超时 → 拒绝、只解析一次、shutdown 全拒）、配对（轮换吊销旧令牌、恒定时间比较、发现文件权限）、有界 exec（stdout/stderr/exit/截断）、策略矩阵（`off`/`ask`/`allowWithinConnection` × 全局/每服务器覆盖），以及使用精确 loopback Host 与动态端口建立会话、同时拒绝白名单之外 Host 的初始化场景。`@cosmosh/mcp-bridge` 包测试发现解析、可达性探测与透传。
 - **手动 E2E：** 在开发模式启用 MCP，确认启用时创建 `bridge.json`、禁用/退出时删除；用 `npx @modelcontextprotocol/inspector` 直连 `/mcp`（错令牌 → 401、禁用 → 503）；用生成的 `.mcp.json` 接入 Claude Code，走一遍 列出 → 打开（先拒后批）→ 各策略下执行 → `allowWithinConnection` 升级 → 闲置超时，并在审计页逐事件核对；退出应用后确认桥接打印清晰报错；轮换令牌后确认在线桥接的下次请求失败。
 
 ## 已知限制（v1）

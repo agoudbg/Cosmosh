@@ -22,7 +22,7 @@
     "pretest:ssh-session": "pnpm run build:runtime-deps",
     "test:ssh-session": "tsx --test src/ssh/remote-shell-events.test.ts src/ssh/session-service.bootstrap-transport.test.ts src/ssh/session-service.remote-shell-events.test.ts src/ssh/exec.test.ts src/remote-bootstrap/service.test.ts",
     "pretest:mcp": "pnpm run build:runtime-deps",
-    "test:mcp": "tsx --test src/mcp/approval-broker.test.ts src/mcp/exec.test.ts src/mcp/pairing.test.ts src/mcp/policy.test.ts",
+    "test:mcp": "tsx --test src/mcp/approval-broker.test.ts src/mcp/exec.test.ts src/mcp/pairing.test.ts src/mcp/policy.test.ts src/mcp/sessions.test.ts",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\""

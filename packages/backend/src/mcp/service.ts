@@ -129,6 +129,7 @@ export class McpService implements McpToolRuntime {
       emitEvent: (message) => this.emit(message),
       auditEventService: this.auditEventService,
       appVersion: this.appVersion,
+      httpPort: this.httpPort,
     });
   }
 

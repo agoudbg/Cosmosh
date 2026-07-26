@@ -70,7 +70,7 @@ Registered by `registerMcpEndpoint()` in `packages/backend/src/http/routes/mcp.t
 2. Missing/invalid `Authorization: Bearer <token>` → **401** (`API_CODES.authInvalidToken`). The token is compared to the active pairing token in constant time (`timingSafeEqual`).
 3. Otherwise delegated to `McpService.handleRequest(c.req.raw)`.
 
-Sessions use `WebStandardStreamableHTTPServerTransport` (`sessions.ts`) with `sessionIdGenerator: randomUUID`, `enableDnsRebindingProtection: true`, and `allowedHosts: ['127.0.0.1', 'localhost']`. The session id travels in the `mcp-session-id` header. A session is established only by a JSON-RPC `initialize` POST; an unknown session id yields JSON-RPC `-32001` (HTTP 404), a non-POST without a session yields `-32000` (HTTP 400), and malformed JSON yields `-32700` (HTTP 400). `/mcp` is JSON-RPC and is deliberately **not** part of the OpenAPI schema.
+Sessions use `WebStandardStreamableHTTPServerTransport` (`sessions.ts`) with `sessionIdGenerator: randomUUID`, `enableDnsRebindingProtection: true`, and an exact runtime allowlist of `127.0.0.1:<httpPort>` and `localhost:<httpPort>`. The MCP SDK compares the complete `Host` header, including a non-default port, so `McpService` passes the active backend listener port into each session manager. This keeps DNS rebinding protection strict while allowing only the loopback endpoint that Cosmosh actually bound. The session id travels in the `mcp-session-id` header. A session is established only by a JSON-RPC `initialize` POST; an unknown session id yields JSON-RPC `-32001` (HTTP 404), a non-POST without a session yields `-32000` (HTTP 400), and malformed JSON yields `-32700` (HTTP 400). `/mcp` is JSON-RPC and is deliberately **not** part of the OpenAPI schema.
 
 ## 6. Management REST (`/api/v1/mcp/*`)
 
@@ -159,7 +159,7 @@ Actions written under the `mcp` category (`entityType` one of `mcp-session`, `mc
 
 ## 12. Testing & verification
 
-- **Unit tests** (`tsx --test`): backend `test:mcp` covers the approval broker (timeout → deny, resolve-once, shutdown denies all), pairing (rotation revokes prior token, constant-time compare, discovery-file permissions), bounded exec (stdout/stderr/exit/truncation), and the policy matrix (`off`/`ask`/`allowWithinConnection` × global/per-server override). The `@cosmosh/mcp-bridge` package tests discovery parsing, the reachability probe, and the passthrough.
+- **Unit tests** (`tsx --test`): backend `test:mcp` covers the approval broker (timeout → deny, resolve-once, shutdown denies all), pairing (rotation revokes prior token, constant-time compare, discovery-file permissions), bounded exec (stdout/stderr/exit/truncation), the policy matrix (`off`/`ask`/`allowWithinConnection` × global/per-server override), and session initialization with the exact loopback Host plus dynamic port while rejecting hosts outside that allowlist. The `@cosmosh/mcp-bridge` package tests discovery parsing, the reachability probe, and the passthrough.
 - **Manual E2E:** enable MCP in dev and confirm `bridge.json` is created on enable and removed on disable/exit; drive `/mcp` with `npx @modelcontextprotocol/inspector` (bad token → 401, disabled → 503); attach Claude Code via generated `.mcp.json` and walk list → open (deny then approve) → run under each policy → `allowWithinConnection` upgrade → idle timeout, cross-checking each event on the audit page; quit the app and confirm the bridge prints a clear error; rotate the token and confirm the live bridge's next request fails.
 
 ## Known limitations (v1)
