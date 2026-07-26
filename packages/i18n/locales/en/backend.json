@@ -26,6 +26,14 @@
       "sessionCreateFailedNoReason": "Failed to create local terminal session.",
       "sessionNotFound": "Local terminal session was not found."
     },
+    "mcp": {
+      "approvalNotFound": "Authorization request was not found or has already been resolved.",
+      "connectionClosed": "The SSH connection was closed before it became ready.",
+      "connectionNotFound": "MCP connection was not found or has already been closed.",
+      "disabled": "MCP is disabled. Enable it in Settings → MCP to use this feature.",
+      "invalidDecision": "Authorization decision is invalid.",
+      "pairingTokenNotFound": "No active MCP pairing token exists."
+    },
     "portForward": {
       "ruleActive": "Stop this port-forwarding rule before editing or deleting it.",
       "ruleIdRequired": "Rule ID is required.",
@@ -164,6 +172,15 @@
     "localTerminal": {
       "profilesFetched": "Local terminal profiles loaded.",
       "sessionCreated": "Local terminal session created."
+    },
+    "mcp": {
+      "approvalResolved": "Authorization decision recorded.",
+      "approvalsFetched": "MCP authorization requests loaded.",
+      "clientsFetched": "MCP clients loaded.",
+      "connectionsFetched": "MCP connections loaded.",
+      "eventsChannelCreated": "MCP event channel created.",
+      "pairingTokenRotated": "MCP pairing token generated.",
+      "statusFetched": "MCP status loaded."
     },
     "portForward": {
       "ruleCreated": "Port-forwarding rule created.",

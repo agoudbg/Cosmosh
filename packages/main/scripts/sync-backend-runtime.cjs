@@ -18,6 +18,8 @@ const thirdPartyEntryPackages = [
   'intl-messageformat',
   '@prisma/adapter-better-sqlite3',
   'better-sqlite3-multiple-ciphers',
+  '@modelcontextprotocol/sdk',
+  'zod',
 ];
 const workspaceRuntimePackages = ['backend', 'api-contract', 'i18n'];
 const builtInModuleNames = new Set([...builtinModules, ...builtinModules.map((moduleName) => `node:${moduleName}`)]);

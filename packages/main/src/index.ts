@@ -1067,6 +1067,7 @@ const startBackendService = async (): Promise<void> => {
       COSMOSH_DB_ENCRYPTION_KEY: databaseEncryptionKey,
       COSMOSH_USER_DATA_PATH: app.getPath('userData'),
       COSMOSH_APP_ENV: isDev ? 'development' : 'production',
+      COSMOSH_APP_VERSION: app.getVersion(),
       [SFTP_TEMP_ROOT_ENV_NAME]: sftpTemporaryRoot,
       DATABASE_URL: databaseUrl,
     };

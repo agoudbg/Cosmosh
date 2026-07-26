@@ -156,6 +156,14 @@ export const registerSettingsRoutes = (app: BackendHttpApp, context: BackendAppC
       },
     });
 
+    // Re-apply the MCP enabled gate whenever the toggle changes so the endpoint,
+    // events socket, and discovery file follow the persisted setting immediately.
+    if (changedKeys.includes('mcpEnabled')) {
+      await context.mcpService.refreshEnabledState().catch((error: unknown) => {
+        console.error('[settings][MCP] Failed to refresh MCP enabled state.', error);
+      });
+    }
+
     return c.json(payload);
   });
 };

@@ -6,6 +6,7 @@ import { type BackendHttpApp, type BackendHttpEnv, getTranslator } from './i18n.
 import { registerCommonMiddleware } from './middleware.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerLocalTerminalRoutes } from './routes/local-terminal.js';
+import { registerMcpEndpoint, registerMcpManagementRoutes } from './routes/mcp.js';
 import { registerPortForwardRoutes } from './routes/port-forward.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerSftpRoutes } from './routes/sftp.js';
@@ -27,6 +28,8 @@ export const createBackendApp = (context: BackendAppContext): BackendHttpApp => 
   registerPortForwardRoutes(app, context);
   registerAuditRoutes(app, context);
   registerLocalTerminalRoutes(app, context);
+  registerMcpManagementRoutes(app, context);
+  registerMcpEndpoint(app, context);
 
   app.onError((error, c) => {
     console.error('[http][UNHANDLED]', error);

@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 import type { PrismaClient } from '@prisma/client';
 
 import { AuditEventService } from './audit/service.js';
-import { DatabaseInitError, initializeDatabase, shutdownDatabase } from './db/prisma.js';
+import { DatabaseInitError, getDatabasePath, initializeDatabase, shutdownDatabase } from './db/prisma.js';
 import { createBackendApp } from './http/create-app.js';
 import { BACKEND_BIND_HOST, startBackendHttpServer } from './http/server.js';
 import { enableI18nDevHotReload } from './i18n-bridge.js';
 import { LocalTerminalSessionService } from './local-terminal/session-service.js';
+import { McpPairingService } from './mcp/pairing.js';
+import { McpService } from './mcp/service.js';
 import { PortForwardSessionService } from './port-forward/session-service.js';
 import { resolveRuntimeMode } from './runtime.js';
 import { SftpSessionService } from './sftp/session-service.js';
@@ -65,6 +67,7 @@ const findAvailablePort = async (): Promise<number> => {
 const runtimeMode = resolveRuntimeMode(process.env.COSMOSH_RUNTIME_MODE);
 const port = resolvePort(process.env.COSMOSH_API_PORT);
 const internalToken = process.env.COSMOSH_INTERNAL_TOKEN;
+const appVersion = process.env.COSMOSH_APP_VERSION ?? 'dev';
 const isSecureLocalMode = runtimeMode === 'electron-main';
 // Hash source is normalized below to fixed-size key material.
 const credentialEncryptionKeySource = process.env.COSMOSH_SECRET_KEY ?? internalToken;
@@ -78,6 +81,7 @@ let sftpSessionService: SftpSessionService | null = null;
 let portForwardSessionService: PortForwardSessionService | null = null;
 let localTerminalSessionService: LocalTerminalSessionService | null = null;
 let auditEventService: AuditEventService | null = null;
+let mcpService: McpService | null = null;
 let httpServer: ReturnType<typeof startBackendHttpServer> | null = null;
 let shutdownPromise: Promise<void> | null = null;
 
@@ -147,6 +151,11 @@ const registerShutdownHooks = (): void => {
         if (localTerminalSessionService) {
           await localTerminalSessionService.stop();
           localTerminalSessionService = null;
+        }
+
+        if (mcpService) {
+          await mcpService.stop();
+          mcpService = null;
         }
 
         await stopHttpServer();
@@ -225,7 +234,9 @@ const bootstrap = async (): Promise<void> => {
 
   const sshWebSocketPort = await findAvailablePort();
   const localTerminalWebSocketPort = await findAvailablePort();
+  const mcpEventsWebSocketPort = await findAvailablePort();
   const sftpTemporaryRootPath = process.env.COSMOSH_SFTP_TEMP_ROOT;
+  const mcpDiscoveryDirPath = path.join(path.dirname(getDatabasePath()), 'mcp');
 
   sshSessionService = new SshSessionService({
     host: '127.0.0.1',
@@ -253,6 +264,24 @@ const bootstrap = async (): Promise<void> => {
     port: localTerminalWebSocketPort,
   });
 
+  const mcpPairingService = new McpPairingService({
+    getDbClient,
+    credentialEncryptionKey,
+    discoveryDirPath: mcpDiscoveryDirPath,
+    appVersion,
+  });
+
+  mcpService = new McpService({
+    getDbClient,
+    auditEventService,
+    credentialEncryptionKey,
+    pairingService: mcpPairingService,
+    httpPort: port,
+    eventsHost: '127.0.0.1',
+    eventsPort: mcpEventsWebSocketPort,
+    appVersion,
+  });
+
   const app = createBackendApp({
     runtimeMode,
     isSecureLocalMode,
@@ -264,6 +293,13 @@ const bootstrap = async (): Promise<void> => {
     sftpSessionService,
     portForwardSessionService,
     localTerminalSessionService,
+    mcpService,
+  });
+
+  // Applies the persisted mcpEnabled gate (binds the events socket + writes the
+  // discovery file only when enabled). Failure here must not abort backend boot.
+  await mcpService.start().catch((error: unknown) => {
+    console.error('[bootstrap][MCP] Failed to apply MCP enabled state.', error);
   });
 
   console.log(`🚀 Cosmosh Backend starting on http://${BACKEND_BIND_HOST}:${port} (${runtimeMode})`);
@@ -316,6 +352,13 @@ void bootstrap().catch(async (error: unknown) => {
       console.error('[bootstrap][LOCAL_TERMINAL_SESSION] Failed to stop local terminal session service.', serviceError);
     });
     localTerminalSessionService = null;
+  }
+
+  if (mcpService) {
+    await mcpService.stop().catch((serviceError: unknown) => {
+      console.error('[bootstrap][MCP] Failed to stop MCP service.', serviceError);
+    });
+    mcpService = null;
   }
 
   await shutdownDatabase();

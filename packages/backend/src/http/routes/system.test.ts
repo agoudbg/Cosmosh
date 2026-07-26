@@ -48,6 +48,7 @@ const createRuntimeRouteContext = (sshCount: number, sftpCount: number): Backend
     } as never,
     portForwardSessionService: {} as never,
     localTerminalSessionService: {} as never,
+    mcpService: {} as never,
   };
 };
 
