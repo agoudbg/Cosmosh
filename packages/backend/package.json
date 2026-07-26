@@ -28,7 +28,7 @@
   "dependencies": {
     "@cosmosh/api-contract": "workspace:*",
     "@cosmosh/i18n": "workspace:*",
-    "@hono/node-server": "^1.19.15",
+    "@hono/node-server": "^2.0.10",
     "@prisma/adapter-better-sqlite3": "6.19.3",
     "@prisma/client": "6.19.3",
     "@prisma/driver-adapter-utils": "6.19.3",
