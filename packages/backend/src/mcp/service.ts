@@ -70,6 +70,8 @@ export class McpService implements McpToolRuntime {
 
   private readonly appVersion: string;
 
+  private readonly bridgeLauncherPath: string | undefined;
+
   private readonly broker: McpApprovalBroker;
 
   private readonly registry: McpConnectionRegistry;
@@ -89,6 +91,7 @@ export class McpService implements McpToolRuntime {
     eventsHost: string;
     eventsPort: number;
     appVersion: string;
+    bridgeLauncherPath?: string;
   }) {
     this.getDbClient = options.getDbClient;
     this.auditEventService = options.auditEventService;
@@ -98,6 +101,7 @@ export class McpService implements McpToolRuntime {
     this.eventsHost = options.eventsHost;
     this.eventsPort = options.eventsPort;
     this.appVersion = options.appVersion;
+    this.bridgeLauncherPath = options.bridgeLauncherPath;
 
     this.broker = new McpApprovalBroker({
       hooks: {
@@ -196,6 +200,7 @@ export class McpService implements McpToolRuntime {
       enabled: this.enabled,
       tokenConfigured: await this.pairingService.hasToken(),
       discoveryFilePath: this.pairingService.getDiscoveryFilePath(),
+      bridgeLauncherPath: this.bridgeLauncherPath,
       activeClientCount: this.sessionManager.count(),
       activeConnectionCount: this.registry.count(),
       pendingApprovalCount: this.broker.pendingCount(),

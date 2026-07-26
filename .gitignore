@@ -147,6 +147,9 @@ packages/remote-bootstrap/dist/
 packages/main/resources/installer-strings.nsh
 packages/main/resources/remote-bootstrap/manifest-url.json
 
+# Bundled cosmosh-mcp stdio bridge (built by prebuild from packages/mcp-bridge)
+packages/main/resources/helpers/mcp-bridge/
+
 # IDE
 .vscode/*
 !.vscode/extensions.json

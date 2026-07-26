@@ -280,6 +280,7 @@ const bootstrap = async (): Promise<void> => {
     eventsHost: '127.0.0.1',
     eventsPort: mcpEventsWebSocketPort,
     appVersion,
+    bridgeLauncherPath: process.env.COSMOSH_MCP_BRIDGE_LAUNCHER,
   });
 
   const app = createBackendApp({

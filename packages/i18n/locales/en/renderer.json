@@ -327,6 +327,18 @@
       "started": "Connected {time}",
       "title": "Connected Clients"
     },
+    "config": {
+      "description": "Paste this into your agent's MCP configuration to connect it to Cosmosh.",
+      "devDiscoveryLabel": "Discovery environment variable",
+      "devNotice": "Client configuration is generated for packaged installs, where Cosmosh writes the bridge launcher. In development, point your client at a locally built cosmosh-mcp bundle and set the discovery path below.",
+      "hintClaudeCode": "Add to your project's .mcp.json (Claude Code) or Cursor's mcp.json.",
+      "hintClaudeDesktop": "Add to claude_desktop_config.json, then restart Claude Desktop.",
+      "hintRaw": "For clients that take separate command, args, and env fields.",
+      "title": "Client Configuration",
+      "variantClaudeCode": ".mcp.json",
+      "variantClaudeDesktop": "claude_desktop_config.json",
+      "variantRaw": "Raw command"
+    },
     "connections": {
       "close": "Close connection",
       "commandCount": "{count} commands",

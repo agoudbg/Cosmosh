@@ -96,6 +96,120 @@ const CopyableRow: React.FC<{ label: string; value: string; onCopy: (value: stri
   </div>
 );
 
+/** Server key advertised to external MCP clients. */
+const MCP_SERVER_KEY = 'cosmosh';
+
+type ClientConfigVariant = 'claudeCode' | 'claudeDesktop' | 'raw';
+
+/**
+ * Builds a paste-ready client-config snippet for a launcher-based bridge.
+ *
+ * All JSON-based clients (Claude Code `.mcp.json`, Claude Desktop
+ * `claude_desktop_config.json`, Cursor) share the `mcpServers` shape; the
+ * launcher script already pins `--discovery`, so no args or env are required.
+ * The raw variant lists the command/args/env fields for form-based clients.
+ *
+ * @param variant Selected config flavour.
+ * @param launcherPath Absolute launcher-script path.
+ * @returns Snippet text to display and copy.
+ */
+const buildClientConfig = (variant: ClientConfigVariant, launcherPath: string): string => {
+  if (variant === 'raw') {
+    return [`command: ${launcherPath}`, 'args: (none)', 'env: (none)'].join('\n');
+  }
+
+  return `${JSON.stringify(
+    {
+      mcpServers: {
+        [MCP_SERVER_KEY]: {
+          command: launcherPath,
+        },
+      },
+    },
+    null,
+    2,
+  )}\n`;
+};
+
+/**
+ * Renders the client-configuration card: a variant selector plus a paste-ready
+ * snippet, or a development-mode notice when no packaged launcher exists.
+ *
+ * @param props Launcher/discovery paths and the copy handler.
+ * @returns Client-config card element.
+ */
+const ClientConfigCard: React.FC<{
+  launcherPath: string | undefined;
+  discoveryFilePath: string | undefined;
+  onCopy: (value: string) => void;
+}> = ({ launcherPath, discoveryFilePath, onCopy }) => {
+  const [variant, setVariant] = React.useState<ClientConfigVariant>('claudeCode');
+
+  const variants: readonly { id: ClientConfigVariant; label: string }[] = [
+    { id: 'claudeCode', label: t('mcp.config.variantClaudeCode') },
+    { id: 'claudeDesktop', label: t('mcp.config.variantClaudeDesktop') },
+    { id: 'raw', label: t('mcp.config.variantRaw') },
+  ];
+
+  return (
+    <SectionCard
+      title={t('mcp.config.title')}
+      description={t('mcp.config.description')}
+    >
+      {launcherPath ? (
+        <div className="grid gap-3">
+          <div className="flex flex-wrap gap-2">
+            {variants.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={classNames('rounded-full px-3 py-1 text-xs font-medium transition-colors', {
+                  'bg-form-text/90 text-ssh-card-bg-terminal': variant === entry.id,
+                  'bg-white/10 text-header-text-muted hover:bg-white/15': variant !== entry.id,
+                })}
+                onClick={() => setVariant(entry.id)}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-header-text-muted">
+            {variant === 'claudeCode'
+              ? t('mcp.config.hintClaudeCode')
+              : variant === 'claudeDesktop'
+                ? t('mcp.config.hintClaudeDesktop')
+                : t('mcp.config.hintRaw')}
+          </p>
+          <div className="relative">
+            <pre className="max-h-64 overflow-auto rounded-xl bg-black/30 p-3 font-mono text-xs text-form-text">
+              {buildClientConfig(variant, launcherPath)}
+            </pre>
+            <Button
+              variant="ghostIcon"
+              aria-label={t('mcp.actions.copy')}
+              className="absolute right-2 top-2"
+              onClick={() => onCopy(buildClientConfig(variant, launcherPath))}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          <p className="text-sm text-header-text-muted">{t('mcp.config.devNotice')}</p>
+          {discoveryFilePath ? (
+            <CopyableRow
+              label={t('mcp.config.devDiscoveryLabel')}
+              value={`COSMOSH_MCP_DISCOVERY=${discoveryFilePath}`}
+              onCopy={onCopy}
+            />
+          ) : null}
+        </div>
+      )}
+    </SectionCard>
+  );
+};
+
 /**
  * MCP management panel — runtime status, pairing token, connected clients,
  * active SSH connections, and the pending-approval queue.
@@ -283,6 +397,12 @@ const Mcp: React.FC = () => {
           ) : null}
         </div>
       </SectionCard>
+
+      <ClientConfigCard
+        launcherPath={status?.bridgeLauncherPath}
+        discoveryFilePath={status?.discoveryFilePath}
+        onCopy={handleCopy}
+      />
 
       <SectionCard
         title={t('mcp.clients.title')}

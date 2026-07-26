@@ -43,6 +43,7 @@ import {
   createPrivateSftpTemporaryRoot,
   SFTP_TEMP_ROOT_ENV_NAME,
 } from './ipc/sftp-temporary-root';
+import { ensureMcpBridgeLauncher, resolveMcpBridgeLauncherPath } from './mcp-bridge-launcher';
 import { RendererCloseConfirmationBroker } from './renderer-close-confirmation';
 import {
   getDatabaseEncryptionKey,
@@ -1077,6 +1078,15 @@ const startBackendService = async (): Promise<void> => {
         packagedRemoteBootstrapManifestUrl ?? (isDev ? DEVELOPMENT_REMOTE_BOOTSTRAP_MANIFEST_URL : undefined);
     }
 
+    if (app.isPackaged) {
+      // The bridge launcher exists only for packaged installs; advertise its path so
+      // the MCP panel can build ready-to-paste client configurations.
+      backendEnv.COSMOSH_MCP_BRIDGE_LAUNCHER = resolveMcpBridgeLauncherPath({
+        platform: process.platform,
+        userDataPath: app.getPath('userData'),
+      });
+    }
+
     let command: string;
     let args: string[];
     let shell = false;
@@ -1611,6 +1621,13 @@ if (!hasSingleInstanceLock) {
     try {
       installApplicationMenu();
       await ensureMacOsCliCommand();
+      await ensureMcpBridgeLauncher({
+        isPackaged: app.isPackaged,
+        platform: process.platform,
+        executablePath: app.getPath('exe'),
+        resourcesPath: process.resourcesPath,
+        userDataPath: app.getPath('userData'),
+      });
       setPendingLaunchWorkingDirectory(await resolveWorkingDirectoryFromArgv(process.argv));
 
       if (!app.isPackaged) {

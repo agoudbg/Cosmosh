@@ -17,7 +17,7 @@
     "prepare": "node ./scripts/setup-githooks.mjs",
     "lint": "pnpm -r lint",
     "lint:fix": "pnpm -r --if-present lint:fix",
-    "precommit:lint": "pnpm --filter @cosmosh/backend lint && pnpm --filter @cosmosh/main lint && pnpm --filter @cosmosh/renderer lint && pnpm --filter @cosmosh/i18n check && pnpm --filter @cosmosh/i18n check:sort && pnpm --filter @cosmosh/api-contract typecheck && pnpm --filter @cosmosh/api-contract lint:eslint",
+    "precommit:lint": "pnpm --filter @cosmosh/backend lint && pnpm --filter @cosmosh/main lint && pnpm --filter @cosmosh/renderer lint && pnpm --filter @cosmosh/mcp-bridge lint && pnpm --filter @cosmosh/mcp-bridge typecheck && pnpm --filter @cosmosh/i18n check && pnpm --filter @cosmosh/i18n check:sort && pnpm --filter @cosmosh/api-contract typecheck && pnpm --filter @cosmosh/api-contract lint:eslint",
     "precommit:staged": "node ./scripts/precommit-staged.mjs",
     "format": "pnpm -r format",
     "theme:sync": "pnpm --filter @cosmosh/renderer theme:sync",

@@ -13,7 +13,7 @@
   "scripts": {
     "predev": "node ./scripts/dev-preflight.cjs && node ./scripts/ensure-sqlcipher-native.cjs --runtime=node --if-needed",
     "dev": "node ./scripts/dev-main.cjs",
-    "prebuild": "node ./scripts/cleanup-legacy-artifacts.cjs && node ./scripts/release-unlock-prisma-locks.cjs && pnpm --filter @cosmosh/backend build && pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && node ./scripts/ensure-sqlcipher-native.cjs && node ./scripts/sync-prisma-client.cjs && node ./scripts/sync-backend-runtime.cjs && node ./scripts/generate-installer-strings.mjs && node ./scripts/write-remote-bootstrap-manifest-url.cjs && node ./scripts/compile-macos-open-with-helper.mjs && pnpm --filter @cosmosh/renderer build",
+    "prebuild": "node ./scripts/cleanup-legacy-artifacts.cjs && node ./scripts/release-unlock-prisma-locks.cjs && pnpm --filter @cosmosh/backend build && pnpm --filter @cosmosh/api-contract build && pnpm --filter @cosmosh/i18n build && node ./scripts/ensure-sqlcipher-native.cjs && node ./scripts/sync-prisma-client.cjs && node ./scripts/sync-backend-runtime.cjs && pnpm --filter @cosmosh/mcp-bridge build && node ./scripts/sync-mcp-bridge.cjs && node ./scripts/generate-installer-strings.mjs && node ./scripts/write-remote-bootstrap-manifest-url.cjs && node ./scripts/compile-macos-open-with-helper.mjs && pnpm --filter @cosmosh/renderer build",
     "prebuild:ci": "node ./scripts/prebuild-ci.cjs",
     "package:ci": "node ./scripts/package-ci.cjs",
     "build": "tsc && electron-builder --publish never",
