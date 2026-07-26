@@ -5,6 +5,7 @@
     },
     "categories": {
       "hostTrust": "主机信任",
+      "mcp": "MCP",
       "portForward": "端口转发",
       "settings": "设置",
       "sftpSession": "SFTP 会话",
@@ -307,6 +308,101 @@
     "redo": "重做",
     "selectAll": "全选",
     "undo": "撤销"
+  },
+  "mcp": {
+    "actions": {
+      "copy": "复制",
+      "refresh": "刷新"
+    },
+    "approvals": {
+      "description": "等待你授权的请求。",
+      "empty": "没有待处理的授权请求。",
+      "kindCommand": "执行命令",
+      "kindConnection": "打开连接",
+      "title": "待授权请求"
+    },
+    "clients": {
+      "description": "当前已连接到 Cosmosh 的外部 Agent。",
+      "empty": "没有已连接的 Agent。",
+      "started": "连接于 {time}",
+      "title": "已连接客户端"
+    },
+    "connections": {
+      "close": "关闭连接",
+      "commandCount": "{count} 条命令",
+      "description": "Agent 代你打开的 SSH 连接。",
+      "empty": "没有活跃连接。",
+      "opened": "打开于 {time}",
+      "preApproved": "命令已预先放行",
+      "title": "活跃连接"
+    },
+    "disabledNotice": "MCP 访问已关闭。在“设置 → MCP”中启用，以允许外部 Agent 连接。",
+    "errors": {
+      "connectionCloseFailed": "关闭连接失败。",
+      "copyFailed": "复制到剪贴板失败。",
+      "refreshFailed": "加载 MCP 状态失败。",
+      "tokenRevokeFailed": "吊销配对令牌失败。",
+      "tokenRotateFailed": "轮换配对令牌失败。"
+    },
+    "status": {
+      "channelConnected": "实时",
+      "channelDisconnected": "离线",
+      "clientCount": "{count} 个客户端",
+      "connectionCount": "{count} 个连接",
+      "disabled": "已禁用",
+      "enabled": "已启用",
+      "pendingCount": "{count} 个待处理"
+    },
+    "subtitle": "让外部 AI Agent 使用你已配置的 SSH 服务器，每次请求均需授权并全程审计。",
+    "title": "MCP 访问",
+    "toasts": {
+      "connectionClosed": "连接已关闭。",
+      "copied": "已复制到剪贴板。",
+      "tokenRevoked": "配对令牌已吊销。",
+      "tokenRotated": "配对令牌已轮换。"
+    },
+    "token": {
+      "configured": "已配置配对令牌。",
+      "description": "Agent 使用此配对令牌向 Cosmosh 认证。轮换后旧令牌立即失效。",
+      "discoveryPath": "发现文件",
+      "freshNotice": "请立即复制此令牌——它只显示一次。",
+      "launcherPath": "桥接启动器",
+      "notConfigured": "尚未配置配对令牌。",
+      "revoke": "吊销",
+      "rotate": "轮换令牌",
+      "title": "配对令牌",
+      "tokenLabel": "配对令牌"
+    }
+  },
+  "mcpApproval": {
+    "actions": {
+      "approve": "批准",
+      "approveForConnection": "在本连接内批准",
+      "deny": "拒绝"
+    },
+    "command": {
+      "description": "Agent 想在此连接上执行命令。",
+      "title": "授权命令"
+    },
+    "connection": {
+      "description": "Agent 想打开一个 SSH 连接。",
+      "title": "授权连接"
+    },
+    "errors": {
+      "resolveFailed": "提交你的决定失败。"
+    },
+    "fields": {
+      "client": "Agent",
+      "command": "命令",
+      "reason": "原因",
+      "server": "服务器",
+      "target": "目标",
+      "username": "用户"
+    },
+    "queue": {
+      "expiresIn": "{seconds} 秒后过期",
+      "remaining": "{count} 个等待中"
+    }
   },
   "oobe": {
     "actions": {
@@ -1664,6 +1760,7 @@
       "debug": "调试",
       "home": "主页",
       "localTerminal": "本地终端",
+      "mcp": "MCP",
       "settings": "设置",
       "settingsEditor": "设置编辑器",
       "sftp": "SFTP",

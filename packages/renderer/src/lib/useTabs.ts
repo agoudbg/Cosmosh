@@ -72,6 +72,10 @@ export const resolvePageDefaults = (page: TabPage): { title: string; iconKey: Ta
     return { title: t('tabs.page.auditLogs'), iconKey: 'audit' };
   }
 
+  if (page === 'mcp') {
+    return { title: t('tabs.page.mcp'), iconKey: 'mcp' };
+  }
+
   if (page === 'settings-editor') {
     return { title: t('tabs.page.settingsEditor'), iconKey: 'settings' };
   }

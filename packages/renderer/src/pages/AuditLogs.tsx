@@ -88,6 +88,7 @@ const formatMetadataJson = (metadata: Record<string, unknown>): string => {
  */
 const formatAuditCategory = (category: string): string => {
   const categoryLabelKeys: Record<string, string> = {
+    mcp: 'auditLogs.categories.mcp',
     'port-forward': 'auditLogs.categories.portForward',
     settings: 'auditLogs.categories.settings',
     'sftp-session': 'auditLogs.categories.sftpSession',
@@ -697,6 +698,7 @@ const AuditLogs: React.FC = () => {
                     <SelectItem value="ssh-host-trust">{t('auditLogs.categories.hostTrust')}</SelectItem>
                     <SelectItem value="port-forward">{t('auditLogs.categories.portForward')}</SelectItem>
                     <SelectItem value="sftp-session">{t('auditLogs.categories.sftpSession')}</SelectItem>
+                    <SelectItem value="mcp">{t('auditLogs.categories.mcp')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

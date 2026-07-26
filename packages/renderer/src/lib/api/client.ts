@@ -3,6 +3,14 @@ import type {
   ApiAuditEventListQuery,
   ApiAuditEventListResponse,
   ApiErrorResponse,
+  ApiMcpCreateEventsChannelResponse,
+  ApiMcpListApprovalsResponse,
+  ApiMcpListClientsResponse,
+  ApiMcpListConnectionsResponse,
+  ApiMcpResolveApprovalRequest,
+  ApiMcpResolveApprovalResponse,
+  ApiMcpRotatePairingTokenResponse,
+  ApiMcpStatusResponse,
   ApiPortForwardCreateRuleRequest,
   ApiPortForwardCreateRuleResponse,
   ApiPortForwardListRulesResponse,
@@ -177,6 +185,18 @@ export type BackendClient = {
   deleteSshServer: (serverId: string) => Promise<{ success: boolean }>;
   deleteSshFolder: (folderId: string) => Promise<{ success: boolean }>;
   deleteSshKeychain: (keychainId: string) => Promise<{ success: boolean }>;
+  getMcpStatus: () => Promise<ApiMcpStatusResponse>;
+  rotateMcpPairingToken: () => Promise<ApiMcpRotatePairingTokenResponse>;
+  revokeMcpPairingToken: () => Promise<{ success: boolean }>;
+  listMcpClients: () => Promise<ApiMcpListClientsResponse>;
+  listMcpConnections: () => Promise<ApiMcpListConnectionsResponse>;
+  closeMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
+  listMcpApprovals: () => Promise<ApiMcpListApprovalsResponse>;
+  resolveMcpApproval: (
+    approvalId: string,
+    payload: ApiMcpResolveApprovalRequest,
+  ) => Promise<ApiMcpResolveApprovalResponse>;
+  createMcpEventsChannel: () => Promise<ApiMcpCreateEventsChannelResponse>;
 };
 
 /**
@@ -733,6 +753,75 @@ export const createBackendClient = (): BackendClient => {
     },
     deleteSshKeychain: async (keychainId) => {
       return transport.deleteSshKeychain(keychainId);
+    },
+    getMcpStatus: async () => {
+      const payload = await transport.getMcpStatus();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    rotateMcpPairingToken: async () => {
+      const payload = await transport.rotateMcpPairingToken();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    revokeMcpPairingToken: async () => {
+      return transport.revokeMcpPairingToken();
+    },
+    listMcpClients: async () => {
+      const payload = await transport.listMcpClients();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    listMcpConnections: async () => {
+      const payload = await transport.listMcpConnections();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    closeMcpConnection: async (connectionId) => {
+      return transport.closeMcpConnection(connectionId);
+    },
+    listMcpApprovals: async () => {
+      const payload = await transport.listMcpApprovals();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    resolveMcpApproval: async (approvalId, requestPayload) => {
+      const payload = await transport.resolveMcpApproval(approvalId, requestPayload);
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
+    },
+    createMcpEventsChannel: async () => {
+      const payload = await transport.createMcpEventsChannel();
+
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+
+      return payload;
     },
   };
 };

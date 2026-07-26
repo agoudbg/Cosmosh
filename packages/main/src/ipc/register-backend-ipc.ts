@@ -6,6 +6,14 @@ import type {
   ApiLocalTerminalCreateSessionRequest,
   ApiLocalTerminalCreateSessionResponse,
   ApiLocalTerminalListProfilesResponse,
+  ApiMcpCreateEventsChannelResponse,
+  ApiMcpListApprovalsResponse,
+  ApiMcpListClientsResponse,
+  ApiMcpListConnectionsResponse,
+  ApiMcpResolveApprovalRequest,
+  ApiMcpResolveApprovalResponse,
+  ApiMcpRotatePairingTokenResponse,
+  ApiMcpStatusResponse,
   ApiPortForwardCreateRuleRequest,
   ApiPortForwardCreateRuleResponse,
   ApiPortForwardListRulesResponse,
@@ -171,6 +179,7 @@ export const registerBackendIpcHandlers = (options: RegisterBackendIpcHandlersOp
   // Settings, SSH, and local terminal channels share API_PATHS contract from api-contract package.
   registerBackendSshAndSettingsHandlers(options);
   registerBackendLocalTerminalHandlers(options);
+  registerBackendMcpHandlers(options);
 };
 
 /**
@@ -835,6 +844,88 @@ const registerBackendLocalTerminalHandlers = (options: RegisterBackendIpcHandler
     async (_event, sessionId: string): Promise<{ success: boolean }> => {
       const path = replaceApiPathToken(API_PATHS.localTerminalCloseSession, 'sessionId', sessionId);
       return requestBackendDeleteSuccess(options, path);
+    },
+  );
+};
+
+/**
+ * Registers MCP management handlers backed by the authenticated backend HTTP API.
+ *
+ * These proxy the renderer authorization UI and MCP panel; the externally-reachable
+ * `/mcp` endpoint has independent Bearer auth and is never exposed over IPC.
+ *
+ * @param options Backend runtime dependencies.
+ */
+const registerBackendMcpHandlers = (options: RegisterBackendIpcHandlersOptions): void => {
+  ipcMain.handle('backend:mcp-get-status', async (): Promise<ApiMcpStatusResponse | ApiErrorResponse> => {
+    return options.requestBackend<ApiMcpStatusResponse>(API_PATHS.mcpGetStatus, {
+      method: 'GET',
+    });
+  });
+
+  ipcMain.handle(
+    'backend:mcp-rotate-pairing-token',
+    async (): Promise<ApiMcpRotatePairingTokenResponse | ApiErrorResponse> => {
+      return options.requestBackend<ApiMcpRotatePairingTokenResponse>(API_PATHS.mcpRotatePairingToken, {
+        method: 'POST',
+      });
+    },
+  );
+
+  ipcMain.handle('backend:mcp-revoke-pairing-token', async (): Promise<{ success: boolean }> => {
+    return requestBackendDeleteSuccess(options, API_PATHS.mcpRevokePairingToken);
+  });
+
+  ipcMain.handle('backend:mcp-list-clients', async (): Promise<ApiMcpListClientsResponse | ApiErrorResponse> => {
+    return options.requestBackend<ApiMcpListClientsResponse>(API_PATHS.mcpListClients, {
+      method: 'GET',
+    });
+  });
+
+  ipcMain.handle(
+    'backend:mcp-list-connections',
+    async (): Promise<ApiMcpListConnectionsResponse | ApiErrorResponse> => {
+      return options.requestBackend<ApiMcpListConnectionsResponse>(API_PATHS.mcpListConnections, {
+        method: 'GET',
+      });
+    },
+  );
+
+  ipcMain.handle(
+    'backend:mcp-close-connection',
+    async (_event, connectionId: string): Promise<{ success: boolean }> => {
+      const path = replaceApiPathToken(API_PATHS.mcpCloseConnection, 'connectionId', connectionId);
+      return requestBackendDeleteSuccess(options, path);
+    },
+  );
+
+  ipcMain.handle('backend:mcp-list-approvals', async (): Promise<ApiMcpListApprovalsResponse | ApiErrorResponse> => {
+    return options.requestBackend<ApiMcpListApprovalsResponse>(API_PATHS.mcpListApprovals, {
+      method: 'GET',
+    });
+  });
+
+  ipcMain.handle(
+    'backend:mcp-resolve-approval',
+    async (
+      _event,
+      approvalId: string,
+      payload: ApiMcpResolveApprovalRequest,
+    ): Promise<ApiMcpResolveApprovalResponse | ApiErrorResponse> => {
+      const path = replaceApiPathToken(API_PATHS.mcpResolveApproval, 'approvalId', approvalId);
+      return options.requestBackend<ApiMcpResolveApprovalResponse>(path, {
+        method: 'POST',
+        body: payload,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    'backend:mcp-create-events-channel',
+    async (): Promise<ApiMcpCreateEventsChannelResponse | ApiErrorResponse> => {
+      return options.requestBackend<ApiMcpCreateEventsChannelResponse>(API_PATHS.mcpCreateEventsChannel, {
+        method: 'POST',
+      });
     },
   );
 };

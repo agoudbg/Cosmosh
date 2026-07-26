@@ -2,6 +2,14 @@ import type {
   ApiAuditEventDetailResponse,
   ApiAuditEventListQuery,
   ApiAuditEventListResponse,
+  ApiMcpCreateEventsChannelResponse,
+  ApiMcpListApprovalsResponse,
+  ApiMcpListClientsResponse,
+  ApiMcpListConnectionsResponse,
+  ApiMcpResolveApprovalRequest,
+  ApiMcpResolveApprovalResponse,
+  ApiMcpRotatePairingTokenResponse,
+  ApiMcpStatusResponse,
   ApiPortForwardCreateRuleRequest,
   ApiPortForwardCreateRuleResponse,
   ApiPortForwardListRulesResponse,
@@ -391,4 +399,43 @@ export const deleteSshFolder = async (folderId: string): Promise<{ success: bool
 
 export const deleteSshKeychain = async (keychainId: string): Promise<{ success: boolean }> => {
   return backendClient.deleteSshKeychain(keychainId);
+};
+
+export const getMcpStatus = async (): Promise<ApiMcpStatusResponse> => {
+  return backendClient.getMcpStatus();
+};
+
+export const rotateMcpPairingToken = async (): Promise<ApiMcpRotatePairingTokenResponse> => {
+  return backendClient.rotateMcpPairingToken();
+};
+
+export const revokeMcpPairingToken = async (): Promise<{ success: boolean }> => {
+  return backendClient.revokeMcpPairingToken();
+};
+
+export const listMcpClients = async (): Promise<ApiMcpListClientsResponse> => {
+  return backendClient.listMcpClients();
+};
+
+export const listMcpConnections = async (): Promise<ApiMcpListConnectionsResponse> => {
+  return backendClient.listMcpConnections();
+};
+
+export const closeMcpConnection = async (connectionId: string): Promise<{ success: boolean }> => {
+  return backendClient.closeMcpConnection(connectionId);
+};
+
+export const listMcpApprovals = async (): Promise<ApiMcpListApprovalsResponse> => {
+  return backendClient.listMcpApprovals();
+};
+
+export const resolveMcpApproval = async (
+  approvalId: string,
+  payload: ApiMcpResolveApprovalRequest,
+): Promise<ApiMcpResolveApprovalResponse> => {
+  return backendClient.resolveMcpApproval(approvalId, payload);
+};
+
+export const createMcpEventsChannel = async (): Promise<ApiMcpCreateEventsChannelResponse> => {
+  return backendClient.createMcpEventsChannel();
 };

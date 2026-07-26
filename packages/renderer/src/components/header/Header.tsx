@@ -1,6 +1,6 @@
 import * as RadixAvatar from '@radix-ui/react-avatar';
 import classNames from 'classnames';
-import { Bug, Info, RefreshCcw, ScrollText, Settings } from 'lucide-react';
+import { Bug, Info, RefreshCcw, ScrollText, Settings, Waypoints } from 'lucide-react';
 import React from 'react';
 
 import { t } from '../../lib/i18n';
@@ -32,6 +32,7 @@ const Header: React.FC<{
   onCloseOtherTabs?: (id: string) => void;
   onReorderTabs?: (nextTabs: TabItem[]) => void;
   onOpenAuditLogsTab?: () => void;
+  onOpenMcpTab?: () => void;
   onOpenSettingsTab?: (options?: { categoryId?: 'about' }) => void;
   onOpenSettingsEditorTab?: () => void;
   onOpenDebugTab?: () => void;
@@ -51,6 +52,7 @@ const Header: React.FC<{
   onCloseOtherTabs,
   onReorderTabs,
   onOpenAuditLogsTab,
+  onOpenMcpTab,
   onOpenSettingsTab,
   onOpenSettingsEditorTab,
   onOpenDebugTab,
@@ -259,6 +261,14 @@ const Header: React.FC<{
             }}
           >
             {t('tabs.page.auditLogs')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            icon={Waypoints}
+            onSelect={() => {
+              void onOpenMcpTab?.();
+            }}
+          >
+            {t('tabs.page.mcp')}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

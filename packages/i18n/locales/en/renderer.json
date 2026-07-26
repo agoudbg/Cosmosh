@@ -5,6 +5,7 @@
     },
     "categories": {
       "hostTrust": "Host Trust",
+      "mcp": "MCP",
       "portForward": "Port Forwarding",
       "settings": "Settings",
       "sftpSession": "SFTP Session",
@@ -307,6 +308,101 @@
     "redo": "Redo",
     "selectAll": "Select All",
     "undo": "Undo"
+  },
+  "mcp": {
+    "actions": {
+      "copy": "Copy",
+      "refresh": "Refresh"
+    },
+    "approvals": {
+      "description": "Requests waiting for your authorization.",
+      "empty": "No pending authorization requests.",
+      "kindCommand": "Command execution",
+      "kindConnection": "Open connection",
+      "title": "Pending Authorizations"
+    },
+    "clients": {
+      "description": "External agents currently connected to Cosmosh.",
+      "empty": "No agents are connected.",
+      "started": "Connected {time}",
+      "title": "Connected Clients"
+    },
+    "connections": {
+      "close": "Close connection",
+      "commandCount": "{count} commands",
+      "description": "SSH connections opened by agents on your behalf.",
+      "empty": "No active connections.",
+      "opened": "Opened {time}",
+      "preApproved": "Commands pre-approved",
+      "title": "Active Connections"
+    },
+    "disabledNotice": "MCP access is turned off. Enable it in Settings → MCP to let external agents connect.",
+    "errors": {
+      "connectionCloseFailed": "Failed to close the connection.",
+      "copyFailed": "Failed to copy to clipboard.",
+      "refreshFailed": "Failed to load MCP status.",
+      "tokenRevokeFailed": "Failed to revoke the pairing token.",
+      "tokenRotateFailed": "Failed to rotate the pairing token."
+    },
+    "status": {
+      "channelConnected": "Live",
+      "channelDisconnected": "Offline",
+      "clientCount": "{count} clients",
+      "connectionCount": "{count} connections",
+      "disabled": "Disabled",
+      "enabled": "Enabled",
+      "pendingCount": "{count} pending"
+    },
+    "subtitle": "Let external AI agents use your configured SSH servers, with per-request authorization and full audit logging.",
+    "title": "MCP Access",
+    "toasts": {
+      "connectionClosed": "Connection closed.",
+      "copied": "Copied to clipboard.",
+      "tokenRevoked": "Pairing token revoked.",
+      "tokenRotated": "Pairing token rotated."
+    },
+    "token": {
+      "configured": "A pairing token is configured.",
+      "description": "Agents authenticate to Cosmosh with this pairing token. Rotating it invalidates the previous token.",
+      "discoveryPath": "Discovery file",
+      "freshNotice": "Copy this token now — it is shown only once.",
+      "launcherPath": "Bridge launcher",
+      "notConfigured": "No pairing token is configured yet.",
+      "revoke": "Revoke",
+      "rotate": "Rotate token",
+      "title": "Pairing Token",
+      "tokenLabel": "Pairing token"
+    }
+  },
+  "mcpApproval": {
+    "actions": {
+      "approve": "Approve",
+      "approveForConnection": "Approve for this connection",
+      "deny": "Deny"
+    },
+    "command": {
+      "description": "An agent wants to run a command on this connection.",
+      "title": "Authorize Command"
+    },
+    "connection": {
+      "description": "An agent wants to open an SSH connection.",
+      "title": "Authorize Connection"
+    },
+    "errors": {
+      "resolveFailed": "Failed to submit your decision."
+    },
+    "fields": {
+      "client": "Agent",
+      "command": "Command",
+      "reason": "Reason",
+      "server": "Server",
+      "target": "Target",
+      "username": "User"
+    },
+    "queue": {
+      "expiresIn": "Expires in {seconds}s",
+      "remaining": "{count} waiting"
+    }
   },
   "oobe": {
     "actions": {
@@ -1664,6 +1760,7 @@
       "debug": "Debug",
       "home": "Home",
       "localTerminal": "Local Terminal",
+      "mcp": "MCP",
       "settings": "Settings",
       "settingsEditor": "Settings Editor",
       "sftp": "SFTP",

@@ -11,6 +11,7 @@ import {
   Server,
   Settings,
   Terminal,
+  Waypoints,
 } from 'lucide-react';
 import React from 'react';
 
@@ -30,6 +31,7 @@ const builtinTabIconMap: Record<TabIconKey, React.ReactNode> = {
   keychain: <KeyRound className="h-4 w-4 shrink-0" />,
   portForwarding: <CornerUpRight className="h-4 w-4 shrink-0" />,
   audit: <ScrollText className="h-4 w-4 shrink-0" />,
+  mcp: <Waypoints className="h-4 w-4 shrink-0" />,
 };
 
 const resolveLucideIconNode = (iconKey: string): React.ReactNode => {

@@ -655,6 +655,21 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
     targetWindow?.close();
   });
 
+  ipcMain.handle('app:focus-main-window', (): boolean => {
+    const targetWindow = options.getMainWindow();
+    if (!targetWindow) {
+      return false;
+    }
+
+    if (targetWindow.isMinimized()) {
+      targetWindow.restore();
+    }
+
+    targetWindow.show();
+    targetWindow.focus();
+    return true;
+  });
+
   ipcMain.on('app:close-confirmation-response', (event, value: unknown) => {
     const response = parseCloseConfirmationResponse(value);
     if (!response) {

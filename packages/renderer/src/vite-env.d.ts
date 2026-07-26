@@ -6,6 +6,14 @@ import type {
   ApiLocalTerminalCreateSessionRequest,
   ApiLocalTerminalCreateSessionResponse,
   ApiLocalTerminalListProfilesResponse,
+  ApiMcpCreateEventsChannelResponse,
+  ApiMcpListApprovalsResponse,
+  ApiMcpListClientsResponse,
+  ApiMcpListConnectionsResponse,
+  ApiMcpResolveApprovalRequest,
+  ApiMcpResolveApprovalResponse,
+  ApiMcpRotatePairingTokenResponse,
+  ApiMcpStatusResponse,
   ApiPortForwardCreateRuleRequest,
   ApiPortForwardCreateRuleResponse,
   ApiPortForwardListRulesResponse,
@@ -108,6 +116,7 @@ declare global {
   interface Window {
     electron?: {
       closeWindow: () => void;
+      focusWindow: () => Promise<boolean>;
       onCloseConfirmationRequested: (listener: (request: AppCloseConfirmationRequest) => void) => () => void;
       respondToCloseConfirmation: (response: AppCloseConfirmationResponse) => void;
       getLocale: () => Promise<string>;
@@ -350,6 +359,18 @@ declare global {
         payload: LocalTerminalCreateSessionRequest,
       ) => Promise<LocalTerminalCreateSessionResponse | ApiErrorResponse>;
       backendLocalTerminalCloseSession: (sessionId: string) => Promise<{ success: boolean }>;
+      backendMcpGetStatus: () => Promise<ApiMcpStatusResponse | ApiErrorResponse>;
+      backendMcpRotatePairingToken: () => Promise<ApiMcpRotatePairingTokenResponse | ApiErrorResponse>;
+      backendMcpRevokePairingToken: () => Promise<{ success: boolean }>;
+      backendMcpListClients: () => Promise<ApiMcpListClientsResponse | ApiErrorResponse>;
+      backendMcpListConnections: () => Promise<ApiMcpListConnectionsResponse | ApiErrorResponse>;
+      backendMcpCloseConnection: (connectionId: string) => Promise<{ success: boolean }>;
+      backendMcpListApprovals: () => Promise<ApiMcpListApprovalsResponse | ApiErrorResponse>;
+      backendMcpResolveApproval: (
+        approvalId: string,
+        payload: ApiMcpResolveApprovalRequest,
+      ) => Promise<ApiMcpResolveApprovalResponse | ApiErrorResponse>;
+      backendMcpCreateEventsChannel: () => Promise<ApiMcpCreateEventsChannelResponse | ApiErrorResponse>;
       platform: NodeJS.Platform;
     };
     __COSMOSH_BACKEND_REQUEST_TRACE__?: {
