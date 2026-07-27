@@ -16,6 +16,8 @@ import { MCP_DEFAULT_COMMAND_TIMEOUT_MS, MCP_DEFAULT_MAX_OUTPUT_BYTES } from './
  * Structured result of one bounded MCP command execution.
  */
 export type McpCommandResult = {
+  /** Local SSH execution failure; remote non-zero exits remain regular results. */
+  error: string | null;
   stdout: string;
   stderr: string;
   exitCode: number | null;
@@ -49,6 +51,7 @@ export const executeMcpSshCommand = async (
 
   const buildResult = (override: Partial<McpCommandResult>, stdout: string, stderr: string): McpCommandResult => {
     return {
+      error: null,
       stdout,
       stderr,
       exitCode: null,
@@ -151,7 +154,7 @@ export const executeMcpSshCommand = async (
         }
 
         if (error) {
-          finish({ stderr: error.message });
+          finish({ error: error.message });
           return;
         }
 
@@ -173,14 +176,14 @@ export const executeMcpSshCommand = async (
           exitSignal = signalName ?? null;
         });
         channel.once('error', (channelError: Error) => {
-          finish({ stderr: stderr.length > 0 ? stderr : channelError.message }, true);
+          finish({ error: channelError.message }, true);
         });
         channel.once('close', () => {
           finish({ exitCode, exitSignal });
         });
       });
     } catch (error: unknown) {
-      finish({ stderr: error instanceof Error ? error.message : 'SSH command execution failed.' });
+      finish({ error: error instanceof Error ? error.message : 'SSH command execution failed.' });
     }
   });
 };

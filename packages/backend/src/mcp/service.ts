@@ -620,6 +620,28 @@ export class McpService implements McpToolRuntime {
     });
     this.registry.touch(state.connectionId);
 
+    if (result.error) {
+      void this.auditEventService.logEvent({
+        category: 'mcp',
+        action: 'command-execute',
+        outcome: 'failure',
+        severity: 'warning',
+        entityType: 'mcp-connection',
+        entityId: state.connectionId,
+        requestId: randomUUID(),
+        metadata: {
+          serverId: state.serverId,
+          client: input.client.name,
+          command: input.command,
+          durationMs: result.durationMs,
+          reason: 'ssh-exec-failed',
+          policy,
+        },
+      });
+      this.emitStatus();
+      return { ok: false, reason: 'failed', message: result.error };
+    }
+
     void this.auditEventService.logEvent({
       category: 'mcp',
       action: 'command-execute',

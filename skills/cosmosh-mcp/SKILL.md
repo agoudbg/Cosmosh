@@ -54,7 +54,8 @@ log. Work with that grain, not against it.
   `exitCode` means the command failed. If `truncated` is true the output hit
   `maxOutputBytes` — narrow the command (`head`, `grep`, `tail`) rather than
   blindly raising the cap. If `timedOut` is true, the command exceeded
-  `timeoutMs` and was killed.
+  `timeoutMs` and was killed. These are remote command results; an SSH transport
+  failure instead returns `{ error: "failed", message }`.
 - **Close when done** with `close_connection` if you opened a connection for a
   one-off task, so the user's connection list stays clean.
 
@@ -79,7 +80,8 @@ throwing. Handle each distinctly:
 - `server-changed` — the server destination changed after the user approved it.
   No connection was attempted. Re-run `list_servers` and request fresh approval.
 - `command-too-large` — the command exceeded 8192 bytes; shorten it.
-- `failed` — an unexpected error; the `message` has detail.
+- `failed` — Cosmosh could not open or maintain the SSH command channel; the
+  `message` has detail. This differs from a remote command's non-zero exit code.
 
 If the whole MCP server is unreachable (Cosmosh not running, MCP disabled, or a
 stale token), the bridge exits with a clear one-line error. Tell the user to

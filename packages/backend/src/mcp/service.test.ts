@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import test from 'node:test';
 
 import type { PrismaClient } from '@prisma/client';
-import type { Client } from 'ssh2';
+import type { Client, ClientChannel } from 'ssh2';
 
 import type { AuditEventService } from '../audit/service.js';
 import type { OpenSshClientResult } from '../ssh/connect.js';
@@ -27,6 +27,18 @@ const SERVER = {
  */
 class FakeSshClient extends EventEmitter {
   /**
+   * Simulates an ssh2 infrastructure failure before a command channel opens.
+   *
+   * @param _command Ignored command.
+   * @param callback ssh2 exec callback.
+   * @returns This client.
+   */
+  public exec(_command: string, callback: (error?: Error | null, channel?: ClientChannel) => void): this {
+    callback(new Error('exec transport failed'));
+    return this;
+  }
+
+  /**
    * Satisfies the ssh2 teardown contract.
    *
    * @returns This client.
@@ -46,10 +58,12 @@ const createService = (): {
   setRequiredAuditFailure: (failed: boolean) => void;
   updateServer: (updates: Partial<typeof SERVER>) => void;
   requiredActions: string[];
+  bestEffortEvents: { action: string; outcome: string }[];
 } => {
   let requiredAuditFailure = false;
   let currentServer = { ...SERVER };
   const requiredActions: string[] = [];
+  const bestEffortEvents: { action: string; outcome: string }[] = [];
   const db = {
     sshServer: {
       findUnique: async () => currentServer,
@@ -60,7 +74,10 @@ const createService = (): {
     $queryRaw: async () => [],
   } as unknown as PrismaClient;
   const auditEventService = {
-    logEvent: async () => 'best-effort-event',
+    logEvent: async (input: { action: string; outcome: string }) => {
+      bestEffortEvents.push({ action: input.action, outcome: input.outcome });
+      return 'best-effort-event';
+    },
     logRequiredEvent: async (input: { action: string }) => {
       requiredActions.push(input.action);
       if (requiredAuditFailure) {
@@ -102,6 +119,7 @@ const createService = (): {
       currentServer = { ...currentServer, ...updates };
     },
     requiredActions,
+    bestEffortEvents,
   };
 };
 
@@ -219,4 +237,49 @@ test('runCommand re-reads the server policy and revokes connection pre-approval 
     ).ok,
     true,
   );
+});
+
+test('runCommand returns an SSH exec infrastructure error as a failed tool outcome', async () => {
+  const { service, updateServer, bestEffortEvents } = createService();
+  updateServer({
+    mcpCommandPolicy: 'allowWithinConnection',
+    updatedAt: new Date('2026-07-27T00:02:00.000Z'),
+  });
+  const controller = new AbortController();
+  const outcomePromise = openConnection(service, controller.signal);
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  const approval = service.listApprovals()[0];
+  assert.ok(approval);
+  assert.equal(await service.resolveApproval(approval.approvalId, 'approvedForConnection'), 'resolved');
+
+  const openOutcome = await outcomePromise;
+  assert.equal(openOutcome.ok, true);
+  if (!openOutcome.ok) {
+    throw new Error('Expected connection open to succeed.');
+  }
+
+  const commandOutcome = await service.runCommand({
+    connectionId: openOutcome.connection.connectionId,
+    command: 'true',
+    mcpSessionId: 'session-1',
+    client: approval.client,
+    signal: controller.signal,
+  });
+
+  assert.deepEqual(commandOutcome, {
+    ok: false,
+    reason: 'failed',
+    message: 'exec transport failed',
+  });
+  assert.equal(
+    bestEffortEvents.some((event) => event.action === 'command-execute' && event.outcome === 'failure'),
+    true,
+  );
+  await service.closeConnection({
+    connectionId: openOutcome.connection.connectionId,
+    mcpSessionId: 'session-1',
+    client: approval.client,
+  });
 });

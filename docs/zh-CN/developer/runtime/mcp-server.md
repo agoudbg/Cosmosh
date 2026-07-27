@@ -69,6 +69,8 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 
 `server-changed` 表示持久化的服务器目标已不再匹配授权对话框中显示的目标。Cosmosh 不会尝试 SSH 建连；Agent 必须重新列出服务器并发起新的请求。
 
+SSH 命令通道一旦成功打开，远端非零退出、超时或有界输出截断仍是结构化命令结果。ssh2 `exec` 回调错误、channel error 或抛出的传输错误则返回 `failed`，并按失败执行写入审计。
+
 **限制（`constants.ts`）：** 最多 8 个并发连接（`MCP_MAX_CONNECTIONS`）、10 分钟闲置关闭（`MCP_CONNECTION_IDLE_TIMEOUT_MS`）、120 秒授权时效（`MCP_APPROVAL_TIMEOUT_MS`，到期 = 拒绝）、命令默认/上限超时 15 秒 / 120 秒、输出默认/上限 256 KiB / 1 MiB、命令上限 8 KiB、45 秒 SSH 连接超时。
 
 ## 5. `/mcp` 端点
@@ -157,7 +159,7 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 | `authorization-requested` / `authorization-resolved` | 提示被抛出 / 结束（resolved 事件携带 `decision`）。 |
 | `connection-open` | 每次 `open_connection` 结果（成功或失败：limit-reached / host-untrusted / open-failed）。 |
 | `connection-close` | 任何连接拆除（tool / ui / idle / shutdown / error / disabled）。 |
-| `command-execute` | 每次 `run_command`（成功，或失败：policy-off / denied / timeout / superseded）。 |
+| `command-execute` | 每次 `run_command`（成功，或失败：policy-off / denied / timeout / superseded / ssh-exec-failed）。 |
 | `list-servers` | 每次 `list_servers` 调用。 |
 
 `authorization-requested` 与用户显式提交的 `authorization-resolved` 决定是同步必需写入。请求审计失败会丢弃尚未暴露的提示；决定审计失败会让提示保持待处理，并阻止等待中的工具调用继续。自动超时/撤回事件及非授权生命周期事件仍沿用本地优先审计服务的尽力而为错误策略。
@@ -170,7 +172,7 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 
 ## 12. 测试与验证
 
-- **单元测试**（`tsx --test`）：后端 `test:mcp` 覆盖授权 broker（超时 → 拒绝、只解析一次、shutdown 全拒）、fail-closed 授权请求/决定审计、已授权目标快照校验、实时每服务器策略刷新与预授权撤销、配对（轮换吊销旧令牌、恒定时间比较、发现文件权限）、有界 exec（stdout/stderr/exit/截断）、策略矩阵（`off`/`ask`/`allowWithinConnection` × 全局/每服务器覆盖），以及使用精确 loopback Host 与动态端口建立会话、同时拒绝白名单之外 Host 的初始化场景。`@cosmosh/mcp-bridge` 包测试发现解析、可达性探测与透传。
+- **单元测试**（`tsx --test`）：后端 `test:mcp` 覆盖授权 broker（超时 → 拒绝、只解析一次、shutdown 全拒）、fail-closed 授权请求/决定审计、已授权目标快照校验、实时每服务器策略刷新与预授权撤销、配对（轮换吊销旧令牌、恒定时间比较、发现文件权限）、有界 exec（stdout/stderr/exit/截断，以及回调/channel/抛出型传输失败）、策略矩阵（`off`/`ask`/`allowWithinConnection` × 全局/每服务器覆盖），以及使用精确 loopback Host 与动态端口建立会话、同时拒绝白名单之外 Host 的初始化场景。`@cosmosh/mcp-bridge` 包测试发现解析、可达性探测与透传。
 - **手动 E2E：** 在开发模式启用 MCP，确认启用时创建 `bridge.json`、禁用/退出时删除；用 `npx @modelcontextprotocol/inspector` 直连 `/mcp`（错令牌 → 401、禁用 → 503）；用生成的 `.mcp.json` 接入 Claude Code，走一遍 列出 → 打开（先拒后批）→ 各策略下执行 → `allowWithinConnection` 升级 → 闲置超时，并在审计页逐事件核对；退出应用后确认桥接打印清晰报错；轮换令牌后确认在线桥接的下次请求失败。
 
 ## 已知限制（v1）
