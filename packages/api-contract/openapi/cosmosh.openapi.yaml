@@ -2334,6 +2334,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/connections/{connectionId}/detach:
+    post:
+      tags:
+        - mcp
+      summary: Detach an Agent while preserving its renderer-owned SSH terminal.
+      operationId: mcpDetachConnection
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Agent detached from the SSH terminal.
+        '404':
+          description: Connection not found or not terminal-backed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/connections/{connectionId}/interrupt:
+    post:
+      tags:
+        - mcp
+      summary: Send an ordinary Ctrl+C byte to an Agent-attached SSH terminal.
+      operationId: mcpInterruptConnection
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Interrupt byte sent to the SSH terminal.
+        '404':
+          description: Connection not found or not terminal-backed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/mcp/approvals:
     get:
       tags:
@@ -2401,6 +2457,105 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '503':
           description: The required authorization audit record could not be persisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/terminal-launches:
+    get:
+      tags:
+        - mcp
+      summary: List approved terminal launches waiting for the renderer.
+      operationId: mcpListTerminalLaunches
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+      responses:
+        '200':
+          description: Pending terminal launches listed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpTerminalLaunchListSuccess'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/terminal-launches/{launchId}:
+    delete:
+      tags:
+        - mcp
+      summary: Cancel a pending terminal launch.
+      operationId: mcpCancelTerminalLaunch
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+        - name: launchId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Pending terminal launch cancelled.
+        '404':
+          description: Terminal launch not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/mcp/terminal-launches/{launchId}/bind:
+    post:
+      tags:
+        - mcp
+      summary: Bind a renderer-created SSH session to a pending Agent launch.
+      operationId: mcpBindTerminalLaunch
+      parameters:
+        - $ref: '#/components/parameters/LocaleHeader'
+        - name: launchId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpTerminalLaunchBindRequest'
+      responses:
+        '200':
+          description: SSH terminal bound to the Agent connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpTerminalLaunchBindSuccess'
+        '400':
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Terminal launch or SSH session not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: The terminal is busy, ineligible, or targets a different server.
           content:
             application/json:
               schema:
@@ -5197,6 +5352,7 @@ components:
         - activeClientCount
         - activeConnectionCount
         - pendingApprovalCount
+        - pendingTerminalLaunchCount
       properties:
         enabled:
           type: boolean
@@ -5213,6 +5369,9 @@ components:
           type: integer
           minimum: 0
         pendingApprovalCount:
+          type: integer
+          minimum: 0
+        pendingTerminalLaunchCount:
           type: integer
           minimum: 0
     McpStatusGetSuccess:
@@ -5319,6 +5478,10 @@ components:
         - lastUsedAt
         - commandCount
         - commandsPreApproved
+        - mode
+        - status
+        - userVisible
+        - agentCreatedTab
       properties:
         connectionId:
           type: string
@@ -5344,6 +5507,16 @@ components:
           type: integer
           minimum: 0
         commandsPreApproved:
+          type: boolean
+        mode:
+          type: string
+          enum: ['terminal', 'background', 'attached']
+        status:
+          type: string
+          enum: ['ready', 'busy']
+        userVisible:
+          type: boolean
+        agentCreatedTab:
           type: boolean
     McpConnectionListData:
       type: object
@@ -5373,7 +5546,7 @@ components:
               $ref: '#/components/schemas/McpConnectionListData'
     McpApprovalKind:
       type: string
-      enum: ['connection-open', 'command-execute']
+      enum: ['connection-open', 'terminal-attach', 'command-execute']
     McpPendingApproval:
       type: object
       required:
@@ -5382,11 +5555,6 @@ components:
         - createdAt
         - expiresAt
         - client
-        - serverId
-        - serverName
-        - host
-        - port
-        - username
       properties:
         approvalId:
           type: string
@@ -5400,6 +5568,9 @@ components:
           format: date-time
         client:
           $ref: '#/components/schemas/McpClientInfo'
+        connectionMode:
+          type: string
+          enum: ['terminal', 'background', 'attached']
         serverId:
           type: string
         serverName:
@@ -5451,6 +5622,11 @@ components:
         decision:
           type: string
           enum: ['approved', 'approvedForConnection', 'denied']
+        terminalSessionId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Renderer-only SSH session selected for a terminal-attach approval.
     McpApprovalResolveData:
       type: object
       required:
@@ -5479,6 +5655,101 @@ components:
               enum: [true]
             data:
               $ref: '#/components/schemas/McpApprovalResolveData'
+    McpPendingTerminalLaunch:
+      type: object
+      required:
+        - launchId
+        - client
+        - serverId
+        - serverName
+        - host
+        - port
+        - username
+        - createdAt
+        - expiresAt
+      properties:
+        launchId:
+          type: string
+        client:
+          $ref: '#/components/schemas/McpClientInfo'
+        serverId:
+          type: string
+        serverName:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        reason:
+          type: string
+          maxLength: 500
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    McpTerminalLaunchListData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpPendingTerminalLaunch'
+    McpTerminalLaunchListSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_TERMINAL_LAUNCH_LIST_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpTerminalLaunchListData'
+    McpTerminalLaunchBindRequest:
+      type: object
+      required:
+        - terminalSessionId
+      properties:
+        terminalSessionId:
+          type: string
+          minLength: 1
+          maxLength: 128
+    McpTerminalLaunchBindData:
+      type: object
+      required:
+        - connection
+      properties:
+        connection:
+          $ref: '#/components/schemas/McpConnectionSummary'
+    McpTerminalLaunchBindSuccess:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          required:
+            - success
+            - data
+            - code
+          properties:
+            code:
+              type: string
+              enum: ['MCP_TERMINAL_LAUNCH_BIND_OK']
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              $ref: '#/components/schemas/McpTerminalLaunchBindData'
     McpEventsChannelData:
       type: object
       required:

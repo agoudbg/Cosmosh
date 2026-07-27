@@ -89,7 +89,7 @@ export const resolveEffectiveMcpCommandPolicy = (
 /**
  * Operation kinds that require explicit user authorization.
  */
-export type McpApprovalKind = 'connection-open' | 'command-execute';
+export type McpApprovalKind = 'connection-open' | 'terminal-attach' | 'command-execute';
 
 /**
  * Terminal states of one authorization request.
@@ -136,11 +136,14 @@ export type McpPendingApprovalPayload = {
   /** ISO-8601 expiry; the request resolves to `timeout` afterwards. */
   expiresAt: string;
   client: McpClientInfo;
-  serverId: string;
-  serverName: string;
-  host: string;
-  port: number;
-  username: string;
+  /** Connection mode the approval will create or use. */
+  connectionMode?: McpConnectionMode;
+  /** Target fields are absent until the user selects a pane for `terminal-attach`. */
+  serverId?: string;
+  serverName?: string;
+  host?: string;
+  port?: number;
+  username?: string;
   /** Agent-supplied intent shown to the user, when provided. */
   reason?: string;
   /** Full command text for `command-execute` approvals. */
@@ -150,6 +153,16 @@ export type McpPendingApprovalPayload = {
 };
 
 // ── Runtime summaries ────────────────────────────────────────
+
+/**
+ * How an MCP connection reaches the remote SSH runtime.
+ */
+export type McpConnectionMode = 'terminal' | 'background' | 'attached';
+
+/**
+ * Whether a connection can accept a new Agent command immediately.
+ */
+export type McpConnectionStatus = 'ready' | 'busy';
 
 /**
  * Active agent-opened SSH connection summary.
@@ -168,6 +181,27 @@ export type McpConnectionSummary = {
   commandCount: number;
   /** True after the user granted `approvedForConnection`. */
   commandsPreApproved: boolean;
+  mode: McpConnectionMode;
+  status: McpConnectionStatus;
+  userVisible: boolean;
+  agentCreatedTab: boolean;
+};
+
+/**
+ * Renderer-visible request to create a normal SSH tab for an approved Agent.
+ */
+export type McpPendingTerminalLaunch = {
+  launchId: string;
+  client: McpClientInfo;
+  serverId: string;
+  serverName: string;
+  host: string;
+  port: number;
+  username: string;
+  reason?: string;
+  /** ISO-8601 timestamps. */
+  createdAt: string;
+  expiresAt: string;
 };
 
 /**
@@ -190,6 +224,7 @@ export type McpRuntimeStatus = {
   activeClientCount: number;
   activeConnectionCount: number;
   pendingApprovalCount: number;
+  pendingTerminalLaunchCount: number;
 };
 
 // ── Event channel (backend -> renderer WebSocket) ────────────
@@ -201,7 +236,10 @@ export type McpEventMessage =
   | { type: 'approval-requested'; approval: McpPendingApprovalPayload }
   | { type: 'approval-resolved'; approvalId: string; decision: McpApprovalDecision }
   | { type: 'connection-opened'; connection: McpConnectionSummary }
+  | { type: 'connection-updated'; connection: McpConnectionSummary }
   | { type: 'connection-closed'; connectionId: string; reason: McpConnectionCloseReason }
+  | { type: 'terminal-launch-requested'; launch: McpPendingTerminalLaunch }
+  | { type: 'terminal-launch-resolved'; launchId: string }
   | { type: 'client-session-started'; session: McpClientSessionSummary }
   | { type: 'client-session-ended'; mcpSessionId: string }
   | { type: 'status-changed'; status: McpRuntimeStatus };
@@ -210,7 +248,7 @@ export type McpEventMessage =
  * Why an MCP SSH connection was closed.
  */
 export type McpConnectionCloseReason =
-  'tool' | 'ui' | 'idle' | 'shutdown' | 'error' | 'disabled' | 'client-disconnected';
+  'tool' | 'ui' | 'idle' | 'shutdown' | 'error' | 'disabled' | 'client-disconnected' | 'detached';
 
 /**
  * Parses one raw MCP event-channel frame.
@@ -228,7 +266,10 @@ export const parseMcpEventMessage = (value: unknown): McpEventMessage | null => 
     case 'approval-requested':
     case 'approval-resolved':
     case 'connection-opened':
+    case 'connection-updated':
     case 'connection-closed':
+    case 'terminal-launch-requested':
+    case 'terminal-launch-resolved':
     case 'client-session-started':
     case 'client-session-ended':
     case 'status-changed':

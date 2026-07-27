@@ -869,6 +869,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/mcp/connections/{connectionId}/detach': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Detach an Agent while preserving its renderer-owned SSH terminal. */
+    post: operations['mcpDetachConnection'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/connections/{connectionId}/interrupt': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Send an ordinary Ctrl+C byte to an Agent-attached SSH terminal. */
+    post: operations['mcpInterruptConnection'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/mcp/approvals': {
     parameters: {
       query?: never;
@@ -897,6 +931,57 @@ export interface paths {
     put?: never;
     /** Resolve one pending MCP authorization request. */
     post: operations['mcpResolveApproval'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/terminal-launches': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List approved terminal launches waiting for the renderer. */
+    get: operations['mcpListTerminalLaunches'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/terminal-launches/{launchId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Cancel a pending terminal launch. */
+    delete: operations['mcpCancelTerminalLaunch'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/mcp/terminal-launches/{launchId}/bind': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Bind a renderer-created SSH session to a pending Agent launch. */
+    post: operations['mcpBindTerminalLaunch'];
     delete?: never;
     options?: never;
     head?: never;
@@ -2129,6 +2214,7 @@ export interface components {
       activeClientCount: number;
       activeConnectionCount: number;
       pendingApprovalCount: number;
+      pendingTerminalLaunchCount: number;
     };
     McpStatusGetSuccess: components['schemas']['ApiMeta'] & {
       /** @enum {string} */
@@ -2182,6 +2268,12 @@ export interface components {
       lastUsedAt: string;
       commandCount: number;
       commandsPreApproved: boolean;
+      /** @enum {string} */
+      mode: 'terminal' | 'background' | 'attached';
+      /** @enum {string} */
+      status: 'ready' | 'busy';
+      userVisible: boolean;
+      agentCreatedTab: boolean;
     };
     McpConnectionListData: {
       items: components['schemas']['McpConnectionSummary'][];
@@ -2194,7 +2286,7 @@ export interface components {
       data: components['schemas']['McpConnectionListData'];
     };
     /** @enum {string} */
-    McpApprovalKind: 'connection-open' | 'command-execute';
+    McpApprovalKind: 'connection-open' | 'terminal-attach' | 'command-execute';
     McpPendingApproval: {
       approvalId: string;
       kind: components['schemas']['McpApprovalKind'];
@@ -2203,11 +2295,13 @@ export interface components {
       /** Format: date-time */
       expiresAt: string;
       client: components['schemas']['McpClientInfo'];
-      serverId: string;
-      serverName: string;
-      host: string;
-      port: number;
-      username: string;
+      /** @enum {string} */
+      connectionMode?: 'terminal' | 'background' | 'attached';
+      serverId?: string;
+      serverName?: string;
+      host?: string;
+      port?: number;
+      username?: string;
       reason?: string;
       command?: string;
       connectionId?: string;
@@ -2225,6 +2319,8 @@ export interface components {
     McpApprovalDecisionRequest: {
       /** @enum {string} */
       decision: 'approved' | 'approvedForConnection' | 'denied';
+      /** @description Renderer-only SSH session selected for a terminal-attach approval. */
+      terminalSessionId?: string;
     };
     McpApprovalResolveData: {
       approvalId: string;
@@ -2237,6 +2333,43 @@ export interface components {
       /** @enum {boolean} */
       success: true;
       data: components['schemas']['McpApprovalResolveData'];
+    };
+    McpPendingTerminalLaunch: {
+      launchId: string;
+      client: components['schemas']['McpClientInfo'];
+      serverId: string;
+      serverName: string;
+      host: string;
+      port: number;
+      username: string;
+      reason?: string;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      expiresAt: string;
+    };
+    McpTerminalLaunchListData: {
+      items: components['schemas']['McpPendingTerminalLaunch'][];
+    };
+    McpTerminalLaunchListSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_TERMINAL_LAUNCH_LIST_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpTerminalLaunchListData'];
+    };
+    McpTerminalLaunchBindRequest: {
+      terminalSessionId: string;
+    };
+    McpTerminalLaunchBindData: {
+      connection: components['schemas']['McpConnectionSummary'];
+    };
+    McpTerminalLaunchBindSuccess: components['schemas']['ApiMeta'] & {
+      /** @enum {string} */
+      code: 'MCP_TERMINAL_LAUNCH_BIND_OK';
+      /** @enum {boolean} */
+      success: true;
+      data: components['schemas']['McpTerminalLaunchBindData'];
     };
     McpEventsChannelData: {
       websocketUrl: string;
@@ -5299,6 +5432,86 @@ export interface operations {
       };
     };
   };
+  mcpDetachConnection: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path: {
+        connectionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent detached from the SSH terminal. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Connection not found or not terminal-backed. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpInterruptConnection: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path: {
+        connectionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Interrupt byte sent to the SSH terminal. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Connection not found or not terminal-backed. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
   mcpListApprovals: {
     parameters: {
       query?: never;
@@ -5394,6 +5607,141 @@ export interface operations {
       };
       /** @description The required authorization audit record could not be persisted. */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpListTerminalLaunches: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pending terminal launches listed. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpTerminalLaunchListSuccess'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpCancelTerminalLaunch: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path: {
+        launchId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pending terminal launch cancelled. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Terminal launch not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+    };
+  };
+  mcpBindTerminalLaunch: {
+    parameters: {
+      query?: never;
+      header?: {
+        'x-cosmosh-locale'?: components['parameters']['LocaleHeader'];
+      };
+      path: {
+        launchId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['McpTerminalLaunchBindRequest'];
+      };
+    };
+    responses: {
+      /** @description SSH terminal bound to the Agent connection. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['McpTerminalLaunchBindSuccess'];
+        };
+      };
+      /** @description Validation failed. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Authentication failed. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description Terminal launch or SSH session not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description The terminal is busy, ineligible, or targets a different server. */
+      409: {
         headers: {
           [name: string]: unknown;
         };

@@ -39,10 +39,13 @@ export type {
   McpClientInfo,
   McpClientSessionSummary,
   McpCommandPolicy,
+  McpConnectionMode,
+  McpConnectionStatus,
   McpConnectionCloseReason,
   McpConnectionSummary,
   McpEventMessage,
   McpPendingApprovalPayload,
+  McpPendingTerminalLaunch,
   McpRuntimeStatus,
   McpServerCommandPolicy,
 } from './mcp';
@@ -126,12 +129,14 @@ export {
 } from './terminal-interaction';
 export type { TerminalForceSelectionModifier, TerminalRightClickAction } from './terminal-interaction';
 export {
+  AGENT_TERMINAL_REQUIRED_CAPABILITIES,
   REMOTE_SHELL_CAPABILITIES,
   REMOTE_SHELL_EVENT_NAMES,
   REMOTE_SHELL_NAMES,
   REMOTE_SHELL_PROTOCOL_VERSION,
 } from './terminal-protocol';
 export type {
+  AgentTerminalAttachmentStatus,
   RemoteBootstrapPhase,
   RemoteBootstrapState,
   RemoteBootstrapStatus,
@@ -405,6 +410,10 @@ export type ApiMcpListConnectionsResponse =
   paths['/api/v1/mcp/connections']['get']['responses']['200']['content']['application/json'];
 export type ApiMcpCloseConnectionRequest =
   paths['/api/v1/mcp/connections/{connectionId}']['delete']['parameters']['path'];
+export type ApiMcpDetachConnectionRequest =
+  paths['/api/v1/mcp/connections/{connectionId}/detach']['post']['parameters']['path'];
+export type ApiMcpInterruptConnectionRequest =
+  paths['/api/v1/mcp/connections/{connectionId}/interrupt']['post']['parameters']['path'];
 export type ApiMcpListApprovalsResponse =
   paths['/api/v1/mcp/approvals']['get']['responses']['200']['content']['application/json'];
 export type ApiMcpResolveApprovalRequest =
@@ -413,7 +422,14 @@ export type ApiMcpResolveApprovalResponse =
   paths['/api/v1/mcp/approvals/{approvalId}/decision']['post']['responses']['200']['content']['application/json'];
 export type ApiMcpCreateEventsChannelResponse =
   paths['/api/v1/mcp/events-channel']['post']['responses']['200']['content']['application/json'];
+export type ApiMcpListTerminalLaunchesResponse =
+  paths['/api/v1/mcp/terminal-launches']['get']['responses']['200']['content']['application/json'];
+export type ApiMcpBindTerminalLaunchRequest =
+  paths['/api/v1/mcp/terminal-launches/{launchId}/bind']['post']['requestBody']['content']['application/json'];
+export type ApiMcpBindTerminalLaunchResponse =
+  paths['/api/v1/mcp/terminal-launches/{launchId}/bind']['post']['responses']['200']['content']['application/json'];
 export type ApiMcpStatusData = components['schemas']['McpStatusData'];
 export type ApiMcpClientSession = components['schemas']['McpClientSession'];
 export type ApiMcpConnectionSummary = components['schemas']['McpConnectionSummary'];
 export type ApiMcpPendingApproval = components['schemas']['McpPendingApproval'];
+export type ApiMcpPendingTerminalLaunch = components['schemas']['McpPendingTerminalLaunch'];

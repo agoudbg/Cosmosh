@@ -69,8 +69,13 @@ export const API_PATHS = {
   mcpListClients: '/api/v1/mcp/clients',
   mcpListConnections: '/api/v1/mcp/connections',
   mcpCloseConnection: '/api/v1/mcp/connections/{connectionId}',
+  mcpDetachConnection: '/api/v1/mcp/connections/{connectionId}/detach',
+  mcpInterruptConnection: '/api/v1/mcp/connections/{connectionId}/interrupt',
   mcpListApprovals: '/api/v1/mcp/approvals',
   mcpResolveApproval: '/api/v1/mcp/approvals/{approvalId}/decision',
+  mcpListTerminalLaunches: '/api/v1/mcp/terminal-launches',
+  mcpCancelTerminalLaunch: '/api/v1/mcp/terminal-launches/{launchId}',
+  mcpBindTerminalLaunch: '/api/v1/mcp/terminal-launches/{launchId}/bind',
   mcpCreateEventsChannel: '/api/v1/mcp/events-channel',
 } as const;
 
@@ -172,6 +177,8 @@ export const API_CODES = {
   mcpConnectionListOk: 'MCP_CONNECTION_LIST_OK',
   mcpApprovalListOk: 'MCP_APPROVAL_LIST_OK',
   mcpApprovalResolveOk: 'MCP_APPROVAL_RESOLVE_OK',
+  mcpTerminalLaunchListOk: 'MCP_TERMINAL_LAUNCH_LIST_OK',
+  mcpTerminalLaunchBindOk: 'MCP_TERMINAL_LAUNCH_BIND_OK',
   mcpEventsChannelCreateOk: 'MCP_EVENTS_CHANNEL_CREATE_OK',
 } as const;
 
