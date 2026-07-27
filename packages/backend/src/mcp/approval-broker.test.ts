@@ -151,3 +151,27 @@ test('list returns pending payloads oldest first', () => {
   assert.equal(pending[0]?.approvalId, first.approvalId);
   assert.equal(pending[1]?.approvalId, second.approvalId);
 });
+
+test('caller cancellation removes a pending approval and resolves it as superseded', async () => {
+  const { clock } = createManualClock();
+  const broker = new McpApprovalBroker({ clock });
+  const controller = new AbortController();
+  const ticket = broker.request(buildRequest());
+
+  const decision = broker.waitForDecision(ticket, controller.signal);
+  controller.abort();
+
+  assert.equal(await decision, 'superseded');
+  assert.equal(broker.pendingCount(), 0);
+});
+
+test('an already-aborted caller cannot leave an approval pending', async () => {
+  const { clock } = createManualClock();
+  const broker = new McpApprovalBroker({ clock });
+  const controller = new AbortController();
+  controller.abort();
+  const ticket = broker.request(buildRequest());
+
+  assert.equal(await broker.waitForDecision(ticket, controller.signal), 'superseded');
+  assert.equal(broker.pendingCount(), 0);
+});

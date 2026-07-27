@@ -111,6 +111,46 @@ export class McpApprovalBroker {
   }
 
   /**
+   * Waits for one approval while binding caller cancellation to the pending ticket.
+   *
+   * @param ticket Approval ticket returned by {@link request}.
+   * @param signal Tool-call cancellation signal.
+   * @returns User, timeout, shutdown, or cancellation decision.
+   */
+  public async waitForDecision(ticket: McpApprovalTicket, signal: AbortSignal): Promise<McpApprovalDecision> {
+    const handleAbort = (): void => {
+      this.cancel(ticket.approvalId);
+    };
+
+    if (signal.aborted) {
+      handleAbort();
+      return await ticket.decision;
+    }
+
+    signal.addEventListener('abort', handleAbort, { once: true });
+    try {
+      return await ticket.decision;
+    } finally {
+      signal.removeEventListener('abort', handleAbort);
+    }
+  }
+
+  /**
+   * Cancels one pending approval after its originating tool call ends.
+   *
+   * @param approvalId Pending approval id.
+   * @returns True when a pending approval was cancelled.
+   */
+  public cancel(approvalId: string): boolean {
+    if (!this.pending.has(approvalId)) {
+      return false;
+    }
+
+    this.settle(approvalId, 'superseded');
+    return true;
+  }
+
+  /**
    * Lists all pending authorization payloads (oldest first).
    *
    * @returns Pending approval payloads.

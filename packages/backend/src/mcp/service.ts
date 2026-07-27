@@ -416,9 +416,12 @@ export class McpService implements McpToolRuntime {
       reason: input.reason,
     });
 
-    const decision = await ticket.decision;
+    const decision = await this.broker.waitForDecision(ticket, input.signal);
     if (decision !== 'approved' && decision !== 'approvedForConnection') {
       return { ok: false, reason: mapDenyReason(decision), message: denyMessage(decision) };
+    }
+    if (input.signal.aborted) {
+      return { ok: false, reason: 'denied', message: denyMessage('superseded') };
     }
 
     const requestId = randomUUID();
@@ -428,6 +431,7 @@ export class McpService implements McpToolRuntime {
       client: input.client,
       reason: input.reason,
       requestId,
+      signal: input.signal,
     });
 
     switch (result.type) {
@@ -526,7 +530,7 @@ export class McpService implements McpToolRuntime {
         connectionId: state.connectionId,
       });
 
-      const decision = await ticket.decision;
+      const decision = await this.broker.waitForDecision(ticket, input.signal);
       if (decision !== 'approved' && decision !== 'approvedForConnection') {
         void this.auditEventService.logEvent({
           category: 'mcp',
@@ -539,6 +543,9 @@ export class McpService implements McpToolRuntime {
           metadata: { serverId: state.serverId, client: input.client.name, reason: decision },
         });
         return { ok: false, reason: mapDenyReason(decision), message: denyMessage(decision) };
+      }
+      if (input.signal.aborted) {
+        return { ok: false, reason: 'denied', message: denyMessage('superseded') };
       }
 
       if (decision === 'approvedForConnection') {

@@ -49,6 +49,7 @@ export type McpOpenConnectionInput = {
   reason?: string;
   requestId: string;
   locale?: Locale;
+  signal?: AbortSignal;
 };
 
 /**
@@ -136,6 +137,7 @@ export class McpConnectionRegistry {
       trustedFingerprintSet: new Set(trustedKeys.map((item) => item.fingerprint)),
       credentialEncryptionKey: this.credentialEncryptionKey,
       t: i18n.t,
+      signal: input.signal,
     });
 
     if (openResult.type === 'host-untrusted') {

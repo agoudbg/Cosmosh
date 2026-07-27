@@ -60,6 +60,8 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 
 失败原因是枚举返回（而非抛出）：`open_connection` → `denied | timeout | server-not-found | host-untrusted | limit-reached | failed`；`run_command` → `denied | timeout | policy-off | connection-not-found | command-too-large | failed`。
 
+取消 MCP 工具调用会立即撤回其待审批请求。已批准的 `open_connection` 还会把取消信号传递到 SSH 启动过程，避免不再等待结果的客户端留下延迟建立的连接。
+
 **限制（`constants.ts`）：** 最多 8 个并发连接（`MCP_MAX_CONNECTIONS`）、10 分钟闲置关闭（`MCP_CONNECTION_IDLE_TIMEOUT_MS`）、120 秒授权时效（`MCP_APPROVAL_TIMEOUT_MS`，到期 = 拒绝）、命令默认/上限超时 15 秒 / 120 秒、输出默认/上限 256 KiB / 1 MiB、命令上限 8 KiB、45 秒 SSH 连接超时。
 
 ## 5. `/mcp` 端点

@@ -60,6 +60,8 @@ Registered by `registerMcpTools()` in `tools.ts`. Bounds live in `constants.ts`.
 
 Failure reasons are enumerated (not thrown): `open_connection` → `denied | timeout | server-not-found | host-untrusted | limit-reached | failed`; `run_command` → `denied | timeout | policy-off | connection-not-found | command-too-large | failed`.
 
+Cancelling an MCP tool call immediately withdraws its pending authorization request. An approved `open_connection` also propagates cancellation into SSH bootstrap, so a client that has stopped waiting cannot leave a late connection behind.
+
 **Limits (`constants.ts`):** max 8 concurrent connections (`MCP_MAX_CONNECTIONS`), 10-minute idle close (`MCP_CONNECTION_IDLE_TIMEOUT_MS`), 120 s approval lifetime (`MCP_APPROVAL_TIMEOUT_MS`, expiry = deny), default/max command timeout 15 s / 120 s, default/max output 256 KiB / 1 MiB, max command 8 KiB, 45 s SSH connect timeout.
 
 ## 5. The `/mcp` endpoint
