@@ -39,7 +39,14 @@ export type McpOpenConnectionOutcome =
   | {
       ok: false;
       reason:
-        'denied' | 'timeout' | 'audit-unavailable' | 'server-not-found' | 'host-untrusted' | 'limit-reached' | 'failed';
+        | 'denied'
+        | 'timeout'
+        | 'audit-unavailable'
+        | 'server-not-found'
+        | 'server-changed'
+        | 'host-untrusted'
+        | 'limit-reached'
+        | 'failed';
       message: string;
     };
 

@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import test from 'node:test';
 
 import type { PrismaClient } from '@prisma/client';
+import type { Client } from 'ssh2';
 
 import type { AuditEventService } from '../audit/service.js';
+import type { OpenSshClientResult } from '../ssh/connect.js';
 import type { McpPairingService } from './pairing.js';
 import { McpService } from './service.js';
 
@@ -13,7 +16,25 @@ const SERVER = {
   host: 'server.example',
   port: 22,
   username: 'operator',
+  strictHostKey: true,
+  mcpCommandPolicy: 'ask',
+  keychain: null,
+  updatedAt: new Date('2026-07-27T00:00:00.000Z'),
 };
+
+/**
+ * Minimal ready ssh2 client double for policy-only service tests.
+ */
+class FakeSshClient extends EventEmitter {
+  /**
+   * Satisfies the ssh2 teardown contract.
+   *
+   * @returns This client.
+   */
+  public end(): this {
+    return this;
+  }
+}
 
 /**
  * Creates an MCP service whose required audit writes can be failed on demand.
@@ -23,14 +44,20 @@ const SERVER = {
 const createService = (): {
   service: McpService;
   setRequiredAuditFailure: (failed: boolean) => void;
+  updateServer: (updates: Partial<typeof SERVER>) => void;
   requiredActions: string[];
 } => {
   let requiredAuditFailure = false;
+  let currentServer = { ...SERVER };
   const requiredActions: string[] = [];
   const db = {
     sshServer: {
-      findUnique: async () => SERVER,
+      findUnique: async () => currentServer,
     },
+    sshKnownHost: {
+      findMany: async () => [],
+    },
+    $queryRaw: async () => [],
   } as unknown as PrismaClient;
   const auditEventService = {
     logEvent: async () => 'best-effort-event',
@@ -53,9 +80,26 @@ const createService = (): {
       eventsHost: '127.0.0.1',
       eventsPort: 54_721,
       appVersion: '0.1.0-test',
+      openClient: async (): Promise<OpenSshClientResult> => {
+        return {
+          type: 'ready',
+          client: new FakeSshClient() as unknown as Client,
+          completionSecretValue: null,
+          lifecycleMonitor: {
+            readError: () => null,
+            isClosed: () => false,
+            release: () => {},
+            releaseAfterClose: () => {},
+          },
+          proxyMetadata: {},
+        } as OpenSshClientResult;
+      },
     }),
     setRequiredAuditFailure: (failed) => {
       requiredAuditFailure = failed;
+    },
+    updateServer: (updates) => {
+      currentServer = { ...currentServer, ...updates };
     },
     requiredActions,
   };
@@ -122,4 +166,57 @@ test('an approval remains pending when its required decision audit fails', async
 
   const outcome = await outcomePromise;
   assert.equal(outcome.ok, false);
+});
+
+test('runCommand re-reads the server policy and revokes connection pre-approval after an edit', async () => {
+  const { service, updateServer } = createService();
+  const controller = new AbortController();
+  const outcomePromise = openConnection(service, controller.signal);
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  const approval = service.listApprovals()[0];
+  assert.ok(approval);
+  assert.equal(await service.resolveApproval(approval.approvalId, 'approvedForConnection'), 'resolved');
+
+  const openOutcome = await outcomePromise;
+  assert.equal(openOutcome.ok, true);
+  if (!openOutcome.ok) {
+    throw new Error('Expected connection open to succeed.');
+  }
+  assert.equal(
+    service.listConnections({ mcpSessionId: 'session-1', client: approval.client })[0]?.commandsPreApproved,
+    true,
+  );
+
+  updateServer({
+    mcpCommandPolicy: 'off',
+    updatedAt: new Date('2026-07-27T00:01:00.000Z'),
+  });
+  const commandOutcome = await service.runCommand({
+    connectionId: openOutcome.connection.connectionId,
+    command: 'true',
+    mcpSessionId: 'session-1',
+    client: approval.client,
+    signal: controller.signal,
+  });
+
+  assert.equal(commandOutcome.ok, false);
+  if (!commandOutcome.ok) {
+    assert.equal(commandOutcome.reason, 'policy-off');
+  }
+  assert.equal(
+    service.listConnections({ mcpSessionId: 'session-1', client: approval.client })[0]?.commandsPreApproved,
+    false,
+  );
+  assert.equal(
+    (
+      await service.closeConnection({
+        connectionId: openOutcome.connection.connectionId,
+        mcpSessionId: 'session-1',
+        client: approval.client,
+      })
+    ).ok,
+    true,
+  );
 });

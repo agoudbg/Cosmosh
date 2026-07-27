@@ -6,10 +6,12 @@ Cosmosh MCP 暴露一个本地 [Model Context Protocol](https://modelcontextprot
 
 - 该能力**默认关闭**（`mcpEnabled` 设置，默认 `false`）。
 - **打开 SSH 连接始终需要用户在 Cosmosh 窗口中显式授权**，没有旁路。
+- 连接授权绑定到对话框中显示的服务器名称、主机、端口与用户名。Cosmosh 会在 SSH 建连前立即复核该快照；任一字段变化都必须重新提示授权。
 - 命令执行由可配置策略约束（`mcpCommandPolicy`，全局默认 `ask`），并支持每服务器覆盖（`SshServer.mcpCommandPolicy`，默认 `default` = 继承全局）：
   - `off` —— 拒绝 Agent 命令。
   - `ask` —— 每条命令都需确认对话框。
   - `allowWithinConnection` —— 连接内首条命令确认一次，用户可放行该连接内的其余命令。
+- 每条命令执行前都会读取当前的每服务器策略。编辑服务器会使已有的连接内命令预授权失效。
 - 每一次 MCP 操作 —— 客户端会话、授权决定、连接生命周期、每条已执行命令、令牌轮换 —— 都以 `mcp` 类别写入审计日志。参见[本地优先审计事件](./audit-events)。
 - 授权请求与用户显式决定采用 fail-closed 审计：只有对应审计事件成功持久化后，Cosmosh 才会显示提示、接受决定或执行远程操作。
 
@@ -59,11 +61,13 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 | `run_command` | `connectionId`（必填）、`command`（必填，≤`MCP_MAX_COMMAND_BYTES` = 8192 字节）、`timeoutMs?`（≤120000）、`maxOutputBytes?`（≤1048576） | 应用命令策略，执行一条有界的非交互命令，返回 `{ stdout, stderr, exitCode, exitSignal, truncated, timedOut, durationMs }` 或 `{ error, message }`。 |
 | `close_connection` | `connectionId`（必填） | 关闭并审计连接，无需弹窗。返回 `{ closed: true, connectionId }`。 |
 
-失败原因是枚举返回（而非抛出）：`open_connection` → `denied | timeout | audit-unavailable | server-not-found | host-untrusted | limit-reached | failed`；`run_command` → `denied | timeout | audit-unavailable | policy-off | connection-not-found | command-too-large | failed`。
+失败原因是枚举返回（而非抛出）：`open_connection` → `denied | timeout | audit-unavailable | server-not-found | server-changed | host-untrusted | limit-reached | failed`；`run_command` → `denied | timeout | audit-unavailable | policy-off | connection-not-found | command-too-large | failed`。
 
 取消 MCP 工具调用会立即撤回其待审批请求。已批准的 `open_connection` 还会把取消信号传递到 SSH 启动过程，避免不再等待结果的客户端留下延迟建立的连接。
 
 `audit-unavailable` 是安全失败，而非临时权限结果。所需授权审计写入失败时，不会放出提示或执行任何远程操作。
+
+`server-changed` 表示持久化的服务器目标已不再匹配授权对话框中显示的目标。Cosmosh 不会尝试 SSH 建连；Agent 必须重新列出服务器并发起新的请求。
 
 **限制（`constants.ts`）：** 最多 8 个并发连接（`MCP_MAX_CONNECTIONS`）、10 分钟闲置关闭（`MCP_CONNECTION_IDLE_TIMEOUT_MS`）、120 秒授权时效（`MCP_APPROVAL_TIMEOUT_MS`，到期 = 拒绝）、命令默认/上限超时 15 秒 / 120 秒、输出默认/上限 256 KiB / 1 MiB、命令上限 8 KiB、45 秒 SSH 连接超时。
 
@@ -166,7 +170,7 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 
 ## 12. 测试与验证
 
-- **单元测试**（`tsx --test`）：后端 `test:mcp` 覆盖授权 broker（超时 → 拒绝、只解析一次、shutdown 全拒）、fail-closed 授权请求/决定审计、配对（轮换吊销旧令牌、恒定时间比较、发现文件权限）、有界 exec（stdout/stderr/exit/截断）、策略矩阵（`off`/`ask`/`allowWithinConnection` × 全局/每服务器覆盖），以及使用精确 loopback Host 与动态端口建立会话、同时拒绝白名单之外 Host 的初始化场景。`@cosmosh/mcp-bridge` 包测试发现解析、可达性探测与透传。
+- **单元测试**（`tsx --test`）：后端 `test:mcp` 覆盖授权 broker（超时 → 拒绝、只解析一次、shutdown 全拒）、fail-closed 授权请求/决定审计、已授权目标快照校验、实时每服务器策略刷新与预授权撤销、配对（轮换吊销旧令牌、恒定时间比较、发现文件权限）、有界 exec（stdout/stderr/exit/截断）、策略矩阵（`off`/`ask`/`allowWithinConnection` × 全局/每服务器覆盖），以及使用精确 loopback Host 与动态端口建立会话、同时拒绝白名单之外 Host 的初始化场景。`@cosmosh/mcp-bridge` 包测试发现解析、可达性探测与透传。
 - **手动 E2E：** 在开发模式启用 MCP，确认启用时创建 `bridge.json`、禁用/退出时删除；用 `npx @modelcontextprotocol/inspector` 直连 `/mcp`（错令牌 → 401、禁用 → 503）；用生成的 `.mcp.json` 接入 Claude Code，走一遍 列出 → 打开（先拒后批）→ 各策略下执行 → `allowWithinConnection` 升级 → 闲置超时，并在审计页逐事件核对；退出应用后确认桥接打印清晰报错；轮换令牌后确认在线桥接的下次请求失败。
 
 ## 已知限制（v1）

@@ -18,6 +18,7 @@ const SERVER = {
   strictHostKey: true,
   mcpCommandPolicy: 'ask',
   keychain: null,
+  updatedAt: new Date('2026-07-27T00:00:00.000Z'),
 };
 
 /**
@@ -42,10 +43,15 @@ class FakeSshClient extends EventEmitter {
  *
  * @returns Registry plus the clients created by successful opens.
  */
-const createRegistry = (): { registry: McpConnectionRegistry; clients: FakeSshClient[] } => {
+const createRegistry = (): {
+  registry: McpConnectionRegistry;
+  clients: FakeSshClient[];
+  updateServer: (updates: Partial<typeof SERVER>) => void;
+} => {
+  let currentServer = { ...SERVER };
   const db = {
     sshServer: {
-      findUnique: async () => SERVER,
+      findUnique: async () => currentServer,
     },
     sshKnownHost: {
       findMany: async () => [],
@@ -80,6 +86,9 @@ const createRegistry = (): { registry: McpConnectionRegistry; clients: FakeSshCl
       },
     }),
     clients,
+    updateServer: (updates) => {
+      currentServer = { ...currentServer, ...updates };
+    },
   };
 };
 
@@ -93,6 +102,13 @@ const createRegistry = (): { registry: McpConnectionRegistry; clients: FakeSshCl
 const openOwnedConnection = async (registry: McpConnectionRegistry, ownerSessionId: string): Promise<string> => {
   const result = await registry.open({
     serverId: SERVER.id,
+    approvedTarget: {
+      serverId: SERVER.id,
+      name: SERVER.name,
+      host: SERVER.host,
+      port: SERVER.port,
+      username: SERVER.username,
+    },
     ownerSessionId,
     client: { name: 'test-client', version: '1.0.0' },
     requestId: `request-${ownerSessionId}`,
@@ -103,6 +119,29 @@ const openOwnedConnection = async (registry: McpConnectionRegistry, ownerSession
   }
   return result.summary.connectionId;
 };
+
+test('an approved connection is rejected when the persisted destination changes before open', async () => {
+  const { registry, clients, updateServer } = createRegistry();
+  updateServer({ host: 'changed.example' });
+
+  const result = await registry.open({
+    serverId: SERVER.id,
+    approvedTarget: {
+      serverId: SERVER.id,
+      name: SERVER.name,
+      host: SERVER.host,
+      port: SERVER.port,
+      username: SERVER.username,
+    },
+    ownerSessionId: 'session-a',
+    client: { name: 'test-client', version: '1.0.0' },
+    requestId: 'request-target-change',
+  });
+
+  assert.equal(result.type, 'target-changed');
+  assert.equal(clients.length, 0);
+  assert.equal(registry.count(), 0);
+});
 
 test('connection access is isolated to the owning MCP session', async (context) => {
   const { registry } = createRegistry();

@@ -29,7 +29,7 @@ import type { AuditEventService } from '../audit/service.js';
 import { readDefaultSettingsValues } from '../settings/read.js';
 import { serverQueryInclude } from '../ssh/mappers.js';
 import { McpApprovalBroker, type McpApprovalTicket } from './approval-broker.js';
-import { McpConnectionRegistry } from './connection-registry.js';
+import { type McpApprovedServerTarget, McpConnectionRegistry, type McpOpenSshClient } from './connection-registry.js';
 import { MCP_MAX_COMMAND_BYTES } from './constants.js';
 import { type McpEventsChannelHandle, McpEventsService } from './events-service.js';
 import { executeMcpSshCommand } from './exec.js';
@@ -96,6 +96,7 @@ export class McpService implements McpToolRuntime {
     eventsPort: number;
     appVersion: string;
     bridgeLauncherPath?: string;
+    openClient?: McpOpenSshClient;
   }) {
     this.getDbClient = options.getDbClient;
     this.auditEventService = options.auditEventService;
@@ -124,6 +125,7 @@ export class McpService implements McpToolRuntime {
       auditEventService: this.auditEventService,
       credentialEncryptionKey: this.credentialEncryptionKey,
       emitEvent: (message) => this.emit(message),
+      openClient: options.openClient,
     });
 
     this.sessionManager = new McpSessionManager({
@@ -445,8 +447,16 @@ export class McpService implements McpToolRuntime {
     }
 
     const requestId = randomUUID();
+    const approvedTarget: McpApprovedServerTarget = {
+      serverId: server.id,
+      name: server.name,
+      host: server.host,
+      port: server.port,
+      username: server.username,
+    };
     const result = await this.registry.open({
       serverId: server.id,
+      approvedTarget,
       ownerSessionId: input.mcpSessionId,
       client: input.client,
       reason: input.reason,
@@ -464,6 +474,12 @@ export class McpService implements McpToolRuntime {
         return { ok: true, connection: result.summary };
       case 'server-not-found':
         return { ok: false, reason: 'server-not-found', message: 'Server not found.' };
+      case 'target-changed':
+        return {
+          ok: false,
+          reason: 'server-changed',
+          message: 'The server destination changed after authorization. Review the server and approve a new request.',
+        };
       case 'limit-reached':
         return {
           ok: false,
@@ -514,9 +530,30 @@ export class McpService implements McpToolRuntime {
       };
     }
 
-    const settings = await readDefaultSettingsValues(this.getDbClient());
+    const db = this.getDbClient();
+    const serverPolicy = await db.sshServer.findUnique({
+      where: { id: state.serverId },
+      select: { mcpCommandPolicy: true, updatedAt: true },
+    });
+    if (!serverPolicy) {
+      await this.registry.closeOwned(state.connectionId, input.mcpSessionId, 'error');
+      return { ok: false, reason: 'connection-not-found', message: 'Connection server no longer exists.' };
+    }
+
+    if (serverPolicy.updatedAt.getTime() !== state.serverPolicyUpdatedAt.getTime()) {
+      state.commandsPreApproved = false;
+      state.serverPolicyUpdatedAt = serverPolicy.updatedAt;
+    }
+
+    const settings = await readDefaultSettingsValues(db);
     const globalPolicy: McpCommandPolicy = settings.mcpCommandPolicy;
-    const policy = resolveEffectiveMcpCommandPolicy(state.serverCommandPolicy, globalPolicy);
+    const policy = resolveEffectiveMcpCommandPolicy(
+      isServerCommandPolicy(serverPolicy.mcpCommandPolicy) ? serverPolicy.mcpCommandPolicy : 'default',
+      globalPolicy,
+    );
+    if (policy !== 'allowWithinConnection') {
+      state.commandsPreApproved = false;
+    }
 
     if (policy === 'off') {
       void this.auditEventService.logEvent({

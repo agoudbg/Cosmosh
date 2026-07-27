@@ -6,10 +6,12 @@ Cosmosh MCP exposes a local [Model Context Protocol](https://modelcontextprotoco
 
 - The feature is **off by default** (`mcpEnabled` setting, default `false`).
 - **Opening an SSH connection always requires explicit user authorization** through a dialog in the Cosmosh window. There is no bypass.
+- Connection authorization is bound to the displayed server name, host, port, and username. Cosmosh rechecks that snapshot immediately before SSH bootstrap and requires a new prompt if any field changed.
 - Command execution is governed by a configurable policy (`mcpCommandPolicy`, global default `ask`) with a per-server override (`SshServer.mcpCommandPolicy`, default `default` = inherit):
   - `off` — agent commands are rejected.
   - `ask` — every command needs a confirmation dialog.
   - `allowWithinConnection` — the first command on a connection asks once; the user may allow the rest of that connection.
+- The current per-server policy is read before every command. Editing the server invalidates any connection-scoped command pre-approval.
 - Every MCP operation — client sessions, authorization decisions, connection lifecycle, every executed command, token rotation — is written to the audit log under the `mcp` category. See [Local-First Audit Events](./audit-events).
 - Authorization request and explicit decision records are fail-closed: Cosmosh does not expose the prompt, accept the decision, or perform the remote action unless the corresponding audit event is persisted first.
 
@@ -59,11 +61,13 @@ Registered by `registerMcpTools()` in `tools.ts`. Bounds live in `constants.ts`.
 | `run_command` | `connectionId` (required), `command` (required, ≤`MCP_MAX_COMMAND_BYTES` = 8192 bytes), `timeoutMs?` (≤120000), `maxOutputBytes?` (≤1048576) | Applies the command policy, runs one bounded non-interactive command, returns `{ stdout, stderr, exitCode, exitSignal, truncated, timedOut, durationMs }` or `{ error, message }`. |
 | `close_connection` | `connectionId` (required) | Closes and audits the connection; no prompt. Returns `{ closed: true, connectionId }`. |
 
-Failure reasons are enumerated (not thrown): `open_connection` → `denied | timeout | audit-unavailable | server-not-found | host-untrusted | limit-reached | failed`; `run_command` → `denied | timeout | audit-unavailable | policy-off | connection-not-found | command-too-large | failed`.
+Failure reasons are enumerated (not thrown): `open_connection` → `denied | timeout | audit-unavailable | server-not-found | server-changed | host-untrusted | limit-reached | failed`; `run_command` → `denied | timeout | audit-unavailable | policy-off | connection-not-found | command-too-large | failed`.
 
 Cancelling an MCP tool call immediately withdraws its pending authorization request. An approved `open_connection` also propagates cancellation into SSH bootstrap, so a client that has stopped waiting cannot leave a late connection behind.
 
 `audit-unavailable` is a security failure, not a transient permission result. No prompt or remote action is released when a required authorization audit write fails.
+
+`server-changed` means the persisted server destination no longer matches the target shown in the authorization prompt. No SSH connection was attempted; the agent must list servers again and raise a fresh request.
 
 **Limits (`constants.ts`):** max 8 concurrent connections (`MCP_MAX_CONNECTIONS`), 10-minute idle close (`MCP_CONNECTION_IDLE_TIMEOUT_MS`), 120 s approval lifetime (`MCP_APPROVAL_TIMEOUT_MS`, expiry = deny), default/max command timeout 15 s / 120 s, default/max output 256 KiB / 1 MiB, max command 8 KiB, 45 s SSH connect timeout.
 
@@ -166,7 +170,7 @@ Actions written under the `mcp` category (`entityType` one of `mcp-session`, `mc
 
 ## 12. Testing & verification
 
-- **Unit tests** (`tsx --test`): backend `test:mcp` covers the approval broker (timeout → deny, resolve-once, shutdown denies all), fail-closed authorization request/decision auditing, pairing (rotation revokes prior token, constant-time compare, discovery-file permissions), bounded exec (stdout/stderr/exit/truncation), the policy matrix (`off`/`ask`/`allowWithinConnection` × global/per-server override), and session initialization with the exact loopback Host plus dynamic port while rejecting hosts outside that allowlist. The `@cosmosh/mcp-bridge` package tests discovery parsing, the reachability probe, and the passthrough.
+- **Unit tests** (`tsx --test`): backend `test:mcp` covers the approval broker (timeout → deny, resolve-once, shutdown denies all), fail-closed authorization request/decision auditing, approved-target snapshot verification, live per-server policy refresh and pre-approval revocation, pairing (rotation revokes prior token, constant-time compare, discovery-file permissions), bounded exec (stdout/stderr/exit/truncation), the policy matrix (`off`/`ask`/`allowWithinConnection` × global/per-server override), and session initialization with the exact loopback Host plus dynamic port while rejecting hosts outside that allowlist. The `@cosmosh/mcp-bridge` package tests discovery parsing, the reachability probe, and the passthrough.
 - **Manual E2E:** enable MCP in dev and confirm `bridge.json` is created on enable and removed on disable/exit; drive `/mcp` with `npx @modelcontextprotocol/inspector` (bad token → 401, disabled → 503); attach Claude Code via generated `.mcp.json` and walk list → open (deny then approve) → run under each policy → `allowWithinConnection` upgrade → idle timeout, cross-checking each event on the audit page; quit the app and confirm the bridge prints a clear error; rotate the token and confirm the live bridge's next request fails.
 
 ## Known limitations (v1)

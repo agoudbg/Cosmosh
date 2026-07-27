@@ -76,6 +76,8 @@ throwing. Handle each distinctly:
   (`list_connections` → `close_connection`).
 - `server-not-found` / `connection-not-found` — re-run `list_servers` /
   `list_connections`; the id is stale.
+- `server-changed` — the server destination changed after the user approved it.
+  No connection was attempted. Re-run `list_servers` and request fresh approval.
 - `command-too-large` — the command exceeded 8192 bytes; shorten it.
 - `failed` — an unexpected error; the `message` has detail.
 

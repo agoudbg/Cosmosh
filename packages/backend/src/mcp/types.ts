@@ -14,7 +14,6 @@ import type {
   McpConnectionSummary,
   McpEventMessage,
   McpPendingApprovalPayload,
-  McpServerCommandPolicy,
 } from '@cosmosh/api-contract';
 import type { Client } from 'ssh2';
 
@@ -55,8 +54,8 @@ export type McpConnectionState = {
   username: string;
   client: Client;
   clientInfo: McpClientInfo;
-  /** Per-server override captured at open time; resolved against the global setting per command. */
-  serverCommandPolicy: McpServerCommandPolicy;
+  /** Last persisted server revision observed while enforcing command policy. */
+  serverPolicyUpdatedAt: Date;
   lifecycleMonitor: SshClientLifecycleMonitor;
   openedAt: Date;
   lastUsedAt: Date;

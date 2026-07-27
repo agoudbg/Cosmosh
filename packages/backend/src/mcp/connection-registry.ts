@@ -21,7 +21,11 @@ import { MCP_CONNECT_TIMEOUT_SEC, MCP_CONNECTION_IDLE_TIMEOUT_MS, MCP_MAX_CONNEC
 import { type McpClock, type McpConnectionState, type McpEventEmitter, systemMcpClock } from './types.js';
 
 type GetDbClient = () => PrismaClient;
-type OpenSshClient = typeof openSshClient;
+
+/**
+ * Injectable SSH bootstrap function used by the registry and service tests.
+ */
+export type McpOpenSshClient = typeof openSshClient;
 
 /**
  * Normalized outcome of an {@link McpConnectionRegistry.open} attempt.
@@ -29,6 +33,7 @@ type OpenSshClient = typeof openSshClient;
 export type McpOpenConnectionResult =
   | { type: 'success'; summary: McpConnectionSummary }
   | { type: 'server-not-found' }
+  | { type: 'target-changed' }
   | { type: 'limit-reached'; limit: number }
   | {
       type: 'host-untrusted';
@@ -40,10 +45,22 @@ export type McpOpenConnectionResult =
   | { type: 'failed'; message: string };
 
 /**
+ * Non-sensitive server identity authorized by the user.
+ */
+export type McpApprovedServerTarget = {
+  serverId: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+};
+
+/**
  * Input required to open one agent connection.
  */
 export type McpOpenConnectionInput = {
   serverId: string;
+  approvedTarget: McpApprovedServerTarget;
   ownerSessionId: string;
   client: McpClientInfo;
   reason?: string;
@@ -64,7 +81,7 @@ export class McpConnectionRegistry {
 
   private readonly emitEvent: McpEventEmitter;
 
-  private readonly openClient: OpenSshClient;
+  private readonly openClient: McpOpenSshClient;
 
   private readonly clock: McpClock;
 
@@ -75,7 +92,7 @@ export class McpConnectionRegistry {
     auditEventService: AuditEventService;
     credentialEncryptionKey: Buffer;
     emitEvent: McpEventEmitter;
-    openClient?: OpenSshClient;
+    openClient?: McpOpenSshClient;
     clock?: McpClock;
   }) {
     this.getDbClient = options.getDbClient;
@@ -115,6 +132,19 @@ export class McpConnectionRegistry {
 
     if (!server) {
       return { type: 'server-not-found' };
+    }
+
+    if (!matchesApprovedTarget(server, input.approvedTarget)) {
+      this.audit('connection-open', 'failure', 'warning', input.requestId, {
+        serverId: server.id,
+        reason: 'approved-target-changed',
+        approvedHost: input.approvedTarget.host,
+        approvedPort: input.approvedTarget.port,
+        currentHost: server.host,
+        currentPort: server.port,
+        client: input.client.name,
+      });
+      return { type: 'target-changed' };
     }
 
     const i18n = createI18n({ locale: input.locale ?? 'en', fallbackLocale: 'en' });
@@ -181,7 +211,7 @@ export class McpConnectionRegistry {
       username: server.username,
       client: openResult.client,
       clientInfo: input.client,
-      serverCommandPolicy: isServerCommandPolicy(server.mcpCommandPolicy) ? server.mcpCommandPolicy : 'default',
+      serverPolicyUpdatedAt: server.updatedAt,
       lifecycleMonitor: openResult.lifecycleMonitor,
       openedAt: now,
       lastUsedAt: now,
@@ -511,11 +541,21 @@ const toSummary = (state: McpConnectionState): McpConnectionSummary => {
 };
 
 /**
- * Narrows a raw persisted per-server policy value.
+ * Verifies that the current persisted destination is the one the user approved.
  *
- * @param value Raw column value.
- * @returns True when the value is a supported per-server policy.
+ * @param server Current persisted server.
+ * @param approvedTarget Destination snapshot shown in the approval prompt.
+ * @returns True when every user-visible destination field still matches.
  */
-const isServerCommandPolicy = (value: string): value is McpConnectionState['serverCommandPolicy'] => {
-  return value === 'default' || value === 'off' || value === 'ask' || value === 'allowWithinConnection';
+const matchesApprovedTarget = (
+  server: { id: string; name: string; host: string; port: number; username: string },
+  approvedTarget: McpApprovedServerTarget,
+): boolean => {
+  return (
+    server.id === approvedTarget.serverId &&
+    server.name === approvedTarget.name &&
+    server.host === approvedTarget.host &&
+    server.port === approvedTarget.port &&
+    server.username === approvedTarget.username
+  );
 };

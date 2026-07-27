@@ -46,10 +46,13 @@ Rotate or revoke any time you suspect a client should no longer have access.
 ## Approving Connections and Commands
 
 - **Opening a connection always asks you first.** A dialog shows which agent is asking, which server, and the reason it gave. Nothing connects until you approve.
+- Cosmosh verifies that the server name, host, port, and username still match the dialog immediately before connecting. If the server changed, the request is stopped and the agent must ask again.
 - **Commands follow a policy** you choose in `Settings > MCP`, with an optional per-server override on each server's edit form:
   - `Off` — the agent cannot run commands on that server.
   - `Ask` (default) — you confirm every command.
   - `Allow within connection` — you confirm the first command on a connection, then may allow the rest for that connection.
+
+Policy changes apply to the next command. Editing a server also clears any existing `Allow within connection` approval for that connection.
 
 Authorization dialogs only appear while a Cosmosh window is open. If you are away and a request is not answered within two minutes, it is automatically denied.
 
