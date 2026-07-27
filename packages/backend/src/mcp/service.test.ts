@@ -7,6 +7,7 @@ import type { Client, ClientChannel } from 'ssh2';
 
 import type { AuditEventService } from '../audit/service.js';
 import type { OpenSshClientResult } from '../ssh/connect.js';
+import type { SshSessionService } from '../ssh/session-service.js';
 import type { McpPairingService } from './pairing.js';
 import { McpService } from './service.js';
 
@@ -20,6 +21,22 @@ const SERVER = {
   mcpCommandPolicy: 'ask',
   keychain: null,
   updatedAt: new Date('2026-07-27T00:00:00.000Z'),
+};
+
+/**
+ * Builds the terminal runtime surface required by MCP constructor wiring.
+ *
+ * @returns Inert SSH session service for background-only tests.
+ */
+const createSshSessionServiceStub = (): SshSessionService => {
+  return {
+    onAgentTerminalClosed: () => () => undefined,
+    onAgentTerminalStatusChanged: () => () => undefined,
+    closeSession: () => false,
+    detachAgentTerminal: () => false,
+    getAgentTerminalSession: () => undefined,
+    stopAgentTerminalCommand: () => false,
+  } as unknown as SshSessionService;
 };
 
 /**
@@ -58,12 +75,12 @@ const createService = (): {
   setRequiredAuditFailure: (failed: boolean) => void;
   updateServer: (updates: Partial<typeof SERVER>) => void;
   requiredActions: string[];
-  bestEffortEvents: { action: string; outcome: string }[];
+  bestEffortEvents: { action: string; outcome: string; metadata?: Record<string, unknown> }[];
 } => {
   let requiredAuditFailure = false;
   let currentServer = { ...SERVER };
   const requiredActions: string[] = [];
-  const bestEffortEvents: { action: string; outcome: string }[] = [];
+  const bestEffortEvents: { action: string; outcome: string; metadata?: Record<string, unknown> }[] = [];
   const db = {
     sshServer: {
       findUnique: async () => currentServer,
@@ -74,8 +91,8 @@ const createService = (): {
     $queryRaw: async () => [],
   } as unknown as PrismaClient;
   const auditEventService = {
-    logEvent: async (input: { action: string; outcome: string }) => {
-      bestEffortEvents.push({ action: input.action, outcome: input.outcome });
+    logEvent: async (input: { action: string; outcome: string; metadata?: Record<string, unknown> }) => {
+      bestEffortEvents.push({ action: input.action, outcome: input.outcome, metadata: input.metadata });
       return 'best-effort-event';
     },
     logRequiredEvent: async (input: { action: string }) => {
@@ -93,6 +110,7 @@ const createService = (): {
       auditEventService,
       credentialEncryptionKey: Buffer.alloc(32),
       pairingService: {} as McpPairingService,
+      sshSessionService: createSshSessionServiceStub(),
       httpPort: 54_720,
       eventsHost: '127.0.0.1',
       eventsPort: 54_721,
@@ -136,6 +154,25 @@ const openConnection = (service: McpService, signal: AbortSignal) => {
     reason: 'test required auditing',
     mcpSessionId: 'session-1',
     client: { name: 'test-client', version: '1.0.0' },
+    mode: 'background',
+    signal,
+  });
+};
+
+/**
+ * Starts one default visible connection-open operation.
+ *
+ * @param service MCP service under test.
+ * @param signal Caller cancellation signal.
+ * @returns Pending tool outcome.
+ */
+const openVisibleConnection = (service: McpService, signal: AbortSignal) => {
+  return service.openConnection({
+    serverId: SERVER.id,
+    reason: 'test visible terminal auditing',
+    mcpSessionId: 'session-1',
+    client: { name: 'test-client', version: '1.0.0' },
+    mode: 'terminal',
     signal,
   });
 };
@@ -184,6 +221,34 @@ test('an approval remains pending when its required decision audit fails', async
 
   const outcome = await outcomePromise;
   assert.equal(outcome.ok, false);
+});
+
+test('a cancelled visible launch records a connection-open failure without creating a connection', async () => {
+  const { service, bestEffortEvents } = createService();
+  const controller = new AbortController();
+  const outcomePromise = openVisibleConnection(service, controller.signal);
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  const approval = service.listApprovals()[0];
+  assert.ok(approval);
+  assert.equal(await service.resolveApproval(approval.approvalId, 'approved'), 'resolved');
+
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  assert.equal(service.listTerminalLaunches().length, 1);
+  controller.abort();
+
+  const outcome = await outcomePromise;
+  assert.equal(outcome.ok, false);
+  assert.equal(service.listConnectionSummaries().length, 0);
+  const failureAudit = bestEffortEvents.find(
+    (event) => event.action === 'connection-open' && event.outcome === 'failure',
+  );
+  assert.equal(failureAudit?.metadata?.mode, 'terminal');
+  assert.equal(failureAudit?.metadata?.reason, 'terminal-launch-cancelled');
+  assert.equal('terminalSessionId' in (failureAudit?.metadata ?? {}), false);
 });
 
 test('runCommand re-reads the server policy and revokes connection pre-approval after an edit', async () => {

@@ -9,7 +9,7 @@
  * attribute the acting agent.
  */
 
-import type { McpClientInfo, McpCommandPolicy, McpConnectionSummary } from '@cosmosh/api-contract';
+import type { McpClientInfo, McpCommandPolicy, McpConnectionMode, McpConnectionSummary } from '@cosmosh/api-contract';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -46,9 +46,19 @@ export type McpOpenConnectionOutcome =
         | 'server-changed'
         | 'host-untrusted'
         | 'limit-reached'
+        | 'terminal-launch-failed'
+        | 'terminal-automation-unavailable'
+        | 'terminal-not-ready'
+        | 'terminal-busy'
+        | 'no-eligible-terminal'
         | 'failed';
       message: string;
     };
+
+/**
+ * Outcome of an `attach_terminal` tool call.
+ */
+export type McpAttachTerminalOutcome = McpOpenConnectionOutcome;
 
 /**
  * Outcome of a `run_command` tool call.
@@ -56,6 +66,7 @@ export type McpOpenConnectionOutcome =
 export type McpRunCommandOutcome =
   | {
       ok: true;
+      mode: 'background';
       stdout: string;
       stderr: string;
       exitCode: number | null;
@@ -63,6 +74,16 @@ export type McpRunCommandOutcome =
       truncated: boolean;
       timedOut: boolean;
       durationMs: number;
+    }
+  | {
+      ok: true;
+      mode: Extract<McpConnectionMode, 'terminal' | 'attached'>;
+      output: string;
+      exitCode: number | null;
+      truncated: boolean;
+      timedOut: boolean;
+      durationMs: number;
+      userIntervened: boolean;
     }
   | {
       ok: false;
@@ -73,6 +94,10 @@ export type McpRunCommandOutcome =
         | 'policy-off'
         | 'connection-not-found'
         | 'command-too-large'
+        | 'invalid-terminal-command'
+        | 'terminal-busy'
+        | 'terminal-not-ready'
+        | 'terminal-automation-unavailable'
         | 'failed';
       message: string;
     };
@@ -99,9 +124,16 @@ export type McpToolRuntime = {
     input: {
       serverId: string;
       reason?: string;
+      mode?: Extract<McpConnectionMode, 'terminal' | 'background'>;
       signal: AbortSignal;
     } & McpToolCaller,
   ): Promise<McpOpenConnectionOutcome>;
+  attachTerminal(
+    input: {
+      reason?: string;
+      signal: AbortSignal;
+    } & McpToolCaller,
+  ): Promise<McpAttachTerminalOutcome>;
   listConnections(input: McpToolCaller): McpConnectionSummary[];
   runCommand(
     input: {
@@ -182,9 +214,49 @@ export const registerMcpTools = (
     {
       title: 'Open SSH connection',
       description:
-        'Request a new SSH connection to a Cosmosh server. The user must explicitly authorize every connection in the Cosmosh window; a denied or timed-out request returns an error — do not retry aggressively. Provide a short reason describing why the connection is needed.',
+        'Request a new SSH connection to a Cosmosh server. Visible terminal mode is the default; background mode is isolated and must be requested explicitly. The user must authorize every connection in Cosmosh. Modes never downgrade automatically.',
       inputSchema: {
         serverId: z.string().min(1).describe('Server id from list_servers.'),
+        reason: z
+          .string()
+          .max(500)
+          .optional()
+          .describe('Short human-readable intent shown in the authorization prompt.'),
+        mode: z
+          .enum(['terminal', 'background'])
+          .default('terminal')
+          .describe('Visible terminal tab by default, or an isolated background SSH client.'),
+      },
+      annotations: {
+        readOnlyHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (args, extra) => {
+      const caller = resolveCaller();
+      const outcome = await runtime.openConnection({
+        serverId: args.serverId,
+        reason: args.reason,
+        mode: args.mode,
+        signal: extra.signal,
+        ...caller,
+      });
+
+      if (!outcome.ok) {
+        return jsonResult({ error: outcome.reason, message: outcome.message }, true);
+      }
+
+      return jsonResult({ connection: outcome.connection });
+    },
+  );
+
+  server.registerTool(
+    'attach_terminal',
+    {
+      title: 'Attach to visible SSH terminal',
+      description:
+        'Request access to an existing SSH terminal selected by the user in Cosmosh. The Agent never receives terminal, pane, session, or WebSocket identifiers.',
+      inputSchema: {
         reason: z
           .string()
           .max(500)
@@ -197,12 +269,10 @@ export const registerMcpTools = (
       },
     },
     async (args, extra) => {
-      const caller = resolveCaller();
-      const outcome = await runtime.openConnection({
-        serverId: args.serverId,
+      const outcome = await runtime.attachTerminal({
         reason: args.reason,
         signal: extra.signal,
-        ...caller,
+        ...resolveCaller(),
       });
 
       if (!outcome.ok) {
@@ -236,7 +306,7 @@ export const registerMcpTools = (
     {
       title: 'Run command',
       description:
-        'Run one non-interactive command on an open SSH connection. Depending on the configured policy the user may need to approve each command. Output is byte-bounded and may be truncated; always inspect exitCode and stderr. Do not run interactive programs (editors, pagers, prompts).',
+        'Run one bounded command on an open SSH connection. Background results separate stdout/stderr; terminal and attached results return merged visible PTY output plus userIntervened. Depending on policy the user may approve each command. Do not run interactive programs.',
       inputSchema: {
         connectionId: z.string().min(1).describe('Connection id from open_connection or list_connections.'),
         command: z.string().min(1).max(MCP_MAX_COMMAND_BYTES).describe('Non-interactive shell command to execute.'),
@@ -275,15 +345,9 @@ export const registerMcpTools = (
         return jsonResult({ error: outcome.reason, message: outcome.message }, true);
       }
 
-      return jsonResult({
-        stdout: outcome.stdout,
-        stderr: outcome.stderr,
-        exitCode: outcome.exitCode,
-        exitSignal: outcome.exitSignal,
-        truncated: outcome.truncated,
-        timedOut: outcome.timedOut,
-        durationMs: outcome.durationMs,
-      });
+      const payload: Record<string, unknown> = { ...outcome };
+      delete payload.ok;
+      return jsonResult(payload);
     },
   );
 
@@ -291,7 +355,8 @@ export const registerMcpTools = (
     'close_connection',
     {
       title: 'Close SSH connection',
-      description: 'Close an open SSH connection when finished. Closing does not require user authorization.',
+      description:
+        'Close an open SSH connection when finished. Existing attached user terminals are detached and preserved; Agent-created terminal tabs and background connections close. No authorization prompt.',
       inputSchema: {
         connectionId: z.string().min(1).describe('Connection id to close.'),
       },

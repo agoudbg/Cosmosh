@@ -1,10 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import type {
-  RemoteEnhancementRuntimeStatus,
-  RemoteShellCapability,
-  RemoteShellEventMessage,
-  SshTerminalServerMessage,
+import {
+  AGENT_TERMINAL_REQUIRED_CAPABILITIES,
+  type AgentTerminalAttachmentStatus,
+  type McpClientInfo,
+  type McpConnectionMode,
+  type RemoteEnhancementRuntimeStatus,
+  type RemoteShellCapability,
+  type RemoteShellEventMessage,
+  type SshTerminalServerMessage,
 } from '@cosmosh/api-contract';
 import type { PrismaClient } from '@prisma/client';
 import { type Client, type ClientChannel } from 'ssh2';
@@ -48,6 +52,7 @@ import {
   type TerminalClientInboundMessage,
   updateInteractiveCompletionState,
 } from '../terminal/shared.js';
+import { type AgentTerminalCommandOutcome, AgentTerminalController } from './agent-terminal.js';
 import {
   openSshClient,
   type OpenSshClientResult,
@@ -107,6 +112,10 @@ type TrustSshFingerprintInput = {
 };
 
 type TrustSshFingerprintResult = { type: 'success' } | { type: 'not-found' };
+
+type AgentTerminalClosedListener = (sessionId: string, connectionId: string) => void;
+
+type AgentTerminalStatusListener = (sessionId: string, status: AgentTerminalAttachmentStatus) => void;
 
 type SshShellStreamLifecycleMonitor = {
   /** @returns Whether the shell stream closed before session ownership completed. */
@@ -173,6 +182,8 @@ type SshLiveSession = TerminalManagedSessionBase & {
   pendingStreamFrameBytes: number;
   pendingStreamFrameDropCount: number;
   remoteShellReady: boolean;
+  remoteShellAtPrompt: boolean;
+  remoteShellLineLength: number;
   remoteShellCwd: string | null;
   remoteShellForegroundCommand: string | null;
   lastRemoteCommand: string | null;
@@ -185,7 +196,43 @@ type SshLiveSession = TerminalManagedSessionBase & {
   remoteEnhancementsRuntimeCode: string | null;
   remoteEnhancementsRuntimeMessage: string | null;
   remoteEnhancementsHandshakeTimeout: NodeJS.Timeout | null;
+  agentTerminalController: AgentTerminalController;
+  agentTerminalClosing: boolean;
 };
+
+/**
+ * Renderer-safe automation eligibility for one existing SSH terminal.
+ */
+export type AgentTerminalSessionSnapshot = {
+  sessionId: string;
+  serverId: string;
+  automationAvailable: boolean;
+  atPrompt: boolean;
+  lineLength: number;
+  busy: boolean;
+  attached: boolean;
+};
+
+/**
+ * Stable outcome of granting an Agent access to one SSH terminal.
+ */
+export type AttachAgentTerminalResult =
+  | { type: 'success'; snapshot: AgentTerminalSessionSnapshot }
+  | { type: 'terminal-not-found' }
+  | { type: 'terminal-busy' }
+  | { type: 'terminal-not-ready' }
+  | { type: 'terminal-automation-unavailable' };
+
+/**
+ * Stable outcome of executing one command through a visible SSH PTY.
+ */
+export type RunAgentTerminalCommandResult =
+  | { type: 'success'; result: AgentTerminalCommandOutcome }
+  | { type: 'terminal-not-found' }
+  | { type: 'terminal-busy' }
+  | { type: 'terminal-not-ready' }
+  | { type: 'terminal-automation-unavailable' }
+  | { type: 'terminal-detached' };
 
 type ParsedRemoteTelemetry = {
   cpuUsagePercent: number;
@@ -387,6 +434,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
 
   private readonly remoteBootstrapService: RemoteBootstrapService;
 
+  private readonly agentTerminalClosedListeners = new Set<AgentTerminalClosedListener>();
+
+  private readonly agentTerminalStatusListeners = new Set<AgentTerminalStatusListener>();
+
   constructor(options: {
     host: string;
     port: number;
@@ -407,6 +458,167 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       auditEventService: options.auditEventService,
       manifestUrl: process.env.COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL?.trim() || undefined,
     });
+  }
+
+  /**
+   * Subscribes to terminal disposal so MCP ownership can be invalidated.
+   *
+   * @param listener Listener receiving the terminal and connection ids.
+   * @returns Unsubscribe callback.
+   */
+  public onAgentTerminalClosed(listener: (sessionId: string, connectionId: string) => void): () => void {
+    this.agentTerminalClosedListeners.add(listener);
+    return (): void => {
+      this.agentTerminalClosedListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Subscribes to attachment state changes used for MCP connection summaries.
+   *
+   * @param listener Listener receiving renderer-safe status changes.
+   * @returns Unsubscribe callback.
+   */
+  public onAgentTerminalStatusChanged(
+    listener: (sessionId: string, status: AgentTerminalAttachmentStatus) => void,
+  ): () => void {
+    this.agentTerminalStatusListeners.add(listener);
+    return (): void => {
+      this.agentTerminalStatusListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Returns current Agent automation state for one renderer-owned terminal.
+   *
+   * @param sessionId SSH session id known only to Cosmosh runtime surfaces.
+   * @returns Eligibility snapshot, or undefined when the terminal is gone.
+   */
+  public getAgentTerminalSession(sessionId: string): AgentTerminalSessionSnapshot | undefined {
+    const session = this.sessions.get(sessionId);
+    return session ? this.toAgentTerminalSessionSnapshot(session) : undefined;
+  }
+
+  /**
+   * Grants one Agent connection access to an eligible SSH terminal.
+   *
+   * @param input Terminal id and Agent identity selected by the renderer.
+   * @returns Stable attach outcome.
+   */
+  public attachAgentTerminal(input: {
+    sessionId: string;
+    connectionId: string;
+    client: McpClientInfo;
+    mode: Extract<McpConnectionMode, 'terminal' | 'attached'>;
+    agentCreatedTab: boolean;
+  }): AttachAgentTerminalResult {
+    const session = this.sessions.get(input.sessionId);
+    if (!session || session.disposed) {
+      return { type: 'terminal-not-found' };
+    }
+    if (!this.supportsAgentTerminalAutomation(session)) {
+      return { type: 'terminal-automation-unavailable' };
+    }
+    if (session.agentTerminalController.getAttachment() || session.agentTerminalController.isBusy()) {
+      return { type: 'terminal-busy' };
+    }
+    if (!this.isAgentTerminalPromptReady(session)) {
+      return { type: 'terminal-not-ready' };
+    }
+    if (
+      !session.agentTerminalController.attach({
+        connectionId: input.connectionId,
+        client: input.client,
+        mode: input.mode,
+        agentCreatedTab: input.agentCreatedTab,
+      })
+    ) {
+      return { type: 'terminal-busy' };
+    }
+
+    return { type: 'success', snapshot: this.toAgentTerminalSessionSnapshot(session) };
+  }
+
+  /**
+   * Revokes one Agent attachment without closing the user terminal.
+   *
+   * @param connectionId MCP connection id.
+   * @returns True when the matching attachment was removed.
+   */
+  public detachAgentTerminal(connectionId: string): boolean {
+    for (const session of this.sessions.values()) {
+      if (session.agentTerminalController.detach(connectionId)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Sends an ordinary interrupt byte to an attached terminal.
+   *
+   * @param connectionId MCP connection id.
+   * @returns True when the matching live terminal received the interrupt.
+   */
+  public stopAgentTerminalCommand(connectionId: string): boolean {
+    for (const session of this.sessions.values()) {
+      if (
+        session.agentTerminalController.getAttachment()?.connectionId !== connectionId ||
+        !session.agentTerminalController.isBusy()
+      ) {
+        continue;
+      }
+
+      session.agentTerminalController.markUserIntervened();
+      session.stream.write('\u0003');
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Executes one Agent command in an attached visible PTY.
+   *
+   * @param input Terminal ownership, command, bounds, and cancellation.
+   * @returns Stable readiness failure or trusted command result.
+   */
+  public async runAgentTerminalCommand(input: {
+    sessionId: string;
+    connectionId: string;
+    command: string;
+    timeoutMs: number;
+    maxOutputBytes: number;
+    signal: AbortSignal;
+  }): Promise<RunAgentTerminalCommandResult> {
+    const session = this.sessions.get(input.sessionId);
+    if (!session || session.disposed) {
+      return { type: 'terminal-not-found' };
+    }
+    if (session.agentTerminalController.getAttachment()?.connectionId !== input.connectionId) {
+      return { type: 'terminal-detached' };
+    }
+    if (!this.supportsAgentTerminalAutomation(session)) {
+      return { type: 'terminal-automation-unavailable' };
+    }
+    if (session.agentTerminalController.isBusy()) {
+      return { type: 'terminal-busy' };
+    }
+    if (!this.isAgentTerminalPromptReady(session)) {
+      return { type: 'terminal-not-ready' };
+    }
+
+    session.remoteShellAtPrompt = false;
+    const result = await session.agentTerminalController.runCommand({
+      connectionId: input.connectionId,
+      command: input.command,
+      timeoutMs: input.timeoutMs,
+      maxOutputBytes: input.maxOutputBytes,
+      signal: input.signal,
+      write: (data) => session.stream.write(data),
+    });
+    return { type: 'success', result };
   }
 
   public async createSession(input: CreateSshSessionInput): Promise<CreateSshSessionResult> {
@@ -651,6 +863,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       pendingStreamFrameBytes: 0,
       pendingStreamFrameDropCount: pendingOutputDropCount,
       remoteShellReady: false,
+      remoteShellAtPrompt: false,
+      remoteShellLineLength: 0,
       remoteShellCwd: null,
       remoteShellForegroundCommand: null,
       lastRemoteCommand: null,
@@ -666,6 +880,19 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       remoteEnhancementsRuntimeMessage:
         shellResult.remoteBootstrapResult.state === 'disabled' ? shellResult.remoteBootstrapResult.message : null,
       remoteEnhancementsHandshakeTimeout: null,
+      agentTerminalClosing: false,
+      agentTerminalController: new AgentTerminalController({
+        onStatusChanged: (status) => {
+          if (!liveSession || liveSession.disposed || liveSession.agentTerminalClosing) {
+            return;
+          }
+
+          this.sendServerMessage(liveSession, status);
+          for (const listener of this.agentTerminalStatusListeners) {
+            listener(liveSession.sessionId, status);
+          }
+        },
+      }),
       t: i18n.t,
       socket: null,
       disposed: false,
@@ -832,7 +1059,102 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       }
     }
     this.sendRemoteEnhancementRuntimeStatus(session);
+    this.sendAgentTerminalAttachmentStatus(session);
     this.flushPendingStreamFrames(session);
+  }
+
+  /**
+   * Sends a snapshot of attachment state after a renderer reconnect.
+   *
+   * @param session Attached SSH session.
+   */
+  private sendAgentTerminalAttachmentStatus(session: SshLiveSession): void {
+    const attachment = session.agentTerminalController.getAttachment();
+    if (!attachment) {
+      this.sendServerMessage(session, { type: 'agent-attachment-status', state: 'detached' });
+      return;
+    }
+
+    this.sendServerMessage(session, {
+      type: 'agent-attachment-status',
+      state: session.agentTerminalController.isBusy() ? 'running' : 'idle',
+      connectionId: attachment.connectionId,
+      client: attachment.client,
+      mode: attachment.mode,
+      agentCreatedTab: attachment.agentCreatedTab,
+    });
+  }
+
+  /**
+   * Notifies MCP ownership when terminal readiness changes without duplicating
+   * the renderer attachment control frame.
+   *
+   * @param session SSH session whose readiness changed.
+   */
+  private notifyAgentTerminalStatusListeners(session: SshLiveSession): void {
+    const attachment = session.agentTerminalController.getAttachment();
+    const status: AgentTerminalAttachmentStatus = attachment
+      ? {
+          type: 'agent-attachment-status',
+          state: session.agentTerminalController.isBusy() ? 'running' : 'idle',
+          connectionId: attachment.connectionId,
+          client: attachment.client,
+          mode: attachment.mode,
+          agentCreatedTab: attachment.agentCreatedTab,
+        }
+      : { type: 'agent-attachment-status', state: 'detached' };
+
+    for (const listener of this.agentTerminalStatusListeners ?? []) {
+      listener(session.sessionId, status);
+    }
+  }
+
+  /**
+   * Requires the complete trusted helper contract used by shared PTY commands.
+   *
+   * @param session SSH session being evaluated.
+   * @returns True only when every required lifecycle capability is active.
+   */
+  private supportsAgentTerminalAutomation(session: SshLiveSession): boolean {
+    const capabilities = session.remoteEnhancementsRuntimeContract?.capabilities;
+    return (
+      session.remoteEnhancementsRuntimeState === 'active' &&
+      capabilities !== undefined &&
+      AGENT_TERMINAL_REQUIRED_CAPABILITIES.every((capability) => capabilities.includes(capability))
+    );
+  }
+
+  /**
+   * Verifies that no command or unsubmitted user input currently owns the prompt.
+   *
+   * @param session SSH session being evaluated.
+   * @returns True when an Agent command may be written immediately.
+   */
+  private isAgentTerminalPromptReady(session: SshLiveSession): boolean {
+    return (
+      session.remoteShellAtPrompt &&
+      session.remoteShellLineLength === 0 &&
+      !session.remoteShellForegroundCommand &&
+      !session.agentTerminalController.isBusy()
+    );
+  }
+
+  /**
+   * Converts live SSH state into a renderer-safe automation snapshot.
+   *
+   * @param session Live SSH session.
+   * @returns Current eligibility snapshot.
+   */
+  private toAgentTerminalSessionSnapshot(session: SshLiveSession): AgentTerminalSessionSnapshot {
+    return {
+      sessionId: session.sessionId,
+      serverId: session.serverId,
+      automationAvailable: this.supportsAgentTerminalAutomation(session),
+      atPrompt: this.isAgentTerminalPromptReady(session),
+      lineLength: session.remoteShellLineLength,
+      busy: session.agentTerminalController.isBusy(),
+      attached: session.agentTerminalController.getAttachment() !== null,
+    };
   }
 
   /**
@@ -890,6 +1212,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns Nothing.
    */
   private handleVisibleShellOutput(session: SshLiveSession, data: string): void {
+    session.agentTerminalController.handleOutput(data);
     session.completionPromptState = updatePromptStateFromOutput(session.completionPromptState, data, Date.now());
     const promptCwd = resolveRemotePromptCwd(
       session.completionPromptState.outputTail,
@@ -936,6 +1259,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     this.applyRemoteShellEventState(session, event);
+    session.agentTerminalController.handleRemoteShellEvent(event);
+    if (event.event === 'prompt-ready' || event.event === 'line-state') {
+      this.notifyAgentTerminalStatusListeners(session);
+    }
 
     this.sendServerMessage(session, event);
   }
@@ -1044,22 +1371,32 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
 
     if (event.event === 'prompt-ready') {
       session.remoteShellReady = true;
+      session.remoteShellAtPrompt = true;
+      session.remoteShellLineLength = 0;
       session.remoteShellForegroundCommand = null;
       return;
     }
 
     if (event.event === 'foreground-command') {
+      session.remoteShellAtPrompt = false;
       session.remoteShellForegroundCommand = event.command ?? null;
       return;
     }
 
     if (event.event === 'command-start' && event.command) {
+      session.remoteShellAtPrompt = false;
+      session.remoteShellLineLength = 0;
       session.lastRemoteCommand = event.command;
       if (session.lastRemoteCommandId !== event.commandId) {
         session.lastRemoteCommandId = event.commandId;
         session.commandCount += 1;
         this.scheduleHistorySync(session.sessionId);
       }
+      return;
+    }
+
+    if (event.event === 'line-state') {
+      session.remoteShellLineLength = event.lineLength;
       return;
     }
 
@@ -1399,12 +1736,18 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     session.remoteEnhancementsRuntimeMessage = message;
     this.discardPendingRemoteShellEventFrames(session);
     session.remoteShellReady = false;
+    session.remoteShellAtPrompt = false;
+    session.remoteShellLineLength = 0;
     session.remoteShellCwd = null;
     session.remoteShellForegroundCommand = null;
     session.lastRemoteCommand = null;
     session.lastRemoteCommandId = null;
     session.lastExitCode = null;
     session.lastCommandDurationMs = null;
+    const attachment = session.agentTerminalController.getAttachment();
+    if (attachment) {
+      session.agentTerminalController.detach(attachment.connectionId);
+    }
     this.sendRemoteEnhancementRuntimeStatus(session);
   }
 
@@ -1420,6 +1763,13 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
+      session.agentTerminalController.markUserIntervened();
+      if (message.data.includes('\r') || message.data.includes('\n') || message.data.includes('\u0003')) {
+        session.remoteShellAtPrompt = false;
+        session.remoteShellLineLength = 0;
+      } else if (message.data.length > 0) {
+        session.remoteShellLineLength = Math.max(1, session.remoteShellLineLength);
+      }
       const interactiveState = {
         lineBuffer: session.completionLineBuffer,
         recentCommands: session.completionRecentCommands,
@@ -1664,6 +2014,14 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
       beforeExit: (session, reason) => {
         this.clearRemoteEnhancementHandshakeTimeout(session);
+        const attachment = session.agentTerminalController.getAttachment();
+        session.agentTerminalClosing = true;
+        session.agentTerminalController.closeTerminal();
+        if (attachment) {
+          for (const listener of this.agentTerminalClosedListeners) {
+            listener(session.sessionId, attachment.connectionId);
+          }
+        }
         // Persist audit metadata before underlying transport is torn down.
         void this.finalizeLoginAudit(session, reason);
       },

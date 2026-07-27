@@ -11,6 +11,8 @@ import type {
   McpApprovalKind,
   McpClientInfo,
   McpConnectionCloseReason,
+  McpConnectionMode,
+  McpConnectionStatus,
   McpConnectionSummary,
   McpEventMessage,
   McpPendingApprovalPayload,
@@ -18,6 +20,7 @@ import type {
 import type { Client } from 'ssh2';
 
 import type { SshClientLifecycleMonitor } from '../ssh/connect.js';
+import type { McpConnectionCapacityReservation } from './connection-capacity.js';
 
 /**
  * Monotonic clock and timer surface, injectable so broker/registry timeouts are
@@ -43,7 +46,7 @@ export const systemMcpClock: McpClock = {
 /**
  * In-memory representation of one agent-opened SSH connection.
  */
-export type McpConnectionState = {
+type McpConnectionStateBase = {
   connectionId: string;
   /** Protocol session that exclusively owns this SSH connection. */
   ownerSessionId: string;
@@ -52,18 +55,43 @@ export type McpConnectionState = {
   host: string;
   port: number;
   username: string;
-  client: Client;
   clientInfo: McpClientInfo;
   /** Last persisted server revision observed while enforcing command policy. */
   serverPolicyUpdatedAt: Date;
-  lifecycleMonitor: SshClientLifecycleMonitor;
   openedAt: Date;
   lastUsedAt: Date;
   commandCount: number;
   commandsPreApproved: boolean;
   idleTimer: NodeJS.Timeout | null;
   disposed: boolean;
+  mode: McpConnectionMode;
+  status: McpConnectionStatus;
+  userVisible: boolean;
+  agentCreatedTab: boolean;
+  capacityReservation: McpConnectionCapacityReservation;
 };
+
+/**
+ * Independent ssh2 client retained for background command execution.
+ */
+export type McpBackgroundConnectionState = McpConnectionStateBase & {
+  mode: 'background';
+  client: Client;
+  lifecycleMonitor: SshClientLifecycleMonitor;
+};
+
+/**
+ * Agent permission attached to one renderer-owned SSH session.
+ */
+export type McpTerminalConnectionState = McpConnectionStateBase & {
+  mode: 'terminal' | 'attached';
+  terminalSessionId: string;
+};
+
+/**
+ * In-memory representation of one Agent SSH connection in any supported mode.
+ */
+export type McpConnectionState = McpBackgroundConnectionState | McpTerminalConnectionState;
 
 /**
  * Snapshot converted from {@link McpConnectionState} for renderer/tool consumers.
@@ -95,11 +123,12 @@ export type McpApprovalRecord = {
 export type McpApprovalRequestInput = {
   kind: McpApprovalKind;
   client: McpClientInfo;
-  serverId: string;
-  serverName: string;
-  host: string;
-  port: number;
-  username: string;
+  connectionMode?: McpConnectionMode;
+  serverId?: string;
+  serverName?: string;
+  host?: string;
+  port?: number;
+  username?: string;
   reason?: string;
   command?: string;
   connectionId?: string;

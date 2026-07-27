@@ -276,6 +276,7 @@ const bootstrap = async (): Promise<void> => {
     auditEventService,
     credentialEncryptionKey,
     pairingService: mcpPairingService,
+    sshSessionService,
     httpPort: port,
     eventsHost: '127.0.0.1',
     eventsPort: mcpEventsWebSocketPort,

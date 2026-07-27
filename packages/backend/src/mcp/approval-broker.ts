@@ -67,6 +67,7 @@ export class McpApprovalBroker {
       createdAt: new Date(createdAtMs).toISOString(),
       expiresAt: new Date(createdAtMs + this.timeoutMs).toISOString(),
       client: input.client,
+      connectionMode: input.connectionMode,
       serverId: input.serverId,
       serverName: input.serverName,
       host: input.host,

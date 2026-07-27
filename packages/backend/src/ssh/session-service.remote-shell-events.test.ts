@@ -4,6 +4,7 @@ import test from 'node:test';
 import type { RemoteShellCapability, SshTerminalServerMessage } from '@cosmosh/api-contract';
 
 import type { RemoteBootstrapResult, RemoteBootstrapStatus } from '../remote-bootstrap/service.js';
+import { AgentTerminalController } from './agent-terminal.js';
 import type { OpenSshClientResult } from './connect.js';
 import type { RemoteShellEventMessage, RemoteShellEventStreamFrame } from './remote-shell-events.js';
 import {
@@ -31,6 +32,8 @@ type RemoteShellEventSessionHarness = {
   completionWorkingDirectory: string | null;
   completionPendingCwdCommands: string[];
   remoteShellReady: boolean;
+  remoteShellAtPrompt: boolean;
+  remoteShellLineLength: number;
   remoteShellCwd: string | null;
   remoteShellForegroundCommand: string | null;
   lastRemoteCommand: string | null;
@@ -38,6 +41,7 @@ type RemoteShellEventSessionHarness = {
   lastExitCode: number | null;
   lastCommandDurationMs: number | null;
   commandCount: number;
+  agentTerminalController: AgentTerminalController;
   socket: {
     OPEN: number;
     readyState: number;
@@ -95,7 +99,7 @@ const createSessionHarness = (
     shell: 'bash',
     helperVersion: '1.2.3',
     protocolVersion: 2,
-    capabilities: ['cwd', 'command-start', 'command-end', 'foreground-command', 'prompt-ready'],
+    capabilities: ['cwd', 'command-start', 'command-end', 'foreground-command', 'prompt-ready', 'line-state'],
   },
   remoteEnhancementsRuntimeCode: null,
   remoteEnhancementsRuntimeMessage: null,
@@ -107,6 +111,8 @@ const createSessionHarness = (
   completionWorkingDirectory: null,
   completionPendingCwdCommands: [],
   remoteShellReady: false,
+  remoteShellAtPrompt: false,
+  remoteShellLineLength: 0,
   remoteShellCwd: null,
   remoteShellForegroundCommand: null,
   lastRemoteCommand: null,
@@ -114,6 +120,9 @@ const createSessionHarness = (
   lastExitCode: null,
   lastCommandDurationMs: null,
   commandCount: 0,
+  agentTerminalController: new AgentTerminalController({
+    onStatusChanged: () => undefined,
+  }),
   socket: null,
   disposed: false,
   ...overrides,
@@ -132,7 +141,7 @@ const createRemoteShellEvent = (overrides: Partial<RemoteShellEventMessage> = {}
     shell: 'bash',
     helperVersion: '1.2.3',
     protocolVersion: 2,
-    capabilities: ['cwd', 'command-start', 'command-end', 'foreground-command', 'prompt-ready'],
+    capabilities: ['cwd', 'command-start', 'command-end', 'foreground-command', 'prompt-ready', 'line-state'],
     cwd: '/root',
     timestamp: 1_783_172_312_000,
     ...overrides,
@@ -231,9 +240,9 @@ test('SshSessionService preserves detached output and helper event ordering on a
 
   assert.deepEqual(
     sentMessages.map((message) => message.type),
-    ['ready', 'remote-enhancement-runtime-status', 'output', 'remote-shell-event', 'output'],
+    ['ready', 'remote-enhancement-runtime-status', 'agent-attachment-status', 'output', 'remote-shell-event', 'output'],
   );
-  assert.deepEqual(sentMessages.slice(2), [
+  assert.deepEqual(sentMessages.slice(3), [
     { type: 'output', data: '\r\n' },
     transportedCommandStart,
     { type: 'output', data: 'result\r\n' },

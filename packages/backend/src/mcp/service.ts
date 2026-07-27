@@ -17,9 +17,11 @@ import {
   type McpApprovalUserDecision,
   type McpClientInfo,
   type McpCommandPolicy,
+  type McpConnectionMode,
   type McpConnectionSummary,
   type McpEventMessage,
   type McpPendingApprovalPayload,
+  type McpPendingTerminalLaunch,
   type McpRuntimeStatus,
   resolveEffectiveMcpCommandPolicy,
 } from '@cosmosh/api-contract';
@@ -28,14 +30,23 @@ import type { PrismaClient } from '@prisma/client';
 import type { AuditEventService } from '../audit/service.js';
 import { readDefaultSettingsValues } from '../settings/read.js';
 import { serverQueryInclude } from '../ssh/mappers.js';
+import type { SshSessionService } from '../ssh/session-service.js';
 import { McpApprovalBroker, type McpApprovalTicket } from './approval-broker.js';
-import { type McpApprovedServerTarget, McpConnectionRegistry, type McpOpenSshClient } from './connection-registry.js';
-import { MCP_MAX_COMMAND_BYTES } from './constants.js';
+import { McpConnectionCapacity } from './connection-capacity.js';
+import {
+  matchesApprovedTarget,
+  type McpApprovedServerTarget,
+  McpConnectionRegistry,
+  type McpOpenSshClient,
+} from './connection-registry.js';
+import { MCP_DEFAULT_COMMAND_TIMEOUT_MS, MCP_DEFAULT_MAX_OUTPUT_BYTES, MCP_MAX_COMMAND_BYTES } from './constants.js';
 import { type McpEventsChannelHandle, McpEventsService } from './events-service.js';
 import { executeMcpSshCommand } from './exec.js';
 import type { McpPairingService } from './pairing.js';
 import { McpSessionManager } from './sessions.js';
+import { McpTerminalLaunchBroker } from './terminal-launch-broker.js';
 import type {
+  McpAttachTerminalOutcome,
   McpCloseConnectionOutcome,
   McpOpenConnectionOutcome,
   McpRunCommandOutcome,
@@ -49,7 +60,26 @@ type GetDbClient = () => PrismaClient;
 /**
  * Result of resolving one pending approval from the REST layer.
  */
-export type McpResolveApprovalResult = 'resolved' | 'not-found' | 'audit-unavailable';
+export type McpResolveApprovalResult =
+  | 'resolved'
+  | 'not-found'
+  | 'audit-unavailable'
+  | 'terminal-not-found'
+  | 'terminal-busy'
+  | 'terminal-not-ready'
+  | 'terminal-automation-unavailable';
+
+/**
+ * Result of binding a renderer-created SSH session to a pending launch.
+ */
+export type McpBindTerminalLaunchResult =
+  | { type: 'success'; connection: McpConnectionSummary }
+  | { type: 'launch-not-found' }
+  | { type: 'server-changed' }
+  | { type: 'terminal-not-found' }
+  | { type: 'terminal-busy' }
+  | { type: 'terminal-not-ready' }
+  | { type: 'terminal-automation-unavailable' };
 
 const MCP_AUDIT_UNAVAILABLE_MESSAGE =
   'The authorization request could not be recorded in the Cosmosh audit log. No remote action was performed.';
@@ -66,6 +96,8 @@ export class McpService implements McpToolRuntime {
 
   private readonly pairingService: McpPairingService;
 
+  private readonly sshSessionService: SshSessionService;
+
   private readonly httpPort: number;
 
   private readonly eventsHost: string;
@@ -80,9 +112,18 @@ export class McpService implements McpToolRuntime {
 
   private readonly registry: McpConnectionRegistry;
 
+  private readonly capacity: McpConnectionCapacity;
+
+  private readonly terminalLaunchBroker: McpTerminalLaunchBroker;
+
   private readonly sessionManager: McpSessionManager;
 
   private eventsService: McpEventsService | null = null;
+
+  private readonly approvalTerminalSelections = new Map<
+    string,
+    { terminalSessionId: string; approvedTarget: McpApprovedServerTarget }
+  >();
 
   private enabled = false;
 
@@ -91,6 +132,7 @@ export class McpService implements McpToolRuntime {
     auditEventService: AuditEventService;
     credentialEncryptionKey: Buffer;
     pairingService: McpPairingService;
+    sshSessionService: SshSessionService;
     httpPort: number;
     eventsHost: string;
     eventsPort: number;
@@ -102,6 +144,7 @@ export class McpService implements McpToolRuntime {
     this.auditEventService = options.auditEventService;
     this.credentialEncryptionKey = options.credentialEncryptionKey;
     this.pairingService = options.pairingService;
+    this.sshSessionService = options.sshSessionService;
     this.httpPort = options.httpPort;
     this.eventsHost = options.eventsHost;
     this.eventsPort = options.eventsPort;
@@ -120,12 +163,51 @@ export class McpService implements McpToolRuntime {
       },
     });
 
+    this.capacity = new McpConnectionCapacity();
     this.registry = new McpConnectionRegistry({
       getDbClient: this.getDbClient,
       auditEventService: this.auditEventService,
       credentialEncryptionKey: this.credentialEncryptionKey,
       emitEvent: (message) => this.emit(message),
       openClient: options.openClient,
+      capacity: this.capacity,
+      onTerminalConnectionClose: (state, reason) => {
+        const shouldCloseCreatedTerminal = state.mode === 'terminal' && (reason === 'tool' || reason === 'ui');
+        if (shouldCloseCreatedTerminal) {
+          this.sshSessionService.closeSession(state.terminalSessionId);
+          return;
+        }
+
+        this.sshSessionService.detachAgentTerminal(state.connectionId);
+      },
+    });
+
+    this.terminalLaunchBroker = new McpTerminalLaunchBroker({
+      onRequested: (launch) => {
+        this.emit({ type: 'terminal-launch-requested', launch });
+        this.emitStatus();
+      },
+      onResolved: (launchId) => {
+        this.emit({ type: 'terminal-launch-resolved', launchId });
+        this.emitStatus();
+      },
+    });
+
+    this.sshSessionService.onAgentTerminalClosed((sessionId) => {
+      void this.registry.closeByTerminalSession(sessionId).finally(() => this.emitStatus());
+    });
+    this.sshSessionService.onAgentTerminalStatusChanged((sessionId, status) => {
+      if (!status.connectionId) {
+        return;
+      }
+
+      if (status.state === 'detached') {
+        void this.registry.close(status.connectionId, 'detached').finally(() => this.emitStatus());
+        return;
+      }
+
+      const snapshot = this.sshSessionService.getAgentTerminalSession(sessionId);
+      this.registry.updateStatus(status.connectionId, snapshot?.atPrompt && !snapshot.busy ? 'ready' : 'busy');
     });
 
     this.sessionManager = new McpSessionManager({
@@ -135,6 +217,7 @@ export class McpService implements McpToolRuntime {
       appVersion: this.appVersion,
       httpPort: this.httpPort,
       onSessionEnded: async (mcpSessionId) => {
+        this.terminalLaunchBroker.cancelOwnedBySession(mcpSessionId);
         await this.registry.closeOwnedBySession(mcpSessionId);
         this.emitStatus();
       },
@@ -213,6 +296,7 @@ export class McpService implements McpToolRuntime {
       activeClientCount: this.sessionManager.count(),
       activeConnectionCount: this.registry.count(),
       pendingApprovalCount: this.broker.pendingCount(),
+      pendingTerminalLaunchCount: this.terminalLaunchBroker.count(),
     };
   }
 
@@ -260,6 +344,10 @@ export class McpService implements McpToolRuntime {
   public async revokePairingToken(requestId: string): Promise<void> {
     await this.pairingService.revokeToken();
     await this.pairingService.removeDiscoveryFile();
+    this.broker.denyAll('superseded');
+    this.terminalLaunchBroker.cancelAll();
+    await this.sessionManager.closeAll();
+    await this.registry.closeAll('client-disconnected');
 
     void this.auditEventService.logEvent({
       category: 'mcp',
@@ -301,20 +389,74 @@ export class McpService implements McpToolRuntime {
   public async resolveApproval(
     approvalId: string,
     decision: McpApprovalUserDecision,
+    terminalSessionId?: string,
   ): Promise<McpResolveApprovalResult> {
     const payload = this.broker.getPending(approvalId);
     if (!payload) {
       return 'not-found';
     }
 
+    let auditedPayload = payload;
+    if (payload.kind === 'terminal-attach' && decision !== 'denied') {
+      if (!terminalSessionId) {
+        return 'terminal-not-found';
+      }
+
+      const snapshot = this.sshSessionService.getAgentTerminalSession(terminalSessionId);
+      if (!snapshot) {
+        return 'terminal-not-found';
+      }
+      if (!snapshot.automationAvailable) {
+        return 'terminal-automation-unavailable';
+      }
+      if (snapshot.attached || snapshot.busy) {
+        return 'terminal-busy';
+      }
+      if (!snapshot.atPrompt) {
+        return 'terminal-not-ready';
+      }
+
+      const server = await this.getDbClient().sshServer.findUnique({
+        where: { id: snapshot.serverId },
+        select: { id: true, name: true, host: true, port: true, username: true },
+      });
+      if (!server) {
+        return 'terminal-not-found';
+      }
+
+      auditedPayload = {
+        ...payload,
+        serverId: server.id,
+        serverName: server.name,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+      };
+      this.approvalTerminalSelections.set(approvalId, {
+        terminalSessionId,
+        approvedTarget: {
+          serverId: server.id,
+          name: server.name,
+          host: server.host,
+          port: server.port,
+          username: server.username,
+        },
+      });
+    }
+
     try {
-      await this.auditApprovalRequired('authorization-resolved', payload, decision);
+      await this.auditApprovalRequired('authorization-resolved', auditedPayload, decision);
     } catch (error: unknown) {
+      this.approvalTerminalSelections.delete(approvalId);
       console.error('[mcp] Failed to persist a required authorization decision audit event.', error);
       return 'audit-unavailable';
     }
 
-    return this.broker.resolve(approvalId, decision) ? 'resolved' : 'not-found';
+    const resolved = this.broker.resolve(approvalId, decision);
+    if (!resolved) {
+      this.approvalTerminalSelections.delete(approvalId);
+    }
+    return resolved ? 'resolved' : 'not-found';
   }
 
   /**
@@ -335,6 +477,119 @@ export class McpService implements McpToolRuntime {
    */
   public listConnectionSummaries(): McpConnectionSummary[] {
     return this.registry.list();
+  }
+
+  /**
+   * Lists pending visible terminal launches for REST reconnect backfill.
+   *
+   * @returns Renderer-safe launch payloads.
+   */
+  public listTerminalLaunches(): McpPendingTerminalLaunch[] {
+    return this.terminalLaunchBroker.list();
+  }
+
+  /**
+   * Cancels one pending visible terminal launch.
+   *
+   * @param launchId Launch id.
+   * @returns True when a pending launch matched.
+   */
+  public cancelTerminalLaunch(launchId: string): boolean {
+    return this.terminalLaunchBroker.cancel(launchId);
+  }
+
+  /**
+   * Binds a renderer-created normal SSH session to one approved launch.
+   *
+   * @param launchId Pending launch id.
+   * @param terminalSessionId Renderer-owned SSH session id.
+   * @returns Stable bind outcome.
+   */
+  public async bindTerminalLaunch(launchId: string, terminalSessionId: string): Promise<McpBindTerminalLaunchResult> {
+    const launch = this.terminalLaunchBroker.get(launchId);
+    if (!launch) {
+      return { type: 'launch-not-found' };
+    }
+
+    const server = await this.getDbClient().sshServer.findUnique({
+      where: { id: launch.approvedTarget.serverId },
+      select: { id: true, name: true, host: true, port: true, username: true, updatedAt: true },
+    });
+    if (!server || !matchesApprovedTarget(server, launch.approvedTarget)) {
+      this.terminalLaunchBroker.fail(launchId, 'server-changed');
+      return { type: 'server-changed' };
+    }
+
+    const terminal = this.sshSessionService.getAgentTerminalSession(terminalSessionId);
+    if (!terminal || terminal.serverId !== server.id) {
+      this.terminalLaunchBroker.fail(launchId, 'terminal-launch-failed');
+      return { type: 'terminal-not-found' };
+    }
+
+    const connectionId = randomUUID();
+    const attachResult = this.sshSessionService.attachAgentTerminal({
+      sessionId: terminalSessionId,
+      connectionId,
+      client: launch.client,
+      mode: 'terminal',
+      agentCreatedTab: true,
+    });
+    if (attachResult.type !== 'success') {
+      this.terminalLaunchBroker.fail(launchId, attachResult.type);
+      return { type: attachResult.type };
+    }
+
+    try {
+      const connection = this.registry.registerTerminal({
+        connectionId,
+        terminalSessionId,
+        mode: 'terminal',
+        approvedTarget: launch.approvedTarget,
+        serverPolicyUpdatedAt: server.updatedAt,
+        ownerSessionId: launch.ownerSessionId,
+        client: launch.client,
+        commandsPreApproved: launch.commandsPreApproved,
+        agentCreatedTab: true,
+        requestId: launch.requestId,
+        reservation: launch.reservation,
+      });
+      if (!this.terminalLaunchBroker.bind(launchId, connection)) {
+        await this.registry.close(connection.connectionId, 'error', randomUUID());
+        return { type: 'launch-not-found' };
+      }
+      this.emitStatus();
+      return { type: 'success', connection };
+    } catch (error: unknown) {
+      this.sshSessionService.detachAgentTerminal(connectionId);
+      this.terminalLaunchBroker.fail(launchId, error instanceof Error ? error.message : 'terminal-launch-failed');
+      return { type: 'terminal-not-found' };
+    }
+  }
+
+  /**
+   * Explicitly detaches an Agent while preserving the visible terminal.
+   *
+   * @param connectionId MCP connection id.
+   * @param requestId Correlating request id.
+   * @returns True when a live visible attachment matched.
+   */
+  public async detachConnectionFromUi(connectionId: string, requestId: string): Promise<boolean> {
+    const state = this.registry.list().find((connection) => connection.connectionId === connectionId);
+    if (!state || state.mode === 'background') {
+      return false;
+    }
+
+    return await this.registry.close(connectionId, 'detached', requestId);
+  }
+
+  /**
+   * Sends Ctrl+C to the visible PTY currently running an Agent command.
+   *
+   * @param connectionId MCP connection id.
+   * @returns True when a matching terminal received the interrupt.
+   */
+  public stopTerminalCommandFromUi(connectionId: string): boolean {
+    return this.sshSessionService.stopAgentTerminalCommand(connectionId);
   }
 
   /**
@@ -411,6 +666,7 @@ export class McpService implements McpToolRuntime {
   public async openConnection(input: {
     serverId: string;
     reason?: string;
+    mode?: Extract<McpConnectionMode, 'terminal' | 'background'>;
     mcpSessionId: string;
     client: McpClientInfo;
     signal: AbortSignal;
@@ -421,12 +677,19 @@ export class McpService implements McpToolRuntime {
     });
 
     if (!server) {
+      this.auditConnectionOpenFailure({
+        mode: input.mode ?? 'terminal',
+        client: input.client,
+        serverId: input.serverId,
+        reason: 'server-not-found',
+      });
       return { ok: false, reason: 'server-not-found', message: 'Server not found.' };
     }
 
     const ticket = await this.requestApproval({
       kind: 'connection-open',
       client: input.client,
+      connectionMode: input.mode ?? 'terminal',
       serverId: server.id,
       serverName: server.name,
       host: server.host,
@@ -454,6 +717,68 @@ export class McpService implements McpToolRuntime {
       port: server.port,
       username: server.username,
     };
+    const mode = input.mode ?? 'terminal';
+    if (mode === 'terminal') {
+      const reservation = this.capacity.tryReserve();
+      if (!reservation) {
+        this.auditConnectionOpenFailure({
+          mode,
+          client: input.client,
+          target: approvedTarget,
+          reason: 'connection-limit-reached',
+        });
+        return {
+          ok: false,
+          reason: 'limit-reached',
+          message: `Too many open connections (max ${this.capacity.getLimit()}). Close one and retry.`,
+        };
+      }
+
+      const launchTicket = this.terminalLaunchBroker.request({
+        ownerSessionId: input.mcpSessionId,
+        approvedTarget,
+        client: input.client,
+        commandsPreApproved: decision === 'approvedForConnection',
+        requestId: randomUUID(),
+        reservation,
+        reason: input.reason,
+      });
+      const launchResult = await this.terminalLaunchBroker.waitForResult(launchTicket, input.signal);
+      if (launchResult.type !== 'bound') {
+        this.auditConnectionOpenFailure({
+          mode,
+          client: input.client,
+          target: approvedTarget,
+          reason: launchResult.type === 'failed' ? launchResult.reason : `terminal-launch-${launchResult.type}`,
+        });
+      }
+      switch (launchResult.type) {
+        case 'bound':
+          return { ok: true, connection: launchResult.connection };
+        case 'cancelled':
+          return { ok: false, reason: 'denied', message: 'The visible terminal launch was cancelled.' };
+        case 'expired':
+          return {
+            ok: false,
+            reason: 'terminal-launch-failed',
+            message: 'Cosmosh did not create the visible terminal before the launch expired.',
+          };
+        default:
+          if (
+            launchResult.reason === 'terminal-busy' ||
+            launchResult.reason === 'terminal-not-ready' ||
+            launchResult.reason === 'terminal-automation-unavailable'
+          ) {
+            return terminalAttachFailure(launchResult.reason);
+          }
+          return {
+            ok: false,
+            reason: 'terminal-launch-failed',
+            message: `The visible terminal could not be created: ${launchResult.reason}`,
+          };
+      }
+    }
+
     const result = await this.registry.open({
       serverId: server.id,
       approvedTarget,
@@ -499,6 +824,136 @@ export class McpService implements McpToolRuntime {
   }
 
   /**
+   * Requests access to one existing SSH pane selected only inside Cosmosh.
+   *
+   * @param input Agent identity, intent, ownership, and cancellation.
+   * @returns Attached MCP connection or a stable failure.
+   */
+  public async attachTerminal(input: {
+    reason?: string;
+    mcpSessionId: string;
+    client: McpClientInfo;
+    signal: AbortSignal;
+  }): Promise<McpAttachTerminalOutcome> {
+    const ticket = await this.requestApproval({
+      kind: 'terminal-attach',
+      client: input.client,
+      connectionMode: 'attached',
+      reason: input.reason,
+    });
+    if (!ticket) {
+      return { ok: false, reason: 'audit-unavailable', message: MCP_AUDIT_UNAVAILABLE_MESSAGE };
+    }
+
+    const decision = await this.broker.waitForDecision(ticket, input.signal);
+    const selection = this.approvalTerminalSelections.get(ticket.approvalId);
+    this.approvalTerminalSelections.delete(ticket.approvalId);
+    if (decision !== 'approved' && decision !== 'approvedForConnection') {
+      return { ok: false, reason: mapDenyReason(decision), message: denyMessage(decision) };
+    }
+    if (input.signal.aborted) {
+      return { ok: false, reason: 'denied', message: denyMessage('superseded') };
+    }
+    if (!selection) {
+      this.auditConnectionOpenFailure({
+        mode: 'attached',
+        client: input.client,
+        reason: 'no-eligible-terminal',
+      });
+      return {
+        ok: false,
+        reason: 'no-eligible-terminal',
+        message: 'No eligible terminal was selected in Cosmosh.',
+      };
+    }
+
+    const currentServer = await this.getDbClient().sshServer.findUnique({
+      where: { id: selection.approvedTarget.serverId },
+      select: { id: true, name: true, host: true, port: true, username: true, updatedAt: true },
+    });
+    if (!currentServer || !matchesApprovedTarget(currentServer, selection.approvedTarget)) {
+      this.auditConnectionOpenFailure({
+        mode: 'attached',
+        client: input.client,
+        target: selection.approvedTarget,
+        reason: 'server-changed',
+      });
+      return {
+        ok: false,
+        reason: 'server-changed',
+        message: 'The selected terminal destination changed after authorization. Select and approve it again.',
+      };
+    }
+
+    const reservation = this.capacity.tryReserve();
+    if (!reservation) {
+      this.auditConnectionOpenFailure({
+        mode: 'attached',
+        client: input.client,
+        target: selection.approvedTarget,
+        reason: 'connection-limit-reached',
+      });
+      return {
+        ok: false,
+        reason: 'limit-reached',
+        message: `Too many open connections (max ${this.capacity.getLimit()}). Close one and retry.`,
+      };
+    }
+
+    const connectionId = randomUUID();
+    const attachResult = this.sshSessionService.attachAgentTerminal({
+      sessionId: selection.terminalSessionId,
+      connectionId,
+      client: input.client,
+      mode: 'attached',
+      agentCreatedTab: false,
+    });
+    if (attachResult.type !== 'success') {
+      reservation.release();
+      this.auditConnectionOpenFailure({
+        mode: 'attached',
+        client: input.client,
+        target: selection.approvedTarget,
+        reason: attachResult.type,
+      });
+      return terminalAttachFailure(attachResult.type);
+    }
+
+    try {
+      const connection = this.registry.registerTerminal({
+        connectionId,
+        terminalSessionId: selection.terminalSessionId,
+        mode: 'attached',
+        approvedTarget: selection.approvedTarget,
+        serverPolicyUpdatedAt: currentServer.updatedAt,
+        ownerSessionId: input.mcpSessionId,
+        client: input.client,
+        commandsPreApproved: decision === 'approvedForConnection',
+        agentCreatedTab: false,
+        requestId: randomUUID(),
+        reason: input.reason,
+        reservation,
+      });
+      this.emitStatus();
+      return { ok: true, connection };
+    } catch (error: unknown) {
+      this.sshSessionService.detachAgentTerminal(connectionId);
+      reservation.release();
+      this.auditConnectionOpenFailure({
+        mode: 'attached',
+        client: input.client,
+        target: selection.approvedTarget,
+        reason: 'terminal-registration-failed',
+      });
+      return {
+        ok: false,
+        reason: 'failed',
+        message: error instanceof Error ? error.message : 'Failed to register the selected terminal.',
+      };
+    }
+  }
+
+  /**
    * Lists live connections for the `list_connections` tool.
    */
   public listConnections(input: { mcpSessionId: string; client: McpClientInfo }): McpConnectionSummary[] {
@@ -521,12 +976,22 @@ export class McpService implements McpToolRuntime {
     if (!state) {
       return { ok: false, reason: 'connection-not-found', message: 'Connection not found or already closed.' };
     }
+    if (input.signal.aborted) {
+      return { ok: false, reason: 'denied', message: denyMessage('superseded') };
+    }
 
     if (Buffer.byteLength(input.command, 'utf8') > MCP_MAX_COMMAND_BYTES) {
       return {
         ok: false,
         reason: 'command-too-large',
         message: `Command exceeds the ${MCP_MAX_COMMAND_BYTES}-byte limit.`,
+      };
+    }
+    if (state.mode !== 'background' && containsControlCharacter(input.command)) {
+      return {
+        ok: false,
+        reason: 'invalid-terminal-command',
+        message: 'Visible terminal commands must be one line and contain no control characters.',
       };
     }
 
@@ -564,7 +1029,13 @@ export class McpService implements McpToolRuntime {
         entityType: 'mcp-connection',
         entityId: state.connectionId,
         requestId: randomUUID(),
-        metadata: { serverId: state.serverId, client: input.client.name, reason: 'policy-off' },
+        metadata: {
+          mode: state.mode,
+          status: state.status,
+          serverId: state.serverId,
+          client: input.client.name,
+          reason: 'policy-off',
+        },
       });
       return {
         ok: false,
@@ -578,6 +1049,7 @@ export class McpService implements McpToolRuntime {
       const ticket = await this.requestApproval({
         kind: 'command-execute',
         client: input.client,
+        connectionMode: state.mode,
         serverId: state.serverId,
         serverName: state.serverName,
         host: state.host,
@@ -600,7 +1072,13 @@ export class McpService implements McpToolRuntime {
           entityType: 'mcp-connection',
           entityId: state.connectionId,
           requestId: randomUUID(),
-          metadata: { serverId: state.serverId, client: input.client.name, reason: decision },
+          metadata: {
+            mode: state.mode,
+            status: state.status,
+            serverId: state.serverId,
+            client: input.client.name,
+            reason: decision,
+          },
         });
         return { ok: false, reason: mapDenyReason(decision), message: denyMessage(decision) };
       }
@@ -613,14 +1091,81 @@ export class McpService implements McpToolRuntime {
       }
     }
 
-    const result = await executeMcpSshCommand(state.client, input.command, {
-      timeoutMs: input.timeoutMs,
-      maxOutputBytes: input.maxOutputBytes,
+    if (state.mode === 'background') {
+      const result = await executeMcpSshCommand(state.client, input.command, {
+        timeoutMs: input.timeoutMs,
+        maxOutputBytes: input.maxOutputBytes,
+        signal: input.signal,
+      });
+      this.registry.touch(state.connectionId);
+
+      if (result.error) {
+        void this.auditEventService.logEvent({
+          category: 'mcp',
+          action: 'command-execute',
+          outcome: 'failure',
+          severity: 'warning',
+          entityType: 'mcp-connection',
+          entityId: state.connectionId,
+          requestId: randomUUID(),
+          metadata: {
+            mode: state.mode,
+            status: state.status,
+            serverId: state.serverId,
+            client: input.client.name,
+            durationMs: result.durationMs,
+            reason: 'ssh-exec-failed',
+            policy,
+          },
+        });
+        this.emitStatus();
+        return { ok: false, reason: 'failed', message: result.error };
+      }
+
+      void this.auditEventService.logEvent({
+        category: 'mcp',
+        action: 'command-execute',
+        outcome: 'success',
+        severity: 'warning',
+        entityType: 'mcp-connection',
+        entityId: state.connectionId,
+        requestId: randomUUID(),
+        metadata: {
+          mode: state.mode,
+          status: state.status,
+          serverId: state.serverId,
+          client: input.client.name,
+          exitCode: result.exitCode,
+          durationMs: result.durationMs,
+          truncated: result.truncated,
+          timedOut: result.timedOut,
+          policy,
+        },
+      });
+      this.emitStatus();
+
+      return {
+        ok: true,
+        mode: 'background',
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        exitSignal: result.exitSignal,
+        truncated: result.truncated,
+        timedOut: result.timedOut,
+        durationMs: result.durationMs,
+      };
+    }
+
+    const terminalResult = await this.sshSessionService.runAgentTerminalCommand({
+      sessionId: state.terminalSessionId,
+      connectionId: state.connectionId,
+      command: input.command,
+      timeoutMs: input.timeoutMs ?? MCP_DEFAULT_COMMAND_TIMEOUT_MS,
+      maxOutputBytes: input.maxOutputBytes ?? MCP_DEFAULT_MAX_OUTPUT_BYTES,
       signal: input.signal,
     });
-    this.registry.touch(state.connectionId);
-
-    if (result.error) {
+    if (terminalResult.type !== 'success') {
       void this.auditEventService.logEvent({
         category: 'mcp',
         action: 'command-execute',
@@ -630,16 +1175,39 @@ export class McpService implements McpToolRuntime {
         entityId: state.connectionId,
         requestId: randomUUID(),
         metadata: {
+          mode: state.mode,
+          status: state.status,
           serverId: state.serverId,
           client: input.client.name,
-          command: input.command,
-          durationMs: result.durationMs,
-          reason: 'ssh-exec-failed',
+          reason: terminalResult.type,
+          policy,
+        },
+      });
+      return terminalCommandFailure(terminalResult.type);
+    }
+
+    const result = terminalResult.result;
+    this.registry.touch(state.connectionId);
+    if (result.type !== 'completed') {
+      void this.auditEventService.logEvent({
+        category: 'mcp',
+        action: 'command-execute',
+        outcome: 'failure',
+        severity: 'warning',
+        entityType: 'mcp-connection',
+        entityId: state.connectionId,
+        requestId: randomUUID(),
+        metadata: {
+          mode: state.mode,
+          status: state.status,
+          serverId: state.serverId,
+          client: input.client.name,
+          reason: result.type,
           policy,
         },
       });
       this.emitStatus();
-      return { ok: false, reason: 'failed', message: result.error };
+      return { ok: false, reason: 'failed', message: result.message };
     }
 
     void this.auditEventService.logEvent({
@@ -651,13 +1219,15 @@ export class McpService implements McpToolRuntime {
       entityId: state.connectionId,
       requestId: randomUUID(),
       metadata: {
+        mode: state.mode,
+        status: state.status,
         serverId: state.serverId,
         client: input.client.name,
-        command: input.command,
         exitCode: result.exitCode,
         durationMs: result.durationMs,
         truncated: result.truncated,
         timedOut: result.timedOut,
+        userIntervened: result.userIntervened,
         policy,
       },
     });
@@ -665,13 +1235,13 @@ export class McpService implements McpToolRuntime {
 
     return {
       ok: true,
-      stdout: result.stdout,
-      stderr: result.stderr,
+      mode: state.mode,
+      output: result.output,
       exitCode: result.exitCode,
-      exitSignal: result.exitSignal,
       truncated: result.truncated,
       timedOut: result.timedOut,
       durationMs: result.durationMs,
+      userIntervened: result.userIntervened,
     };
   }
 
@@ -717,6 +1287,7 @@ export class McpService implements McpToolRuntime {
     this.enabled = false;
     this.emitStatus();
     this.broker.denyAll('superseded');
+    this.terminalLaunchBroker.cancelAll();
     await this.sessionManager.closeAll();
     await this.registry.closeAll(disableReason);
     await this.pairingService.removeDiscoveryFile();
@@ -751,6 +1322,7 @@ export class McpService implements McpToolRuntime {
         activeClientCount: this.sessionManager.count(),
         activeConnectionCount: this.registry.count(),
         pendingApprovalCount: this.broker.pendingCount(),
+        pendingTerminalLaunchCount: this.terminalLaunchBroker.count(),
       },
     });
   }
@@ -798,11 +1370,11 @@ export class McpService implements McpToolRuntime {
       requestId: randomUUID(),
       metadata: {
         kind: payload.kind,
+        mode: payload.connectionMode,
         client: payload.client.name,
         serverId: payload.serverId,
         host: payload.host,
         connectionId: payload.connectionId,
-        command: payload.command,
         reason: payload.reason,
         decision,
       },
@@ -831,13 +1403,44 @@ export class McpService implements McpToolRuntime {
       requestId: randomUUID(),
       metadata: {
         kind: payload.kind,
+        mode: payload.connectionMode,
         client: payload.client.name,
         serverId: payload.serverId,
         host: payload.host,
         connectionId: payload.connectionId,
-        command: payload.command,
         reason: payload.reason,
         decision,
+      },
+    });
+  }
+
+  /**
+   * Records a connection failure without terminal ids, output, or input.
+   *
+   * @param input Mode, Agent identity, optional approved target, and stable failure reason.
+   */
+  private auditConnectionOpenFailure(input: {
+    mode: McpConnectionMode;
+    client: McpClientInfo;
+    target?: McpApprovedServerTarget;
+    serverId?: string;
+    reason: string;
+  }): void {
+    void this.auditEventService.logEvent({
+      category: 'mcp',
+      action: 'connection-open',
+      outcome: 'failure',
+      severity: 'warning',
+      entityType: 'mcp-connection',
+      requestId: randomUUID(),
+      metadata: {
+        mode: input.mode,
+        status: 'failed',
+        serverId: input.target?.serverId ?? input.serverId,
+        host: input.target?.host,
+        port: input.target?.port,
+        client: input.client.name,
+        reason: input.reason,
       },
     });
   }
@@ -868,6 +1471,98 @@ const denyMessage = (decision: McpApprovalDecision): string => {
     default:
       return 'The user denied this request in the Cosmosh window.';
   }
+};
+
+/**
+ * Maps SSH terminal eligibility failures to stable Agent-facing tool errors.
+ *
+ * @param type Terminal service attach failure.
+ * @returns MCP tool failure.
+ */
+const terminalAttachFailure = (
+  type: 'terminal-not-found' | 'terminal-busy' | 'terminal-not-ready' | 'terminal-automation-unavailable',
+): Exclude<McpAttachTerminalOutcome, { ok: true }> => {
+  switch (type) {
+    case 'terminal-busy':
+      return {
+        ok: false,
+        reason: 'terminal-busy',
+        message: 'The selected terminal is already attached to an Agent or running an Agent command.',
+      };
+    case 'terminal-not-ready':
+      return {
+        ok: false,
+        reason: 'terminal-not-ready',
+        message: 'The selected terminal is not at a trusted empty prompt.',
+      };
+    case 'terminal-automation-unavailable':
+      return {
+        ok: false,
+        reason: 'terminal-automation-unavailable',
+        message: 'Trusted Remote Enhancements automation is unavailable for the selected terminal.',
+      };
+    default:
+      return {
+        ok: false,
+        reason: 'no-eligible-terminal',
+        message: 'The selected terminal is no longer available.',
+      };
+  }
+};
+
+/**
+ * Maps shared PTY execution readiness failures to stable tool errors.
+ *
+ * @param type SSH terminal execution failure.
+ * @returns MCP command failure.
+ */
+const terminalCommandFailure = (
+  type:
+    | 'terminal-not-found'
+    | 'terminal-busy'
+    | 'terminal-not-ready'
+    | 'terminal-automation-unavailable'
+    | 'terminal-detached',
+): Exclude<McpRunCommandOutcome, { ok: true }> => {
+  switch (type) {
+    case 'terminal-busy':
+      return {
+        ok: false,
+        reason: 'terminal-busy',
+        message: 'The terminal is still running an Agent command.',
+      };
+    case 'terminal-not-ready':
+      return {
+        ok: false,
+        reason: 'terminal-not-ready',
+        message: 'The terminal is not at a trusted empty prompt.',
+      };
+    case 'terminal-automation-unavailable':
+      return {
+        ok: false,
+        reason: 'terminal-automation-unavailable',
+        message: 'Trusted Remote Enhancements automation is unavailable for this terminal.',
+      };
+    default:
+      return {
+        ok: false,
+        reason: 'connection-not-found',
+        message: 'The attached terminal is no longer available.',
+      };
+  }
+};
+
+/**
+ * Detects C0/C1 terminal control characters without embedding them in a regular expression.
+ *
+ * @param value Candidate visible-terminal command.
+ * @returns True when the value contains a control character.
+ */
+const containsControlCharacter = (value: string): boolean => {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f));
+  });
 };
 
 /**

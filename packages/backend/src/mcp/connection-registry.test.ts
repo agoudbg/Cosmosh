@@ -7,6 +7,7 @@ import type { Client } from 'ssh2';
 
 import type { AuditEventService } from '../audit/service.js';
 import type { OpenSshClientResult } from '../ssh/connect.js';
+import { McpConnectionCapacity } from './connection-capacity.js';
 import { McpConnectionRegistry } from './connection-registry.js';
 import { MCP_MAX_CONNECTIONS } from './constants.js';
 
@@ -46,9 +47,11 @@ class FakeSshClient extends EventEmitter {
  */
 const createRegistry = (options?: {
   beforeServerRead?: () => Promise<void>;
+  onTerminalConnectionClose?: ConstructorParameters<typeof McpConnectionRegistry>[0]['onTerminalConnectionClose'];
 }): {
   registry: McpConnectionRegistry;
   clients: FakeSshClient[];
+  capacity: McpConnectionCapacity;
   updateServer: (updates: Partial<typeof SERVER>) => void;
 } => {
   let currentServer = { ...SERVER };
@@ -67,6 +70,7 @@ const createRegistry = (options?: {
     logEvent: async () => 'audit-event',
   } as unknown as AuditEventService;
   const clients: FakeSshClient[] = [];
+  const capacity = new McpConnectionCapacity();
 
   return {
     registry: new McpConnectionRegistry({
@@ -74,6 +78,8 @@ const createRegistry = (options?: {
       auditEventService,
       credentialEncryptionKey: Buffer.alloc(32),
       emitEvent: () => {},
+      capacity,
+      onTerminalConnectionClose: options?.onTerminalConnectionClose,
       openClient: async (): Promise<OpenSshClientResult> => {
         const client = new FakeSshClient();
         clients.push(client);
@@ -92,6 +98,7 @@ const createRegistry = (options?: {
       },
     }),
     clients,
+    capacity,
     updateServer: (updates) => {
       currentServer = { ...currentServer, ...updates };
     },
@@ -219,4 +226,101 @@ test('disconnect cleanup closes only connections owned by that session', async (
     registry.listOwned('session-b').map((connection) => connection.connectionId),
     [secondId],
   );
+});
+
+test('visible terminal cleanup preserves mode-specific teardown context and releases capacity', async () => {
+  const closed: Array<{ mode: string; reason: string; terminalSessionId: string }> = [];
+  const { registry, capacity } = createRegistry({
+    onTerminalConnectionClose: (state, reason) => {
+      closed.push({
+        mode: state.mode,
+        reason,
+        terminalSessionId: state.terminalSessionId,
+      });
+    },
+  });
+  const reservation = capacity.tryReserve();
+  assert.ok(reservation);
+
+  const summary = registry.registerTerminal({
+    terminalSessionId: 'terminal-session-1',
+    mode: 'attached',
+    approvedTarget: {
+      serverId: SERVER.id,
+      name: SERVER.name,
+      host: SERVER.host,
+      port: SERVER.port,
+      username: SERVER.username,
+    },
+    serverPolicyUpdatedAt: SERVER.updatedAt,
+    ownerSessionId: 'session-a',
+    client: { name: 'test-client', version: '1.0.0' },
+    commandsPreApproved: false,
+    agentCreatedTab: false,
+    requestId: 'request-attached',
+    reservation,
+  });
+
+  assert.equal(summary.mode, 'attached');
+  assert.equal(summary.userVisible, true);
+  assert.equal(summary.agentCreatedTab, false);
+  assert.equal(capacity.count(), 1);
+
+  await registry.closeOwnedBySession('session-a');
+
+  assert.equal(registry.count(), 0);
+  assert.equal(capacity.count(), 0);
+  assert.deepEqual(closed, [
+    {
+      mode: 'attached',
+      reason: 'client-disconnected',
+      terminalSessionId: 'terminal-session-1',
+    },
+  ]);
+});
+
+test('direct user terminal closure invalidates only its bound Agent connection', async () => {
+  const closed: Array<{ terminalSessionId: string; reason: string }> = [];
+  const { registry, capacity } = createRegistry({
+    onTerminalConnectionClose: (state, reason) => {
+      closed.push({ terminalSessionId: state.terminalSessionId, reason });
+    },
+  });
+  const firstReservation = capacity.tryReserve();
+  const secondReservation = capacity.tryReserve();
+  assert.ok(firstReservation);
+  assert.ok(secondReservation);
+
+  for (const [terminalSessionId, reservation] of [
+    ['terminal-session-1', firstReservation],
+    ['terminal-session-2', secondReservation],
+  ] as const) {
+    registry.registerTerminal({
+      terminalSessionId,
+      mode: 'terminal',
+      approvedTarget: {
+        serverId: SERVER.id,
+        name: SERVER.name,
+        host: SERVER.host,
+        port: SERVER.port,
+        username: SERVER.username,
+      },
+      serverPolicyUpdatedAt: SERVER.updatedAt,
+      ownerSessionId: 'session-a',
+      client: { name: 'test-client', version: '1.0.0' },
+      commandsPreApproved: false,
+      agentCreatedTab: true,
+      requestId: `request-${terminalSessionId}`,
+      reservation,
+    });
+  }
+
+  await registry.closeByTerminalSession('terminal-session-1');
+
+  assert.equal(registry.count(), 1);
+  assert.equal(capacity.count(), 1);
+  assert.deepEqual(closed, [{ terminalSessionId: 'terminal-session-1', reason: 'error' }]);
+  assert.equal(registry.list()[0]?.agentCreatedTab, true);
+
+  await registry.closeAll('shutdown');
 });

@@ -18,6 +18,7 @@ const createRuntime = (): McpToolRuntime => {
   return {
     listServers: async () => [],
     openConnection: async () => ({ ok: false, reason: 'failed', message: 'Not used by this test.' }),
+    attachTerminal: async () => ({ ok: false, reason: 'failed', message: 'Not used by this test.' }),
     listConnections: () => [],
     runCommand: async () => ({ ok: false, reason: 'failed', message: 'Not used by this test.' }),
     closeConnection: async () => ({

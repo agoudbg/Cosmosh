@@ -16,10 +16,13 @@ import crypto from 'node:crypto';
 import {
   API_CODES,
   API_PATHS,
+  type ApiMcpBindTerminalLaunchRequest,
+  type ApiMcpBindTerminalLaunchResponse,
   type ApiMcpCreateEventsChannelResponse,
   type ApiMcpListApprovalsResponse,
   type ApiMcpListClientsResponse,
   type ApiMcpListConnectionsResponse,
+  type ApiMcpListTerminalLaunchesResponse,
   type ApiMcpResolveApprovalRequest,
   type ApiMcpResolveApprovalResponse,
   type ApiMcpRotatePairingTokenResponse,
@@ -34,6 +37,16 @@ import { type BackendHttpApp, getTranslator } from '../i18n.js';
 import type { BackendAppContext } from '../types.js';
 
 const MCP_ENDPOINT_PATH = '/mcp';
+const MCP_TERMINAL_SESSION_ID_MAX_LENGTH = 128;
+
+/**
+ * Validates renderer-owned terminal session identifiers before they cross into MCP state.
+ *
+ * @param value Candidate request value.
+ * @returns Whether the value is a bounded, non-empty terminal session identifier.
+ */
+const isValidTerminalSessionId = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= MCP_TERMINAL_SESSION_ID_MAX_LENGTH;
 
 /**
  * Extracts a Bearer token from an Authorization header value.
@@ -136,6 +149,32 @@ export const registerMcpManagementRoutes = (app: BackendHttpApp, context: Backen
     return c.body(null, 204);
   });
 
+  app.post(API_PATHS.mcpDetachConnection.replace('{connectionId}', ':connectionId'), async (c) => {
+    const t = getTranslator(c);
+    const requestId = crypto.randomUUID();
+    const connectionId = c.req.param('connectionId');
+    if (!connectionId) {
+      return c.json(buildErrorPayload(API_CODES.mcpValidationFailed, t('errors.validation.invalidPayload')), 400);
+    }
+
+    const detached = await context.mcpService.detachConnectionFromUi(connectionId, requestId);
+    if (!detached) {
+      return c.json(buildErrorPayload(API_CODES.mcpConnectionNotFound, t('errors.mcp.connectionNotFound')), 404);
+    }
+
+    return c.body(null, 204);
+  });
+
+  app.post(API_PATHS.mcpInterruptConnection.replace('{connectionId}', ':connectionId'), (c) => {
+    const t = getTranslator(c);
+    const connectionId = c.req.param('connectionId');
+    if (!connectionId || !context.mcpService.stopTerminalCommandFromUi(connectionId)) {
+      return c.json(buildErrorPayload(API_CODES.mcpConnectionNotFound, t('errors.mcp.connectionNotFound')), 404);
+    }
+
+    return c.body(null, 204);
+  });
+
   app.get(API_PATHS.mcpListApprovals, (c) => {
     const t = getTranslator(c);
     const payload: ApiMcpListApprovalsResponse = createApiSuccess({
@@ -157,16 +196,27 @@ export const registerMcpManagementRoutes = (app: BackendHttpApp, context: Backen
     }
 
     const body = (await c.req.json().catch(() => undefined)) as ApiMcpResolveApprovalRequest | undefined;
-    if (!isRecord(body) || !isMcpApprovalUserDecision(body.decision)) {
+    if (
+      !isRecord(body) ||
+      !isMcpApprovalUserDecision(body.decision) ||
+      (body.terminalSessionId !== undefined && !isValidTerminalSessionId(body.terminalSessionId))
+    ) {
       return c.json(buildErrorPayload(API_CODES.mcpValidationFailed, t('errors.mcp.invalidDecision')), 400);
     }
 
-    const result = await context.mcpService.resolveApproval(approvalId, body.decision);
+    const terminalSessionId = isValidTerminalSessionId(body.terminalSessionId) ? body.terminalSessionId : undefined;
+    const result = await context.mcpService.resolveApproval(approvalId, body.decision, terminalSessionId);
     if (result === 'not-found') {
       return c.json(buildErrorPayload(API_CODES.mcpApprovalNotFound, t('errors.mcp.approvalNotFound')), 404);
     }
     if (result === 'audit-unavailable') {
       return c.json(buildErrorPayload(API_CODES.mcpAuditUnavailable, t('errors.mcp.auditUnavailable')), 503);
+    }
+    if (result === 'terminal-not-found') {
+      return c.json(buildErrorPayload(API_CODES.mcpConnectionNotFound, t('errors.mcp.connectionNotFound')), 404);
+    }
+    if (result !== 'resolved') {
+      return c.json(buildErrorPayload(API_CODES.mcpValidationFailed, t('errors.validation.invalidPayload')), 409);
     }
 
     const payload: ApiMcpResolveApprovalResponse = createApiSuccess({
@@ -178,6 +228,55 @@ export const registerMcpManagementRoutes = (app: BackendHttpApp, context: Backen
       },
     });
 
+    return c.json(payload);
+  });
+
+  app.get(API_PATHS.mcpListTerminalLaunches, (c) => {
+    const t = getTranslator(c);
+    const payload: ApiMcpListTerminalLaunchesResponse = createApiSuccess({
+      code: API_CODES.mcpTerminalLaunchListOk,
+      message: t('success.mcp.terminalLaunchesFetched'),
+      data: {
+        items: context.mcpService.listTerminalLaunches(),
+      },
+    });
+
+    return c.json(payload);
+  });
+
+  app.delete(API_PATHS.mcpCancelTerminalLaunch.replace('{launchId}', ':launchId'), (c) => {
+    const t = getTranslator(c);
+    const launchId = c.req.param('launchId');
+    if (!launchId || !context.mcpService.cancelTerminalLaunch(launchId)) {
+      return c.json(buildErrorPayload(API_CODES.mcpConnectionNotFound, t('errors.mcp.terminalLaunchNotFound')), 404);
+    }
+
+    return c.body(null, 204);
+  });
+
+  app.post(API_PATHS.mcpBindTerminalLaunch.replace('{launchId}', ':launchId'), async (c) => {
+    const t = getTranslator(c);
+    const launchId = c.req.param('launchId');
+    const body = (await c.req.json().catch(() => undefined)) as ApiMcpBindTerminalLaunchRequest | undefined;
+    if (!launchId || !isRecord(body) || !isValidTerminalSessionId(body.terminalSessionId)) {
+      return c.json(buildErrorPayload(API_CODES.mcpValidationFailed, t('errors.validation.invalidPayload')), 400);
+    }
+
+    const result = await context.mcpService.bindTerminalLaunch(launchId, body.terminalSessionId);
+    if (result.type === 'launch-not-found' || result.type === 'terminal-not-found') {
+      return c.json(buildErrorPayload(API_CODES.mcpConnectionNotFound, t('errors.mcp.terminalLaunchNotFound')), 404);
+    }
+    if (result.type !== 'success') {
+      return c.json(buildErrorPayload(API_CODES.mcpValidationFailed, t('errors.mcp.terminalUnavailable')), 409);
+    }
+
+    const payload: ApiMcpBindTerminalLaunchResponse = createApiSuccess({
+      code: API_CODES.mcpTerminalLaunchBindOk,
+      message: t('success.mcp.terminalLaunchBound'),
+      data: {
+        connection: result.connection,
+      },
+    });
     return c.json(payload);
   });
 

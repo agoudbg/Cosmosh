@@ -11,12 +11,19 @@
 
 import { randomUUID } from 'node:crypto';
 
-import type { McpClientInfo, McpConnectionCloseReason, McpConnectionSummary } from '@cosmosh/api-contract';
+import type {
+  McpClientInfo,
+  McpConnectionCloseReason,
+  McpConnectionMode,
+  McpConnectionStatus,
+  McpConnectionSummary,
+} from '@cosmosh/api-contract';
 import type { PrismaClient } from '@prisma/client';
 
 import type { AuditEventService } from '../audit/service.js';
 import { createI18n, type Locale } from '../i18n-bridge.js';
 import { openSshClient } from '../ssh/connect.js';
+import { McpConnectionCapacity, type McpConnectionCapacityReservation } from './connection-capacity.js';
 import { MCP_CONNECT_TIMEOUT_SEC, MCP_CONNECTION_IDLE_TIMEOUT_MS, MCP_MAX_CONNECTIONS } from './constants.js';
 import { type McpClock, type McpConnectionState, type McpEventEmitter, systemMcpClock } from './types.js';
 
@@ -70,6 +77,24 @@ export type McpOpenConnectionInput = {
 };
 
 /**
+ * Input required to register a renderer-owned terminal attachment.
+ */
+export type McpRegisterTerminalConnectionInput = {
+  connectionId?: string;
+  terminalSessionId: string;
+  mode: Extract<McpConnectionMode, 'terminal' | 'attached'>;
+  approvedTarget: McpApprovedServerTarget;
+  serverPolicyUpdatedAt: Date;
+  ownerSessionId: string;
+  client: McpClientInfo;
+  commandsPreApproved: boolean;
+  agentCreatedTab: boolean;
+  requestId: string;
+  reason?: string;
+  reservation: McpConnectionCapacityReservation;
+};
+
+/**
  * Owns the set of live agent SSH connections and their lifecycle bookkeeping.
  */
 export class McpConnectionRegistry {
@@ -85,9 +110,16 @@ export class McpConnectionRegistry {
 
   private readonly clock: McpClock;
 
-  private readonly connections = new Map<string, McpConnectionState>();
+  private readonly capacity: McpConnectionCapacity;
 
-  private pendingOpenCount = 0;
+  private readonly onTerminalConnectionClose:
+    | ((
+        state: Extract<McpConnectionState, { mode: 'terminal' | 'attached' }>,
+        reason: McpConnectionCloseReason,
+      ) => void)
+    | undefined;
+
+  private readonly connections = new Map<string, McpConnectionState>();
 
   public constructor(options: {
     getDbClient: GetDbClient;
@@ -96,6 +128,11 @@ export class McpConnectionRegistry {
     emitEvent: McpEventEmitter;
     openClient?: McpOpenSshClient;
     clock?: McpClock;
+    capacity?: McpConnectionCapacity;
+    onTerminalConnectionClose?: (
+      state: Extract<McpConnectionState, { mode: 'terminal' | 'attached' }>,
+      reason: McpConnectionCloseReason,
+    ) => void;
   }) {
     this.getDbClient = options.getDbClient;
     this.auditEventService = options.auditEventService;
@@ -103,6 +140,8 @@ export class McpConnectionRegistry {
     this.emitEvent = options.emitEvent;
     this.openClient = options.openClient ?? openSshClient;
     this.clock = options.clock ?? systemMcpClock;
+    this.capacity = options.capacity ?? new McpConnectionCapacity();
+    this.onTerminalConnectionClose = options.onTerminalConnectionClose;
   }
 
   /**
@@ -112,8 +151,10 @@ export class McpConnectionRegistry {
    * @returns Normalized open result.
    */
   public async open(input: McpOpenConnectionInput): Promise<McpOpenConnectionResult> {
-    if (this.connections.size + this.pendingOpenCount >= MCP_MAX_CONNECTIONS) {
+    const reservation = this.capacity.tryReserve();
+    if (!reservation) {
       this.audit('connection-open', 'failure', 'warning', input.requestId, {
+        mode: 'background',
         serverId: input.serverId,
         reason: 'connection-limit-reached',
         limit: MCP_MAX_CONNECTIONS,
@@ -122,12 +163,11 @@ export class McpConnectionRegistry {
       return { type: 'limit-reached', limit: MCP_MAX_CONNECTIONS };
     }
 
-    this.pendingOpenCount += 1;
-    try {
-      return await this.openReserved(input);
-    } finally {
-      this.pendingOpenCount -= 1;
+    const result = await this.openReserved(input, reservation);
+    if (result.type !== 'success') {
+      reservation.release();
     }
+    return result;
   }
 
   /**
@@ -136,7 +176,10 @@ export class McpConnectionRegistry {
    * @param input Authorized connection request.
    * @returns Normalized open result.
    */
-  private async openReserved(input: McpOpenConnectionInput): Promise<McpOpenConnectionResult> {
+  private async openReserved(
+    input: McpOpenConnectionInput,
+    reservation: McpConnectionCapacityReservation,
+  ): Promise<McpOpenConnectionResult> {
     const db = this.getDbClient();
     const server = await db.sshServer.findUnique({
       where: {
@@ -148,11 +191,19 @@ export class McpConnectionRegistry {
     });
 
     if (!server) {
+      this.audit('connection-open', 'failure', 'warning', input.requestId, {
+        mode: 'background',
+        status: 'failed',
+        serverId: input.serverId,
+        reason: 'server-not-found',
+        client: input.client.name,
+      });
       return { type: 'server-not-found' };
     }
 
     if (!matchesApprovedTarget(server, input.approvedTarget)) {
       this.audit('connection-open', 'failure', 'warning', input.requestId, {
+        mode: 'background',
         serverId: server.id,
         reason: 'approved-target-changed',
         approvedHost: input.approvedTarget.host,
@@ -189,6 +240,7 @@ export class McpConnectionRegistry {
 
     if (openResult.type === 'host-untrusted') {
       this.audit('connection-open', 'failure', 'warning', input.requestId, {
+        mode: 'background',
         serverId: server.id,
         host: server.host,
         port: server.port,
@@ -207,6 +259,7 @@ export class McpConnectionRegistry {
 
     if (openResult.type === 'failed') {
       this.audit('connection-open', 'failure', 'warning', input.requestId, {
+        mode: 'background',
         serverId: server.id,
         host: server.host,
         port: server.port,
@@ -226,6 +279,10 @@ export class McpConnectionRegistry {
       host: server.host,
       port: server.port,
       username: server.username,
+      mode: 'background',
+      status: 'ready',
+      userVisible: false,
+      agentCreatedTab: false,
       client: openResult.client,
       clientInfo: input.client,
       serverPolicyUpdatedAt: server.updatedAt,
@@ -236,6 +293,7 @@ export class McpConnectionRegistry {
       commandsPreApproved: false,
       idleTimer: null,
       disposed: false,
+      capacityReservation: reservation,
     };
 
     const handleClientClose = (): void => {
@@ -256,6 +314,7 @@ export class McpConnectionRegistry {
       openResult.client.end();
       const message = guardedError?.message ?? i18n.t('errors.mcp.connectionClosed');
       this.audit('connection-open', 'failure', 'warning', input.requestId, {
+        mode: 'background',
         serverId: server.id,
         host: server.host,
         port: server.port,
@@ -270,6 +329,7 @@ export class McpConnectionRegistry {
 
     const summary = toSummary(state);
     this.audit('connection-open', 'success', 'warning', input.requestId, {
+      mode: 'background',
       connectionId,
       serverId: server.id,
       serverName: server.name,
@@ -283,6 +343,61 @@ export class McpConnectionRegistry {
     this.emitEvent({ type: 'connection-opened', connection: summary });
 
     return { type: 'success', summary };
+  }
+
+  /**
+   * Registers a renderer-created or user-selected SSH terminal after the SSH
+   * service has granted the matching Agent attachment.
+   *
+   * @param input Authorized terminal ownership and reserved capacity.
+   * @returns Registered connection summary.
+   */
+  public registerTerminal(input: McpRegisterTerminalConnectionInput): McpConnectionSummary {
+    const now = new Date(this.clock.now());
+    const connectionId = input.connectionId ?? randomUUID();
+    const state: McpConnectionState = {
+      connectionId,
+      ownerSessionId: input.ownerSessionId,
+      serverId: input.approvedTarget.serverId,
+      serverName: input.approvedTarget.name,
+      host: input.approvedTarget.host,
+      port: input.approvedTarget.port,
+      username: input.approvedTarget.username,
+      clientInfo: input.client,
+      serverPolicyUpdatedAt: input.serverPolicyUpdatedAt,
+      openedAt: now,
+      lastUsedAt: now,
+      commandCount: 0,
+      commandsPreApproved: input.commandsPreApproved,
+      idleTimer: null,
+      disposed: false,
+      mode: input.mode,
+      status: 'ready',
+      userVisible: true,
+      agentCreatedTab: input.agentCreatedTab,
+      capacityReservation: input.reservation,
+      terminalSessionId: input.terminalSessionId,
+    };
+
+    this.connections.set(connectionId, state);
+    this.armIdleTimer(state);
+    const summary = toSummary(state);
+    this.audit('connection-open', 'success', 'warning', input.requestId, {
+      connectionId,
+      serverId: state.serverId,
+      serverName: state.serverName,
+      host: state.host,
+      port: state.port,
+      username: state.username,
+      client: input.client.name,
+      clientVersion: input.client.version,
+      reason: input.reason,
+      mode: input.mode,
+      userVisible: true,
+      agentCreatedTab: input.agentCreatedTab,
+    });
+    this.emitEvent({ type: 'connection-opened', connection: summary });
+    return summary;
   }
 
   /**
@@ -331,6 +446,36 @@ export class McpConnectionRegistry {
   }
 
   /**
+   * Updates a terminal connection readiness summary after PTY state changes.
+   *
+   * @param connectionId MCP connection id.
+   * @param status Current Agent command availability.
+   */
+  public updateStatus(connectionId: string, status: McpConnectionStatus): void {
+    const state = this.connections.get(connectionId);
+    if (!state || state.status === status) {
+      return;
+    }
+
+    state.status = status;
+    this.emitEvent({ type: 'connection-updated', connection: toSummary(state) });
+  }
+
+  /**
+   * Invalidates the connection bound to a terminal the user closed directly.
+   *
+   * @param terminalSessionId Closed renderer terminal id.
+   */
+  public async closeByTerminalSession(terminalSessionId: string): Promise<void> {
+    const state = [...this.connections.values()].find(
+      (candidate) => candidate.mode !== 'background' && candidate.terminalSessionId === terminalSessionId,
+    );
+    if (state) {
+      await this.close(state.connectionId, 'error');
+    }
+  }
+
+  /**
    * Refreshes a connection's last-used timestamp and idle timer.
    *
    * @param connectionId Connection id.
@@ -373,9 +518,11 @@ export class McpConnectionRegistry {
     }
 
     this.connections.delete(connectionId);
-    this.disposeState(state);
+    this.disposeState(state, reason);
 
     this.audit('connection-close', 'success', 'info', requestId ?? randomUUID(), {
+      mode: state.mode,
+      status: state.status,
       connectionId,
       serverId: state.serverId,
       host: state.host,
@@ -469,8 +616,10 @@ export class McpConnectionRegistry {
     }
 
     this.connections.delete(connectionId);
-    this.disposeState(state);
+    this.disposeState(state, reason);
     this.audit('connection-close', 'success', 'info', randomUUID(), {
+      mode: state.mode,
+      status: state.status,
       connectionId,
       serverId: state.serverId,
       host: state.host,
@@ -486,8 +635,9 @@ export class McpConnectionRegistry {
    * Tears down one connection's timers and ssh2 client.
    *
    * @param state Connection state.
+   * @param reason Connection close reason used by visible-terminal lifecycle.
    */
-  private disposeState(state: McpConnectionState): void {
+  private disposeState(state: McpConnectionState, reason: McpConnectionCloseReason): void {
     if (state.disposed) {
       return;
     }
@@ -498,12 +648,17 @@ export class McpConnectionRegistry {
       state.idleTimer = null;
     }
 
-    state.lifecycleMonitor.releaseAfterClose();
-    try {
-      state.client.end();
-    } catch {
-      // Ignore teardown races; a destroyed client is already effectively closed.
+    if (state.mode === 'background') {
+      state.lifecycleMonitor.releaseAfterClose();
+      try {
+        state.client.end();
+      } catch {
+        // Ignore teardown races; a destroyed client is already effectively closed.
+      }
+    } else {
+      this.onTerminalConnectionClose?.(state, reason);
     }
+    state.capacityReservation.release();
   }
 
   /**
@@ -554,6 +709,10 @@ const toSummary = (state: McpConnectionState): McpConnectionSummary => {
     lastUsedAt: state.lastUsedAt.toISOString(),
     commandCount: state.commandCount,
     commandsPreApproved: state.commandsPreApproved,
+    mode: state.mode,
+    status: state.status,
+    userVisible: state.userVisible,
+    agentCreatedTab: state.agentCreatedTab,
   };
 };
 
@@ -564,7 +723,7 @@ const toSummary = (state: McpConnectionState): McpConnectionSummary => {
  * @param approvedTarget Destination snapshot shown in the approval prompt.
  * @returns True when every user-visible destination field still matches.
  */
-const matchesApprovedTarget = (
+export const matchesApprovedTarget = (
   server: { id: string; name: string; host: string; port: number; username: string },
   approvedTarget: McpApprovedServerTarget,
 ): boolean => {
