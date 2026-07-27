@@ -28,6 +28,7 @@
     },
     "mcp": {
       "approvalNotFound": "未找到授权请求，或该请求已被处理。",
+      "auditUnavailable": "无法记录授权决定，未执行远程操作。",
       "connectionClosed": "SSH 连接在就绪前已被关闭。",
       "connectionNotFound": "未找到 MCP 连接，或该连接已被关闭。",
       "disabled": "MCP 已禁用。请在「设置 → MCP」中启用后再使用此功能。",

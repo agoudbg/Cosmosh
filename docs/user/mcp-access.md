@@ -53,6 +53,8 @@ Rotate or revoke any time you suspect a client should no longer have access.
 
 Authorization dialogs only appear while a Cosmosh window is open. If you are away and a request is not answered within two minutes, it is automatically denied.
 
+Cosmosh records each authorization request and decision before acting on it. If the local audit log is unavailable, the request is rejected and no remote action is performed.
+
 ## Keep an Eye on Activity
 
 - The `MCP` tab lists connected clients, active connections (each closable), and any pending authorization requests.

@@ -161,9 +161,12 @@ export const registerMcpManagementRoutes = (app: BackendHttpApp, context: Backen
       return c.json(buildErrorPayload(API_CODES.mcpValidationFailed, t('errors.mcp.invalidDecision')), 400);
     }
 
-    const result = context.mcpService.resolveApproval(approvalId, body.decision);
+    const result = await context.mcpService.resolveApproval(approvalId, body.decision);
     if (result === 'not-found') {
       return c.json(buildErrorPayload(API_CODES.mcpApprovalNotFound, t('errors.mcp.approvalNotFound')), 404);
+    }
+    if (result === 'audit-unavailable') {
+      return c.json(buildErrorPayload(API_CODES.mcpAuditUnavailable, t('errors.mcp.auditUnavailable')), 503);
     }
 
     const payload: ApiMcpResolveApprovalResponse = createApiSuccess({

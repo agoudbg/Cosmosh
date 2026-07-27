@@ -65,6 +65,8 @@ throwing. Handle each distinctly:
 
 - `denied` / `timeout` — the user declined (or no window was open). Report it;
   do not retry automatically.
+- `audit-unavailable` — Cosmosh could not durably record the authorization.
+  No remote action was performed. Report it and do not retry automatically.
 - `policy-off` — commands are disabled for this server. Surface it; the user
   changes it in Cosmosh, not you.
 - `host-untrusted` — the host key isn't trusted yet. The user must connect to

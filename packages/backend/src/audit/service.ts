@@ -112,39 +112,21 @@ export class AuditEventService {
    */
   public async logEvent(input: AuditEventInput): Promise<string | null> {
     try {
-      const occurredAt = input.occurredAt ?? new Date();
-      const eventId = createOrderedEventId(occurredAt);
-      const retentionUntilAt = new Date(occurredAt.getTime() + this.retentionDays * 24 * 60 * 60 * 1000);
-      const metadata = sanitizeAuditMetadata(input.metadata, this.maxMetadataBytes);
-
-      const db = this.getDbClient();
-      await db.auditEvent.create({
-        data: {
-          eventId,
-          occurredAt,
-          category: input.category,
-          action: input.action,
-          outcome: input.outcome,
-          severity: input.severity,
-          scopeAccountId: input.scopeAccountId ?? this.defaultScopeAccountId,
-          scopeDeviceId: input.scopeDeviceId ?? this.defaultScopeDeviceId,
-          entityType: input.entityType,
-          entityId: input.entityId,
-          sessionId: input.sessionId,
-          requestId: input.requestId,
-          correlationId: input.correlationId,
-          metadataJson: metadata.metadataJson,
-          relatedRecordId: input.relatedRecordId,
-          retentionUntilAt,
-        },
-      });
-
-      void this.maybeSweepExpiredEvents();
-      return eventId;
+      return await this.persistEvent(input);
     } catch (error: unknown) {
       console.error('[audit] Failed to persist audit event.', error);
       return null;
     }
+  }
+
+  /**
+   * Writes one audit event and propagates storage errors to fail-closed callers.
+   *
+   * @param input Audit event payload.
+   * @returns Persisted event id.
+   */
+  public async logRequiredEvent(input: AuditEventInput): Promise<string> {
+    return await this.persistEvent(input);
   }
 
   /**
@@ -226,6 +208,44 @@ export class AuditEventService {
         hasMore: page * pageSize < total,
       },
     };
+  }
+
+  /**
+   * Persists one sanitized audit event without applying an error policy.
+   *
+   * @param input Audit event payload.
+   * @returns Persisted event id.
+   */
+  private async persistEvent(input: AuditEventInput): Promise<string> {
+    const occurredAt = input.occurredAt ?? new Date();
+    const eventId = createOrderedEventId(occurredAt);
+    const retentionUntilAt = new Date(occurredAt.getTime() + this.retentionDays * 24 * 60 * 60 * 1000);
+    const metadata = sanitizeAuditMetadata(input.metadata, this.maxMetadataBytes);
+
+    const db = this.getDbClient();
+    await db.auditEvent.create({
+      data: {
+        eventId,
+        occurredAt,
+        category: input.category,
+        action: input.action,
+        outcome: input.outcome,
+        severity: input.severity,
+        scopeAccountId: input.scopeAccountId ?? this.defaultScopeAccountId,
+        scopeDeviceId: input.scopeDeviceId ?? this.defaultScopeDeviceId,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        correlationId: input.correlationId,
+        metadataJson: metadata.metadataJson,
+        relatedRecordId: input.relatedRecordId,
+        retentionUntilAt,
+      },
+    });
+
+    void this.maybeSweepExpiredEvents();
+    return eventId;
   }
 
   /**

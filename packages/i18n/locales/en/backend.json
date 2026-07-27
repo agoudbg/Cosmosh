@@ -28,6 +28,7 @@
     },
     "mcp": {
       "approvalNotFound": "Authorization request was not found or has already been resolved.",
+      "auditUnavailable": "The authorization decision could not be recorded. No remote action was performed.",
       "connectionClosed": "The SSH connection was closed before it became ready.",
       "connectionNotFound": "MCP connection was not found or has already been closed.",
       "disabled": "MCP is disabled. Enable it in Settings → MCP to use this feature.",

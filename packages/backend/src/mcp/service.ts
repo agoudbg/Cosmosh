@@ -28,7 +28,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { AuditEventService } from '../audit/service.js';
 import { readDefaultSettingsValues } from '../settings/read.js';
 import { serverQueryInclude } from '../ssh/mappers.js';
-import { McpApprovalBroker } from './approval-broker.js';
+import { McpApprovalBroker, type McpApprovalTicket } from './approval-broker.js';
 import { McpConnectionRegistry } from './connection-registry.js';
 import { MCP_MAX_COMMAND_BYTES } from './constants.js';
 import { type McpEventsChannelHandle, McpEventsService } from './events-service.js';
@@ -42,13 +42,17 @@ import type {
   McpServerListEntry,
   McpToolRuntime,
 } from './tools.js';
+import type { McpApprovalRequestInput } from './types.js';
 
 type GetDbClient = () => PrismaClient;
 
 /**
  * Result of resolving one pending approval from the REST layer.
  */
-export type McpResolveApprovalResult = 'resolved' | 'not-found';
+export type McpResolveApprovalResult = 'resolved' | 'not-found' | 'audit-unavailable';
+
+const MCP_AUDIT_UNAVAILABLE_MESSAGE =
+  'The authorization request could not be recorded in the Cosmosh audit log. No remote action was performed.';
 
 /**
  * Facade coordinating the MCP runtime and its authorization gates.
@@ -105,13 +109,11 @@ export class McpService implements McpToolRuntime {
 
     this.broker = new McpApprovalBroker({
       hooks: {
-        onRequested: (payload) => {
-          this.emit({ type: 'approval-requested', approval: payload });
-          this.auditApproval('authorization-requested', payload);
-        },
         onResolved: (payload, decision) => {
           this.emit({ type: 'approval-resolved', approvalId: payload.approvalId, decision });
-          this.auditApproval('authorization-resolved', payload, decision);
+          if (decision === 'timeout' || decision === 'superseded') {
+            this.auditApproval('authorization-resolved', payload, decision);
+          }
           this.emitStatus();
         },
       },
@@ -294,7 +296,22 @@ export class McpService implements McpToolRuntime {
    * @param decision User decision.
    * @returns Whether a pending approval matched.
    */
-  public resolveApproval(approvalId: string, decision: McpApprovalUserDecision): McpResolveApprovalResult {
+  public async resolveApproval(
+    approvalId: string,
+    decision: McpApprovalUserDecision,
+  ): Promise<McpResolveApprovalResult> {
+    const payload = this.broker.getPending(approvalId);
+    if (!payload) {
+      return 'not-found';
+    }
+
+    try {
+      await this.auditApprovalRequired('authorization-resolved', payload, decision);
+    } catch (error: unknown) {
+      console.error('[mcp] Failed to persist a required authorization decision audit event.', error);
+      return 'audit-unavailable';
+    }
+
     return this.broker.resolve(approvalId, decision) ? 'resolved' : 'not-found';
   }
 
@@ -405,7 +422,7 @@ export class McpService implements McpToolRuntime {
       return { ok: false, reason: 'server-not-found', message: 'Server not found.' };
     }
 
-    const ticket = this.broker.request({
+    const ticket = await this.requestApproval({
       kind: 'connection-open',
       client: input.client,
       serverId: server.id,
@@ -415,6 +432,9 @@ export class McpService implements McpToolRuntime {
       username: server.username,
       reason: input.reason,
     });
+    if (!ticket) {
+      return { ok: false, reason: 'audit-unavailable', message: MCP_AUDIT_UNAVAILABLE_MESSAGE };
+    }
 
     const decision = await this.broker.waitForDecision(ticket, input.signal);
     if (decision !== 'approved' && decision !== 'approvedForConnection') {
@@ -518,7 +538,7 @@ export class McpService implements McpToolRuntime {
 
     const needsPrompt = !(policy === 'allowWithinConnection' && state.commandsPreApproved);
     if (needsPrompt) {
-      const ticket = this.broker.request({
+      const ticket = await this.requestApproval({
         kind: 'command-execute',
         client: input.client,
         serverId: state.serverId,
@@ -529,6 +549,9 @@ export class McpService implements McpToolRuntime {
         command: input.command,
         connectionId: state.connectionId,
       });
+      if (!ticket) {
+        return { ok: false, reason: 'audit-unavailable', message: MCP_AUDIT_UNAVAILABLE_MESSAGE };
+      }
 
       const decision = await this.broker.waitForDecision(ticket, input.signal);
       if (decision !== 'approved' && decision !== 'approvedForConnection') {
@@ -674,6 +697,27 @@ export class McpService implements McpToolRuntime {
   }
 
   /**
+   * Creates an approval only after its request is durably recorded.
+   *
+   * @param input Approval prompt details.
+   * @returns Pending approval ticket, or null when required auditing is unavailable.
+   */
+  private async requestApproval(input: McpApprovalRequestInput): Promise<McpApprovalTicket | null> {
+    const ticket = this.broker.request(input);
+    try {
+      await this.auditApprovalRequired('authorization-requested', ticket.payload);
+    } catch (error: unknown) {
+      this.broker.cancel(ticket.approvalId, false);
+      console.error('[mcp] Failed to persist a required authorization request audit event.', error);
+      return null;
+    }
+
+    this.emit({ type: 'approval-requested', approval: ticket.payload });
+    this.emitStatus();
+    return ticket;
+  }
+
+  /**
    * Audits one authorization lifecycle transition.
    *
    * @param action Audit action name.
@@ -686,6 +730,39 @@ export class McpService implements McpToolRuntime {
     decision?: McpApprovalDecision,
   ): void {
     void this.auditEventService.logEvent({
+      category: 'mcp',
+      action,
+      outcome: 'success',
+      severity: 'info',
+      entityType: 'mcp-approval',
+      entityId: payload.approvalId,
+      requestId: randomUUID(),
+      metadata: {
+        kind: payload.kind,
+        client: payload.client.name,
+        serverId: payload.serverId,
+        host: payload.host,
+        connectionId: payload.connectionId,
+        command: payload.command,
+        reason: payload.reason,
+        decision,
+      },
+    });
+  }
+
+  /**
+   * Persists a security-critical approval transition before remote side effects.
+   *
+   * @param action Audit action name.
+   * @param payload Approval payload.
+   * @param decision Optional terminal decision.
+   */
+  private async auditApprovalRequired(
+    action: 'authorization-requested' | 'authorization-resolved',
+    payload: McpPendingApprovalPayload,
+    decision?: McpApprovalDecision,
+  ): Promise<void> {
+    await this.auditEventService.logRequiredEvent({
       category: 'mcp',
       action,
       outcome: 'success',

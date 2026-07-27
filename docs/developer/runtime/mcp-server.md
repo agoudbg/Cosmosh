@@ -11,6 +11,7 @@ Cosmosh MCP exposes a local [Model Context Protocol](https://modelcontextprotoco
   - `ask` — every command needs a confirmation dialog.
   - `allowWithinConnection` — the first command on a connection asks once; the user may allow the rest of that connection.
 - Every MCP operation — client sessions, authorization decisions, connection lifecycle, every executed command, token rotation — is written to the audit log under the `mcp` category. See [Local-First Audit Events](./audit-events).
+- Authorization request and explicit decision records are fail-closed: Cosmosh does not expose the prompt, accept the decision, or perform the remote action unless the corresponding audit event is persisted first.
 
 ## 2. Architecture
 
@@ -58,9 +59,11 @@ Registered by `registerMcpTools()` in `tools.ts`. Bounds live in `constants.ts`.
 | `run_command` | `connectionId` (required), `command` (required, ≤`MCP_MAX_COMMAND_BYTES` = 8192 bytes), `timeoutMs?` (≤120000), `maxOutputBytes?` (≤1048576) | Applies the command policy, runs one bounded non-interactive command, returns `{ stdout, stderr, exitCode, exitSignal, truncated, timedOut, durationMs }` or `{ error, message }`. |
 | `close_connection` | `connectionId` (required) | Closes and audits the connection; no prompt. Returns `{ closed: true, connectionId }`. |
 
-Failure reasons are enumerated (not thrown): `open_connection` → `denied | timeout | server-not-found | host-untrusted | limit-reached | failed`; `run_command` → `denied | timeout | policy-off | connection-not-found | command-too-large | failed`.
+Failure reasons are enumerated (not thrown): `open_connection` → `denied | timeout | audit-unavailable | server-not-found | host-untrusted | limit-reached | failed`; `run_command` → `denied | timeout | audit-unavailable | policy-off | connection-not-found | command-too-large | failed`.
 
 Cancelling an MCP tool call immediately withdraws its pending authorization request. An approved `open_connection` also propagates cancellation into SSH bootstrap, so a client that has stopped waiting cannot leave a late connection behind.
+
+`audit-unavailable` is a security failure, not a transient permission result. No prompt or remote action is released when a required authorization audit write fails.
 
 **Limits (`constants.ts`):** max 8 concurrent connections (`MCP_MAX_CONNECTIONS`), 10-minute idle close (`MCP_CONNECTION_IDLE_TIMEOUT_MS`), 120 s approval lifetime (`MCP_APPROVAL_TIMEOUT_MS`, expiry = deny), default/max command timeout 15 s / 120 s, default/max output 256 KiB / 1 MiB, max command 8 KiB, 45 s SSH connect timeout.
 
@@ -87,7 +90,7 @@ Renderer-facing management endpoints (behind the shared internal-token guard), d
 | `GET /api/v1/mcp/connections` | List live agent connections. |
 | `DELETE /api/v1/mcp/connections/{connectionId}` | Close one connection from the UI. |
 | `GET /api/v1/mcp/approvals` | List pending authorization prompts. |
-| `POST /api/v1/mcp/approvals/{approvalId}/decision` | Submit a decision (`approved` / `approvedForConnection` / `denied`). |
+| `POST /api/v1/mcp/approvals/{approvalId}/decision` | Submit a decision (`approved` / `approvedForConnection` / `denied`); returns 503 without resolving the prompt when its required audit write fails. |
 | `POST /api/v1/mcp/events-channel` | Mint a one-time renderer WebSocket channel (503 when disabled). |
 
 ## 7. Pairing token & discovery file
@@ -153,6 +156,8 @@ Actions written under the `mcp` category (`entityType` one of `mcp-session`, `mc
 | `command-execute` | Every `run_command` (success, or failure: policy-off / denied / timeout / superseded). |
 | `list-servers` | Each `list_servers` call. |
 
+`authorization-requested` and explicit `authorization-resolved` decisions are synchronous required writes. A failed request write discards the unexposed prompt; a failed decision write leaves the prompt pending and prevents the waiting tool call from continuing. Automatic timeout/supersede events and non-authorization lifecycle events retain the local-first audit service's best-effort error policy.
+
 ## 11. Contract, settings & persistence
 
 - **Shared types:** `packages/api-contract/src/mcp.ts` — `McpCommandPolicy` (`off | ask | allowWithinConnection`, default `ask`), `McpServerCommandPolicy` (adds `default`, the per-server default), `resolveEffectiveMcpCommandPolicy`, and approval/event payloads.
@@ -161,7 +166,7 @@ Actions written under the `mcp` category (`entityType` one of `mcp-session`, `mc
 
 ## 12. Testing & verification
 
-- **Unit tests** (`tsx --test`): backend `test:mcp` covers the approval broker (timeout → deny, resolve-once, shutdown denies all), pairing (rotation revokes prior token, constant-time compare, discovery-file permissions), bounded exec (stdout/stderr/exit/truncation), the policy matrix (`off`/`ask`/`allowWithinConnection` × global/per-server override), and session initialization with the exact loopback Host plus dynamic port while rejecting hosts outside that allowlist. The `@cosmosh/mcp-bridge` package tests discovery parsing, the reachability probe, and the passthrough.
+- **Unit tests** (`tsx --test`): backend `test:mcp` covers the approval broker (timeout → deny, resolve-once, shutdown denies all), fail-closed authorization request/decision auditing, pairing (rotation revokes prior token, constant-time compare, discovery-file permissions), bounded exec (stdout/stderr/exit/truncation), the policy matrix (`off`/`ask`/`allowWithinConnection` × global/per-server override), and session initialization with the exact loopback Host plus dynamic port while rejecting hosts outside that allowlist. The `@cosmosh/mcp-bridge` package tests discovery parsing, the reachability probe, and the passthrough.
 - **Manual E2E:** enable MCP in dev and confirm `bridge.json` is created on enable and removed on disable/exit; drive `/mcp` with `npx @modelcontextprotocol/inspector` (bad token → 401, disabled → 503); attach Claude Code via generated `.mcp.json` and walk list → open (deny then approve) → run under each policy → `allowWithinConnection` upgrade → idle timeout, cross-checking each event on the audit page; quit the app and confirm the bridge prints a clear error; rotate the token and confirm the live bridge's next request fails.
 
 ## Known limitations (v1)

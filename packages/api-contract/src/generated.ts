@@ -979,6 +979,7 @@ export interface components {
         | 'MCP_VALIDATION_FAILED'
         | 'MCP_APPROVAL_NOT_FOUND'
         | 'MCP_APPROVAL_ALREADY_RESOLVED'
+        | 'MCP_AUDIT_UNAVAILABLE'
         | 'MCP_CONNECTION_NOT_FOUND'
         | 'MCP_PAIRING_TOKEN_NOT_FOUND';
       /** @enum {boolean} */
@@ -5384,6 +5385,15 @@ export interface operations {
       };
       /** @description Approval already resolved. */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiError'];
+        };
+      };
+      /** @description The required authorization audit record could not be persisted. */
+      503: {
         headers: {
           [name: string]: unknown;
         };

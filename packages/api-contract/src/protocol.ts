@@ -119,6 +119,7 @@ export const API_CODES = {
   mcpValidationFailed: 'MCP_VALIDATION_FAILED',
   mcpApprovalNotFound: 'MCP_APPROVAL_NOT_FOUND',
   mcpApprovalAlreadyResolved: 'MCP_APPROVAL_ALREADY_RESOLVED',
+  mcpAuditUnavailable: 'MCP_AUDIT_UNAVAILABLE',
   mcpConnectionNotFound: 'MCP_CONNECTION_NOT_FOUND',
   mcpPairingTokenNotFound: 'MCP_PAIRING_TOKEN_NOT_FOUND',
   testPingOk: 'TEST_PING_OK',

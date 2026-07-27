@@ -38,7 +38,8 @@ export type McpOpenConnectionOutcome =
   | { ok: true; connection: McpConnectionSummary }
   | {
       ok: false;
-      reason: 'denied' | 'timeout' | 'server-not-found' | 'host-untrusted' | 'limit-reached' | 'failed';
+      reason:
+        'denied' | 'timeout' | 'audit-unavailable' | 'server-not-found' | 'host-untrusted' | 'limit-reached' | 'failed';
       message: string;
     };
 
@@ -58,7 +59,14 @@ export type McpRunCommandOutcome =
     }
   | {
       ok: false;
-      reason: 'denied' | 'timeout' | 'policy-off' | 'connection-not-found' | 'command-too-large' | 'failed';
+      reason:
+        | 'denied'
+        | 'timeout'
+        | 'audit-unavailable'
+        | 'policy-off'
+        | 'connection-not-found'
+        | 'command-too-large'
+        | 'failed';
       message: string;
     };
 

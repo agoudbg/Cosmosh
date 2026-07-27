@@ -139,15 +139,26 @@ export class McpApprovalBroker {
    * Cancels one pending approval after its originating tool call ends.
    *
    * @param approvalId Pending approval id.
+   * @param notifyHooks Whether renderer/audit resolution hooks should run.
    * @returns True when a pending approval was cancelled.
    */
-  public cancel(approvalId: string): boolean {
+  public cancel(approvalId: string, notifyHooks = true): boolean {
     if (!this.pending.has(approvalId)) {
       return false;
     }
 
-    this.settle(approvalId, 'superseded');
+    this.settle(approvalId, 'superseded', notifyHooks);
     return true;
+  }
+
+  /**
+   * Reads one pending approval without resolving it.
+   *
+   * @param approvalId Pending approval id.
+   * @returns Pending payload, or undefined when already settled.
+   */
+  public getPending(approvalId: string): McpPendingApprovalPayload | undefined {
+    return this.pending.get(approvalId)?.payload;
   }
 
   /**
@@ -187,7 +198,7 @@ export class McpApprovalBroker {
    * @param approvalId Pending approval id.
    * @param decision Terminal decision.
    */
-  private settle(approvalId: string, decision: McpApprovalDecision): void {
+  private settle(approvalId: string, decision: McpApprovalDecision, notifyHooks = true): void {
     const record = this.pending.get(approvalId);
     if (!record) {
       return;
@@ -196,6 +207,8 @@ export class McpApprovalBroker {
     this.pending.delete(approvalId);
     this.clock.clearTimeout(record.timer);
     record.resolve(decision);
-    this.hooks.onResolved?.(record.payload, decision);
+    if (notifyHooks) {
+      this.hooks.onResolved?.(record.payload, decision);
+    }
   }
 }

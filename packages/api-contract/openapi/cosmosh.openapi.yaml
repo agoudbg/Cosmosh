@@ -2399,6 +2399,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The required authorization audit record could not be persisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '401':
           description: Authentication failed.
           content:
@@ -2520,6 +2526,7 @@ components:
                   'MCP_VALIDATION_FAILED',
                   'MCP_APPROVAL_NOT_FOUND',
                   'MCP_APPROVAL_ALREADY_RESOLVED',
+                  'MCP_AUDIT_UNAVAILABLE',
                   'MCP_CONNECTION_NOT_FOUND',
                   'MCP_PAIRING_TOKEN_NOT_FOUND',
                 ]
