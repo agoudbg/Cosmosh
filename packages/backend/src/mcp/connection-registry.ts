@@ -21,6 +21,7 @@ import { MCP_CONNECT_TIMEOUT_SEC, MCP_CONNECTION_IDLE_TIMEOUT_MS, MCP_MAX_CONNEC
 import { type McpClock, type McpConnectionState, type McpEventEmitter, systemMcpClock } from './types.js';
 
 type GetDbClient = () => PrismaClient;
+type OpenSshClient = typeof openSshClient;
 
 /**
  * Normalized outcome of an {@link McpConnectionRegistry.open} attempt.
@@ -43,6 +44,7 @@ export type McpOpenConnectionResult =
  */
 export type McpOpenConnectionInput = {
   serverId: string;
+  ownerSessionId: string;
   client: McpClientInfo;
   reason?: string;
   requestId: string;
@@ -61,6 +63,8 @@ export class McpConnectionRegistry {
 
   private readonly emitEvent: McpEventEmitter;
 
+  private readonly openClient: OpenSshClient;
+
   private readonly clock: McpClock;
 
   private readonly connections = new Map<string, McpConnectionState>();
@@ -70,12 +74,14 @@ export class McpConnectionRegistry {
     auditEventService: AuditEventService;
     credentialEncryptionKey: Buffer;
     emitEvent: McpEventEmitter;
+    openClient?: OpenSshClient;
     clock?: McpClock;
   }) {
     this.getDbClient = options.getDbClient;
     this.auditEventService = options.auditEventService;
     this.credentialEncryptionKey = options.credentialEncryptionKey;
     this.emitEvent = options.emitEvent;
+    this.openClient = options.openClient ?? openSshClient;
     this.clock = options.clock ?? systemMcpClock;
   }
 
@@ -123,7 +129,7 @@ export class McpConnectionRegistry {
       },
     });
 
-    const openResult = await openSshClient(server, {
+    const openResult = await this.openClient(server, {
       connectTimeoutSec: MCP_CONNECT_TIMEOUT_SEC,
       db,
       strictHostKey: server.strictHostKey,
@@ -165,6 +171,7 @@ export class McpConnectionRegistry {
     const connectionId = randomUUID();
     const state: McpConnectionState = {
       connectionId,
+      ownerSessionId: input.ownerSessionId,
       serverId: server.id,
       serverName: server.name,
       host: server.host,
@@ -230,13 +237,15 @@ export class McpConnectionRegistry {
   }
 
   /**
-   * Returns one live connection state by id.
+   * Returns one live connection only when it belongs to the calling session.
    *
    * @param connectionId Connection id.
-   * @returns Connection state, or undefined when unknown/closed.
+   * @param ownerSessionId Calling MCP session id.
+   * @returns Owned connection state, or undefined when unknown, closed, or owned by another session.
    */
-  public get(connectionId: string): McpConnectionState | undefined {
-    return this.connections.get(connectionId);
+  public getOwned(connectionId: string, ownerSessionId: string): McpConnectionState | undefined {
+    const state = this.connections.get(connectionId);
+    return state?.ownerSessionId === ownerSessionId ? state : undefined;
   }
 
   /**
@@ -246,6 +255,19 @@ export class McpConnectionRegistry {
    */
   public list(): McpConnectionSummary[] {
     return [...this.connections.values()]
+      .sort((a, b) => a.openedAt.getTime() - b.openedAt.getTime())
+      .map((state) => toSummary(state));
+  }
+
+  /**
+   * Lists connections owned by one MCP protocol session.
+   *
+   * @param ownerSessionId Owning MCP session id.
+   * @returns Connection summaries visible to that session.
+   */
+  public listOwned(ownerSessionId: string): McpConnectionSummary[] {
+    return [...this.connections.values()]
+      .filter((state) => state.ownerSessionId === ownerSessionId)
       .sort((a, b) => a.openedAt.getTime() - b.openedAt.getTime())
       .map((state) => toSummary(state));
   }
@@ -316,6 +338,42 @@ export class McpConnectionRegistry {
     this.emitEvent({ type: 'connection-closed', connectionId, reason });
 
     return true;
+  }
+
+  /**
+   * Closes one connection only when it belongs to the calling MCP session.
+   *
+   * @param connectionId Connection id.
+   * @param ownerSessionId Calling MCP session id.
+   * @param reason Close cause.
+   * @param requestId Optional correlating request id.
+   * @returns True when an owned live connection was closed.
+   */
+  public async closeOwned(
+    connectionId: string,
+    ownerSessionId: string,
+    reason: McpConnectionCloseReason,
+    requestId?: string,
+  ): Promise<boolean> {
+    if (!this.getOwned(connectionId, ownerSessionId)) {
+      return false;
+    }
+
+    return await this.close(connectionId, reason, requestId);
+  }
+
+  /**
+   * Closes every connection owned by one disconnected MCP session.
+   *
+   * @param ownerSessionId Disconnected MCP session id.
+   */
+  public async closeOwnedBySession(ownerSessionId: string): Promise<void> {
+    const ids = [...this.connections.values()]
+      .filter((state) => state.ownerSessionId === ownerSessionId)
+      .map((state) => state.connectionId);
+    for (const id of ids) {
+      await this.close(id, 'client-disconnected');
+    }
   }
 
   /**

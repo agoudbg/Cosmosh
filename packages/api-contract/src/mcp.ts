@@ -209,7 +209,8 @@ export type McpEventMessage =
 /**
  * Why an MCP SSH connection was closed.
  */
-export type McpConnectionCloseReason = 'tool' | 'ui' | 'idle' | 'shutdown' | 'error' | 'disabled';
+export type McpConnectionCloseReason =
+  'tool' | 'ui' | 'idle' | 'shutdown' | 'error' | 'disabled' | 'client-disconnected';
 
 /**
  * Parses one raw MCP event-channel frame.

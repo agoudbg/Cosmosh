@@ -38,6 +38,8 @@ export class McpSessionManager {
 
   private readonly httpPort: number;
 
+  private readonly onSessionEnded: ((mcpSessionId: string) => void | Promise<void>) | undefined;
+
   private readonly clock: McpClock;
 
   private readonly transports = new Map<string, WebStandardStreamableHTTPServerTransport>();
@@ -52,6 +54,7 @@ export class McpSessionManager {
     auditEventService: AuditEventService;
     appVersion: string;
     httpPort: number;
+    onSessionEnded?: (mcpSessionId: string) => void | Promise<void>;
     clock?: McpClock;
   }) {
     this.runtime = options.runtime;
@@ -59,6 +62,7 @@ export class McpSessionManager {
     this.auditEventService = options.auditEventService;
     this.appVersion = options.appVersion;
     this.httpPort = options.httpPort;
+    this.onSessionEnded = options.onSessionEnded;
     this.clock = options.clock ?? systemMcpClock;
   }
 
@@ -167,7 +171,18 @@ export class McpSessionManager {
       return { name: impl.name, version: impl.version };
     };
 
-    registerMcpTools(server, this.runtime, resolveClient);
+    const resolveCaller = () => {
+      if (!sessionIdRef) {
+        throw new Error('MCP tool call received before session initialization.');
+      }
+
+      return {
+        mcpSessionId: sessionIdRef,
+        client: resolveClient(),
+      };
+    };
+
+    registerMcpTools(server, this.runtime, resolveCaller);
 
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
@@ -247,6 +262,9 @@ export class McpSessionManager {
       metadata: {},
     });
     this.emitEvent({ type: 'client-session-ended', mcpSessionId });
+    void Promise.resolve(this.onSessionEnded?.(mcpSessionId)).catch((error: unknown) => {
+      console.error('[mcp] Failed to release connections for a disconnected client session.', error);
+    });
   }
 }
 

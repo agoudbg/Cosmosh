@@ -68,26 +68,36 @@ export type McpRunCommandOutcome =
 export type McpCloseConnectionOutcome = { ok: true } | { ok: false; reason: 'connection-not-found'; message: string };
 
 /**
+ * Authenticated protocol-session context for one tool invocation.
+ */
+export type McpToolCaller = {
+  mcpSessionId: string;
+  client: McpClientInfo;
+};
+
+/**
  * High-level operations the tools delegate to. Implemented by {@link McpService}.
  */
 export type McpToolRuntime = {
-  listServers(input: { query?: string; client: McpClientInfo; signal: AbortSignal }): Promise<McpServerListEntry[]>;
-  openConnection(input: {
-    serverId: string;
-    reason?: string;
-    client: McpClientInfo;
-    signal: AbortSignal;
-  }): Promise<McpOpenConnectionOutcome>;
-  listConnections(input: { client: McpClientInfo }): McpConnectionSummary[];
-  runCommand(input: {
-    connectionId: string;
-    command: string;
-    timeoutMs?: number;
-    maxOutputBytes?: number;
-    client: McpClientInfo;
-    signal: AbortSignal;
-  }): Promise<McpRunCommandOutcome>;
-  closeConnection(input: { connectionId: string; client: McpClientInfo }): Promise<McpCloseConnectionOutcome>;
+  listServers(input: McpToolCaller & { query?: string; signal: AbortSignal }): Promise<McpServerListEntry[]>;
+  openConnection(
+    input: {
+      serverId: string;
+      reason?: string;
+      signal: AbortSignal;
+    } & McpToolCaller,
+  ): Promise<McpOpenConnectionOutcome>;
+  listConnections(input: McpToolCaller): McpConnectionSummary[];
+  runCommand(
+    input: {
+      connectionId: string;
+      command: string;
+      timeoutMs?: number;
+      maxOutputBytes?: number;
+      signal: AbortSignal;
+    } & McpToolCaller,
+  ): Promise<McpRunCommandOutcome>;
+  closeConnection(input: McpToolCaller & { connectionId: string }): Promise<McpCloseConnectionOutcome>;
 };
 
 type ToolTextResult = {
@@ -116,12 +126,12 @@ const jsonResult = (payload: Record<string, unknown>, isError = false): ToolText
  *
  * @param server Per-session MCP server instance.
  * @param runtime Privileged operation runtime.
- * @param resolveClient Lazily resolves the session's client identity at call time.
+ * @param resolveCaller Lazily resolves the authenticated session and client identity.
  */
 export const registerMcpTools = (
   server: McpServer,
   runtime: McpToolRuntime,
-  resolveClient: () => McpClientInfo,
+  resolveCaller: () => McpToolCaller,
 ): void => {
   server.registerTool(
     'list_servers',
@@ -142,10 +152,11 @@ export const registerMcpTools = (
       },
     },
     async (args, extra) => {
+      const caller = resolveCaller();
       const servers = await runtime.listServers({
         query: args.query,
-        client: resolveClient(),
         signal: extra.signal,
+        ...caller,
       });
       return jsonResult({ servers, count: servers.length });
     },
@@ -171,11 +182,12 @@ export const registerMcpTools = (
       },
     },
     async (args, extra) => {
+      const caller = resolveCaller();
       const outcome = await runtime.openConnection({
         serverId: args.serverId,
         reason: args.reason,
-        client: resolveClient(),
         signal: extra.signal,
+        ...caller,
       });
 
       if (!outcome.ok) {
@@ -199,7 +211,7 @@ export const registerMcpTools = (
       },
     },
     async () => {
-      const connections = runtime.listConnections({ client: resolveClient() });
+      const connections = runtime.listConnections(resolveCaller());
       return jsonResult({ connections, count: connections.length });
     },
   );
@@ -234,13 +246,14 @@ export const registerMcpTools = (
       },
     },
     async (args, extra) => {
+      const caller = resolveCaller();
       const outcome = await runtime.runCommand({
         connectionId: args.connectionId,
         command: args.command,
         timeoutMs: args.timeoutMs,
         maxOutputBytes: args.maxOutputBytes,
-        client: resolveClient(),
         signal: extra.signal,
+        ...caller,
       });
 
       if (!outcome.ok) {
@@ -273,9 +286,10 @@ export const registerMcpTools = (
       },
     },
     async (args) => {
+      const caller = resolveCaller();
       const outcome = await runtime.closeConnection({
         connectionId: args.connectionId,
-        client: resolveClient(),
+        ...caller,
       });
 
       if (!outcome.ok) {

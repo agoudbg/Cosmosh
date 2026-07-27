@@ -165,7 +165,7 @@ Actions written under the `mcp` category (`entityType` one of `mcp-session`, `mc
 ## Known limitations (v1)
 
 - MCP-opened connections do not carry renderer-resolved `systemProxyRules`; a global `system` proxy mode may fall back to direct.
-- Agent disconnect does not auto-close SSH connections (they are user-visible resources); the 10-minute idle timeout is the backstop.
+- Each SSH connection is owned by the MCP protocol session that opened it. Other clients cannot list, execute through, or close it, and disconnecting the owner session closes its connections.
 - The discovery file contains a plaintext token (user-ACL directory + POSIX `0600`, same trust boundary as `secret.key`); the real gate is the authorization prompt plus the audit trail.
 - With no Cosmosh window open, authorization requests can only time out to *denied*.
 - A single pairing token is shared by all clients; per-client tokens and host-trust delegation are future work.

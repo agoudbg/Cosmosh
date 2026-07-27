@@ -46,6 +46,8 @@ export const systemMcpClock: McpClock = {
  */
 export type McpConnectionState = {
   connectionId: string;
+  /** Protocol session that exclusively owns this SSH connection. */
+  ownerSessionId: string;
   serverId: string;
   serverName: string;
   host: string;

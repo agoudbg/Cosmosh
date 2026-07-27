@@ -130,6 +130,10 @@ export class McpService implements McpToolRuntime {
       auditEventService: this.auditEventService,
       appVersion: this.appVersion,
       httpPort: this.httpPort,
+      onSessionEnded: async (mcpSessionId) => {
+        await this.registry.closeOwnedBySession(mcpSessionId);
+        this.emitStatus();
+      },
     });
   }
 
@@ -330,6 +334,7 @@ export class McpService implements McpToolRuntime {
    */
   public async listServers(input: {
     query?: string;
+    mcpSessionId: string;
     client: McpClientInfo;
     signal: AbortSignal;
   }): Promise<McpServerListEntry[]> {
@@ -387,6 +392,7 @@ export class McpService implements McpToolRuntime {
   public async openConnection(input: {
     serverId: string;
     reason?: string;
+    mcpSessionId: string;
     client: McpClientInfo;
     signal: AbortSignal;
   }): Promise<McpOpenConnectionOutcome> {
@@ -418,6 +424,7 @@ export class McpService implements McpToolRuntime {
     const requestId = randomUUID();
     const result = await this.registry.open({
       serverId: server.id,
+      ownerSessionId: input.mcpSessionId,
       client: input.client,
       reason: input.reason,
       requestId,
@@ -454,8 +461,8 @@ export class McpService implements McpToolRuntime {
   /**
    * Lists live connections for the `list_connections` tool.
    */
-  public listConnections(): McpConnectionSummary[] {
-    return this.registry.list();
+  public listConnections(input: { mcpSessionId: string; client: McpClientInfo }): McpConnectionSummary[] {
+    return this.registry.listOwned(input.mcpSessionId);
   }
 
   /**
@@ -466,10 +473,11 @@ export class McpService implements McpToolRuntime {
     command: string;
     timeoutMs?: number;
     maxOutputBytes?: number;
+    mcpSessionId: string;
     client: McpClientInfo;
     signal: AbortSignal;
   }): Promise<McpRunCommandOutcome> {
-    const state = this.registry.get(input.connectionId);
+    const state = this.registry.getOwned(input.connectionId, input.mcpSessionId);
     if (!state) {
       return { ok: false, reason: 'connection-not-found', message: 'Connection not found or already closed.' };
     }
@@ -583,9 +591,10 @@ export class McpService implements McpToolRuntime {
    */
   public async closeConnection(input: {
     connectionId: string;
+    mcpSessionId: string;
     client: McpClientInfo;
   }): Promise<McpCloseConnectionOutcome> {
-    const closed = await this.registry.close(input.connectionId, 'tool');
+    const closed = await this.registry.closeOwned(input.connectionId, input.mcpSessionId, 'tool');
     if (!closed) {
       return { ok: false, reason: 'connection-not-found', message: 'Connection not found or already closed.' };
     }
