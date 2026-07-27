@@ -111,6 +111,7 @@ Locale 行为：
 - `bootstrap-status`：backend 侧通道安装器返回的远端 bootstrap 探测、下载、安装与失败状态。
 - `remote-enhancement-runtime-status`：backend 持有的 `pending`、`active` 或 `disabled` 信任状态，以及已校验 helper 契约。
 - `remote-shell-event`：仅通过 active 运行时 gate 转发的 helper shell 状态。
+- `agent-attachment-status`：renderer 安全的 attachment 状态（`idle`、`running` 或 `detached`），包含客户端显示名称与可选 command id；不包含内部 MCP connection/session 标识。
 - `pong`：ping 响应。
 - `error`：协议/运行时错误。
 - `exit`：会话关闭与原因。
@@ -447,16 +448,16 @@ Backend 解析规则：
 
 ```ts
 type RemoteShellEventMessage = {
-  type: 'remote-shell-event';
+  type: "remote-shell-event";
   event:
-    | 'integration-ready'
-    | 'prompt-ready'
-    | 'cwd'
-    | 'command-start'
-    | 'command-end'
-    | 'foreground-command'
-    | 'line-state';
-  shell: 'bash' | 'zsh' | 'fish' | 'sh' | 'ash';
+    | "integration-ready"
+    | "prompt-ready"
+    | "cwd"
+    | "command-start"
+    | "command-end"
+    | "foreground-command"
+    | "line-state";
+  shell: "bash" | "zsh" | "fish" | "sh" | "ash";
   helperVersion: string;
   protocolVersion: number;
   capabilities: string[];
@@ -529,10 +530,10 @@ Backend 状态模型：
 
 支持的远端主机：
 
-| 维度 | 支持值 |
-| --- | --- |
-| OS | `linux` |
-| 架构 | `amd64`、`arm64` |
+| 维度  | 支持值                             |
+| ----- | ---------------------------------- |
+| OS    | `linux`                            |
+| 架构  | `amd64`、`arm64`                   |
 | Shell | `bash`、`zsh`、`fish`、`ash`、`sh` |
 
 远端需要具备的常见工具：
@@ -545,16 +546,16 @@ Backend 状态模型：
 
 安装文件只落在远端用户作用域：
 
-| 用途 | 默认路径 |
-| --- | --- |
-| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` 或 `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap` |
-| Version marker | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` 或 `~/.local/share/cosmosh/bootstrap/bin/.version` |
-| POSIX helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` 或 `~/.config/cosmosh/bootstrap/helper.sh` |
-| Fish helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` 或 `~/.config/cosmosh/bootstrap/helper.fish` |
-| Bash hooks | `~/.bashrc`，以及当前 login profile（优先 `~/.bash_profile`，其次 `~/.bash_login`，否则 `~/.profile`）内的 Cosmosh marker block |
-| Zsh hook | `~/.zshrc` 内的 Cosmosh marker block |
-| Sh/Ash hook | `~/.profile` 内的 Cosmosh marker block |
-| Fish hook | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` 或 `~/.config/fish/conf.d/cosmosh.fish` |
+| 用途             | 默认路径                                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` 或 `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap`            |
+| Version marker   | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` 或 `~/.local/share/cosmosh/bootstrap/bin/.version`                              |
+| POSIX helper     | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` 或 `~/.config/cosmosh/bootstrap/helper.sh`                                       |
+| Fish helper      | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` 或 `~/.config/cosmosh/bootstrap/helper.fish`                                   |
+| Bash hooks       | `~/.bashrc`，以及当前 login profile（优先 `~/.bash_profile`，其次 `~/.bash_login`，否则 `~/.profile`）内的 Cosmosh marker block |
+| Zsh hook         | `~/.zshrc` 内的 Cosmosh marker block                                                                                            |
+| Sh/Ash hook      | `~/.profile` 内的 Cosmosh marker block                                                                                          |
+| Fish hook        | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` 或 `~/.config/fish/conf.d/cosmosh.fish`                                             |
 
 安装器具备幂等性。只有已安装 version、binary 精确内容、Go 生成的 helper 精确内容与所有必需 shell hook 均为最新时才会发送 `skipped`。Bash login-profile block 会检查 `BASH_VERSION`，因此由 Dash 读取的通用 `.profile` 不会加载 Bash helper。选择 login profile 时会检查 `.bash_profile` 与 `.bash_login` 目录项本身，因此 dotfile manager 创建的悬空符号链接仍是有效的 Bash 候选；安装器会创建其目标，而不会错误回退到 `.profile`。Binary/helper/version/profile 都采用原子替换；已有 profile 权限与符号链接目标会被保留。Version marker 只会在所有文件安装与 profile 更新成功后写入。`status` 同时报告兼容字段 `profilePath` 与完整 `profilePaths` 集合。
 
@@ -569,28 +570,42 @@ Backend 状态模型：
 
 常见状态码：
 
-| Code | 含义 |
-| --- | --- |
+| Code                           | 含义                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `REMOTE_ENHANCEMENTS_DISABLED` | 全局 Settings 或服务器级开关在执行任何远端命令前禁用了 bootstrap；该 session 内的运行期 shell OSC 事件会被忽略。 |
-| `MANIFEST_URL_NOT_CONFIGURED` | 远端增强已启用，但 backend 没有 manifest URL。 |
-| `MANIFEST_FETCH_FAILED` | Backend 无法获取 manifest URL。 |
-| `MANIFEST_INVALID` | Manifest 结构、asset URL 或 SHA-256 校验失败。 |
-| `ASSET_NOT_FOUND` | Manifest 中没有匹配 probe 到的 OS/架构的 asset。 |
-| `PROBE_FAILED` | 远端 OS、架构或 shell 不支持，或解析失败。 |
-| `BASE64_NOT_FOUND` | 远端无法解码注入的 wrapper payload。 |
-| `MKTEMP_NOT_FOUND` | 远端缺少 `mktemp`。 |
-| `DOWNLOADER_NOT_FOUND` | 远端既没有 `curl` 也没有 `wget`。 |
-| `HASH_TOOL_NOT_FOUND` | 远端既没有 `sha256sum` 也没有 `shasum`。 |
-| `CHECKSUM_MISMATCH` | 下载得到的 binary 与 manifest SHA-256 不匹配。 |
-| `BOOTSTRAP_ENSURE_TIMEOUT` | 完整的可选 shell 打开前 ensure 超过 15 秒；活动侧通道工作会被取消，并继续创建普通 PTY。 |
-| `INSTALLATION_NOT_CURRENT` | 安装后 status 与所选 version 或受支持运行时契约不匹配。 |
-| `HELPER_HANDSHAKE_TIMEOUT` | PTY 创建后 10 秒内未收到有效 `integration-ready`；运行期 helper 数据已禁用。 |
-| `HELPER_CONTRACT_MISMATCH` | Live `integration-ready` 或后续 helper 事件与交互 shell 打开前的契约不匹配；运行时数据已禁用。 |
-| `FILE_INSTALL_FAILED` | 安装器无法创建或复制用户级文件。 |
-| `PROFILE_UPDATE_FAILED` | 安装器无法更新目标 shell profile hook。 |
-| `VERSION_WRITE_FAILED` | 安装器无法写入最终 version marker。 |
+| `MANIFEST_URL_NOT_CONFIGURED`  | 远端增强已启用，但 backend 没有 manifest URL。                                                                   |
+| `MANIFEST_FETCH_FAILED`        | Backend 无法获取 manifest URL。                                                                                  |
+| `MANIFEST_INVALID`             | Manifest 结构、asset URL 或 SHA-256 校验失败。                                                                   |
+| `ASSET_NOT_FOUND`              | Manifest 中没有匹配 probe 到的 OS/架构的 asset。                                                                 |
+| `PROBE_FAILED`                 | 远端 OS、架构或 shell 不支持，或解析失败。                                                                       |
+| `BASE64_NOT_FOUND`             | 远端无法解码注入的 wrapper payload。                                                                             |
+| `MKTEMP_NOT_FOUND`             | 远端缺少 `mktemp`。                                                                                              |
+| `DOWNLOADER_NOT_FOUND`         | 远端既没有 `curl` 也没有 `wget`。                                                                                |
+| `HASH_TOOL_NOT_FOUND`          | 远端既没有 `sha256sum` 也没有 `shasum`。                                                                         |
+| `CHECKSUM_MISMATCH`            | 下载得到的 binary 与 manifest SHA-256 不匹配。                                                                   |
+| `BOOTSTRAP_ENSURE_TIMEOUT`     | 完整的可选 shell 打开前 ensure 超过 15 秒；活动侧通道工作会被取消，并继续创建普通 PTY。                          |
+| `INSTALLATION_NOT_CURRENT`     | 安装后 status 与所选 version 或受支持运行时契约不匹配。                                                          |
+| `HELPER_HANDSHAKE_TIMEOUT`     | PTY 创建后 10 秒内未收到有效 `integration-ready`；运行期 helper 数据已禁用。                                     |
+| `HELPER_CONTRACT_MISMATCH`     | Live `integration-ready` 或后续 helper 事件与交互 shell 打开前的契约不匹配；运行时数据已禁用。                   |
+| `FILE_INSTALL_FAILED`          | 安装器无法创建或复制用户级文件。                                                                                 |
+| `PROFILE_UPDATE_FAILED`        | 安装器无法更新目标 shell profile hook。                                                                          |
+| `VERSION_WRITE_FAILED`         | 安装器无法写入最终 version marker。                                                                              |
 
 排查 bootstrap 行为时，先确认是哪一层 gate 停止了执行，再检查 manifest 有效性、远端 probe 支持、远端工具可用性，最后检查用户 profile 写入权限。缺少 manifest URL 时不应出现任何远端 probe 命令。
+
+### 8.6 Agent 共享 PTY 自动化
+
+MCP `terminal` 与 `attached` 连接复用普通 SSH shell，而不是创建第二条 `ssh2.exec` transport。此路径有意依赖可信 Remote Enhancements：
+
+- 只有 runtime 为 `active`、声明完整命令生命周期、上报可信 prompt、没有前台命令且没有未提交行输入时，pane 才合格。自动化能力缺失或降级时 fail closed；MCP 绝不静默回退到后台执行。
+- 每个 SSH session 最多接受一个 MCP client attachment，并且同一时间最多运行一条 Agent 命令。Agent 命令必须为单行、不得包含 NUL 或控制字符，UTF-8 最多 8192 bytes。
+- Controller 只会在 prompt ready 时写入命令，然后从匹配的 `command-start` 到 `command-end` 捕获合并后的 PTY 输出。达到字节上限后停止收集但不中断远端命令；仍等待可信结束事件并返回其 exit code。
+- 用户输入始终可用。用户字节与 Agent 命令字节按事件循环顺序进入 PTY。Agent 命令运行期间出现任何用户输入都会设置 `userIntervened=true`；原始用户输入不复制到 MCP 响应或审计。远端回显仍是普通可见 PTY 输出，因此可能出现在 Agent 结果中。
+- MCP cancellation 或 timeout 只停止调用方等待，不注入 `Ctrl+C`；pane 会保持 busy，直到匹配命令结束且可信 prompt 返回。显式 Stop 动作发送普通 `Ctrl+C`，Detach 只撤销 Agent 权限而不关闭用户终端。
+- Attachment 状态通过 `agent-attachment-status` 上报。Renderer 显示紧凑的 pane-local 状态栏与 Agent tab 标记，但不会向 MCP client 暴露 tab、pane、terminal session、WebSocket token 或凭据标识。
+- 关闭 attached MCP connection 只会 detach。显式关闭 Agent 创建的 terminal connection 会关闭对应 tab/session。Client 断开、token 撤销、MCP 禁用或 idle 清理会 detach 可见终端但保留 tab；用户直接关闭 tab 会立即使 Agent connection 失效。
+
+本地终端不属于 v1 attachment 边界。
 
 ## 9. Windows 右键启动与本地终端工作目录
 

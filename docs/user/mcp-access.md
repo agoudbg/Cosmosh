@@ -9,7 +9,9 @@ MCP access is **off by default**. Nothing is exposed until you turn it on.
 Once connected, an agent can:
 
 - **List your servers** — names, hosts, and usernames only; never credentials.
-- **Open a connection** — but only after you approve it in a Cosmosh dialog.
+- **Open a visible SSH tab** — the default mode creates and focuses a normal Cosmosh terminal after you approve it.
+- **Run an isolated background command connection** — only when the agent explicitly asks for background mode.
+- **Attach an existing SSH pane** — you select the pane; the Agent never receives your terminal list or Cosmosh's internal tab, pane, or session ids.
 - **Run commands** on a connection it has opened, subject to your command policy.
 - **Close connections** it opened.
 
@@ -46,6 +48,8 @@ Rotate or revoke any time you suspect a client should no longer have access.
 ## Approving Connections and Commands
 
 - **Opening a connection always asks you first.** A dialog shows which agent is asking, which server, and the reason it gave. Nothing connects until you approve.
+- A normal open defaults to a visible Agent-marked SSH tab and focuses it immediately after approval. A request marked `Background` stays out of the tab strip and uses isolated command execution.
+- **Attaching a terminal also asks you first.** The selector starts on the current eligible SSH pane and lists other SSH panes. A disabled pane shows why it cannot be shared, such as not being ready, missing trusted Remote Enhancements, or already belonging to another Agent.
 - Cosmosh verifies that the server name, host, port, and username still match the dialog immediately before connecting. If the server changed, the request is stopped and the agent must ask again.
 - **Commands follow a policy** you choose in `Settings > MCP`, with an optional per-server override on each server's edit form:
   - `Off` — the agent cannot run commands on that server.
@@ -58,14 +62,22 @@ Authorization dialogs only appear while a Cosmosh window is open. If you are awa
 
 Cosmosh records each authorization request and decision before acting on it. If the local audit log is unavailable, the request is rejected and no remote action is performed.
 
+## Working in a Shared Terminal
+
+- An attached pane remains your terminal. You can type, paste, or press `Ctrl+C` while an Agent command is running; Cosmosh reports that intervention to the Agent.
+- The compact status bar above the pane shows the Agent name, whether it is idle or running, and that visible output is being shared. **Stop** sends ordinary `Ctrl+C`; **Detach** removes Agent access without closing the terminal.
+- Agent cancellation or timeout does not automatically interrupt the remote process. The process remains visible and the connection stays busy until the trusted shell prompt returns.
+- Raw keyboard input is not returned to the Agent or written to MCP audit metadata. Text echoed by the remote program is normal terminal output and may be included in the Agent's command result.
+- Shared-terminal automation requires trusted Remote Enhancements. If that capability is unavailable, Cosmosh rejects the operation instead of silently switching it to background mode. Local terminals cannot be attached in this version.
+
 ## Keep an Eye on Activity
 
-- The `MCP` tab lists connected clients, active connections (each closable), and any pending authorization requests.
+- The `MCP` tab lists connected clients, active connections with their mode/status, and pending authorization requests. Closing an attached connection detaches it; explicitly closing an Agent-created terminal connection closes its tab.
 - Every MCP action is written to your audit log. Open `Audit Logs` and filter by the `MCP` category to review connections, commands, and authorization decisions.
 
 ## Turn It Off
 
-Disable `MCP Access` in `Settings > MCP` at any time. Connected agents are disconnected, active connections are closed, and the discovery file is removed. You can also revoke the pairing token to cut off access without changing the setting.
+Disable `MCP Access` in `Settings > MCP` at any time. Connected agents are disconnected, background connections are closed, visible attachments are removed, and their SSH tabs remain as ordinary user tabs. The discovery file is removed. Revoking the pairing token has the same visible-terminal preservation rule.
 
 ## Screenshot Placeholders
 
@@ -73,5 +85,7 @@ Disable `MCP Access` in `Settings > MCP` at any time. Connected agents are disco
 2. The `MCP` tab status panel (enabled, connected clients, active connections).
 3. The `Client Configuration` card showing a `.mcp.json` snippet.
 4. A connection authorization dialog.
-5. A command authorization dialog with the full command shown.
-6. `Audit Logs` filtered to the `MCP` category.
+5. An attach-terminal selector showing eligible and disabled SSH panes.
+6. An attached pane status bar and Agent-marked tab.
+7. A command authorization dialog with the full command shown.
+8. `Audit Logs` filtered to the `MCP` category.

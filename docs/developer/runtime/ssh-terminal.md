@@ -111,6 +111,7 @@ Locale behavior:
 - `bootstrap-status`: remote bootstrap probe/download/install status from the backend side-channel installer.
 - `remote-enhancement-runtime-status`: backend-owned `pending`, `active`, or `disabled` trust state plus the validated helper contract.
 - `remote-shell-event`: helper shell state forwarded only through the active runtime gate.
+- `agent-attachment-status`: renderer-safe attachment state (`idle`, `running`, or `detached`) with client display name and optional command id; internal MCP connection/session identifiers are excluded.
 - `pong`: ping response.
 - `error`: protocol/runtime error.
 - `exit`: terminal session closed with reason.
@@ -447,16 +448,16 @@ Server-to-renderer payload:
 
 ```ts
 type RemoteShellEventMessage = {
-  type: 'remote-shell-event';
+  type: "remote-shell-event";
   event:
-    | 'integration-ready'
-    | 'prompt-ready'
-    | 'cwd'
-    | 'command-start'
-    | 'command-end'
-    | 'foreground-command'
-    | 'line-state';
-  shell: 'bash' | 'zsh' | 'fish' | 'sh' | 'ash';
+    | "integration-ready"
+    | "prompt-ready"
+    | "cwd"
+    | "command-start"
+    | "command-end"
+    | "foreground-command"
+    | "line-state";
+  shell: "bash" | "zsh" | "fish" | "sh" | "ash";
   helperVersion: string;
   protocolVersion: number;
   capabilities: string[];
@@ -529,11 +530,11 @@ Backend state model:
 
 Supported remote hosts:
 
-| Dimension | Supported values |
-| --- | --- |
-| OS | `linux` |
-| Architecture | `amd64`, `arm64` |
-| Shell | `bash`, `zsh`, `fish`, `ash`, `sh` |
+| Dimension    | Supported values                   |
+| ------------ | ---------------------------------- |
+| OS           | `linux`                            |
+| Architecture | `amd64`, `arm64`                   |
+| Shell        | `bash`, `zsh`, `fish`, `ash`, `sh` |
 
 Required remote tools:
 
@@ -545,16 +546,16 @@ Required remote tools:
 
 Installed files stay under the remote user's scope:
 
-| Purpose | Default path |
-| --- | --- |
-| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` or `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap` |
-| Version marker | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` or `~/.local/share/cosmosh/bootstrap/bin/.version` |
-| POSIX helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` or `~/.config/cosmosh/bootstrap/helper.sh` |
-| Fish helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` or `~/.config/cosmosh/bootstrap/helper.fish` |
-| Bash hooks | `~/.bashrc` plus the active login profile (`~/.bash_profile`, else `~/.bash_login`, else `~/.profile`) inside Cosmosh marker blocks |
-| Zsh hook | `~/.zshrc` inside a Cosmosh marker block |
-| Sh/Ash hook | `~/.profile` inside a Cosmosh marker block |
-| Fish hook | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` or `~/.config/fish/conf.d/cosmosh.fish` |
+| Purpose          | Default path                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` or `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap`                |
+| Version marker   | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` or `~/.local/share/cosmosh/bootstrap/bin/.version`                                  |
+| POSIX helper     | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` or `~/.config/cosmosh/bootstrap/helper.sh`                                           |
+| Fish helper      | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` or `~/.config/cosmosh/bootstrap/helper.fish`                                       |
+| Bash hooks       | `~/.bashrc` plus the active login profile (`~/.bash_profile`, else `~/.bash_login`, else `~/.profile`) inside Cosmosh marker blocks |
+| Zsh hook         | `~/.zshrc` inside a Cosmosh marker block                                                                                            |
+| Sh/Ash hook      | `~/.profile` inside a Cosmosh marker block                                                                                          |
+| Fish hook        | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` or `~/.config/fish/conf.d/cosmosh.fish`                                                 |
 
 The installer is idempotent. It emits `skipped` only when the installed version, exact binary contents, exact Go-generated helper contents, and every required shell hook are current. Bash login-profile blocks guard on `BASH_VERSION`, so a generic `.profile` read by Dash does not load the Bash helper. Login-profile selection checks the `.bash_profile` and `.bash_login` directory entries themselves, so a dangling dotfile-manager symlink remains the active Bash candidate and its target is created instead of incorrectly falling back to `.profile`. Binary/helper/version/profile replacement is atomic; existing profile permissions and symlink targets are preserved. The version marker is written only after all file and profile updates succeed. `status` reports both the compatibility `profilePath` and complete `profilePaths` collection.
 
@@ -569,28 +570,42 @@ The installer is idempotent. It emits `skipped` only when the installed version,
 
 Common status codes:
 
-| Code | Meaning |
-| --- | --- |
+| Code                           | Meaning                                                                                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `REMOTE_ENHANCEMENTS_DISABLED` | Global Settings or server-level gate disabled bootstrap before any remote command; runtime shell OSC events are ignored for the session. |
-| `MANIFEST_URL_NOT_CONFIGURED` | Remote Enhancements are enabled, but backend has no manifest URL. |
-| `MANIFEST_FETCH_FAILED` | Backend could not fetch the manifest URL. |
-| `MANIFEST_INVALID` | Manifest shape, asset URL, or SHA-256 failed validation. |
-| `ASSET_NOT_FOUND` | Manifest has no asset for the probed OS/architecture. |
-| `PROBE_FAILED` | Remote OS, architecture, or shell is unsupported or could not be parsed. |
-| `BASE64_NOT_FOUND` | Remote host cannot decode the injected wrapper payload. |
-| `MKTEMP_NOT_FOUND` | Remote host lacks `mktemp`. |
-| `DOWNLOADER_NOT_FOUND` | Remote host has neither `curl` nor `wget`. |
-| `HASH_TOOL_NOT_FOUND` | Remote host has neither `sha256sum` nor `shasum`. |
-| `CHECKSUM_MISMATCH` | Downloaded binary did not match the manifest SHA-256. |
-| `BOOTSTRAP_ENSURE_TIMEOUT` | The complete optional pre-shell ensure exceeded 15 seconds; active side-channel work was cancelled and ordinary PTY creation continued. |
-| `INSTALLATION_NOT_CURRENT` | Post-install status did not match the selected version and supported runtime contract. |
-| `HELPER_HANDSHAKE_TIMEOUT` | No valid `integration-ready` event arrived within 10 seconds after PTY creation; runtime helper data was disabled. |
-| `HELPER_CONTRACT_MISMATCH` | Live `integration-ready` or a later helper event did not match the pre-shell contract; runtime data was disabled. |
-| `FILE_INSTALL_FAILED` | Installer could not create or copy user-scoped files. |
-| `PROFILE_UPDATE_FAILED` | Installer could not update the target shell profile hook. |
-| `VERSION_WRITE_FAILED` | Installer could not write the final version marker. |
+| `MANIFEST_URL_NOT_CONFIGURED`  | Remote Enhancements are enabled, but backend has no manifest URL.                                                                        |
+| `MANIFEST_FETCH_FAILED`        | Backend could not fetch the manifest URL.                                                                                                |
+| `MANIFEST_INVALID`             | Manifest shape, asset URL, or SHA-256 failed validation.                                                                                 |
+| `ASSET_NOT_FOUND`              | Manifest has no asset for the probed OS/architecture.                                                                                    |
+| `PROBE_FAILED`                 | Remote OS, architecture, or shell is unsupported or could not be parsed.                                                                 |
+| `BASE64_NOT_FOUND`             | Remote host cannot decode the injected wrapper payload.                                                                                  |
+| `MKTEMP_NOT_FOUND`             | Remote host lacks `mktemp`.                                                                                                              |
+| `DOWNLOADER_NOT_FOUND`         | Remote host has neither `curl` nor `wget`.                                                                                               |
+| `HASH_TOOL_NOT_FOUND`          | Remote host has neither `sha256sum` nor `shasum`.                                                                                        |
+| `CHECKSUM_MISMATCH`            | Downloaded binary did not match the manifest SHA-256.                                                                                    |
+| `BOOTSTRAP_ENSURE_TIMEOUT`     | The complete optional pre-shell ensure exceeded 15 seconds; active side-channel work was cancelled and ordinary PTY creation continued.  |
+| `INSTALLATION_NOT_CURRENT`     | Post-install status did not match the selected version and supported runtime contract.                                                   |
+| `HELPER_HANDSHAKE_TIMEOUT`     | No valid `integration-ready` event arrived within 10 seconds after PTY creation; runtime helper data was disabled.                       |
+| `HELPER_CONTRACT_MISMATCH`     | Live `integration-ready` or a later helper event did not match the pre-shell contract; runtime data was disabled.                        |
+| `FILE_INSTALL_FAILED`          | Installer could not create or copy user-scoped files.                                                                                    |
+| `PROFILE_UPDATE_FAILED`        | Installer could not update the target shell profile hook.                                                                                |
+| `VERSION_WRITE_FAILED`         | Installer could not write the final version marker.                                                                                      |
 
 When debugging bootstrap behavior, first check which gate stopped the run, then verify manifest validity, remote probe support, remote tool availability, and finally user profile write permissions. A missing manifest URL should produce no remote probe command at all.
+
+### 8.6 Agent Shared PTY Automation
+
+MCP `terminal` and `attached` connections reuse the ordinary SSH shell instead of creating a second `ssh2.exec` transport. This path is deliberately coupled to trusted Remote Enhancements:
+
+- A pane is eligible only after the runtime is `active`, advertises the complete command lifecycle, reports a trusted prompt, has no foreground command, and has no unsubmitted line input. Missing or degraded automation fails closed; MCP never silently falls back to background execution.
+- Each SSH session accepts at most one MCP client attachment and one Agent command at a time. Agent commands are a single line, contain no NUL or control characters, and are limited to 8192 UTF-8 bytes.
+- The controller writes the command only while the prompt is ready, then captures merged PTY output from the matching `command-start` through `command-end`. Output collection stops at its byte limit without interrupting the remote command; completion still waits for the trusted end event and returns the reported exit code.
+- User input is never locked. Input bytes and Agent command bytes enter the PTY in event-loop order. Any user input while an Agent command is running sets `userIntervened=true`; raw user input is not copied into the MCP response or audit. Remote echo remains ordinary visible PTY output and may therefore appear in the Agent result.
+- MCP cancellation or timeout stops only the caller's wait. It does not inject `Ctrl+C`; the pane remains busy until the matching command ends and a trusted prompt returns. The explicit Stop action sends an ordinary `Ctrl+C`, while Detach removes Agent authority without closing the user's terminal.
+- Attachment state is reported through `agent-attachment-status`. Renderer shows a compact pane-local status bar and an Agent tab marker without exposing tab, pane, terminal session, WebSocket token, or credential identifiers to the MCP client.
+- Closing an attached MCP connection only detaches it. Explicitly closing an Agent-created terminal connection closes that tab/session. Client disconnect, token revocation, MCP disablement, or idle cleanup detaches visible terminals but preserves their tabs; direct user tab closure invalidates the Agent connection immediately.
+
+Local terminals are outside the v1 attachment boundary.
 
 ## 9. Windows Context-Launch to Local Terminal CWD
 

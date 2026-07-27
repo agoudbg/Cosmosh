@@ -114,6 +114,15 @@ SSH 页面中的终端文本选区交互必须满足以下规则：
 - 卡片通过共享菜单 wrapper 仅投影仍保留命令中最新的 100 条；不足 100 条时全部展示。该有界投影按从旧到新的顺序排列并自动滚动到底部。每行使用标准 UI 字体，并且只显示重建出的用户输入，不包含虚拟环境、用户名、主机名、工作目录或 prompt 文本。选择命令会定位其 pane-local xterm 输入 marker；右键命令行提供`复制命令`和`插入到终端`，插入时不附加 Enter。鼠标离开入口/菜单或按 Escape 会关闭整个界面。
 - 仅当 `remoteEnhancementsDebugEnabled` 启用时显示`远端增强调试`，并且必须展示来源/活动 pane 数据，不得回退到 primary pane 数据。
 
+### 7.1.1 Agent 终端 Attachment 规范
+
+- 每个 attached SSH pane 都在 xterm 上方显示一个紧凑、无卡片外框的状态栏，包含 Agent/client 名称、`空闲`或`运行中`状态，以及当前可见终端输出正在共享的直接提示。状态栏不得覆盖 xterm，也不得因状态文本变化而改变尺寸。
+- Stop 与 Detach 使用带本地化 Tooltip 的图标按钮。只有该 attachment 持有运行中 Agent 命令时 Stop 才可用，并发送普通 `Ctrl+C`；Detach 撤销 Agent 权限但保留 SSH 终端。
+- Agent 创建的 tab 带可识别 Bot 标记，并在批准后立即聚焦；现有 attached tab 在 attachment 期间显示该标记。非活动 SSH tab 保持挂载，attachment 状态变化不得重建 xterm 或 backend session。
+- Attach 授权选择器默认当前合格 SSH pane，并列出全部 SSH pane。连接中、失败、prompt 未就绪、信任/能力降级或已被绑定的 pane 仍显示，并附带本地化禁用原因。V1 不包含本地终端 pane。
+- 内部 tab、pane、SSH session、launch 与 WebSocket token 标识只属于控制面，绝不能出现在 Agent 文案或结果中。
+- 状态栏与选择器必须沿用 Cosmosh 现有高密度层级、主题 token 和共享 `Select`/`Tooltip` wrapper，并在浅色、深色、split pane 与窄窗口中保持可用的图标命中区域。
+
 ## 7.2 Tab 重排运行时连续性
 
 - 拖拽/重排 tab 只应影响标签条顺序，不得触发页面运行时卸载或重建。

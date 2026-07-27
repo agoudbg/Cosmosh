@@ -114,6 +114,15 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - The card projects only the newest 100 retained commands through the shared menu wrappers, or the full retained collection when fewer than 100 exist. The bounded projection preserves oldest-to-newest order and initially scrolls to the bottom. Rows use the standard UI typeface and show only reconstructed user input, excluding virtual-environment, user, host, working-directory, and prompt text. Selecting a command reveals its pane-local xterm input marker. Right-clicking a row exposes `Copy Command` and `Insert into Terminal`; insertion writes text without Enter. Leaving the entry/menu or pressing Escape closes the surface.
 - `Remote Enhancements Debug` is shown only when `remoteEnhancementsDebugEnabled` is enabled and must display the source/active pane's data rather than primary-pane fallback data.
 
+### 7.1.1 Agent Terminal Attachment Standard
+
+- Every attached SSH pane shows one compact, unframed status bar above xterm with the Agent/client name, `Idle` or `Running` state, and a direct indication that visible terminal output is shared. The bar must not cover xterm or change size as state text changes.
+- Stop and Detach are icon buttons with localized tooltips. Stop is enabled only while that attachment owns a running Agent command and sends ordinary `Ctrl+C`; Detach removes Agent authority while preserving the SSH terminal.
+- Agent-created tabs receive a recognizable Bot marker and focus immediately after approval. Existing attached tabs receive the marker while attached. Inactive SSH tabs stay mounted so attachment state does not recreate xterm or its backend session.
+- The attach authorization selector defaults to the current eligible SSH pane and lists all SSH panes. Connecting, failed, non-prompt-ready, untrusted/degraded, and already-attached panes remain visible with a localized disabled reason. Local terminal panes are excluded in v1.
+- Internal tab, pane, SSH session, launch, and WebSocket-token identifiers are control-plane details and must never appear in Agent-facing copy or results.
+- The status bar and selector must retain the existing dense Cosmosh hierarchy, theme tokens, shared `Select`/`Tooltip` wrappers, and usable icon hit targets in light mode, dark mode, split panes, and narrow windows.
+
 ## 7.2 Tab Reorder Runtime Continuity
 
 - Dragging/reordering tabs should affect strip order only; it must not remount/recreate page runtimes.
