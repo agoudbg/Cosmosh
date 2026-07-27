@@ -87,6 +87,8 @@ export class McpConnectionRegistry {
 
   private readonly connections = new Map<string, McpConnectionState>();
 
+  private pendingOpenCount = 0;
+
   public constructor(options: {
     getDbClient: GetDbClient;
     auditEventService: AuditEventService;
@@ -110,7 +112,7 @@ export class McpConnectionRegistry {
    * @returns Normalized open result.
    */
   public async open(input: McpOpenConnectionInput): Promise<McpOpenConnectionResult> {
-    if (this.connections.size >= MCP_MAX_CONNECTIONS) {
+    if (this.connections.size + this.pendingOpenCount >= MCP_MAX_CONNECTIONS) {
       this.audit('connection-open', 'failure', 'warning', input.requestId, {
         serverId: input.serverId,
         reason: 'connection-limit-reached',
@@ -120,6 +122,21 @@ export class McpConnectionRegistry {
       return { type: 'limit-reached', limit: MCP_MAX_CONNECTIONS };
     }
 
+    this.pendingOpenCount += 1;
+    try {
+      return await this.openReserved(input);
+    } finally {
+      this.pendingOpenCount -= 1;
+    }
+  }
+
+  /**
+   * Performs SSH bootstrap while the caller owns one connection-cap slot.
+   *
+   * @param input Authorized connection request.
+   * @returns Normalized open result.
+   */
+  private async openReserved(input: McpOpenConnectionInput): Promise<McpOpenConnectionResult> {
     const db = this.getDbClient();
     const server = await db.sshServer.findUnique({
       where: {

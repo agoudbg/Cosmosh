@@ -8,6 +8,7 @@ import type { Client } from 'ssh2';
 import type { AuditEventService } from '../audit/service.js';
 import type { OpenSshClientResult } from '../ssh/connect.js';
 import { McpConnectionRegistry } from './connection-registry.js';
+import { MCP_MAX_CONNECTIONS } from './constants.js';
 
 const SERVER = {
   id: 'server-1',
@@ -43,7 +44,9 @@ class FakeSshClient extends EventEmitter {
  *
  * @returns Registry plus the clients created by successful opens.
  */
-const createRegistry = (): {
+const createRegistry = (options?: {
+  beforeServerRead?: () => Promise<void>;
+}): {
   registry: McpConnectionRegistry;
   clients: FakeSshClient[];
   updateServer: (updates: Partial<typeof SERVER>) => void;
@@ -51,7 +54,10 @@ const createRegistry = (): {
   let currentServer = { ...SERVER };
   const db = {
     sshServer: {
-      findUnique: async () => currentServer,
+      findUnique: async () => {
+        await options?.beforeServerRead?.();
+        return currentServer;
+      },
     },
     sshKnownHost: {
       findMany: async () => [],
@@ -141,6 +147,43 @@ test('an approved connection is rejected when the persisted destination changes 
   assert.equal(result.type, 'target-changed');
   assert.equal(clients.length, 0);
   assert.equal(registry.count(), 0);
+});
+
+test('concurrent opens atomically reserve the connection cap before SSH bootstrap', async (context) => {
+  let releaseServerReads: (() => void) | undefined;
+  const serverReadGate = new Promise<void>((resolve) => {
+    releaseServerReads = resolve;
+  });
+  const { registry, clients } = createRegistry({
+    beforeServerRead: async () => await serverReadGate,
+  });
+  context.after(async () => {
+    await registry.closeAll('shutdown');
+  });
+
+  const attempts = Array.from({ length: MCP_MAX_CONNECTIONS + 1 }, (_, index) =>
+    registry.open({
+      serverId: SERVER.id,
+      approvedTarget: {
+        serverId: SERVER.id,
+        name: SERVER.name,
+        host: SERVER.host,
+        port: SERVER.port,
+        username: SERVER.username,
+      },
+      ownerSessionId: `session-${index}`,
+      client: { name: 'test-client', version: '1.0.0' },
+      requestId: `request-cap-${index}`,
+    }),
+  );
+
+  releaseServerReads?.();
+  const results = await Promise.all(attempts);
+
+  assert.equal(results.filter((result) => result.type === 'success').length, MCP_MAX_CONNECTIONS);
+  assert.equal(results.filter((result) => result.type === 'limit-reached').length, 1);
+  assert.equal(clients.length, MCP_MAX_CONNECTIONS);
+  assert.equal(registry.count(), MCP_MAX_CONNECTIONS);
 });
 
 test('connection access is isolated to the owning MCP session', async (context) => {

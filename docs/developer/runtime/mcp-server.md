@@ -71,7 +71,7 @@ Cancelling an MCP tool call immediately withdraws its pending authorization requ
 
 Once an SSH command channel opens, a remote non-zero exit, timeout, or bounded-output truncation remains a structured command result. An ssh2 `exec` callback error, channel error, or thrown transport error returns `failed` instead and is audited as a failed execution.
 
-**Limits (`constants.ts`):** max 8 concurrent connections (`MCP_MAX_CONNECTIONS`), 10-minute idle close (`MCP_CONNECTION_IDLE_TIMEOUT_MS`), 120 s approval lifetime (`MCP_APPROVAL_TIMEOUT_MS`, expiry = deny), default/max command timeout 15 s / 120 s, default/max output 256 KiB / 1 MiB, max command 8 KiB, 45 s SSH connect timeout.
+**Limits (`constants.ts`):** max 8 concurrent connections (`MCP_MAX_CONNECTIONS`), 10-minute idle close (`MCP_CONNECTION_IDLE_TIMEOUT_MS`), 120 s approval lifetime (`MCP_APPROVAL_TIMEOUT_MS`, expiry = deny), default/max command timeout 15 s / 120 s, default/max output 256 KiB / 1 MiB, max command 8 KiB, 45 s SSH connect timeout. The connection cap counts both live connections and atomically reserved in-progress SSH bootstrap slots.
 
 ## 5. The `/mcp` endpoint
 
@@ -172,7 +172,7 @@ Actions written under the `mcp` category (`entityType` one of `mcp-session`, `mc
 
 ## 12. Testing & verification
 
-- **Unit tests** (`tsx --test`): backend `test:mcp` covers the approval broker (timeout → deny, resolve-once, shutdown denies all), fail-closed authorization request/decision auditing, approved-target snapshot verification, live per-server policy refresh and pre-approval revocation, pairing (rotation revokes prior token, constant-time compare, discovery-file permissions), bounded exec (stdout/stderr/exit/truncation plus callback/channel/thrown transport failures), the policy matrix (`off`/`ask`/`allowWithinConnection` × global/per-server override), and session initialization with the exact loopback Host plus dynamic port while rejecting hosts outside that allowlist. The `@cosmosh/mcp-bridge` package tests discovery parsing, the reachability probe, and the passthrough.
+- **Unit tests** (`tsx --test`): backend `test:mcp` covers the approval broker (timeout → deny, resolve-once, shutdown denies all), fail-closed authorization request/decision auditing, approved-target snapshot verification, atomic connection-cap reservation across nine simultaneous opens, live per-server policy refresh and pre-approval revocation, pairing (rotation revokes prior token, constant-time compare, discovery-file permissions), bounded exec (stdout/stderr/exit/truncation plus callback/channel/thrown transport failures), the policy matrix (`off`/`ask`/`allowWithinConnection` × global/per-server override), and session initialization with the exact loopback Host plus dynamic port while rejecting hosts outside that allowlist. The `@cosmosh/mcp-bridge` package tests discovery parsing, the reachability probe, and the passthrough.
 - **Manual E2E:** enable MCP in dev and confirm `bridge.json` is created on enable and removed on disable/exit; drive `/mcp` with `npx @modelcontextprotocol/inspector` (bad token → 401, disabled → 503); attach Claude Code via generated `.mcp.json` and walk list → open (deny then approve) → run under each policy → `allowWithinConnection` upgrade → idle timeout, cross-checking each event on the audit page; quit the app and confirm the bridge prints a clear error; rotate the token and confirm the live bridge's next request fails.
 
 ## Known limitations (v1)
