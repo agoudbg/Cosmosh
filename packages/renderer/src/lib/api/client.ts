@@ -3,10 +3,13 @@ import type {
   ApiAuditEventListQuery,
   ApiAuditEventListResponse,
   ApiErrorResponse,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
   ApiMcpCreateEventsChannelResponse,
   ApiMcpListApprovalsResponse,
   ApiMcpListClientsResponse,
   ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
   ApiMcpResolveApprovalRequest,
   ApiMcpResolveApprovalResponse,
   ApiMcpRotatePairingTokenResponse,
@@ -191,11 +194,19 @@ export type BackendClient = {
   listMcpClients: () => Promise<ApiMcpListClientsResponse>;
   listMcpConnections: () => Promise<ApiMcpListConnectionsResponse>;
   closeMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
+  detachMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
+  interruptMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
   listMcpApprovals: () => Promise<ApiMcpListApprovalsResponse>;
   resolveMcpApproval: (
     approvalId: string,
     payload: ApiMcpResolveApprovalRequest,
   ) => Promise<ApiMcpResolveApprovalResponse>;
+  listMcpTerminalLaunches: () => Promise<ApiMcpListTerminalLaunchesResponse>;
+  cancelMcpTerminalLaunch: (launchId: string) => Promise<{ success: boolean }>;
+  bindMcpTerminalLaunch: (
+    launchId: string,
+    payload: ApiMcpBindTerminalLaunchRequest,
+  ) => Promise<ApiMcpBindTerminalLaunchResponse>;
   createMcpEventsChannel: () => Promise<ApiMcpCreateEventsChannelResponse>;
 };
 
@@ -796,6 +807,12 @@ export const createBackendClient = (): BackendClient => {
     closeMcpConnection: async (connectionId) => {
       return transport.closeMcpConnection(connectionId);
     },
+    detachMcpConnection: async (connectionId) => {
+      return transport.detachMcpConnection(connectionId);
+    },
+    interruptMcpConnection: async (connectionId) => {
+      return transport.interruptMcpConnection(connectionId);
+    },
     listMcpApprovals: async () => {
       const payload = await transport.listMcpApprovals();
 
@@ -812,6 +829,23 @@ export const createBackendClient = (): BackendClient => {
         throw new Error(payload.message);
       }
 
+      return payload;
+    },
+    listMcpTerminalLaunches: async () => {
+      const payload = await transport.listMcpTerminalLaunches();
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
+      return payload;
+    },
+    cancelMcpTerminalLaunch: async (launchId) => {
+      return transport.cancelMcpTerminalLaunch(launchId);
+    },
+    bindMcpTerminalLaunch: async (launchId, requestPayload) => {
+      const payload = await transport.bindMcpTerminalLaunch(launchId, requestPayload);
+      if (!payload.success) {
+        throw new Error(payload.message);
+      }
       return payload;
     },
     createMcpEventsChannel: async () => {

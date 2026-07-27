@@ -7,10 +7,13 @@ import type {
   ApiLocalTerminalCreateSessionResponse,
   ApiLocalTerminalListProfilesResponse,
   ApiLocalTerminalProfile,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
   ApiMcpCreateEventsChannelResponse,
   ApiMcpListApprovalsResponse,
   ApiMcpListClientsResponse,
   ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
   ApiMcpResolveApprovalRequest,
   ApiMcpResolveApprovalResponse,
   ApiMcpRotatePairingTokenResponse,
@@ -163,6 +166,8 @@ type ApiResponse =
   | ApiMcpRotatePairingTokenResponse
   | ApiMcpListClientsResponse
   | ApiMcpListConnectionsResponse
+  | ApiMcpListTerminalLaunchesResponse
+  | ApiMcpBindTerminalLaunchResponse
   | ApiMcpListApprovalsResponse
   | ApiMcpResolveApprovalResponse
   | ApiMcpCreateEventsChannelResponse;
@@ -302,11 +307,19 @@ export type ApiTransport = {
   listMcpClients: () => Promise<ApiMcpListClientsResponse | ApiErrorResponse>;
   listMcpConnections: () => Promise<ApiMcpListConnectionsResponse | ApiErrorResponse>;
   closeMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
+  detachMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
+  interruptMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
   listMcpApprovals: () => Promise<ApiMcpListApprovalsResponse | ApiErrorResponse>;
   resolveMcpApproval: (
     approvalId: string,
     payload: ApiMcpResolveApprovalRequest,
   ) => Promise<ApiMcpResolveApprovalResponse | ApiErrorResponse>;
+  listMcpTerminalLaunches: () => Promise<ApiMcpListTerminalLaunchesResponse | ApiErrorResponse>;
+  cancelMcpTerminalLaunch: (launchId: string) => Promise<{ success: boolean }>;
+  bindMcpTerminalLaunch: (
+    launchId: string,
+    payload: ApiMcpBindTerminalLaunchRequest,
+  ) => Promise<ApiMcpBindTerminalLaunchResponse | ApiErrorResponse>;
   createMcpEventsChannel: () => Promise<ApiMcpCreateEventsChannelResponse | ApiErrorResponse>;
 };
 
@@ -566,12 +579,29 @@ const createElectronTransport = (): ApiTransport => {
     closeMcpConnection: async (connectionId) => {
       return await window.electron!.backendMcpCloseConnection(connectionId);
     },
+    detachMcpConnection: async (connectionId) => {
+      return await window.electron!.backendMcpDetachConnection(connectionId);
+    },
+    interruptMcpConnection: async (connectionId) => {
+      return await window.electron!.backendMcpInterruptConnection(connectionId);
+    },
     listMcpApprovals: async () => {
       return (await window.electron!.backendMcpListApprovals()) as ApiMcpListApprovalsResponse | ApiErrorResponse;
     },
     resolveMcpApproval: async (approvalId, payload) => {
       return (await window.electron!.backendMcpResolveApproval(approvalId, payload)) as
         ApiMcpResolveApprovalResponse | ApiErrorResponse;
+    },
+    listMcpTerminalLaunches: async () => {
+      return (await window.electron!.backendMcpListTerminalLaunches()) as
+        ApiMcpListTerminalLaunchesResponse | ApiErrorResponse;
+    },
+    cancelMcpTerminalLaunch: async (launchId) => {
+      return await window.electron!.backendMcpCancelTerminalLaunch(launchId);
+    },
+    bindMcpTerminalLaunch: async (launchId, payload) => {
+      return (await window.electron!.backendMcpBindTerminalLaunch(launchId, payload)) as
+        ApiMcpBindTerminalLaunchResponse | ApiErrorResponse;
     },
     createMcpEventsChannel: async () => {
       return (await window.electron!.backendMcpCreateEventsChannel()) as
@@ -919,6 +949,28 @@ const createBrowserTransport = (): ApiTransport => {
 
       return { success: response.status === 204 };
     },
+    detachMcpConnection: async (connectionId) => {
+      const path = replaceApiPathToken(API_PATHS.mcpDetachConnection, 'connectionId', connectionId);
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+      return { success: response.status === 204 };
+    },
+    interruptMcpConnection: async (connectionId) => {
+      const path = replaceApiPathToken(API_PATHS.mcpInterruptConnection, 'connectionId', connectionId);
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+      return { success: response.status === 204 };
+    },
     listMcpApprovals: async () => {
       return (await callBrowserApi(API_PATHS.mcpListApprovals, 'GET')) as
         ApiMcpListApprovalsResponse | ApiErrorResponse;
@@ -926,6 +978,25 @@ const createBrowserTransport = (): ApiTransport => {
     resolveMcpApproval: async (approvalId, payload) => {
       const path = replaceApiPathToken(API_PATHS.mcpResolveApproval, 'approvalId', approvalId);
       return (await callBrowserApi(path, 'POST', payload)) as ApiMcpResolveApprovalResponse | ApiErrorResponse;
+    },
+    listMcpTerminalLaunches: async () => {
+      return (await callBrowserApi(API_PATHS.mcpListTerminalLaunches, 'GET')) as
+        ApiMcpListTerminalLaunchesResponse | ApiErrorResponse;
+    },
+    cancelMcpTerminalLaunch: async (launchId) => {
+      const path = replaceApiPathToken(API_PATHS.mcpCancelTerminalLaunch, 'launchId', launchId);
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+      return { success: response.status === 204 };
+    },
+    bindMcpTerminalLaunch: async (launchId, payload) => {
+      const path = replaceApiPathToken(API_PATHS.mcpBindTerminalLaunch, 'launchId', launchId);
+      return (await callBrowserApi(path, 'POST', payload)) as ApiMcpBindTerminalLaunchResponse | ApiErrorResponse;
     },
     createMcpEventsChannel: async () => {
       return (await callBrowserApi(API_PATHS.mcpCreateEventsChannel, 'POST')) as

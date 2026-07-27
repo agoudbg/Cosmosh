@@ -317,6 +317,7 @@
     "approvals": {
       "description": "等待你授权的请求。",
       "empty": "没有待处理的授权请求。",
+      "kindAttach": "附加终端",
       "kindCommand": "执行命令",
       "kindConnection": "打开连接",
       "title": "待授权请求"
@@ -344,8 +345,17 @@
       "commandCount": "{count} 条命令",
       "description": "Agent 代你打开的 SSH 连接。",
       "empty": "没有活跃连接。",
+      "mode": {
+        "attached": "附加终端",
+        "background": "后台连接",
+        "terminal": "可见终端"
+      },
       "opened": "打开于 {time}",
       "preApproved": "命令已预先放行",
+      "status": {
+        "busy": "忙碌",
+        "ready": "就绪"
+      },
       "title": "活跃连接"
     },
     "disabledNotice": "MCP 访问已关闭。在“设置 → MCP”中启用，以允许外部 Agent 连接。",
@@ -392,6 +402,21 @@
       "approveForConnection": "在本连接内批准",
       "deny": "拒绝"
     },
+    "attach": {
+      "description": "Agent 想使用一个由你选择的现有 SSH 终端。",
+      "disabledReasons": {
+        "already-attached": "已附加到其他 Agent",
+        "automation-unavailable": "可信 Remote Enhancements 不可用",
+        "connecting": "仍在连接",
+        "connection-failed": "连接失败",
+        "not-at-prompt": "前台命令正在运行",
+        "pending-input": "终端中存在未提交输入"
+      },
+      "noTerminals": "当前没有已打开的 SSH 终端。",
+      "paneLabel": "{tab} · 窗格 {pane}",
+      "selectTerminal": "选择 SSH 终端",
+      "title": "将 Agent 附加到终端"
+    },
     "command": {
       "description": "Agent 想在此连接上执行命令。",
       "title": "授权命令"
@@ -409,11 +434,17 @@
       "reason": "原因",
       "server": "服务器",
       "target": "目标",
+      "terminal": "终端",
       "username": "用户"
     },
     "queue": {
       "expiresIn": "{seconds} 秒后过期",
       "remaining": "{count} 个等待中"
+    }
+  },
+  "mcpTerminal": {
+    "errors": {
+      "launchFailed": "Agent 无法附加到可见终端。该标签页仍可由你继续使用。"
     }
   },
   "oobe": {
@@ -1494,6 +1525,16 @@
     }
   },
   "ssh": {
+    "agentTerminal": {
+      "detach": "分离 Agent",
+      "detachFailed": "分离 Agent 失败。",
+      "idle": "空闲",
+      "outputShared": "当前终端输出正与此 Agent 共享",
+      "running": "运行中",
+      "stop": "停止命令",
+      "stopFailed": "向 Agent 命令发送 Ctrl+C 失败。",
+      "unknownAgent": "Agent"
+    },
     "authTypeBoth": "密码和私钥",
     "authTypeKey": "私钥",
     "authTypePassword": "密码",
@@ -1763,6 +1804,7 @@
       "portForwarding": "端口转发",
       "server": "服务器"
     },
+    "agentTerminal": "正与 Agent 共享",
     "closeCurrent": "关闭当前标签页",
     "closeOthers": "关闭其他标签页",
     "closeRight": "关闭右侧标签页",

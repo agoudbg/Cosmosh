@@ -6,10 +6,13 @@ import type {
   ApiLocalTerminalCreateSessionRequest,
   ApiLocalTerminalCreateSessionResponse,
   ApiLocalTerminalListProfilesResponse,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
   ApiMcpCreateEventsChannelResponse,
   ApiMcpListApprovalsResponse,
   ApiMcpListClientsResponse,
   ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
   ApiMcpResolveApprovalRequest,
   ApiMcpResolveApprovalResponse,
   ApiMcpRotatePairingTokenResponse,
@@ -365,11 +368,19 @@ declare global {
       backendMcpListClients: () => Promise<ApiMcpListClientsResponse | ApiErrorResponse>;
       backendMcpListConnections: () => Promise<ApiMcpListConnectionsResponse | ApiErrorResponse>;
       backendMcpCloseConnection: (connectionId: string) => Promise<{ success: boolean }>;
+      backendMcpDetachConnection: (connectionId: string) => Promise<{ success: boolean }>;
+      backendMcpInterruptConnection: (connectionId: string) => Promise<{ success: boolean }>;
       backendMcpListApprovals: () => Promise<ApiMcpListApprovalsResponse | ApiErrorResponse>;
       backendMcpResolveApproval: (
         approvalId: string,
         payload: ApiMcpResolveApprovalRequest,
       ) => Promise<ApiMcpResolveApprovalResponse | ApiErrorResponse>;
+      backendMcpListTerminalLaunches: () => Promise<ApiMcpListTerminalLaunchesResponse | ApiErrorResponse>;
+      backendMcpCancelTerminalLaunch: (launchId: string) => Promise<{ success: boolean }>;
+      backendMcpBindTerminalLaunch: (
+        launchId: string,
+        payload: ApiMcpBindTerminalLaunchRequest,
+      ) => Promise<ApiMcpBindTerminalLaunchResponse | ApiErrorResponse>;
       backendMcpCreateEventsChannel: () => Promise<ApiMcpCreateEventsChannelResponse | ApiErrorResponse>;
       platform: NodeJS.Platform;
     };

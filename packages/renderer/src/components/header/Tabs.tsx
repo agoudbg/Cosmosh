@@ -20,7 +20,17 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import * as RadixTabs from '@radix-ui/react-tabs';
 import classNames from 'classnames';
-import { ChevronLeft, ChevronRight, Command, CornerUpRight, KeyRound, PlusIcon, Server, XIcon } from 'lucide-react';
+import {
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  Command,
+  CornerUpRight,
+  KeyRound,
+  PlusIcon,
+  Server,
+  XIcon,
+} from 'lucide-react';
 import React from 'react';
 
 import { getEntityColorClassName } from '../../lib/entity-visuals';
@@ -43,6 +53,31 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+
+/**
+ * Marks a tab whose SSH pane is currently shared with an Agent.
+ *
+ * @returns Compact Agent marker with an accessible tooltip.
+ */
+const AgentTabMarker: React.FC = () => (
+  <TooltipProvider delayDuration={160}>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="relative z-[1] inline-flex h-5 w-5 shrink-0 items-center justify-center text-header-text-muted"
+          aria-label={t('tabs.agentTerminal')}
+        >
+          <Bot
+            aria-hidden="true"
+            className="h-3.5 w-3.5"
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{t('tabs.agentTerminal')}</TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);
 
 const DragOverlayTab: React.FC<{ tab: TabItem; width: number; applySshServerVisuals: boolean }> = ({
   tab,
@@ -63,6 +98,7 @@ const DragOverlayTab: React.FC<{ tab: TabItem; width: number; applySshServerVisu
         {renderTabIcon(tab, !shouldApplySshTabVisual && isServerBackedTab(tab) && applySshServerVisuals)}
       </span>
       <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-start text-sm">{tab.title}</span>
+      {tab.state?.agentTerminal ? <AgentTabMarker /> : null}
       {tab.closable && <XIcon className="h-4 w-4" />}
     </div>
   );
@@ -166,6 +202,7 @@ const SortableTab = React.forwardRef<
           >
             {tab.title}
           </span>
+          {tab.state?.agentTerminal ? <AgentTabMarker /> : null}
           {tab.closable && (
             <button
               type="button"

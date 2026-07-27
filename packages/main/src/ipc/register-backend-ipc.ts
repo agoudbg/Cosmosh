@@ -6,10 +6,13 @@ import type {
   ApiLocalTerminalCreateSessionRequest,
   ApiLocalTerminalCreateSessionResponse,
   ApiLocalTerminalListProfilesResponse,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
   ApiMcpCreateEventsChannelResponse,
   ApiMcpListApprovalsResponse,
   ApiMcpListClientsResponse,
   ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
   ApiMcpResolveApprovalRequest,
   ApiMcpResolveApprovalResponse,
   ApiMcpRotatePairingTokenResponse,
@@ -120,7 +123,7 @@ export type RegisterBackendIpcHandlersOptions = {
   requestBackendRaw: (
     path: string,
     options: {
-      method: 'DELETE';
+      method: 'DELETE' | 'POST';
     },
   ) => Promise<{ status: number }>;
   /** Returns and clears one-shot launch working directory context. */
@@ -148,6 +151,27 @@ const requestBackendDeleteSuccess = async (
     return {
       success: false,
     };
+  }
+};
+
+/**
+ * Sends an authenticated backend POST request and maps HTTP 204 to success.
+ *
+ * @param options Backend runtime dependencies.
+ * @param path Backend API path.
+ * @returns Success flag for the no-content response.
+ */
+const requestBackendPostSuccess = async (
+  options: RegisterBackendIpcHandlersOptions,
+  path: string,
+): Promise<{ success: boolean }> => {
+  try {
+    const response = await options.requestBackendRaw(path, {
+      method: 'POST',
+    });
+    return { success: response.status === 204 };
+  } catch {
+    return { success: false };
   }
 };
 
@@ -899,6 +923,22 @@ const registerBackendMcpHandlers = (options: RegisterBackendIpcHandlersOptions):
     },
   );
 
+  ipcMain.handle(
+    'backend:mcp-detach-connection',
+    async (_event, connectionId: string): Promise<{ success: boolean }> => {
+      const path = replaceApiPathToken(API_PATHS.mcpDetachConnection, 'connectionId', connectionId);
+      return requestBackendPostSuccess(options, path);
+    },
+  );
+
+  ipcMain.handle(
+    'backend:mcp-interrupt-connection',
+    async (_event, connectionId: string): Promise<{ success: boolean }> => {
+      const path = replaceApiPathToken(API_PATHS.mcpInterruptConnection, 'connectionId', connectionId);
+      return requestBackendPostSuccess(options, path);
+    },
+  );
+
   ipcMain.handle('backend:mcp-list-approvals', async (): Promise<ApiMcpListApprovalsResponse | ApiErrorResponse> => {
     return options.requestBackend<ApiMcpListApprovalsResponse>(API_PATHS.mcpListApprovals, {
       method: 'GET',
@@ -914,6 +954,38 @@ const registerBackendMcpHandlers = (options: RegisterBackendIpcHandlersOptions):
     ): Promise<ApiMcpResolveApprovalResponse | ApiErrorResponse> => {
       const path = replaceApiPathToken(API_PATHS.mcpResolveApproval, 'approvalId', approvalId);
       return options.requestBackend<ApiMcpResolveApprovalResponse>(path, {
+        method: 'POST',
+        body: payload,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    'backend:mcp-list-terminal-launches',
+    async (): Promise<ApiMcpListTerminalLaunchesResponse | ApiErrorResponse> => {
+      return options.requestBackend<ApiMcpListTerminalLaunchesResponse>(API_PATHS.mcpListTerminalLaunches, {
+        method: 'GET',
+      });
+    },
+  );
+
+  ipcMain.handle(
+    'backend:mcp-cancel-terminal-launch',
+    async (_event, launchId: string): Promise<{ success: boolean }> => {
+      const path = replaceApiPathToken(API_PATHS.mcpCancelTerminalLaunch, 'launchId', launchId);
+      return requestBackendDeleteSuccess(options, path);
+    },
+  );
+
+  ipcMain.handle(
+    'backend:mcp-bind-terminal-launch',
+    async (
+      _event,
+      launchId: string,
+      payload: ApiMcpBindTerminalLaunchRequest,
+    ): Promise<ApiMcpBindTerminalLaunchResponse | ApiErrorResponse> => {
+      const path = replaceApiPathToken(API_PATHS.mcpBindTerminalLaunch, 'launchId', launchId);
+      return options.requestBackend<ApiMcpBindTerminalLaunchResponse>(path, {
         method: 'POST',
         body: payload,
       });

@@ -574,6 +574,8 @@ const McpConnectionList: React.FC<{
               {connection.username}@{connection.host}:{connection.port}
             </span>
             <span>{t('mcp.connections.commandCount', { count: String(connection.commandCount) })}</span>
+            <span>{t(`mcp.connections.mode.${connection.mode}`)}</span>
+            <span>{t(`mcp.connections.status.${connection.status}`)}</span>
             {connection.commandsPreApproved ? <span>{t('mcp.connections.preApproved')}</span> : null}
             <span>{t('mcp.connections.opened', { time: formatDateTime(connection.openedAt) })}</span>
           </div>
@@ -612,11 +614,16 @@ const McpApprovalList: React.FC<{
               <XCircle className="h-4 w-4 text-amber-400" />
             )}
             <span className="text-sm text-form-text">
-              {approval.kind === 'command-execute' ? t('mcp.approvals.kindCommand') : t('mcp.approvals.kindConnection')}
+              {approval.kind === 'command-execute'
+                ? t('mcp.approvals.kindCommand')
+                : approval.kind === 'terminal-attach'
+                  ? t('mcp.approvals.kindAttach')
+                  : t('mcp.approvals.kindConnection')}
             </span>
           </div>
           <div className="text-xs text-header-text-muted">
-            {approval.client.name} · {approval.serverName} · {formatDateTime(approval.createdAt)}
+            {approval.client.name}
+            {approval.serverName ? ` · ${approval.serverName}` : ''} · {formatDateTime(approval.createdAt)}
           </div>
           {approval.command ? (
             <code className="truncate rounded-md bg-black/20 px-2 py-1 font-mono text-xs text-form-text">

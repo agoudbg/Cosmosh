@@ -13,6 +13,7 @@ import type {
   ApiMcpClientSession,
   ApiMcpConnectionSummary,
   ApiMcpPendingApproval,
+  ApiMcpPendingTerminalLaunch,
   ApiMcpStatusData,
   McpEventMessage,
 } from '@cosmosh/api-contract';
@@ -33,6 +34,8 @@ export type McpStoreSnapshot = {
   clients: readonly ApiMcpClientSession[];
   connections: readonly ApiMcpConnectionSummary[];
   approvals: readonly ApiMcpPendingApproval[];
+  terminalLaunches: readonly ApiMcpPendingTerminalLaunch[];
+  connectionClosures: readonly Extract<McpEventMessage, { type: 'connection-closed' }>[];
   channelState: McpChannelState;
 };
 
@@ -41,6 +44,8 @@ const EMPTY_SNAPSHOT: McpStoreSnapshot = {
   clients: [],
   connections: [],
   approvals: [],
+  terminalLaunches: [],
+  connectionClosures: [],
   channelState: 'idle',
 };
 
@@ -119,6 +124,15 @@ export const setMcpApprovals = (approvals: readonly ApiMcpPendingApproval[]): vo
 };
 
 /**
+ * Replaces the renderer-backfilled terminal launch queue.
+ *
+ * @param terminalLaunches Pending visible terminal launches.
+ */
+export const setMcpTerminalLaunches = (terminalLaunches: readonly ApiMcpPendingTerminalLaunch[]): void => {
+  patchSnapshot({ terminalLaunches });
+};
+
+/**
  * Updates the WebSocket lifecycle indicator.
  *
  * @param channelState Latest channel state.
@@ -159,7 +173,8 @@ export const applyMcpEvent = (event: McpEventMessage): void => {
       });
       return;
     }
-    case 'connection-opened': {
+    case 'connection-opened':
+    case 'connection-updated': {
       const connection = event.connection as ApiMcpConnectionSummary;
       const withoutDuplicate = currentSnapshot.connections.filter(
         (item) => item.connectionId !== connection.connectionId,
@@ -170,6 +185,19 @@ export const applyMcpEvent = (event: McpEventMessage): void => {
     case 'connection-closed': {
       patchSnapshot({
         connections: currentSnapshot.connections.filter((item) => item.connectionId !== event.connectionId),
+        connectionClosures: [...currentSnapshot.connectionClosures.slice(-31), event],
+      });
+      return;
+    }
+    case 'terminal-launch-requested': {
+      const launch = event.launch as ApiMcpPendingTerminalLaunch;
+      const withoutDuplicate = currentSnapshot.terminalLaunches.filter((item) => item.launchId !== launch.launchId);
+      patchSnapshot({ terminalLaunches: [...withoutDuplicate, launch] });
+      return;
+    }
+    case 'terminal-launch-resolved': {
+      patchSnapshot({
+        terminalLaunches: currentSnapshot.terminalLaunches.filter((item) => item.launchId !== event.launchId),
       });
       return;
     }

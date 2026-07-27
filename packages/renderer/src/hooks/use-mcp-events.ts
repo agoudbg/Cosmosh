@@ -18,6 +18,7 @@ import {
   listMcpApprovals,
   listMcpClients,
   listMcpConnections,
+  listMcpTerminalLaunches,
 } from '../lib/backend';
 import {
   applyMcpEvent,
@@ -27,6 +28,7 @@ import {
   setMcpClients,
   setMcpConnections,
   setMcpStatus,
+  setMcpTerminalLaunches,
 } from '../lib/mcp-store';
 import { useSettingsValue } from '../lib/settings-store';
 
@@ -45,16 +47,18 @@ const RECONNECT_MAX_DELAY_MS = 15_000;
  */
 const refreshRuntimeData = async (): Promise<void> => {
   try {
-    const [status, clients, connections, approvals] = await Promise.all([
+    const [status, clients, connections, approvals, terminalLaunches] = await Promise.all([
       getMcpStatus(),
       listMcpClients(),
       listMcpConnections(),
       listMcpApprovals(),
+      listMcpTerminalLaunches(),
     ]);
     setMcpStatus(status.data);
     setMcpClients(clients.data.items);
     setMcpConnections(connections.data.items);
     setMcpApprovals(approvals.data.items);
+    setMcpTerminalLaunches(terminalLaunches.data.items);
   } catch {
     // Ignore — a transient REST failure will be retried on the next reconnect.
   }

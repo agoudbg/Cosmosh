@@ -317,6 +317,7 @@
     "approvals": {
       "description": "Requests waiting for your authorization.",
       "empty": "No pending authorization requests.",
+      "kindAttach": "Attach terminal",
       "kindCommand": "Command execution",
       "kindConnection": "Open connection",
       "title": "Pending Authorizations"
@@ -344,8 +345,17 @@
       "commandCount": "{count} commands",
       "description": "SSH connections opened by agents on your behalf.",
       "empty": "No active connections.",
+      "mode": {
+        "attached": "Attached terminal",
+        "background": "Background",
+        "terminal": "Visible terminal"
+      },
       "opened": "Opened {time}",
       "preApproved": "Commands pre-approved",
+      "status": {
+        "busy": "Busy",
+        "ready": "Ready"
+      },
       "title": "Active Connections"
     },
     "disabledNotice": "MCP access is turned off. Enable it in Settings → MCP to let external agents connect.",
@@ -392,6 +402,21 @@
       "approveForConnection": "Approve for this connection",
       "deny": "Deny"
     },
+    "attach": {
+      "description": "An agent wants to use an existing SSH terminal that you select.",
+      "disabledReasons": {
+        "already-attached": "Already attached to another Agent",
+        "automation-unavailable": "Trusted Remote Enhancements are unavailable",
+        "connecting": "Still connecting",
+        "connection-failed": "Connection failed",
+        "not-at-prompt": "A foreground command is running",
+        "pending-input": "The terminal has unsubmitted input"
+      },
+      "noTerminals": "No SSH terminals are open.",
+      "paneLabel": "{tab} · Pane {pane}",
+      "selectTerminal": "Select an SSH terminal",
+      "title": "Attach Agent to Terminal"
+    },
     "command": {
       "description": "An agent wants to run a command on this connection.",
       "title": "Authorize Command"
@@ -409,11 +434,17 @@
       "reason": "Reason",
       "server": "Server",
       "target": "Target",
+      "terminal": "Terminal",
       "username": "User"
     },
     "queue": {
       "expiresIn": "Expires in {seconds}s",
       "remaining": "{count} waiting"
+    }
+  },
+  "mcpTerminal": {
+    "errors": {
+      "launchFailed": "The Agent could not attach to the visible terminal. The tab remains available to you."
     }
   },
   "oobe": {
@@ -1494,6 +1525,16 @@
     }
   },
   "ssh": {
+    "agentTerminal": {
+      "detach": "Detach Agent",
+      "detachFailed": "Failed to detach the Agent.",
+      "idle": "Idle",
+      "outputShared": "Terminal output is shared with this Agent",
+      "running": "Running",
+      "stop": "Stop command",
+      "stopFailed": "Failed to send Ctrl+C to the Agent command.",
+      "unknownAgent": "Agent"
+    },
     "authTypeBoth": "Password and Private Key",
     "authTypeKey": "Private Key",
     "authTypePassword": "Password",
@@ -1763,6 +1804,7 @@
       "portForwarding": "Port Forwarding",
       "server": "Servers"
     },
+    "agentTerminal": "Shared with an Agent",
     "closeCurrent": "Close Current Tab",
     "closeOthers": "Close Other Tabs",
     "closeRight": "Close Right Tabs",

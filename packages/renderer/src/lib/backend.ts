@@ -2,10 +2,13 @@ import type {
   ApiAuditEventDetailResponse,
   ApiAuditEventListQuery,
   ApiAuditEventListResponse,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
   ApiMcpCreateEventsChannelResponse,
   ApiMcpListApprovalsResponse,
   ApiMcpListClientsResponse,
   ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
   ApiMcpResolveApprovalRequest,
   ApiMcpResolveApprovalResponse,
   ApiMcpRotatePairingTokenResponse,
@@ -425,6 +428,14 @@ export const closeMcpConnection = async (connectionId: string): Promise<{ succes
   return backendClient.closeMcpConnection(connectionId);
 };
 
+export const detachMcpConnection = async (connectionId: string): Promise<{ success: boolean }> => {
+  return backendClient.detachMcpConnection(connectionId);
+};
+
+export const interruptMcpConnection = async (connectionId: string): Promise<{ success: boolean }> => {
+  return backendClient.interruptMcpConnection(connectionId);
+};
+
 export const listMcpApprovals = async (): Promise<ApiMcpListApprovalsResponse> => {
   return backendClient.listMcpApprovals();
 };
@@ -434,6 +445,21 @@ export const resolveMcpApproval = async (
   payload: ApiMcpResolveApprovalRequest,
 ): Promise<ApiMcpResolveApprovalResponse> => {
   return backendClient.resolveMcpApproval(approvalId, payload);
+};
+
+export const listMcpTerminalLaunches = async (): Promise<ApiMcpListTerminalLaunchesResponse> => {
+  return backendClient.listMcpTerminalLaunches();
+};
+
+export const cancelMcpTerminalLaunch = async (launchId: string): Promise<{ success: boolean }> => {
+  return backendClient.cancelMcpTerminalLaunch(launchId);
+};
+
+export const bindMcpTerminalLaunch = async (
+  launchId: string,
+  payload: ApiMcpBindTerminalLaunchRequest,
+): Promise<ApiMcpBindTerminalLaunchResponse> => {
+  return backendClient.bindMcpTerminalLaunch(launchId, payload);
 };
 
 export const createMcpEventsChannel = async (): Promise<ApiMcpCreateEventsChannelResponse> => {

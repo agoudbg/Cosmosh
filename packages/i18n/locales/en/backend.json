@@ -33,7 +33,9 @@
       "connectionNotFound": "MCP connection was not found or has already been closed.",
       "disabled": "MCP is disabled. Enable it in Settings → MCP to use this feature.",
       "invalidDecision": "Authorization decision is invalid.",
-      "pairingTokenNotFound": "No active MCP pairing token exists."
+      "pairingTokenNotFound": "No active MCP pairing token exists.",
+      "terminalLaunchNotFound": "The pending terminal launch was not found or has expired.",
+      "terminalUnavailable": "The selected terminal is not ready for Agent automation."
     },
     "portForward": {
       "ruleActive": "Stop this port-forwarding rule before editing or deleting it.",
@@ -181,7 +183,9 @@
       "connectionsFetched": "MCP connections loaded.",
       "eventsChannelCreated": "MCP event channel created.",
       "pairingTokenRotated": "MCP pairing token generated.",
-      "statusFetched": "MCP status loaded."
+      "statusFetched": "MCP status loaded.",
+      "terminalLaunchBound": "Visible terminal connected to the Agent.",
+      "terminalLaunchesFetched": "Pending visible terminal launches loaded."
     },
     "portForward": {
       "ruleCreated": "Port-forwarding rule created.",

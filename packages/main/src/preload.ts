@@ -6,10 +6,13 @@ import type {
   ApiLocalTerminalCreateSessionRequest,
   ApiLocalTerminalCreateSessionResponse,
   ApiLocalTerminalListProfilesResponse,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
   ApiMcpCreateEventsChannelResponse,
   ApiMcpListApprovalsResponse,
   ApiMcpListClientsResponse,
   ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
   ApiMcpResolveApprovalRequest,
   ApiMcpResolveApprovalResponse,
   ApiMcpRotatePairingTokenResponse,
@@ -815,6 +818,12 @@ contextBridge.exposeInMainWorld('electron', {
   backendMcpCloseConnection: (connectionId: string) => {
     return invokeIpc<{ success: boolean }>('backend:mcp-close-connection', connectionId);
   },
+  backendMcpDetachConnection: (connectionId: string) => {
+    return invokeIpc<{ success: boolean }>('backend:mcp-detach-connection', connectionId);
+  },
+  backendMcpInterruptConnection: (connectionId: string) => {
+    return invokeIpc<{ success: boolean }>('backend:mcp-interrupt-connection', connectionId);
+  },
   backendMcpListApprovals: () => {
     return invokeIpc<ApiMcpListApprovalsResponse | ApiErrorResponse>('backend:mcp-list-approvals');
   },
@@ -822,6 +831,19 @@ contextBridge.exposeInMainWorld('electron', {
     return invokeIpc<ApiMcpResolveApprovalResponse | ApiErrorResponse>(
       'backend:mcp-resolve-approval',
       approvalId,
+      payload,
+    );
+  },
+  backendMcpListTerminalLaunches: () => {
+    return invokeIpc<ApiMcpListTerminalLaunchesResponse | ApiErrorResponse>('backend:mcp-list-terminal-launches');
+  },
+  backendMcpCancelTerminalLaunch: (launchId: string) => {
+    return invokeIpc<{ success: boolean }>('backend:mcp-cancel-terminal-launch', launchId);
+  },
+  backendMcpBindTerminalLaunch: (launchId: string, payload: ApiMcpBindTerminalLaunchRequest) => {
+    return invokeIpc<ApiMcpBindTerminalLaunchResponse | ApiErrorResponse>(
+      'backend:mcp-bind-terminal-launch',
+      launchId,
       payload,
     );
   },

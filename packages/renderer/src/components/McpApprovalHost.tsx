@@ -2,6 +2,11 @@ import type { ApiMcpPendingApproval, ApiMcpResolveApprovalRequest } from '@cosmo
 import React from 'react';
 
 import { useMcpEvents } from '../hooks/use-mcp-events';
+import {
+  type AgentTerminalDisabledReason,
+  resolveDefaultAgentTerminalSurface,
+  useAgentTerminalSurfaces,
+} from '../lib/agent-terminal-registry';
 import { resolveMcpApproval } from '../lib/backend';
 import { t } from '../lib/i18n';
 import { setMcpApprovals, useMcpStoreSelector } from '../lib/mcp-store';
@@ -16,6 +21,7 @@ import {
   DialogSecondaryButton,
   DialogTitle,
 } from './ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 type ApprovalDecision = ApiMcpResolveApprovalRequest['decision'];
 
@@ -56,7 +62,20 @@ type ApprovalDialogBodyProps = {
   approval: ApiMcpPendingApproval;
   queueLength: number;
   submitting: boolean;
-  onResolve: (decision: ApprovalDecision) => void;
+  terminalSurfaces: ReturnType<typeof useAgentTerminalSurfaces>;
+  selectedSurfaceId: string | null;
+  onSelectedSurfaceIdChange: (surfaceId: string) => void;
+  onResolve: (decision: ApprovalDecision, terminalSessionId?: string) => void;
+};
+
+/**
+ * Maps a stable terminal disable reason to user-facing approval copy.
+ *
+ * @param reason Stable pane eligibility reason.
+ * @returns Localized reason.
+ */
+const resolveDisabledReasonLabel = (reason: AgentTerminalDisabledReason): string => {
+  return t(`mcpApproval.attach.disabledReasons.${reason}`);
 };
 
 /**
@@ -65,7 +84,15 @@ type ApprovalDialogBodyProps = {
  * @param props Approval payload, queue position, and resolution callbacks.
  * @returns Approval dialog body.
  */
-const ApprovalDialogBody: React.FC<ApprovalDialogBodyProps> = ({ approval, queueLength, submitting, onResolve }) => {
+const ApprovalDialogBody: React.FC<ApprovalDialogBodyProps> = ({
+  approval,
+  queueLength,
+  submitting,
+  terminalSurfaces,
+  selectedSurfaceId,
+  onSelectedSurfaceIdChange,
+  onResolve,
+}) => {
   const [secondsRemaining, setSecondsRemaining] = React.useState<number>(() =>
     computeSecondsRemaining(approval.expiresAt, Date.now()),
   );
@@ -81,10 +108,21 @@ const ApprovalDialogBody: React.FC<ApprovalDialogBodyProps> = ({ approval, queue
   }, [approval.expiresAt, approval.approvalId]);
 
   const isCommand = approval.kind === 'command-execute';
-  const title = isCommand ? t('mcpApproval.command.title') : t('mcpApproval.connection.title');
-  const description = isCommand ? t('mcpApproval.command.description') : t('mcpApproval.connection.description');
+  const isTerminalAttach = approval.kind === 'terminal-attach';
+  const title = isCommand
+    ? t('mcpApproval.command.title')
+    : isTerminalAttach
+      ? t('mcpApproval.attach.title')
+      : t('mcpApproval.connection.title');
+  const description = isCommand
+    ? t('mcpApproval.command.description')
+    : isTerminalAttach
+      ? t('mcpApproval.attach.description')
+      : t('mcpApproval.connection.description');
   const clientLabel = `${approval.client.name} ${approval.client.version}`.trim();
-  const serverTarget = `${approval.host}:${approval.port}`;
+  const serverTarget = approval.host && approval.port !== undefined ? `${approval.host}:${approval.port}` : null;
+  const selectedSurface = terminalSurfaces.find((surface) => surface.surfaceId === selectedSurfaceId) ?? null;
+  const selectedTerminalEligible = selectedSurface?.disabledReason === null && selectedSurface.sessionId !== null;
 
   return (
     <DialogContent showCloseButton={false}>
@@ -98,18 +136,24 @@ const ApprovalDialogBody: React.FC<ApprovalDialogBodyProps> = ({ approval, queue
           label={t('mcpApproval.fields.client')}
           value={clientLabel}
         />
-        <ApprovalDetailRow
-          label={t('mcpApproval.fields.server')}
-          value={approval.serverName}
-        />
-        <ApprovalDetailRow
-          label={t('mcpApproval.fields.target')}
-          value={serverTarget}
-        />
-        <ApprovalDetailRow
-          label={t('mcpApproval.fields.username')}
-          value={approval.username}
-        />
+        {approval.serverName ? (
+          <ApprovalDetailRow
+            label={t('mcpApproval.fields.server')}
+            value={approval.serverName}
+          />
+        ) : null}
+        {serverTarget ? (
+          <ApprovalDetailRow
+            label={t('mcpApproval.fields.target')}
+            value={serverTarget}
+          />
+        ) : null}
+        {approval.username ? (
+          <ApprovalDetailRow
+            label={t('mcpApproval.fields.username')}
+            value={approval.username}
+          />
+        ) : null}
         {approval.reason ? (
           <ApprovalDetailRow
             label={t('mcpApproval.fields.reason')}
@@ -122,6 +166,54 @@ const ApprovalDialogBody: React.FC<ApprovalDialogBodyProps> = ({ approval, queue
             <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-black/20 p-2 font-mono text-xs text-form-text">
               {approval.command}
             </pre>
+          </div>
+        ) : null}
+        {isTerminalAttach ? (
+          <div className="grid gap-1.5">
+            <label
+              htmlFor="mcp-approval-terminal"
+              className="text-sm text-header-text-muted"
+            >
+              {t('mcpApproval.fields.terminal')}
+            </label>
+            {terminalSurfaces.length > 0 ? (
+              <Select
+                value={selectedSurfaceId ?? undefined}
+                onValueChange={onSelectedSurfaceIdChange}
+              >
+                <SelectTrigger id="mcp-approval-terminal">
+                  <SelectValue placeholder={t('mcpApproval.attach.selectTerminal')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {terminalSurfaces.map((surface) => {
+                    const paneLabel = t('mcpApproval.attach.paneLabel', {
+                      tab: surface.tabTitle,
+                      pane: String(surface.paneIndex + 1),
+                    });
+                    return (
+                      <SelectItem
+                        key={surface.surfaceId}
+                        value={surface.surfaceId}
+                        disabled={surface.disabledReason !== null || surface.sessionId === null}
+                      >
+                        {surface.disabledReason
+                          ? `${paneLabel} · ${resolveDisabledReasonLabel(surface.disabledReason)}`
+                          : paneLabel}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="rounded-md border border-home-divider px-3 py-2 text-sm text-header-text-muted">
+                {t('mcpApproval.attach.noTerminals')}
+              </div>
+            )}
+            {selectedSurface?.disabledReason ? (
+              <span className="text-xs text-header-text-muted">
+                {resolveDisabledReasonLabel(selectedSurface.disabledReason)}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -148,8 +240,10 @@ const ApprovalDialogBody: React.FC<ApprovalDialogBodyProps> = ({ approval, queue
         ) : null}
         <DialogPrimaryButton
           autoFocus
-          disabled={submitting}
-          onClick={() => onResolve('approved')}
+          disabled={submitting || (isTerminalAttach && !selectedTerminalEligible)}
+          onClick={() =>
+            onResolve('approved', isTerminalAttach ? (selectedSurface?.sessionId ?? undefined) : undefined)
+          }
         >
           {t('mcpApproval.actions.approve')}
         </DialogPrimaryButton>
@@ -171,10 +265,32 @@ const McpApprovalHost: React.FC = () => {
   useMcpEvents();
 
   const approvals = useMcpStoreSelector((snapshot) => snapshot.approvals);
+  const terminalSurfaces = useAgentTerminalSurfaces();
   const { error: notifyError } = useToast();
   const [submittingId, setSubmittingId] = React.useState<string | null>(null);
+  const [selectedSurfaceId, setSelectedSurfaceId] = React.useState<string | null>(null);
+  const selectedApprovalIdRef = React.useRef<string | null>(null);
 
   const currentApproval = approvals.length > 0 ? approvals[0] : null;
+
+  React.useEffect(() => {
+    if (currentApproval?.kind !== 'terminal-attach') {
+      selectedApprovalIdRef.current = currentApproval?.approvalId ?? null;
+      setSelectedSurfaceId(null);
+      return;
+    }
+
+    setSelectedSurfaceId((current) => {
+      if (selectedApprovalIdRef.current !== currentApproval.approvalId) {
+        selectedApprovalIdRef.current = currentApproval.approvalId;
+        return resolveDefaultAgentTerminalSurface(terminalSurfaces)?.surfaceId ?? null;
+      }
+      if (current && terminalSurfaces.some((surface) => surface.surfaceId === current)) {
+        return current;
+      }
+      return resolveDefaultAgentTerminalSurface(terminalSurfaces)?.surfaceId ?? null;
+    });
+  }, [currentApproval?.approvalId, currentApproval?.kind, terminalSurfaces]);
 
   // Pull the window forward whenever a fresh approval becomes the active one.
   const focusedApprovalIdRef = React.useRef<string | null>(null);
@@ -191,19 +307,22 @@ const McpApprovalHost: React.FC = () => {
   }, [currentApproval]);
 
   const handleResolve = React.useCallback(
-    async (decision: ApprovalDecision): Promise<void> => {
+    async (decision: ApprovalDecision, terminalSessionId?: string): Promise<void> => {
       if (!currentApproval) {
         return;
       }
       const { approvalId } = currentApproval;
       setSubmittingId(approvalId);
       try {
-        await resolveMcpApproval(approvalId, { decision } as ApiMcpResolveApprovalRequest);
+        await resolveMcpApproval(approvalId, {
+          decision,
+          ...(decision !== 'denied' && terminalSessionId ? { terminalSessionId } : {}),
+        });
+        // The event-channel resolution is idempotent with this immediate UI update.
+        setMcpApprovals(approvals.filter((item) => item.approvalId !== approvalId));
       } catch {
         notifyError(t('mcpApproval.errors.resolveFailed'));
       } finally {
-        // Optimistically drop it locally; the backend event is idempotent.
-        setMcpApprovals(approvals.filter((item) => item.approvalId !== approvalId));
         setSubmittingId((previous) => (previous === approvalId ? null : previous));
       }
     },
@@ -225,8 +344,11 @@ const McpApprovalHost: React.FC = () => {
           approval={currentApproval}
           queueLength={approvals.length}
           submitting={submittingId === currentApproval.approvalId}
-          onResolve={(decision) => {
-            void handleResolve(decision);
+          terminalSurfaces={terminalSurfaces}
+          selectedSurfaceId={selectedSurfaceId}
+          onSelectedSurfaceIdChange={setSelectedSurfaceId}
+          onResolve={(decision, terminalSessionId) => {
+            void handleResolve(decision, terminalSessionId);
           }}
         />
       ) : null}

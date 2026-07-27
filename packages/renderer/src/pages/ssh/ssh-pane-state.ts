@@ -1,3 +1,5 @@
+import type { AgentTerminalAttachmentStatus } from '@cosmosh/api-contract';
+
 import type { ServerInboundMessage, SshTelemetryState } from './ssh-types';
 import { DEFAULT_TELEMETRY_STATE } from './ssh-types';
 
@@ -38,6 +40,8 @@ export type SshPaneState = {
   trustedCwd: string | null;
   promptGeneration: number | null;
   lineState: SshPaneLineState | null;
+  atPrompt: boolean;
+  agentAttachmentStatus: AgentTerminalAttachmentStatus | null;
   commandTimeline: SshPaneCommandLifecycle[];
 };
 
@@ -55,6 +59,7 @@ export type SshPaneStateAction =
       connectionState: SshPaneState['connectionState'];
       connectionError?: string;
     }
+  | { type: 'client-input'; paneId: string; data: string }
   | { type: 'server-message'; paneId: string; payload: ServerInboundMessage; receivedAt: number };
 
 /**
@@ -75,6 +80,8 @@ export const createSshPaneState = (): SshPaneState => ({
   trustedCwd: null,
   promptGeneration: null,
   lineState: null,
+  atPrompt: false,
+  agentAttachmentStatus: null,
   commandTimeline: [],
 });
 
@@ -124,6 +131,29 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
         connectionState: action.connectionState,
         connectionError:
           action.connectionError ?? (action.connectionState === 'failed' ? paneState.connectionError : ''),
+      },
+    };
+  }
+
+  if (action.type === 'client-input') {
+    const submitted = action.data.includes('\r') || action.data.includes('\n') || action.data.includes('\u0003');
+    const hasInput = action.data.length > 0;
+    const promptGeneration = paneState.promptGeneration;
+    return {
+      ...state,
+      [action.paneId]: {
+        ...paneState,
+        atPrompt: submitted ? false : paneState.atPrompt,
+        lineState:
+          submitted || !hasInput || promptGeneration === null
+            ? submitted
+              ? null
+              : paneState.lineState
+            : {
+                lineLength: Math.max(1, paneState.lineState?.lineLength ?? 0),
+                cursorIndex: Math.max(1, paneState.lineState?.cursorIndex ?? 0),
+                promptGeneration,
+              },
       },
     };
   }
@@ -210,7 +240,15 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
             trustedCwd: null,
             promptGeneration: null,
             lineState: null,
+            atPrompt: false,
           }),
+    };
+  }
+
+  if (payload.type === 'agent-attachment-status') {
+    return {
+      ...state,
+      agentAttachmentStatus: payload,
     };
   }
 
@@ -235,6 +273,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
       ...nextState,
       promptGeneration: payload.promptGeneration ?? nextState.promptGeneration,
       lineState: null,
+      atPrompt: true,
     };
   }
 
@@ -251,6 +290,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
         cursorIndex: payload.cursorIndex,
         promptGeneration: payload.promptGeneration,
       },
+      atPrompt: true,
     };
   }
 
@@ -258,6 +298,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
     return {
       ...nextState,
       lineState: null,
+      atPrompt: false,
       commandTimeline: appendCommandStart(nextState.commandTimeline, payload, receivedAt),
     };
   }
@@ -266,6 +307,13 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
     return {
       ...nextState,
       commandTimeline: applyCommandEnd(nextState.commandTimeline, payload, receivedAt),
+    };
+  }
+
+  if (payload.event === 'foreground-command') {
+    return {
+      ...nextState,
+      atPrompt: false,
     };
   }
 
