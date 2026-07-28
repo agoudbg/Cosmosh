@@ -358,7 +358,7 @@
       },
       "title": "Active Connections"
     },
-    "disabledNotice": "MCP access is turned off. Enable it in Settings → MCP to let external agents connect.",
+    "disabledNotice": "MCP access is turned off. Enable Cosmosh MCP above to let external agents connect.",
     "errors": {
       "connectionCloseFailed": "Failed to close the connection.",
       "copyFailed": "Failed to copy to clipboard.",
@@ -366,17 +366,6 @@
       "tokenRevokeFailed": "Failed to revoke the pairing token.",
       "tokenRotateFailed": "Failed to rotate the pairing token."
     },
-    "status": {
-      "channelConnected": "Live",
-      "channelDisconnected": "Offline",
-      "clientCount": "{count} clients",
-      "connectionCount": "{count} connections",
-      "disabled": "Disabled",
-      "enabled": "Enabled",
-      "pendingCount": "{count} pending"
-    },
-    "subtitle": "Let external AI agents use your configured SSH servers, with per-request authorization and full audit logging.",
-    "title": "MCP Access",
     "toasts": {
       "connectionClosed": "Connection closed.",
       "copied": "Copied to clipboard.",
@@ -1814,7 +1803,6 @@
       "debug": "Debug",
       "home": "Home",
       "localTerminal": "Local Terminal",
-      "mcp": "MCP",
       "settings": "Settings",
       "settingsEditor": "Settings Editor",
       "sftp": "SFTP",

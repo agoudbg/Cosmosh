@@ -148,11 +148,11 @@ Launch 与 approval id 只属于带鉴权的 renderer/backend 控制面。MCP �
 
 **打包。** `packages/main` 的 `prebuild` 会构建桥接并运行 `scripts/sync-mcp-bridge.cjs`，把产物复制到 `packages/main/resources/helpers/mcp-bridge/cosmosh-mcp.cjs`（已 gitignore）。现有的 `resources/helpers → helpers` extraResources 映射会顺带发运它，无需改动 electron-builder。
 
-**启动器。** 打包版启动时，`packages/main/src/mcp-bridge-launcher.ts` 会向 `<userData>/bin/` 写入一个小包装脚本 —— `cosmosh-mcp.cmd`（Windows）或 `cosmosh-mcp`（chmod 0755，macOS/Linux）—— 它以纯 Node 方式在 Electron 二进制下运行该产物（`ELECTRON_RUN_AS_NODE=1 "<exe>" "<cjs>" --discovery "<bridge.json>"`）。解析出的启动器路径通过 `COSMOSH_MCP_BRIDGE_LAUNCHER` 告知后端，并在 `GET /api/v1/mcp/status` 中作为 `bridgeLauncherPath` 暴露，供 MCP 面板生成客户端配置。开发模式下没有打包桥接，故启动器为空操作，面板回退为原始命令指引。
+**启动器。** 打包版启动时，`packages/main/src/mcp-bridge-launcher.ts` 会向 `<userData>/bin/` 写入一个小包装脚本 —— `cosmosh-mcp.cmd`（Windows）或 `cosmosh-mcp`（chmod 0755，macOS/Linux）—— 它以纯 Node 方式在 Electron 二进制下运行该产物（`ELECTRON_RUN_AS_NODE=1 "<exe>" "<cjs>" --discovery "<bridge.json>"`）。解析出的启动器路径通过 `COSMOSH_MCP_BRIDGE_LAUNCHER` 告知后端，并在 `GET /api/v1/mcp/status` 中作为 `bridgeLauncherPath` 暴露，供 `设置 > MCP` 管理区块生成客户端配置。开发模式下没有打包桥接，故启动器为空操作，该区块回退为原始命令指引。
 
 ## 9. 客户端配置
 
-由于启动器已固定 `--discovery`，所有客户端共用同一 `mcpServers` 结构。MCP 面板生成可直接粘贴的片段：
+由于启动器已固定 `--discovery`，所有客户端共用同一 `mcpServers` 结构。`设置 > MCP` 管理区块生成可直接粘贴的片段：
 
 ```json
 {
@@ -189,7 +189,7 @@ Launch 与 approval id 只属于带鉴权的 renderer/backend 控制面。MCP �
 ## 11. 契约、设置与持久化
 
 - **共享类型：** `packages/api-contract/src/mcp.ts` —— 命令策略、`McpConnectionMode`、mode/status 连接摘要、terminal launch、授权与事件 payload；`terminal-protocol.ts` 持有 renderer 安全的 attachment 状态。
-- **设置：** 设置注册表中的 `mcpEnabled`（默认 `false`）与 `mcpCommandPolicy`（默认 `ask`），位于 `mcp` 类别（分区 `mcpAccess` / `mcpPolicy`）。
+- **设置：** 设置注册表中的 `mcpEnabled`（默认 `false`）与 `mcpCommandPolicy`（默认 `ask`）位于 `mcp` 类别（分区 `mcpAccess` / `mcpPolicy`）。运行状态、配对、客户端配置、连接与授权都组合在同一设置类别中；MCP 不再拥有独立工作区页面或标签页。
 - **持久化：** `SshServer.mcpCommandPolicy String @default("default")` 与 `McpPairingToken` 模型（`tokenEncrypted`、`label`、`createdAt`、`lastUsedAt`、`revokedAt`），迁移 `20260726000100_mcp_pairing_and_policy`。
 
 ## 12. 测试与验证

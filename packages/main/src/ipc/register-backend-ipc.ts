@@ -875,8 +875,9 @@ const registerBackendLocalTerminalHandlers = (options: RegisterBackendIpcHandler
 /**
  * Registers MCP management handlers backed by the authenticated backend HTTP API.
  *
- * These proxy the renderer authorization UI and MCP panel; the externally-reachable
- * `/mcp` endpoint has independent Bearer auth and is never exposed over IPC.
+ * These proxy the renderer authorization UI and Settings MCP management section;
+ * the externally-reachable `/mcp` endpoint has independent Bearer auth and is
+ * never exposed over IPC.
  *
  * @param options Backend runtime dependencies.
  */

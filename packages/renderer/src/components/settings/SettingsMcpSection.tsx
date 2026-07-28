@@ -1,14 +1,7 @@
-import type {
-  ApiMcpClientSession,
-  ApiMcpConnectionSummary,
-  ApiMcpPendingApproval,
-  ApiMcpStatusData,
-} from '@cosmosh/api-contract';
-import classNames from 'classnames';
-import { Copy, KeyRound, Loader2, Plug, RefreshCcw, Trash2, Waypoints, XCircle } from 'lucide-react';
+import type { ApiMcpClientSession, ApiMcpConnectionSummary, ApiMcpPendingApproval } from '@cosmosh/api-contract';
+import { Copy, KeyRound, Loader2, Plug, RefreshCcw, Trash2, XCircle } from 'lucide-react';
 import React from 'react';
 
-import { Button } from '../components/ui/button';
 import {
   closeMcpConnection,
   getMcpStatus,
@@ -17,54 +10,35 @@ import {
   listMcpConnections,
   revokeMcpPairingToken,
   rotateMcpPairingToken,
-} from '../lib/backend';
-import { useDateTimeFormatter } from '../lib/date-time-format';
-import { t } from '../lib/i18n';
-import { setMcpApprovals, setMcpClients, setMcpConnections, setMcpStatus, useMcpStore } from '../lib/mcp-store';
-import { useSettingsValue } from '../lib/settings-store';
-import { useToast } from '../lib/toast-context';
-
-type StatusPillTone = 'on' | 'off' | 'muted';
-
-/**
- * Renders a small labelled status pill.
- *
- * @param props Pill label and tone.
- * @returns Status pill element.
- */
-const StatusPill: React.FC<{ label: string; tone: StatusPillTone }> = ({ label, tone }) => (
-  <span
-    className={classNames('rounded-full px-2.5 py-1 text-xs font-medium', {
-      'bg-emerald-500/15 text-emerald-400': tone === 'on',
-      'bg-red-500/15 text-red-400': tone === 'off',
-      'bg-white/10 text-header-text-muted': tone === 'muted',
-    })}
-  >
-    {label}
-  </span>
-);
+} from '../../lib/backend';
+import { useDateTimeFormatter } from '../../lib/date-time-format';
+import { t } from '../../lib/i18n';
+import { setMcpApprovals, setMcpClients, setMcpConnections, setMcpStatus, useMcpStore } from '../../lib/mcp-store';
+import { useSettingsValue } from '../../lib/settings-store';
+import { useToast } from '../../lib/toast-context';
+import { Button } from '../ui/button';
 
 /**
- * Renders a section card wrapper with a title and optional actions.
+ * Renders an unframed Settings section with an optional action group.
  *
- * @param props Section heading, actions, and body content.
- * @returns Card element.
+ * @param props Section heading, actions, and content.
+ * @returns Settings section element.
  */
-const SectionCard: React.FC<{
+const ManagementSection: React.FC<{
   title: string;
   description?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }> = ({ title, description, actions, children }) => (
-  <section className="rounded-2xl bg-ssh-card-bg-terminal p-4">
-    <div className="mb-3 flex items-start justify-between gap-3">
-      <div className="grid gap-1">
-        <h2 className="text-sm font-semibold text-form-text">{title}</h2>
-        {description ? <p className="text-xs text-header-text-muted">{description}</p> : null}
+  <section className="grid gap-3">
+    <div className="flex flex-wrap items-start justify-between gap-3 px-2.5 pb-1">
+      <div className="grid min-w-0 gap-1">
+        <h2 className="text-[15px] font-medium text-home-text-subtle">{title}</h2>
+        {description ? <p className="text-xs text-form-text-muted">{description}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </div>
-    {children}
+    <div className="grid gap-3 px-2.5">{children}</div>
   </section>
 );
 
@@ -80,9 +54,9 @@ const CopyableRow: React.FC<{ label: string; value: string; onCopy: (value: stri
   onCopy,
 }) => (
   <div className="grid gap-1">
-    <span className="text-xs text-header-text-muted">{label}</span>
+    <span className="text-xs text-form-text-muted">{label}</span>
     <div className="flex items-center gap-2">
-      <code className="min-w-0 flex-1 truncate rounded-md bg-black/20 px-2 py-1 font-mono text-xs text-form-text">
+      <code className="min-w-0 flex-1 truncate rounded-lg bg-form-control px-2.5 py-2 font-mono text-xs text-form-text">
         {value}
       </code>
       <Button
@@ -132,13 +106,13 @@ const buildClientConfig = (variant: ClientConfigVariant, launcherPath: string): 
 };
 
 /**
- * Renders the client-configuration card: a variant selector plus a paste-ready
+ * Renders the client-configuration section: a variant selector plus a paste-ready
  * snippet, or a development-mode notice when no packaged launcher exists.
  *
  * @param props Launcher/discovery paths and the copy handler.
- * @returns Client-config card element.
+ * @returns Client-config section element.
  */
-const ClientConfigCard: React.FC<{
+const ClientConfigSection: React.FC<{
   launcherPath: string | undefined;
   discoveryFilePath: string | undefined;
   onCopy: (value: string) => void;
@@ -152,28 +126,29 @@ const ClientConfigCard: React.FC<{
   ];
 
   return (
-    <SectionCard
+    <ManagementSection
       title={t('mcp.config.title')}
       description={t('mcp.config.description')}
     >
       {launcherPath ? (
         <div className="grid gap-3">
-          <div className="flex flex-wrap gap-2">
+          <div
+            role="group"
+            aria-label={t('mcp.config.title')}
+            className="flex flex-wrap gap-2"
+          >
             {variants.map((entry) => (
-              <button
+              <Button
                 key={entry.id}
-                type="button"
-                className={classNames('rounded-full px-3 py-1 text-xs font-medium transition-colors', {
-                  'bg-form-text/90 text-ssh-card-bg-terminal': variant === entry.id,
-                  'bg-white/10 text-header-text-muted hover:bg-white/15': variant !== entry.id,
-                })}
+                variant={variant === entry.id ? 'inverted' : 'ghost'}
+                aria-pressed={variant === entry.id}
                 onClick={() => setVariant(entry.id)}
               >
                 {entry.label}
-              </button>
+              </Button>
             ))}
           </div>
-          <p className="text-xs text-header-text-muted">
+          <p className="text-xs text-form-text-muted">
             {variant === 'claudeCode'
               ? t('mcp.config.hintClaudeCode')
               : variant === 'claudeDesktop'
@@ -181,7 +156,7 @@ const ClientConfigCard: React.FC<{
                 : t('mcp.config.hintRaw')}
           </p>
           <div className="relative">
-            <pre className="max-h-64 overflow-auto rounded-xl bg-black/30 p-3 font-mono text-xs text-form-text">
+            <pre className="max-h-64 overflow-auto rounded-lg bg-bg-subtle p-3 pr-11 font-mono text-xs text-form-text">
               {buildClientConfig(variant, launcherPath)}
             </pre>
             <Button
@@ -196,7 +171,7 @@ const ClientConfigCard: React.FC<{
         </div>
       ) : (
         <div className="grid gap-3">
-          <p className="text-sm text-header-text-muted">{t('mcp.config.devNotice')}</p>
+          <p className="text-sm text-form-text-muted">{t('mcp.config.devNotice')}</p>
           {discoveryFilePath ? (
             <CopyableRow
               label={t('mcp.config.devDiscoveryLabel')}
@@ -206,23 +181,23 @@ const ClientConfigCard: React.FC<{
           ) : null}
         </div>
       )}
-    </SectionCard>
+    </ManagementSection>
   );
 };
 
 /**
- * MCP management panel — runtime status, pairing token, connected clients,
- * active SSH connections, and the pending-approval queue.
+ * Settings-owned MCP management section for pairing tokens,
+ * connected clients, active SSH connections, and pending approvals.
  *
  * The reactive lists are backed by the shared MCP store (kept live by the global
- * approval host's event channel); this page adds an explicit refresh and the
+ * approval host's event channel); this section adds an explicit refresh and the
  * management actions (token rotation/revocation, connection close).
  *
- * @returns MCP management page.
+ * @returns MCP management content for the Settings surface.
  */
-const Mcp: React.FC = () => {
+const SettingsMcpSection: React.FC = () => {
   const mcpEnabled = useSettingsValue('mcpEnabled');
-  const { status, clients, connections, approvals, channelState } = useMcpStore();
+  const { status, clients, connections, approvals } = useMcpStore();
   const { formatDateTime } = useDateTimeFormatter();
   const { success: notifySuccess, error: notifyError } = useToast();
 
@@ -323,57 +298,65 @@ const Mcp: React.FC = () => {
   );
 
   return (
-    <div className="mx-auto grid h-full w-full max-w-3xl gap-4 overflow-y-auto p-6">
-      <McpStatusHeader
-        mcpEnabled={mcpEnabled}
-        status={status}
-        channelState={channelState}
-        refreshing={refreshing}
-        onRefresh={() => {
-          void refreshAll();
-        }}
-      />
+    <div className="grid gap-5 pb-4">
+      <div className="flex justify-end px-1">
+        <Button
+          variant="ghost"
+          disabled={refreshing}
+          onClick={() => {
+            void refreshAll();
+          }}
+        >
+          {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+          {t('mcp.actions.refresh')}
+        </Button>
+      </div>
 
       {!mcpEnabled ? (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
+        <div
+          role="status"
+          className="mx-2.5 rounded-lg border border-home-divider bg-form-control px-3 py-2 text-sm text-form-text-muted"
+        >
           {t('mcp.disabledNotice')}
         </div>
       ) : null}
 
-      <SectionCard
+      <ManagementSection
         title={t('mcp.token.title')}
         description={t('mcp.token.description')}
         actions={
           <>
             <Button
               variant="ghost"
-              disabled={revoking || !status?.tokenConfigured}
+              disabled={!mcpEnabled || revoking || !status?.tokenConfigured}
               onClick={() => {
                 void handleRevokeToken();
               }}
             >
-              {revoking ? <Loader2 className="h-4 w-4 animate-spin" /> : t('mcp.token.revoke')}
+              {revoking ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {t('mcp.token.revoke')}
             </Button>
             <Button
               variant="inverted"
-              disabled={rotating}
+              disabled={!mcpEnabled || rotating}
               onClick={() => {
                 void handleRotateToken();
               }}
             >
-              {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : t('mcp.token.rotate')}
+              {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {t('mcp.token.rotate')}
             </Button>
           </>
         }
       >
         <div className="grid gap-3">
           <div className="flex items-center gap-2 text-sm text-form-text">
-            <KeyRound className="h-4 w-4 text-header-text-muted" />
+            <KeyRound className="h-4 w-4 text-form-text-muted" />
             {status?.tokenConfigured ? t('mcp.token.configured') : t('mcp.token.notConfigured')}
           </div>
           {freshToken ? (
-            <div className="grid gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-              <p className="text-xs text-emerald-300">{t('mcp.token.freshNotice')}</p>
+            <div className="grid gap-2 rounded-lg border border-home-divider p-3">
+              <p className="text-xs text-form-text-muted">{t('mcp.token.freshNotice')}</p>
               <CopyableRow
                 label={t('mcp.token.tokenLabel')}
                 value={freshToken}
@@ -396,15 +379,15 @@ const Mcp: React.FC = () => {
             />
           ) : null}
         </div>
-      </SectionCard>
+      </ManagementSection>
 
-      <ClientConfigCard
+      <ClientConfigSection
         launcherPath={status?.bridgeLauncherPath}
         discoveryFilePath={status?.discoveryFilePath}
         onCopy={handleCopy}
       />
 
-      <SectionCard
+      <ManagementSection
         title={t('mcp.clients.title')}
         description={t('mcp.clients.description')}
       >
@@ -412,9 +395,9 @@ const Mcp: React.FC = () => {
           clients={clients}
           formatDateTime={formatDateTime}
         />
-      </SectionCard>
+      </ManagementSection>
 
-      <SectionCard
+      <ManagementSection
         title={t('mcp.connections.title')}
         description={t('mcp.connections.description')}
       >
@@ -426,9 +409,9 @@ const Mcp: React.FC = () => {
             void handleCloseConnection(connectionId);
           }}
         />
-      </SectionCard>
+      </ManagementSection>
 
-      <SectionCard
+      <ManagementSection
         title={t('mcp.approvals.title')}
         description={t('mcp.approvals.description')}
       >
@@ -436,64 +419,10 @@ const Mcp: React.FC = () => {
           approvals={approvals}
           formatDateTime={formatDateTime}
         />
-      </SectionCard>
+      </ManagementSection>
     </div>
   );
 };
-
-/**
- * Renders the page heading with runtime status pills and a refresh control.
- *
- * @param props Runtime status and refresh handler.
- * @returns Status header element.
- */
-const McpStatusHeader: React.FC<{
-  mcpEnabled: boolean;
-  status: ApiMcpStatusData | null;
-  channelState: string;
-  refreshing: boolean;
-  onRefresh: () => void;
-}> = ({ mcpEnabled, status, channelState, refreshing, onRefresh }) => (
-  <header className="grid gap-3">
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <Waypoints className="h-5 w-5 text-form-text" />
-        <h1 className="text-lg font-semibold text-form-text">{t('mcp.title')}</h1>
-      </div>
-      <Button
-        variant="ghost"
-        disabled={refreshing}
-        onClick={onRefresh}
-      >
-        {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-        <span className="ml-2">{t('mcp.actions.refresh')}</span>
-      </Button>
-    </div>
-    <p className="text-sm text-header-text-muted">{t('mcp.subtitle')}</p>
-    <div className="flex flex-wrap items-center gap-2">
-      <StatusPill
-        label={mcpEnabled ? t('mcp.status.enabled') : t('mcp.status.disabled')}
-        tone={mcpEnabled ? 'on' : 'off'}
-      />
-      <StatusPill
-        label={channelState === 'open' ? t('mcp.status.channelConnected') : t('mcp.status.channelDisconnected')}
-        tone={channelState === 'open' ? 'on' : 'muted'}
-      />
-      <StatusPill
-        label={t('mcp.status.clientCount', { count: String(status?.activeClientCount ?? 0) })}
-        tone="muted"
-      />
-      <StatusPill
-        label={t('mcp.status.connectionCount', { count: String(status?.activeConnectionCount ?? 0) })}
-        tone="muted"
-      />
-      <StatusPill
-        label={t('mcp.status.pendingCount', { count: String(status?.pendingApprovalCount ?? 0) })}
-        tone="muted"
-      />
-    </div>
-  </header>
-);
 
 /**
  * Renders the list of connected MCP client sessions.
@@ -506,7 +435,7 @@ const McpClientList: React.FC<{
   formatDateTime: (value: string | number | Date, fallback?: string) => string;
 }> = ({ clients, formatDateTime }) => {
   if (clients.length === 0) {
-    return <p className="text-sm text-header-text-muted">{t('mcp.clients.empty')}</p>;
+    return <p className="text-sm text-form-text-muted">{t('mcp.clients.empty')}</p>;
   }
 
   return (
@@ -514,15 +443,15 @@ const McpClientList: React.FC<{
       {clients.map((client) => (
         <li
           key={client.mcpSessionId}
-          className="flex items-center justify-between gap-3 rounded-xl bg-black/10 px-3 py-2"
+          className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg bg-form-control px-3 py-2"
         >
           <div className="flex items-center gap-2">
-            <Plug className="h-4 w-4 text-header-text-muted" />
+            <Plug className="h-4 w-4 text-form-text-muted" />
             <span className="text-sm text-form-text">
               {client.client.name} {client.client.version}
             </span>
           </div>
-          <span className="text-xs text-header-text-muted">
+          <span className="text-xs text-form-text-muted">
             {t('mcp.clients.started', { time: formatDateTime(client.startedAt) })}
           </span>
         </li>
@@ -544,7 +473,7 @@ const McpConnectionList: React.FC<{
   onClose: (connectionId: string) => void;
 }> = ({ connections, closingId, formatDateTime, onClose }) => {
   if (connections.length === 0) {
-    return <p className="text-sm text-header-text-muted">{t('mcp.connections.empty')}</p>;
+    return <p className="text-sm text-form-text-muted">{t('mcp.connections.empty')}</p>;
   }
 
   return (
@@ -552,7 +481,7 @@ const McpConnectionList: React.FC<{
       {connections.map((connection) => (
         <li
           key={connection.connectionId}
-          className="grid gap-2 rounded-xl bg-black/10 px-3 py-2"
+          className="grid gap-2 rounded-lg bg-form-control px-3 py-2"
         >
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-medium text-form-text">{connection.serverName}</span>
@@ -569,7 +498,7 @@ const McpConnectionList: React.FC<{
               )}
             </Button>
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-header-text-muted">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-form-text-muted">
             <span>
               {connection.username}@{connection.host}:{connection.port}
             </span>
@@ -597,7 +526,7 @@ const McpApprovalList: React.FC<{
   formatDateTime: (value: string | number | Date, fallback?: string) => string;
 }> = ({ approvals, formatDateTime }) => {
   if (approvals.length === 0) {
-    return <p className="text-sm text-header-text-muted">{t('mcp.approvals.empty')}</p>;
+    return <p className="text-sm text-form-text-muted">{t('mcp.approvals.empty')}</p>;
   }
 
   return (
@@ -605,13 +534,13 @@ const McpApprovalList: React.FC<{
       {approvals.map((approval) => (
         <li
           key={approval.approvalId}
-          className="grid gap-1 rounded-xl bg-black/10 px-3 py-2"
+          className="grid gap-1 rounded-lg bg-form-control px-3 py-2"
         >
           <div className="flex items-center gap-2">
             {approval.kind === 'command-execute' ? (
-              <Plug className="h-4 w-4 text-amber-400" />
+              <Plug className="h-4 w-4 text-form-text-muted" />
             ) : (
-              <XCircle className="h-4 w-4 text-amber-400" />
+              <XCircle className="h-4 w-4 text-form-text-muted" />
             )}
             <span className="text-sm text-form-text">
               {approval.kind === 'command-execute'
@@ -621,12 +550,12 @@ const McpApprovalList: React.FC<{
                   : t('mcp.approvals.kindConnection')}
             </span>
           </div>
-          <div className="text-xs text-header-text-muted">
+          <div className="text-xs text-form-text-muted">
             {approval.client.name}
             {approval.serverName ? ` · ${approval.serverName}` : ''} · {formatDateTime(approval.createdAt)}
           </div>
           {approval.command ? (
-            <code className="truncate rounded-md bg-black/20 px-2 py-1 font-mono text-xs text-form-text">
+            <code className="truncate rounded-lg bg-bg-subtle px-2.5 py-2 font-mono text-xs text-form-text">
               {approval.command}
             </code>
           ) : null}
@@ -636,4 +565,4 @@ const McpApprovalList: React.FC<{
   );
 };
 
-export default Mcp;
+export default SettingsMcpSection;

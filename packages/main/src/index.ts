@@ -1080,7 +1080,7 @@ const startBackendService = async (): Promise<void> => {
 
     if (app.isPackaged) {
       // The bridge launcher exists only for packaged installs; advertise its path so
-      // the MCP panel can build ready-to-paste client configurations.
+      // Settings can build ready-to-paste MCP client configurations.
       backendEnv.COSMOSH_MCP_BRIDGE_LAUNCHER = resolveMcpBridgeLauncherPath({
         platform: process.platform,
         userDataPath: app.getPath('userData'),

@@ -148,11 +148,11 @@ A standalone package bundled with esbuild into a single self-contained CJS file 
 
 **Packaging.** `packages/main`'s `prebuild` builds the bridge and runs `scripts/sync-mcp-bridge.cjs`, copying the bundle to `packages/main/resources/helpers/mcp-bridge/cosmosh-mcp.cjs` (gitignored). The existing `resources/helpers → helpers` extraResources mapping ships it; no electron-builder change is needed.
 
-**Launcher.** On packaged startup, `packages/main/src/mcp-bridge-launcher.ts` writes a small wrapper to `<userData>/bin/` — `cosmosh-mcp.cmd` (Windows) or `cosmosh-mcp` (chmod 0755, macOS/Linux) — that runs the bundle under the Electron binary as plain Node (`ELECTRON_RUN_AS_NODE=1 "<exe>" "<cjs>" --discovery "<bridge.json>"`). The resolved launcher path is advertised to the backend via `COSMOSH_MCP_BRIDGE_LAUNCHER` and surfaced in `GET /api/v1/mcp/status` as `bridgeLauncherPath`, which the MCP panel uses to generate client config. In development there is no bundled bridge, so the launcher is a no-op and the panel falls back to raw-command guidance.
+**Launcher.** On packaged startup, `packages/main/src/mcp-bridge-launcher.ts` writes a small wrapper to `<userData>/bin/` — `cosmosh-mcp.cmd` (Windows) or `cosmosh-mcp` (chmod 0755, macOS/Linux) — that runs the bundle under the Electron binary as plain Node (`ELECTRON_RUN_AS_NODE=1 "<exe>" "<cjs>" --discovery "<bridge.json>"`). The resolved launcher path is advertised to the backend via `COSMOSH_MCP_BRIDGE_LAUNCHER` and surfaced in `GET /api/v1/mcp/status` as `bridgeLauncherPath`, which the `Settings > MCP` management section uses to generate client config. In development there is no bundled bridge, so the launcher is a no-op and the section falls back to raw-command guidance.
 
 ## 9. Client configuration
 
-Because the launcher pins `--discovery`, all clients share the same `mcpServers` shape. The MCP panel generates paste-ready snippets:
+Because the launcher pins `--discovery`, all clients share the same `mcpServers` shape. The `Settings > MCP` management section generates paste-ready snippets:
 
 ```json
 {
@@ -189,7 +189,7 @@ Audit metadata never contains PTY output or raw user input. Agent command text i
 ## 11. Contract, settings & persistence
 
 - **Shared types:** `packages/api-contract/src/mcp.ts` — command policies, `McpConnectionMode`, mode/status connection summaries, terminal launches, approvals, and event payloads; `terminal-protocol.ts` owns renderer-safe attachment status.
-- **Settings:** `mcpEnabled` (default `false`) and `mcpCommandPolicy` (default `ask`) in the settings registry under the `mcp` category (sections `mcpAccess` / `mcpPolicy`).
+- **Settings:** `mcpEnabled` (default `false`) and `mcpCommandPolicy` (default `ask`) live in the settings registry under the `mcp` category (sections `mcpAccess` / `mcpPolicy`). Runtime status, pairing, client configuration, connections, and approvals are composed into that same Settings category; MCP has no standalone workbench page or tab.
 - **Persistence:** `SshServer.mcpCommandPolicy String @default("default")` and the `McpPairingToken` model (`tokenEncrypted`, `label`, `createdAt`, `lastUsedAt`, `revokedAt`), migration `20260726000100_mcp_pairing_and_policy`.
 
 ## 12. Testing & verification

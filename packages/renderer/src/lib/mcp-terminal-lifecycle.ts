@@ -44,8 +44,9 @@ export const findReadyTerminalLaunchSurface = (
 /**
  * Decides whether a closed MCP connection should also close its visible tab.
  *
- * Only explicit Agent or MCP-panel close actions own the lifecycle of an
- * Agent-created tab. Disconnect-like cleanup must preserve it for the user.
+ * Only explicit Agent or Settings MCP management close actions own the
+ * lifecycle of an Agent-created tab. Disconnect-like cleanup must preserve it
+ * for the user.
  *
  * @param tab Agent-marked tab.
  * @param reason Backend connection close reason.

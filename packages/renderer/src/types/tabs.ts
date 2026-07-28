@@ -1,4 +1,4 @@
-import type { components, McpClientInfo } from '@cosmosh/api-contract';
+import type { components, McpClientInfo, SettingsCategoryId } from '@cosmosh/api-contract';
 
 export type TabPage = string;
 
@@ -65,7 +65,7 @@ export type TabItem = {
   iconColorKey?: TabIconColorKey;
   closable?: boolean;
   state?: {
-    settingsCategory?: string;
+    settingsCategory?: SettingsCategoryId;
     settingsInitialSearch?: string;
     settingsEditorSettingKey?: string;
     sshConnectionIntent?: SshConnectionIntent;

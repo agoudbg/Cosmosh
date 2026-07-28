@@ -16,7 +16,7 @@
  *
  * Launchers are only meaningful for a packaged install; in development there is
  * no bundled bridge, so {@link ensureMcpBridgeLauncher} is a no-op that returns
- * null and the MCP panel falls back to raw-command guidance.
+ * null and the Settings MCP management section falls back to raw-command guidance.
  */
 
 import fs from 'node:fs/promises';
@@ -123,7 +123,7 @@ const buildPosixLauncher = (executablePath: string, bridgeEntryPath: string, dis
  */
 export const ensureMcpBridgeLauncher = async (context: McpBridgeLauncherContext): Promise<string | null> => {
   if (!context.isPackaged) {
-    // No bundled bridge exists in development; the MCP panel guides raw-command setup instead.
+    // No bundled bridge exists in development; Settings guides raw-command setup instead.
     return null;
   }
 

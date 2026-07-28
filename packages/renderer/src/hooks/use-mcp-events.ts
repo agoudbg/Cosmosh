@@ -24,7 +24,6 @@ import {
   applyMcpEvent,
   resetMcpRuntimeData,
   setMcpApprovals,
-  setMcpChannelState,
   setMcpClients,
   setMcpConnections,
   setMcpStatus,
@@ -40,7 +39,7 @@ const RECONNECT_MAX_DELAY_MS = 15_000;
 /**
  * Fetches the current runtime snapshot over REST and pushes it into the store.
  *
- * Called on initial subscribe and on every reconnect so the panel reflects any
+ * Called on initial subscribe and on every reconnect so consumers reflect any
  * events that were missed while the socket was down.
  *
  * @returns Nothing; failures are swallowed (the channel will retry).
@@ -77,7 +76,7 @@ export const useMcpEvents = (): void => {
 
   React.useEffect(() => {
     if (!mcpEnabled) {
-      resetMcpRuntimeData('idle');
+      resetMcpRuntimeData();
       return;
     }
 
@@ -109,12 +108,10 @@ export const useMcpEvents = (): void => {
       if (disposed) {
         return;
       }
-      setMcpChannelState('connecting');
       let channel;
       try {
         channel = await createMcpEventsChannel();
       } catch {
-        setMcpChannelState('closed');
         scheduleReconnect();
         return;
       }
@@ -132,7 +129,6 @@ export const useMcpEvents = (): void => {
           return;
         }
         attempt = 0;
-        setMcpChannelState('open');
         void refreshRuntimeData();
       });
 
@@ -159,7 +155,6 @@ export const useMcpEvents = (): void => {
         if (disposed) {
           return;
         }
-        setMcpChannelState('closed');
         scheduleReconnect();
       });
 
@@ -178,7 +173,7 @@ export const useMcpEvents = (): void => {
         socket.close();
         socket = null;
       }
-      resetMcpRuntimeData('idle');
+      resetMcpRuntimeData();
     };
   }, [mcpEnabled]);
 };

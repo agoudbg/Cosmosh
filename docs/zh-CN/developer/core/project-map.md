@@ -292,7 +292,8 @@ flowchart TD
 - 桥接归属：
   - `packages/main/src/ipc/register-backend-ipc.ts`、`packages/main/src/preload.ts` 与 `packages/renderer/src/vite-env.d.ts` 负责 `backend:mcp-*` 与 `app:focus-main-window` 通道。
 - 渲染层归属：
-  - `packages/renderer/src/pages/Mcp.tsx` 负责状态/配对/客户端配置/连接/授权面板；`McpApprovalHost.tsx` 负责终端选择；`McpTerminalHost.tsx` 负责 launch 重放、标签页创建/聚焦、绑定与关闭/保留语义；`use-mcp-events.ts` 负责事件 hook。
+  - `packages/renderer/src/components/settings/SettingsMcpSection.tsx` 负责 `设置 > MCP` 内的状态、配对、客户端配置、连接与授权；不再存在独立 MCP 页面或标签页。
+  - `McpApprovalHost.tsx` 负责终端选择；`McpTerminalHost.tsx` 负责 launch 重放、标签页创建/聚焦、绑定与关闭/保留语义；`agent-terminal-registry.ts` 负责渲染层私有 pane/session 标识；`use-mcp-events.ts` 负责事件补齐。
   - `packages/renderer/src/components/ssh/SSHServerEditorDialog.tsx` 负责每服务器命令策略覆盖。
 - 文档归属：
   - `docs/developer/runtime/mcp-server.md` 与 `docs/zh-CN/developer/runtime/mcp-server.md` 作为运行时源页；`skills/cosmosh-mcp/SKILL.md` 作为外部 Agent 指南。

@@ -19,6 +19,7 @@ import React from 'react';
 
 import SplitWorkbenchLayout, { SplitWorkbenchMainPanel } from '../components/layout/SplitWorkbenchLayout';
 import SettingsAboutSection, { type AppVersionInfo } from '../components/settings/SettingsAboutSection';
+import SettingsMcpSection from '../components/settings/SettingsMcpSection';
 import { Button } from '../components/ui/button';
 import {
   Dialog,
@@ -391,7 +392,7 @@ const formatSystemTimeZoneOptionLabel = (referenceDate: Date): string => {
 };
 
 type SettingsProps = {
-  initialCategoryId?: string;
+  initialCategoryId?: SettingsCategoryId;
   initialSearchQuery?: string;
   onOpenSettingInEditor?: (settingKey: SettingKey) => void;
 };
@@ -400,9 +401,9 @@ const Settings: React.FC<SettingsProps> = ({ initialCategoryId, initialSearchQue
   const { error: notifyError, success: notifySuccess, warning: notifyWarning } = useToast();
   const contentStartRef = React.useRef<HTMLDivElement | null>(null);
   const [, setLocaleTick] = React.useState<number>(0);
-  const [activeCategoryId, setActiveCategoryId] = React.useState<SettingsCategoryId>(() => {
-    return initialCategoryId === 'about' ? 'about' : 'general';
-  });
+  const [activeCategoryId, setActiveCategoryId] = React.useState<SettingsCategoryId>(
+    () => initialCategoryId ?? 'general',
+  );
   const [search, setSearch] = React.useState<string>(() => initialSearchQuery?.trim() ?? '');
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [isSaving, setIsSaving] = React.useState<boolean>(false);
@@ -1109,6 +1110,8 @@ const Settings: React.FC<SettingsProps> = ({ initialCategoryId, initialSearchQue
                   ))}
                 </div>
               ) : null}
+
+              {!isLoading && activeCategoryId === 'mcp' && !isSearchMode ? <SettingsMcpSection /> : null}
 
               {!isLoading && activeCategoryId === 'advanced' && !isSearchMode ? (
                 <div className="flex justify-end pb-4 pr-1">

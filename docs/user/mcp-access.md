@@ -21,13 +21,13 @@ An agent can never read your stored passwords or private keys, add or edit serve
 
 1. Open `Settings > MCP`.
 2. Enable `MCP Access`.
-3. Open the `MCP` tab (from the header or the sidebar) to see the status panel.
+3. Use the pairing, client-configuration, connected-client, connection, and approval sections on the same page.
 
 While MCP is enabled, Cosmosh keeps a small local file that lets the bridge find the running app. Turning MCP off removes it.
 
 ## Connect Your Agent
 
-1. In the `MCP` tab, find the `Client Configuration` card.
+1. In `Settings > MCP`, find the `Client Configuration` section.
 2. Choose the flavor that matches your client:
    - `.mcp.json` — for Claude Code (and Cursor).
    - `claude_desktop_config.json` — for Claude Desktop.
@@ -38,7 +38,7 @@ The snippet points at a small launcher Cosmosh installs for you, so there are no
 
 ## The Pairing Token
 
-Agents authenticate to Cosmosh with a **pairing token**. You manage it from the `Pairing Token` card in the `MCP` tab:
+Agents authenticate to Cosmosh with a **pairing token**. You manage it from the `Pairing Token` section in `Settings > MCP`:
 
 - **Rotate** — issues a new token and invalidates the old one. The plaintext is shown **once** — copy it if a client needs it directly. (The generated client config uses the launcher and does not require you to paste the token.)
 - **Revoke** — invalidates the current token immediately, cutting off connected agents on their next request.
@@ -72,7 +72,7 @@ Cosmosh records each authorization request and decision before acting on it. If 
 
 ## Keep an Eye on Activity
 
-- The `MCP` tab lists connected clients, active connections with their mode/status, and pending authorization requests. Closing an attached connection detaches it; explicitly closing an Agent-created terminal connection closes its tab.
+- `Settings > MCP` lists connected clients, active connections with their mode/status, and pending authorization requests. Closing an attached connection detaches it; explicitly closing an Agent-created terminal connection closes its tab.
 - Every MCP action is written to your audit log. Open `Audit Logs` and filter by the `MCP` category to review connections, commands, and authorization decisions.
 
 ## Turn It Off
@@ -81,11 +81,10 @@ Disable `MCP Access` in `Settings > MCP` at any time. Connected agents are disco
 
 ## Screenshot Placeholders
 
-1. `Settings > MCP` with the `MCP Access` switch and command policy.
-2. The `MCP` tab status panel (enabled, connected clients, active connections).
-3. The `Client Configuration` card showing a `.mcp.json` snippet.
-4. A connection authorization dialog.
-5. An attach-terminal selector showing eligible and disabled SSH panes.
-6. An attached pane status bar and Agent-marked tab.
-7. A command authorization dialog with the full command shown.
-8. `Audit Logs` filtered to the `MCP` category.
+1. `Settings > MCP` with access controls, pairing, connected clients, and active connections.
+2. The `Client Configuration` section showing a `.mcp.json` snippet.
+3. A connection authorization dialog.
+4. An attach-terminal selector showing eligible and disabled SSH panes.
+5. An attached pane status bar and Agent-marked tab.
+6. A command authorization dialog with the full command shown.
+7. `Audit Logs` filtered to the `MCP` category.

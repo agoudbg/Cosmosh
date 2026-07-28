@@ -358,7 +358,7 @@
       },
       "title": "活跃连接"
     },
-    "disabledNotice": "MCP 访问已关闭。在“设置 → MCP”中启用，以允许外部 Agent 连接。",
+    "disabledNotice": "MCP 访问已关闭。请在上方启用 Cosmosh MCP，以允许外部 Agent 连接。",
     "errors": {
       "connectionCloseFailed": "关闭连接失败。",
       "copyFailed": "复制到剪贴板失败。",
@@ -366,17 +366,6 @@
       "tokenRevokeFailed": "吊销配对令牌失败。",
       "tokenRotateFailed": "轮换配对令牌失败。"
     },
-    "status": {
-      "channelConnected": "实时",
-      "channelDisconnected": "离线",
-      "clientCount": "{count} 个客户端",
-      "connectionCount": "{count} 个连接",
-      "disabled": "已禁用",
-      "enabled": "已启用",
-      "pendingCount": "{count} 个待处理"
-    },
-    "subtitle": "让外部 AI Agent 使用你已配置的 SSH 服务器，每次请求均需授权并全程审计。",
-    "title": "MCP 访问",
     "toasts": {
       "connectionClosed": "连接已关闭。",
       "copied": "已复制到剪贴板。",
@@ -1814,7 +1803,6 @@
       "debug": "调试",
       "home": "主页",
       "localTerminal": "本地终端",
-      "mcp": "MCP",
       "settings": "设置",
       "settingsEditor": "设置编辑器",
       "sftp": "SFTP",

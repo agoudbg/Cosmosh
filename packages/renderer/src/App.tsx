@@ -25,7 +25,6 @@ import Home from './pages/Home';
 import type { TabIconKey } from './types/tabs';
 
 const AuditLogs = React.lazy(() => import('./pages/AuditLogs'));
-const Mcp = React.lazy(() => import('./pages/Mcp'));
 const Debug = React.lazy(() => import('./pages/Debug'));
 const Settings = React.lazy(() => import('./pages/Settings'));
 const SettingsEditor = React.lazy(() => import('./pages/SettingsEditor'));
@@ -651,11 +650,6 @@ const App: React.FC = () => {
                   <AuditLogs />
                 </React.Suspense>
               )}
-              {tab.page === 'mcp' && (
-                <React.Suspense fallback={pageLoadingFallback}>
-                  <Mcp />
-                </React.Suspense>
-              )}
               {tab.page === 'settings-editor' && (
                 <React.Suspense fallback={pageLoadingFallback}>
                   <SettingsEditor initialSettingKey={tab.state?.settingsEditorSettingKey} />
@@ -732,7 +726,6 @@ const App: React.FC = () => {
             onCloseOtherTabs={closeOtherTabs}
             onReorderTabs={reorderTabs}
             onOpenAuditLogsTab={() => addTab('audit-logs')}
-            onOpenMcpTab={() => addTab('mcp')}
             onOpenSettingsTab={(options) =>
               addTab('settings', {
                 state: {

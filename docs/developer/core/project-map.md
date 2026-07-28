@@ -292,7 +292,8 @@ flowchart TD
 - Bridge owner:
   - `packages/main/src/ipc/register-backend-ipc.ts`, `packages/main/src/preload.ts`, and `packages/renderer/src/vite-env.d.ts` for the `backend:mcp-*` and `app:focus-main-window` channels.
 - Renderer owner:
-  - `packages/renderer/src/pages/Mcp.tsx` for status/pairing/client-config/connections/approvals; `McpApprovalHost.tsx` for pane selection; `McpTerminalHost.tsx` for replay-safe visible-tab launch/bind/close behavior; `agent-terminal-registry.ts` for renderer-private pane/session identity; and `use-mcp-events.ts` for event backfill.
+  - `packages/renderer/src/components/settings/SettingsMcpSection.tsx` owns status, pairing, client configuration, connections, and approvals inside `Settings > MCP`; there is no standalone MCP page or tab.
+  - `McpApprovalHost.tsx` owns pane selection; `McpTerminalHost.tsx` owns replay-safe visible-tab launch/bind/close behavior; `agent-terminal-registry.ts` owns renderer-private pane/session identity; and `use-mcp-events.ts` owns event backfill.
   - `packages/renderer/src/components/ssh/SSHServerEditorDialog.tsx` for the per-server command-policy override.
 - Documentation owner:
   - `docs/developer/runtime/mcp-server.md` and `docs/zh-CN/developer/runtime/mcp-server.md` as the runtime source pages; `skills/cosmosh-mcp/SKILL.md` as the external-agent guide.

@@ -1,6 +1,6 @@
 /**
- * Centralized MCP runtime store — single reactive source for the MCP panel and
- * the global authorization dialog host.
+ * Centralized MCP runtime store — single reactive source for the Settings MCP
+ * management section and the global authorization dialog host.
  *
  * Built on React 18's `useSyncExternalStore` (same pattern as `settings-store.ts`).
  * The store holds the latest status snapshot plus the live lists of clients,
@@ -22,11 +22,6 @@ import React from 'react';
 // ── Internal State ───────────────────────────────────────────
 
 /**
- * WebSocket lifecycle state surfaced to the UI for connection indicators.
- */
-export type McpChannelState = 'idle' | 'connecting' | 'open' | 'closed';
-
-/**
  * Immutable MCP store snapshot consumed by React components.
  */
 export type McpStoreSnapshot = {
@@ -36,7 +31,6 @@ export type McpStoreSnapshot = {
   approvals: readonly ApiMcpPendingApproval[];
   terminalLaunches: readonly ApiMcpPendingTerminalLaunch[];
   connectionClosures: readonly Extract<McpEventMessage, { type: 'connection-closed' }>[];
-  channelState: McpChannelState;
 };
 
 const EMPTY_SNAPSHOT: McpStoreSnapshot = {
@@ -46,7 +40,6 @@ const EMPTY_SNAPSHOT: McpStoreSnapshot = {
   approvals: [],
   terminalLaunches: [],
   connectionClosures: [],
-  channelState: 'idle',
 };
 
 let currentSnapshot: McpStoreSnapshot = EMPTY_SNAPSHOT;
@@ -133,23 +126,12 @@ export const setMcpTerminalLaunches = (terminalLaunches: readonly ApiMcpPendingT
 };
 
 /**
- * Updates the WebSocket lifecycle indicator.
- *
- * @param channelState Latest channel state.
- * @returns Nothing.
- */
-export const setMcpChannelState = (channelState: McpChannelState): void => {
-  patchSnapshot({ channelState });
-};
-
-/**
  * Clears all runtime data — used when MCP is disabled or the channel tears down.
  *
- * @param channelState Channel state to record after the reset.
  * @returns Nothing.
  */
-export const resetMcpRuntimeData = (channelState: McpChannelState = 'idle'): void => {
-  currentSnapshot = { ...EMPTY_SNAPSHOT, status: currentSnapshot.status, channelState };
+export const resetMcpRuntimeData = (): void => {
+  currentSnapshot = { ...EMPTY_SNAPSHOT, status: currentSnapshot.status };
   emitChange();
 };
 
