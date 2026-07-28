@@ -115,6 +115,7 @@
   --color-form-control: #191919d9;
   --color-form-control-hover: #292929cc;
   --color-form-text: #eeeeee;
+  --color-form-text-label: #cdd3dc;
   --color-form-text-muted: #a7b0bd;
   --color-form-switch-track-off: #303030;
   --color-form-switch-track-on: #1e90ff;
@@ -239,6 +240,7 @@
   --color-form-control: #ffffff;
   --color-form-control-hover: #f1f1f5;
   --color-form-text: #111827;
+  --color-form-text-label: #39424e;
   --color-form-text-muted: #6e6e73;
   --color-form-switch-track-off: #d1d1d8;
   --color-form-switch-track-on: #0a84ff;
@@ -362,6 +364,7 @@
     --color-form-control: #ffffff;
     --color-form-control-hover: #f1f1f5;
     --color-form-text: #111827;
+    --color-form-text-label: #39424e;
     --color-form-text-muted: #6e6e73;
     --color-form-switch-track-off: #d1d1d8;
     --color-form-switch-track-on: #0a84ff;

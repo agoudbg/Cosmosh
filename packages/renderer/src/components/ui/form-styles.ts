@@ -1,7 +1,8 @@
 export const formStyles = {
   root: 'grid gap-4',
   field: 'grid gap-2',
-  label: 'px-2.5 text-sm text-form-text-muted',
+  sectionHeading: 'px-2.5 text-[15px] font-semibold text-text',
+  label: 'px-2.5 text-sm text-form-text-label',
   inlineLabel: 'px-0 !text-form-text',
   helperText: 'px-2.5 text-xs text-form-text-muted',
   message: 'text-xs text-form-message-error',

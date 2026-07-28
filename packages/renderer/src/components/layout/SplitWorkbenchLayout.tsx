@@ -18,6 +18,14 @@ type SplitWorkbenchMainPanelProps = {
   className?: string;
   headerClassName?: string;
   bodyClassName?: string;
+  /**
+   * Ref attached to the scrollable body wrapper in `content-scroll` mode.
+   *
+   * Virtualized pages use this to wire TanStack Virtual's `getScrollElement`
+   * to the real scroll container instead of relying on DOM traversal.
+   * Ignored when `bodyClassName` removes the wrapper entirely.
+   */
+  bodyRef?: React.Ref<HTMLDivElement>;
 };
 
 /**
@@ -57,7 +65,7 @@ const SplitWorkbenchLayout: React.FC<SplitWorkbenchLayoutProps> = ({
 /**
  * Shared right-side main panel with configurable scrolling behavior.
  *
- * @param props Header/body slots and optional wrapper class overrides.
+ * @param props Header/body slots, optional wrapper class overrides, and an optional body wrapper ref.
  * @returns A main panel that supports fixed-header or unified-scroll layouts.
  */
 export const SplitWorkbenchMainPanel: React.FC<SplitWorkbenchMainPanelProps> = ({
@@ -67,6 +75,7 @@ export const SplitWorkbenchMainPanel: React.FC<SplitWorkbenchMainPanelProps> = (
   className,
   headerClassName,
   bodyClassName,
+  bodyRef,
 }) => {
   const isContentScroll = mode === 'content-scroll';
   const resolvedClassName =
@@ -79,7 +88,16 @@ export const SplitWorkbenchMainPanel: React.FC<SplitWorkbenchMainPanelProps> = (
   return (
     <div className={resolvedClassName}>
       <div className={resolvedHeaderClassName}>{header}</div>
-      {resolvedBodyClassName ? <div className={resolvedBodyClassName}>{body}</div> : body}
+      {resolvedBodyClassName ? (
+        <div
+          ref={bodyRef}
+          className={resolvedBodyClassName}
+        >
+          {body}
+        </div>
+      ) : (
+        body
+      )}
     </div>
   );
 };

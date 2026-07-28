@@ -210,11 +210,13 @@
     "groupFolders": "文件夹",
     "groupLocalTerminals": "本地终端",
     "groupModeAction": "分组方式",
+    "groupModeFolder": "文件夹",
     "groupModeForwardingType": "转发类型",
     "groupModeLastUsed": "上次使用时间",
     "groupModeNone": "不分组",
     "groupModeStatus": "状态",
     "groupModeTag": "标签",
+    "groupNoFolder": "无文件夹",
     "groupRecentConnections": "最近连接",
     "groupRecentlyUpdatedKeychains": "最近更新",
     "groupUntitled": "分组名称",
@@ -584,6 +586,9 @@
     "disabled": "已禁用",
     "enabled": "已启用",
     "itemActions": {
+      "copyId": "拷贝设置项 ID",
+      "copyIdFailed": "拷贝设置项 ID 失败。",
+      "copyIdSuccess": "设置项 ID 已拷贝。",
       "editInSettingsEditor": "在设置编辑器中编辑",
       "openMenu": "打开设置项操作菜单",
       "resetToDefault": "重置为默认"

@@ -111,6 +111,7 @@ import {
 } from '../lib/backend';
 import { createEntityIconNode, EntityColorKey, hashString, isEntityColorKey } from '../lib/entity-visuals';
 import { normalizeFolderName, removeFolder, renameFolder } from '../lib/folder-actions';
+import { groupHomeItemsByFolder } from '../lib/home-grouping';
 import { consumeOpenLocalTerminalListRequest } from '../lib/home-target';
 import { getLocale, t } from '../lib/i18n';
 import {
@@ -160,7 +161,7 @@ type SshFolder = components['schemas']['SshFolder'];
 type SshTag = components['schemas']['SshTag'];
 type HomeMode = 'ssh' | 'keychains' | 'portForwarding';
 type QuickFilter = 'none' | 'recent' | 'favorite';
-type GroupMode = 'none' | 'lastUsed' | 'tag';
+type GroupMode = 'none' | 'folder' | 'lastUsed' | 'tag';
 type SortMode = 'nameAsc' | 'nameDesc' | 'lastUsed' | 'createdAt';
 type HomeEntityKind = 'server' | 'keychain' | 'portForwarding';
 type HomeViewPreference = {
@@ -447,6 +448,10 @@ const resolvePortForwardTypeLabel = (type: PortForwardRuleType): string => {
 const resolveGroupModeLabel = (homeMode: HomeMode, mode: GroupMode): string => {
   if (mode === 'none') {
     return t('home.groupModeNone');
+  }
+
+  if (mode === 'folder') {
+    return t('home.groupModeFolder');
   }
 
   if (homeMode === 'portForwarding') {
@@ -1427,7 +1432,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
   const keychainViewPreference = viewPreferences.keychains;
   const portForwardingViewPreference = viewPreferences.portForwarding;
   const activeViewPreference = viewPreferences[activeHomeMode];
-  const { groupMode, sortMode } = activeViewPreference;
+  const canGroupByFolder = activeHomeMode !== 'portForwarding' && activeFolderId === 'all';
+  const groupMode =
+    activeViewPreference.groupMode === 'folder' && !canGroupByFolder ? 'none' : activeViewPreference.groupMode;
+  const { sortMode } = activeViewPreference;
 
   const updateActiveViewPreference = React.useCallback(
     (nextPreference: Partial<HomeViewPreference>) => {
@@ -1842,7 +1850,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
   );
 
   const groupedServers = React.useMemo<ServerGroup[]>(() => {
-    if (sshViewPreference.groupMode === 'none') {
+    const effectiveGroupMode =
+      sshViewPreference.groupMode === 'folder' && activeFolderId !== 'all' ? 'none' : sshViewPreference.groupMode;
+
+    if (effectiveGroupMode === 'none') {
       return [
         {
           key: 'ungrouped:all',
@@ -1852,7 +1863,15 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
       ];
     }
 
-    if (sshViewPreference.groupMode === 'tag') {
+    if (effectiveGroupMode === 'folder') {
+      return groupHomeItemsByFolder(filteredServers, {
+        keyPrefix: 'server',
+        noFolderTitle: t('home.groupNoFolder'),
+        sortItems: sortServers,
+      });
+    }
+
+    if (effectiveGroupMode === 'tag') {
       const tagNameSet = new Set<string>();
       filteredServers.forEach((server) => {
         (server.tags ?? []).forEach((tag) => {
@@ -1953,7 +1972,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
         items: otherItems,
       },
     ].filter((group) => group.items.length > 0);
-  }, [filteredServers, sortServers, sshViewPreference.groupMode]);
+  }, [activeFolderId, filteredServers, sortServers, sshViewPreference.groupMode]);
 
   const sortKeychains = React.useCallback(
     (items: SshKeychainListItem[]): SshKeychainListItem[] => {
@@ -1977,7 +1996,12 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
   );
 
   const groupedKeychains = React.useMemo<KeychainGroup[]>(() => {
-    if (keychainViewPreference.groupMode === 'none') {
+    const effectiveGroupMode =
+      keychainViewPreference.groupMode === 'folder' && activeFolderId !== 'all'
+        ? 'none'
+        : keychainViewPreference.groupMode;
+
+    if (effectiveGroupMode === 'none') {
       return [
         {
           key: 'keychain:ungrouped:all',
@@ -1987,7 +2011,15 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
       ];
     }
 
-    if (keychainViewPreference.groupMode === 'tag') {
+    if (effectiveGroupMode === 'folder') {
+      return groupHomeItemsByFolder(filteredKeychains, {
+        keyPrefix: 'keychain',
+        noFolderTitle: t('home.groupNoFolder'),
+        sortItems: sortKeychains,
+      });
+    }
+
+    if (effectiveGroupMode === 'tag') {
       const tagNameSet = new Set<string>();
       filteredKeychains.forEach((keychain) => {
         (keychain.tags ?? []).forEach((tag) => {
@@ -2037,7 +2069,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
         items: sortKeychains(filteredKeychains),
       },
     ].filter((group) => group.items.length > 0);
-  }, [filteredKeychains, keychainViewPreference.groupMode, sortKeychains]);
+  }, [activeFolderId, filteredKeychains, keychainViewPreference.groupMode, sortKeychains]);
 
   const sortPortForwardRules = React.useCallback(
     (items: PortForwardRuleListItem[]): PortForwardRuleListItem[] => {
@@ -2421,6 +2453,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
   }, [portForwardRuleFormState.serverId, servers]);
 
   const groupModeIcon = React.useMemo(() => {
+    if (groupMode === 'folder') {
+      return FolderOpen;
+    }
+
     if (groupMode === 'tag') {
       return Tags;
     }
@@ -2433,11 +2469,13 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
   }, [groupMode]);
 
   const groupModeOptions = React.useMemo<Array<{ value: GroupMode; label: string }>>(() => {
-    return (['none', 'lastUsed', 'tag'] as const).map((value) => ({
+    const values: GroupMode[] = canGroupByFolder ? ['none', 'folder', 'lastUsed', 'tag'] : ['none', 'lastUsed', 'tag'];
+
+    return values.map((value) => ({
       value,
       label: resolveGroupModeLabel(activeHomeMode, value),
     }));
-  }, [activeHomeMode]);
+  }, [activeHomeMode, canGroupByFolder]);
 
   const setActiveGroupMode = React.useCallback(
     (nextGroupMode: GroupMode) => {

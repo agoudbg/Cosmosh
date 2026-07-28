@@ -8,7 +8,7 @@ import { t } from '../../lib/i18n';
 import type { KeychainFormState } from '../../lib/ssh-keychain-editor-shared';
 import EntityIcon from '../home/EntityIcon';
 import EntityVisualPicker from '../home/EntityVisualPicker';
-import { Form, FormControl, FormField, FormLabel, FormMessage } from '../ui/form';
+import { Form, FormControl, FormField, FormLabel, FormMessage, FormSectionHeading } from '../ui/form';
 import { Input } from '../ui/input';
 import type { InputContextMenuItem } from '../ui/input-context-menu-registry';
 import { PasswordField } from '../ui/password-field';
@@ -116,9 +116,7 @@ const SSHKeychainEditorForm: React.FC<SSHKeychainEditorFormProps> = ({
       </section>
 
       <section className="grid gap-3">
-        <div className="px-2.5 pb-1 text-[15px] font-medium text-home-text-subtle">
-          {t('ssh.sectionAuthentication')}
-        </div>
+        <FormSectionHeading>{t('ssh.sectionAuthentication')}</FormSectionHeading>
 
         <div className="grid grid-cols-[1fr_1fr] gap-3">
           <FormField>
@@ -203,7 +201,7 @@ const SSHKeychainEditorForm: React.FC<SSHKeychainEditorFormProps> = ({
       </section>
 
       <section className="grid gap-3">
-        <div className="px-2.5 pb-1 text-[15px] font-medium text-home-text-subtle">{t('ssh.sectionSettings')}</div>
+        <FormSectionHeading>{t('ssh.sectionSettings')}</FormSectionHeading>
         <div className="grid grid-cols-[1fr_1fr] gap-3">
           <FormField>
             <FormLabel htmlFor="ssh-keychain-folder">{t('sshKeychain.folderLabel')}</FormLabel>

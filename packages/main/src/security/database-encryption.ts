@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { hkdfSync, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -243,16 +243,26 @@ const normalizeHashHex = (hash: string): Buffer => {
   return Buffer.from(hash.trim().toLowerCase(), 'hex');
 };
 
+const MASTER_PASSWORD_VERIFIER_CONTEXT = 'cosmosh/master-password/verifier/v1';
+const MASTER_PASSWORD_DB_KEY_CONTEXT = 'cosmosh/master-password/database-key/v1';
+
 /**
- * Derives a deterministic password verification hash.
- * Uses scrypt to ensure sufficient computational cost for offline attacks.
+ * Derives the master-password root secret with scrypt for offline-attack cost,
+ * then expands it through HKDF under a caller-supplied domain-separation context.
+ * The persisted verification hash and the database key MUST come from different
+ * contexts so that the stored hash never equals the encryption key.
  */
+const deriveFromMasterPassword = (password: string, salt: string, context: string): string => {
+  const rootSecret = scryptSync(password, salt, 32);
+  return Buffer.from(hkdfSync('sha256', rootSecret, salt, context, 32)).toString('hex');
+};
+
 const deriveMasterPasswordHash = (password: string, salt: string): string => {
-  return scryptSync(password, salt, 32).toString('hex');
+  return deriveFromMasterPassword(password, salt, MASTER_PASSWORD_VERIFIER_CONTEXT);
 };
 
 const deriveDatabaseKeyFromMasterPassword = (password: string, salt: string): string => {
-  return scryptSync(password, salt, 32).toString('hex');
+  return deriveFromMasterPassword(password, salt, MASTER_PASSWORD_DB_KEY_CONTEXT);
 };
 
 /**

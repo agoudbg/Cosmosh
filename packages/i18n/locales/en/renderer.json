@@ -210,11 +210,13 @@
     "groupFolders": "Folders",
     "groupLocalTerminals": "Local Terminals",
     "groupModeAction": "Group By",
+    "groupModeFolder": "Folder",
     "groupModeForwardingType": "Forwarding Type",
     "groupModeLastUsed": "Last Used Time",
     "groupModeNone": "Ungrouped",
     "groupModeStatus": "Status",
     "groupModeTag": "Tag",
+    "groupNoFolder": "No Folder",
     "groupRecentConnections": "Recent Connections",
     "groupRecentlyUpdatedKeychains": "Recently Updated",
     "groupUntitled": "Group Name",
@@ -584,6 +586,9 @@
     "disabled": "Disabled",
     "enabled": "Enabled",
     "itemActions": {
+      "copyId": "Copy Setting ID",
+      "copyIdFailed": "Failed to copy setting ID.",
+      "copyIdSuccess": "Setting ID copied.",
       "editInSettingsEditor": "Edit in Settings Editor",
       "openMenu": "Open setting actions",
       "resetToDefault": "Reset to Default"

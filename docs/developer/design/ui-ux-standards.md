@@ -29,6 +29,8 @@ Rules:
 - Keep typography compact, readable, and consistent across controls and content areas.
 - Preserve a stable body/control baseline and avoid arbitrary size jumps between adjacent components.
 - Use clear hierarchy for titles, labels, helper text, and status messages.
+- Shared form labels use the semantic `color.form.text.label` tier between primary form text and `color.form.text.muted`; helper and description text stay muted.
+- Second-level headings inside form sections use the shared `FormSectionHeading` primitive (`formStyles.sectionHeading`): 15 px, semibold, and the primary `color.text` token. Settings, SSH server, and SSH keychain editors must consume this primitive instead of restyling section headings locally.
 
 ## 4. Radius Logic
 
@@ -68,10 +70,16 @@ Implementation principles:
 
 - Keep layout dense but breathable, prioritizing efficient scanning and frequent actions.
 - Maintain consistent control rhythm and spacing within each feature surface.
+- Registry-driven Settings sections use 12 px between the heading and item list, 20 px between adjacent setting items, and 32 px between sections. Section headings use the same primary text color as page titles with semibold weight; helper text remains below its control.
 - Scrollable category or navigation changes, including Settings page categories, should reset the content pane to the top of the newly selected surface.
 - Avoid decorative patterns that reduce clarity or compete with task-focused content.
 
-### 6.1 Entity Visual Picker Virtualization
+### 6.1 Settings Item Actions
+
+- Each registry-driven setting label exposes the existing gear action menu on hover or keyboard focus.
+- The menu must offer `Copy Setting ID`, copying the stable registry key to the clipboard and reporting localized success or failure feedback. Existing reset and settings-editor actions remain unchanged.
+
+### 6.2 Entity Visual Picker Virtualization
 
 - `EntityVisualPicker` uses `@tanstack/react-virtual` to keep the full Lucide icon catalog searchable while mounting only visible fixed-grid rows plus a small overscan window.
 - The virtual grid preserves the established eight-column, 32 px icon-button rhythm and 4 px gap; virtualization must not resize or shift the picker while scrolling.
@@ -79,7 +87,7 @@ Implementation principles:
 - Arrow-key and forward-Tab navigation must call the virtualizer to reveal an offscreen target row before moving focus. Search updates keep the selected icon, or the first filtered icon when the selection is absent, as the active grid item.
 - Virtualization reduces mounted DOM only. Changes to icon-module loading or bundle composition remain a separate concern.
 
-### 6.2 SFTP Collection Virtualization
+### 6.3 SFTP Collection Virtualization
 
 - The SFTP directory tree and center file list use `@tanstack/react-virtual` with stable remote-path keys, fixed 30 px tree rows, fixed 34 px directory rows, and a small overscan window. The 30 px sticky directory header remains outside the logical row collection.
 - Virtualization changes mounted DOM only. `SFTP.tsx` continues to own the complete filtered/sorted entry collection, expanded tree order, selection model, keyboard navigation order, and drag/drop contracts.
@@ -153,6 +161,12 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - Keychain card menus expose favorite/unfavorite, copy name, edit, and delete in that order, with separators between action groups.
 - Favorite changes for keychains must use metadata-only updates. Context-menu actions must never fetch, copy, or resubmit passwords, private keys, or private-key passphrases.
 - Keychain deletion requires explicit confirmation. A rejected delete keeps the keychain visible and reports the backend error without closing the confirmation surface.
+
+### 7.4.2 Home Organization Controls
+
+- SSH and Keychains Home modes expose folder grouping only while the sidebar scope is All, Favorites, or Recents. A concrete folder or Local Terminals scope suppresses the folder option and renders a stored folder-group preference as ungrouped for that scope.
+- Folder groups follow folder-name order, preserve the active per-mode item sort inside each group, and place entities without a folder in a final localized group.
+- SSH, Keychains, and Port Forwarding retain independent sort/group preferences. Folder grouping is not available in Port Forwarding.
 
 ## 7.5 Plain Text Selection Context Menu
 

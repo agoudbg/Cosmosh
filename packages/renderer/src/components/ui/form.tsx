@@ -25,6 +25,24 @@ const FormField = React.forwardRef<HTMLDivElement, React.ComponentPropsWithoutRe
 );
 FormField.displayName = 'FormField';
 
+/**
+ * Renders the shared second-level heading for grouped form content.
+ *
+ * @param props Native heading props plus optional style overrides.
+ * @param ref Forwarded heading element reference.
+ * @returns A consistently styled semantic form section heading.
+ */
+const FormSectionHeading = React.forwardRef<HTMLHeadingElement, React.ComponentPropsWithoutRef<'h2'>>(
+  ({ className, ...props }, ref) => (
+    <h2
+      ref={ref}
+      className={classNames(formStyles.sectionHeading, className)}
+      {...props}
+    />
+  ),
+);
+FormSectionHeading.displayName = 'FormSectionHeading';
+
 const FormLabel = React.forwardRef<HTMLLabelElement, React.ComponentPropsWithoutRef<'label'>>(
   ({ className, ...props }, ref) => (
     <label
@@ -67,4 +85,4 @@ const FormSubmit = React.forwardRef<HTMLButtonElement, React.ComponentPropsWitho
 );
 FormSubmit.displayName = 'FormSubmit';
 
-export { Form, FormControl, FormField, FormLabel, FormMessage, FormSubmit };
+export { Form, FormControl, FormField, FormLabel, FormMessage, FormSectionHeading, FormSubmit };

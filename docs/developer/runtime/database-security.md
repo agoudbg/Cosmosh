@@ -135,9 +135,12 @@ If password env or salt is missing, startup throws:
 
 Fallback verification and derivation are currently:
 
-- Verify hash: `scryptSync(password, salt, 32).toString('hex')` compared with stored `masterPasswordHash`.
+- Root secret: `scryptSync(password, salt, 32)`.
+- Verify hash: `hkdfSync('sha256', rootSecret, salt, 'cosmosh/master-password/verifier/v1', 32)` (hex) compared with stored `masterPasswordHash`.
 - Constant-time compare: `timingSafeEqual(...)`.
-- If verified, derive DB key: `scryptSync(password, salt, 32).toString('hex')`.
+- If verified, derive DB key: `hkdfSync('sha256', rootSecret, salt, 'cosmosh/master-password/database-key/v1', 32)` (hex).
+
+The two HKDF `info` contexts are intentionally different (domain separation): the persisted verification hash never equals the database encryption key, so reading `security.config.json` alone cannot decrypt the database.
 
 If hash check fails, startup throws:
 
@@ -257,7 +260,7 @@ Until renderer-side “Set Master Password” flow is implemented end-to-end, us
 
 1. Choose a strong master password in secure operator workflow.
 2. Generate/store `masterPasswordSalt`.
-3. Compute `masterPasswordHash = scryptSync(password, salt, 32).toString('hex')`.
+3. Compute `masterPasswordHash` with the same formula as runtime: `rootSecret = scryptSync(password, salt, 32)`, then `hkdfSync('sha256', rootSecret, salt, 'cosmosh/master-password/verifier/v1', 32)` encoded as hex.
 4. Write both fields into `<userData>/security.config.json`.
 5. Set env `COSMOSH_DB_MASTER_PASSWORD` before launching app.
 6. Ensure env is not exposed in shell history/system logs where avoidable.

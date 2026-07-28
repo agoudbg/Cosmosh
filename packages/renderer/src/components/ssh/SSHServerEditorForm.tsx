@@ -19,7 +19,7 @@ import { t } from '../../lib/i18n';
 import EntityIcon from '../home/EntityIcon';
 import EntityVisualPicker from '../home/EntityVisualPicker';
 import { Button } from '../ui/button';
-import { Form, FormControl, FormField, FormLabel, FormMessage } from '../ui/form';
+import { Form, FormControl, FormField, FormLabel, FormMessage, FormSectionHeading } from '../ui/form';
 import { FormLabelWithTooltip } from '../ui/form-label-with-tooltip';
 import { formStyles } from '../ui/form-styles';
 import { Input } from '../ui/input';
@@ -171,9 +171,7 @@ const SSHServerEditorForm: React.FC<SSHServerEditorFormProps> = ({
           </FormField>
         </div>
 
-        <div className="px-2.5 pb-1 text-[15px] font-medium text-home-text-subtle">
-          {t('ssh.sectionBasicConnection')}
-        </div>
+        <FormSectionHeading>{t('ssh.sectionBasicConnection')}</FormSectionHeading>
 
         <div className="grid grid-cols-[5fr_2fr] gap-3">
           <FormField>
@@ -204,9 +202,7 @@ const SSHServerEditorForm: React.FC<SSHServerEditorFormProps> = ({
       </section>
 
       <section className="grid gap-3">
-        <div className="px-2.5 pb-1 text-[15px] font-medium text-home-text-subtle">
-          {t('ssh.sectionAuthentication')}
-        </div>
+        <FormSectionHeading>{t('ssh.sectionAuthentication')}</FormSectionHeading>
 
         <div className="grid grid-cols-[2fr_2fr_1fr] gap-3">
           <FormField>
@@ -370,7 +366,7 @@ const SSHServerEditorForm: React.FC<SSHServerEditorFormProps> = ({
       </section>
 
       <section className="grid gap-3">
-        <div className="px-2.5 pb-1 text-[15px] font-medium text-home-text-subtle">{t('ssh.sectionSecurity')}</div>
+        <FormSectionHeading>{t('ssh.sectionSecurity')}</FormSectionHeading>
         <div className="flex items-center gap-2.5 px-2.5">
           <Switch
             id="ssh-editor-strict-host-key"
@@ -542,7 +538,7 @@ const SSHServerEditorForm: React.FC<SSHServerEditorFormProps> = ({
       </section>
 
       <section className="grid gap-3">
-        <div className="px-2.5 pb-1 text-[15px] font-medium text-home-text-subtle">{t('ssh.sectionSettings')}</div>
+        <FormSectionHeading>{t('ssh.sectionSettings')}</FormSectionHeading>
 
         <div className="grid grid-cols-[1fr_1fr] gap-3">
           <FormField>

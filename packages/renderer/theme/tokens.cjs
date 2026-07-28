@@ -183,6 +183,7 @@ const base = {
       },
       text: {
         DEFAULT: standardTextColorDefault,
+        label: '#cdd3dc',
         muted: standardTextColorMuted,
       },
       switch: {
@@ -394,6 +395,7 @@ const light = {
       },
       text: {
         DEFAULT: '#111827',
+        label: '#39424e',
         muted: '#6e6e73',
       },
       switch: {

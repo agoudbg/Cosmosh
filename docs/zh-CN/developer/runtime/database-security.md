@@ -135,9 +135,12 @@ Main 会在以下任一场景进入回退解析器：
 
 当前实现是：
 
-- 校验哈希：`scryptSync(password, salt, 32).toString('hex')`，与配置里的 `masterPasswordHash` 比较。
+- 根密钥：`scryptSync(password, salt, 32)`。
+- 校验哈希：`hkdfSync('sha256', rootSecret, salt, 'cosmosh/master-password/verifier/v1', 32)`（hex 编码），与配置里的 `masterPasswordHash` 比较。
 - 比较方式：`timingSafeEqual(...)`（常量时间比较）。
-- 校验通过后派生数据库密钥：`scryptSync(password, salt, 32).toString('hex')`。
+- 校验通过后派生数据库密钥：`hkdfSync('sha256', rootSecret, salt, 'cosmosh/master-password/database-key/v1', 32)`（hex 编码）。
+
+两条派生路径使用不同的 HKDF `info` 上下文（领域分离）：持久化的校验哈希与数据库加密密钥逐字节不同，单独读取 `security.config.json` 无法解密数据库。
 
 如果校验失败，会报：
 
@@ -257,7 +260,7 @@ CI 会通过 `COSMOSH_REQUIRED_PRISMA_TARGETS` 在预构建阶段验证 `libquer
 
 1. 在安全流程中选择强主密码。
 2. 生成并保存 `masterPasswordSalt`。
-3. 计算 `masterPasswordHash = scryptSync(password, salt, 32).toString('hex')`。
+3. 按运行时相同公式计算 `masterPasswordHash`：先 `rootSecret = scryptSync(password, salt, 32)`，再 `hkdfSync('sha256', rootSecret, salt, 'cosmosh/master-password/verifier/v1', 32)` 并编码为 hex。
 4. 将两项写入 `<userData>/security.config.json`。
 5. 启动前注入 `COSMOSH_DB_MASTER_PASSWORD`。
 6. 确保该环境变量不泄露到 shell 历史或系统日志。
