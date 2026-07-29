@@ -202,6 +202,29 @@ flowchart LR
   WS2 --> XT2[xterm.write]
 ```
 
+### 3.3 Terminal Presentation Integration
+
+- Cosmosh passively observes standard terminal control sequences emitted by local PTYs, SSH sessions, alternate-screen TUIs, and agent CLIs. Renderer does not inject bootstrap bytes or parse OSC in WebSocket/transport code.
+- Every output chunk is written unchanged to the owning pane's xterm instance. xterm's streaming parser therefore owns cross-chunk reassembly and terminator handling.
+- `terminal.onTitleChange(...)` receives complete OSC 0/2 application-title events. Titles are kept only in pane memory, never logged or persisted, and are sanitized by removing terminal/directional controls, collapsing whitespace, and limiting display content to 256 Unicode code points.
+- `terminal.parser.registerOscHandler(9, ...)` handles only the `4;<state>;<progress>` namespace. States map to `none`, `normal`, `error`, `indeterminate`, and `warning`; malformed OSC 9;4 payloads are consumed without changing state, while unrelated OSC 9 payloads remain available to other handlers.
+- `terminal.onBell(...)` is the only Bell attention source. A BEL used to terminate OSC 0/2 or OSC 9;4 is consumed by xterm as a terminator and does not produce a standalone Bell event. OSC 9;4 state `0` clears progress only and never synthesizes Bell attention.
+- Presentation state belongs to each pane independently. A connection retry clears only that pane's stale title/progress/Bell state, terminal disposal unregisters all parser listeners, and pane removal deletes the pane state.
+- This module intentionally excludes OSC 7, OSC 133, shell bootstrap, and OSC 777 Remote Enhancements. Those protocols retain their existing owners and lifecycle gates.
+
+```mermaid
+flowchart LR
+  PTY[Local PTY or SSH output] --> WS[Existing output transport]
+  WS --> WRITE[Owning pane terminal.write]
+  WRITE --> XP[xterm streaming parser]
+  XP --> TITLE[OSC 0/2 title event]
+  XP --> PROGRESS[OSC 9;4 progress handler]
+  XP --> BELL[Standalone BEL event]
+  TITLE --> STATE[Pane TerminalPresentationState]
+  PROGRESS --> STATE
+  BELL --> STATE
+```
+
 ## 4. Host Verification & Trust Flow
 
 - SSH connect uses `hostHash: 'sha256'` and `hostVerifier`.

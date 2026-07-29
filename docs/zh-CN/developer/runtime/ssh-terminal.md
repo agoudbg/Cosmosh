@@ -202,6 +202,29 @@ flowchart LR
   WS2 --> XT2[xterm.write]
 ```
 
+### 3.3 Terminal Presentation Integration
+
+- Cosmosh 被动观察本地 PTY、SSH 会话、Alternate Screen TUI 与 Agent CLI 输出的标准终端控制序列。Renderer 不注入 bootstrap 字节，也不在 WebSocket/transport 代码中解析 OSC。
+- 每个输出 chunk 都保持原样写入所属 pane 的 xterm 实例，因此跨 chunk 重组与 terminator 处理完全由 xterm streaming parser 负责。
+- `terminal.onTitleChange(...)` 接收完整的 OSC 0/2 应用标题事件。标题只保存在 pane 内存中，不写日志、不持久化；进入展示状态前会移除终端/方向控制字符、合并空白，并限制为 256 个 Unicode code point。
+- `terminal.parser.registerOscHandler(9, ...)` 只处理 `4;<state>;<progress>` 命名空间。状态映射为 `none`、`normal`、`error`、`indeterminate` 与 `warning`；非法 OSC 9;4 payload 会被消费但不改变状态，无关 OSC 9 payload 仍可交给其他 handler。
+- `terminal.onBell(...)` 是 Bell attention 的唯一来源。用于终止 OSC 0/2 或 OSC 9;4 的 BEL 会被 xterm 作为 terminator 消费，不会产生独立 Bell 事件。OSC 9;4 state `0` 只清除进度，绝不会合成 Bell attention。
+- 展示状态按 pane 独立归属。连接重试只清理该 pane 的旧标题/进度/Bell 状态，terminal dispose 会注销所有 parser listener，pane 删除会移除对应状态。
+- 本模块明确排除 OSC 7、OSC 133、Shell Bootstrap 与 OSC 777 远端增强；这些协议继续由其现有 owner 和生命周期门控负责。
+
+```mermaid
+flowchart LR
+  PTY[本地 PTY 或 SSH 输出] --> WS[既有输出 transport]
+  WS --> WRITE[所属 pane terminal.write]
+  WRITE --> XP[xterm streaming parser]
+  XP --> TITLE[OSC 0/2 title event]
+  XP --> PROGRESS[OSC 9;4 progress handler]
+  XP --> BELL[独立 BEL event]
+  TITLE --> STATE[Pane TerminalPresentationState]
+  PROGRESS --> STATE
+  BELL --> STATE
+```
+
 ## 4. 主机校验与信任流程
 
 - SSH 连接使用 `hostHash: 'sha256'` 与 `hostVerifier`。

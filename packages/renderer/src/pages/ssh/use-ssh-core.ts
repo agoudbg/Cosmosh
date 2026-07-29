@@ -52,6 +52,12 @@ import {
   type TerminalWebglAddonRuntime,
   type TerminalWebLinksSettings,
 } from './terminal-addons';
+import {
+  createTerminalPresentationState,
+  reduceTerminalPresentationState,
+  type TerminalPresentationStateAction,
+  type TerminalPresentationStateMap,
+} from './terminal-presentation-state';
 import { useSshAutocomplete } from './use-ssh-autocomplete';
 import { useSshMirrorPanes } from './use-ssh-mirror-panes';
 import { useSshPrimarySession } from './use-ssh-primary-session';
@@ -241,6 +247,7 @@ export type SshCoreState = {
   remoteEnhancementsDebugEvents: RemoteEnhancementsDebugEvent[];
   trustedCwd: string | null;
   commandTimelineModels: Record<string, TerminalCommandTimelineModel>;
+  terminalPresentationStates: TerminalPresentationStateMap;
   hostFingerprintPrompt: HostFingerprintPrompt | null;
   canSplitTerminal: boolean;
   selectionAnchor: TerminalSelectionAnchor | null;
@@ -603,6 +610,13 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     'pane-1': createSshPaneState(),
   });
   const paneStateMapRef = React.useRef<SshPaneStateMap>(paneStateMap);
+  const [terminalPresentationStates, dispatchTerminalPresentationStateReducer] = React.useReducer(
+    reduceTerminalPresentationState,
+    {
+      'pane-1': createTerminalPresentationState(),
+    },
+  );
+  const terminalPresentationStatesRef = React.useRef<TerminalPresentationStateMap>(terminalPresentationStates);
   const [sessionTargetReady, setSessionTargetReady] = React.useState<boolean>(false);
   const [, setCommandMarkerRevision] = React.useState<number>(0);
   const commandTimelineRefreshFrameRef = React.useRef<number | null>(null);
@@ -705,9 +719,40 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     dispatchPaneStateReducer(action);
   }, []);
 
+  /**
+   * Dispatches presentation state synchronously to the lifecycle ref and React reducer.
+   *
+   * @param action Pane lifecycle or xterm presentation action.
+   * @returns Nothing.
+   */
+  const dispatchTerminalPresentationState = React.useCallback((action: TerminalPresentationStateAction): void => {
+    terminalPresentationStatesRef.current = reduceTerminalPresentationState(
+      terminalPresentationStatesRef.current,
+      action,
+    );
+    dispatchTerminalPresentationStateReducer(action);
+  }, []);
+
+  /**
+   * Clears application-owned presentation state before one pane reconnects.
+   *
+   * @param paneId Pane whose previous terminal application state is stale.
+   * @returns Nothing.
+   */
+  const resetTerminalPresentationState = React.useCallback(
+    (paneId: string): void => {
+      dispatchTerminalPresentationState({ type: 'reset-pane', paneId });
+    },
+    [dispatchTerminalPresentationState],
+  );
+
   React.useEffect(() => {
     paneStateMapRef.current = paneStateMap;
   }, [paneStateMap]);
+
+  React.useEffect(() => {
+    terminalPresentationStatesRef.current = terminalPresentationStates;
+  }, [terminalPresentationStates]);
 
   React.useEffect(() => {
     onTabTitleChangeRef.current = onTabTitleChange;
@@ -724,6 +769,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   React.useEffect(() => {
     terminalPaneIds.forEach((paneId) => {
       dispatchPaneState({ type: 'ensure-pane', paneId });
+      dispatchTerminalPresentationState({ type: 'ensure-pane', paneId });
     });
 
     Object.keys(paneStateMapRef.current).forEach((paneId) => {
@@ -731,7 +777,13 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         dispatchPaneState({ type: 'remove-pane', paneId });
       }
     });
-  }, [dispatchPaneState, terminalPaneIds]);
+
+    Object.keys(terminalPresentationStatesRef.current).forEach((paneId) => {
+      if (!terminalPaneIds.includes(paneId)) {
+        dispatchTerminalPresentationState({ type: 'remove-pane', paneId });
+      }
+    });
+  }, [dispatchPaneState, dispatchTerminalPresentationState, terminalPaneIds]);
 
   React.useEffect(() => {
     terminalInitOptionsRef.current = terminalInitOptions;
@@ -1125,10 +1177,18 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       runtimeRef.current.paneRuntimeMap.delete(paneId);
       runtimeRef.current.sessionMap.delete(paneId);
       dispatchPaneState({ type: 'remove-pane', paneId });
+      dispatchTerminalPresentationState({ type: 'remove-pane', paneId });
       closeAutocompleteRef.current();
       setTerminalPaneIds(transition.paneIds);
     },
-    [activatePane, activePaneIdRef, closeAutocompleteRef, dispatchPaneState, terminalPaneIds],
+    [
+      activatePane,
+      activePaneIdRef,
+      closeAutocompleteRef,
+      dispatchPaneState,
+      dispatchTerminalPresentationState,
+      terminalPaneIds,
+    ],
   );
 
   /**
@@ -1196,6 +1256,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     onTabTitleChangeRef,
     onTabVisualChangeRef,
     resetPaneState,
+    resetTerminalPresentationState,
+    dispatchTerminalPresentationState,
     setPaneTransportState,
     setSessionTargetReady,
     handlePaneServerMessage,
@@ -1240,6 +1302,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     applyAutocompleteInputData,
     closeAutocompleteRef,
     resetPaneState,
+    resetTerminalPresentationState,
+    dispatchTerminalPresentationState,
     setPaneTransportState,
     handlePaneServerMessage,
     recordPaneInputCommandMarker,
@@ -1580,6 +1644,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       remoteEnhancementsDebugEvents,
       trustedCwd: activePaneState.trustedCwd,
       commandTimelineModels,
+      terminalPresentationStates,
       hostFingerprintPrompt,
       canSplitTerminal: terminalPaneIds.length < MAX_TERMINAL_PANES,
       selectionAnchor,

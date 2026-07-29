@@ -29,6 +29,8 @@ import {
   type TerminalWebglAddonRuntime,
   type TerminalWebLinksSettings,
 } from './terminal-addons';
+import { registerTerminalPresentationIntegration } from './terminal-presentation-integration';
+import type { TerminalPresentationStateAction } from './terminal-presentation-state';
 import type { TerminalClipboardProvider } from './use-terminal-clipboard-provider';
 
 type UseSshPrimarySessionParams = {
@@ -63,6 +65,8 @@ type UseSshPrimarySessionParams = {
     ((visual: { iconKey: TabIconKey; iconColorKey?: TabIconColorKey }) => void) | undefined
   >;
   resetPaneState: (paneId: string) => void;
+  resetTerminalPresentationState: (paneId: string) => void;
+  dispatchTerminalPresentationState: (action: TerminalPresentationStateAction) => void;
   setPaneTransportState: (paneId: string, state: 'connecting' | 'connected' | 'failed', error?: string) => void;
   setSessionTargetReady: (ready: boolean) => void;
   handlePaneServerMessage: (paneId: string, terminal: Terminal, payload: ServerInboundMessage) => void;
@@ -122,6 +126,8 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     onTabTitleChangeRef,
     onTabVisualChangeRef,
     resetPaneState,
+    resetTerminalPresentationState,
+    dispatchTerminalPresentationState,
     setPaneTransportState,
     setSessionTargetReady,
     handlePaneServerMessage,
@@ -193,6 +199,12 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
       return;
     }
 
+    resetTerminalPresentationState(paneId);
+    const terminalPresentationIntegration = registerTerminalPresentationIntegration({
+      paneId,
+      terminal,
+      dispatch: dispatchTerminalPresentationState,
+    });
     terminal.open(containerElement);
     syncTerminalWebglAddon(
       terminal,
@@ -371,6 +383,9 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
         const attemptId = connectAttemptId;
 
         resetPaneState(paneId);
+        terminalPresentationIntegration.resetAfterPendingWrites(() => {
+          resetTerminalPresentationState(paneId);
+        });
         setPaneTransportState(paneId, 'connecting');
         setSessionTargetReady(false);
 
@@ -652,6 +667,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
       disposeCommandTimelineWrite.dispose();
       disposeCommandTimelineBuffer.dispose();
       disposeCommandTimelineResize.dispose();
+      terminalPresentationIntegration.dispose();
       containerElement.removeEventListener('pointerup', trackPointerPosition);
       containerElement.removeEventListener('mouseup', trackPointerPosition);
       containerElement.removeEventListener('keydown', handleAutocompleteKeyDown, true);
@@ -686,6 +702,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     refreshCommandTimeline,
     refreshSelectionAnchor,
     resetPaneState,
+    resetTerminalPresentationState,
     requestHostFingerprintTrust,
     resolvedTerminalTargetRef,
     scheduleFitAndResizeSyncRef,
@@ -699,6 +716,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     terminalInitOptionsRef,
     terminalClipboardProvider,
     terminalRef,
+    dispatchTerminalPresentationState,
     terminalInlineImageSettingsRef,
     terminalWebLinksSettingsRef,
   ]);

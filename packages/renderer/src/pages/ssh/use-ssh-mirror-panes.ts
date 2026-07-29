@@ -18,6 +18,8 @@ import {
   type TerminalInlineImageSettings,
   type TerminalWebLinksSettings,
 } from './terminal-addons';
+import { registerTerminalPresentationIntegration } from './terminal-presentation-integration';
+import type { TerminalPresentationStateAction } from './terminal-presentation-state';
 import type { TerminalClipboardProvider } from './use-terminal-clipboard-provider';
 
 type UseSshMirrorPanesParams = {
@@ -48,6 +50,8 @@ type UseSshMirrorPanesParams = {
   applyAutocompleteInputData: (paneId: string, data: string) => { shouldRequest: boolean; shouldClose: boolean };
   closeAutocompleteRef: React.RefObject<() => void>;
   resetPaneState: (paneId: string) => void;
+  resetTerminalPresentationState: (paneId: string) => void;
+  dispatchTerminalPresentationState: (action: TerminalPresentationStateAction) => void;
   setPaneTransportState: (paneId: string, state: 'connecting' | 'connected' | 'failed', error?: string) => void;
   handlePaneServerMessage: (
     paneId: string,
@@ -102,6 +106,8 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     applyAutocompleteInputData,
     closeAutocompleteRef,
     resetPaneState,
+    resetTerminalPresentationState,
+    dispatchTerminalPresentationState,
     setPaneTransportState,
     handlePaneServerMessage,
     recordPaneInputCommandMarker,
@@ -167,6 +173,12 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
       );
       const { fitAddon, searchAddon, serializeAddon } = addonRuntime;
       terminal.loadAddon(clipboardAddon);
+      resetTerminalPresentationState(paneId);
+      const terminalPresentationIntegration = registerTerminalPresentationIntegration({
+        paneId,
+        terminal,
+        dispatch: dispatchTerminalPresentationState,
+      });
       terminal.open(containerElement);
       syncTerminalWebglAddon(
         terminal,
@@ -356,6 +368,9 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
         const attemptId = connectAttemptId;
         closeRuntimeSession();
         resetPaneState(paneId);
+        terminalPresentationIntegration.resetAfterPendingWrites(() => {
+          resetTerminalPresentationState(paneId);
+        });
         setPaneTransportState(paneId, 'connecting');
 
         try {
@@ -500,6 +515,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
         disposeCommandTimelineWrite.dispose();
         disposeCommandTimelineBuffer.dispose();
         disposeCommandTimelineResize.dispose();
+        terminalPresentationIntegration.dispose();
         paneResizeObserver.disconnect();
         containerElement.removeEventListener('pointerup', trackPointerPosition);
         containerElement.removeEventListener('mouseup', trackPointerPosition);
@@ -526,6 +542,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     applyAutocompleteInputData,
     characterWidthCompatibilityModeEnabledRef,
     closeAutocompleteRef,
+    dispatchTerminalPresentationState,
     handleAutocompleteTerminalKeyDownRef,
     handlePaneServerMessage,
     hardwareAccelerationStateRef,
@@ -551,6 +568,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     recordPaneInputCommandMarker,
     refreshCommandTimeline,
     resetPaneState,
+    resetTerminalPresentationState,
     sessionTargetReady,
     setPaneTransportState,
   ]);

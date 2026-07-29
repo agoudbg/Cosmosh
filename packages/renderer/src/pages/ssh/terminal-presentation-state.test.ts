@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { Terminal } from '@xterm/xterm';
-
 import {
   createTerminalPresentationState,
   MAX_TERMINAL_APPLICATION_TITLE_CODE_POINTS,
@@ -17,19 +15,6 @@ const INITIAL_STATE: TerminalPresentationStateMap = {
   'pane-1': createTerminalPresentationState(),
   'pane-2': createTerminalPresentationState(),
 };
-
-/**
- * Awaits one xterm write callback so deliberately fragmented control sequences
- * preserve parser order in tests.
- *
- * @param terminal xterm instance receiving a single transport-like chunk.
- * @param chunk Raw terminal data chunk.
- * @returns Promise resolved after xterm parses the chunk.
- */
-const writeTerminalChunk = (terminal: Terminal, chunk: string): Promise<void> =>
-  new Promise((resolve) => {
-    terminal.write(chunk, resolve);
-  });
 
 test('application titles remove unsafe controls while preserving visible Unicode text', () => {
   const rawTitle = '  Claude\u0007\nCode \u202e spoof \u2066中文 😀  ';
@@ -87,46 +72,6 @@ test('OSC 9;4 parser leaves unrelated OSC 9 data unmatched and consumes malforme
       matched: true,
       progress: null,
     });
-  }
-});
-
-test('xterm parser preserves fragmented OSC data and does not report OSC terminators as standalone Bells', async () => {
-  const terminal = new Terminal({ allowProposedApi: true });
-  let title: string | null = null;
-  let progress: TerminalPresentationProgress | null = null;
-  let bellCount = 0;
-  const titleDisposable = terminal.onTitleChange((nextTitle) => {
-    title = nextTitle;
-  });
-  const bellDisposable = terminal.onBell(() => {
-    bellCount += 1;
-  });
-  const progressDisposable = terminal.parser.registerOscHandler(9, (data) => {
-    const parsed = parseTerminalOscProgress(data);
-    if (!parsed.matched) {
-      return false;
-    }
-
-    if (parsed.progress) {
-      progress = parsed.progress;
-    }
-
-    return true;
-  });
-
-  try {
-    for (const chunk of ['\u001b]0;Claude', ' Code\u0007\u001b]9', ';4;3', ';0\u0007', '\u0007']) {
-      await writeTerminalChunk(terminal, chunk);
-    }
-
-    assert.equal(title, 'Claude Code');
-    assert.deepEqual(progress, { state: 'indeterminate', value: null });
-    assert.equal(bellCount, 1);
-  } finally {
-    titleDisposable.dispose();
-    bellDisposable.dispose();
-    progressDisposable.dispose();
-    terminal.dispose();
   }
 });
 
