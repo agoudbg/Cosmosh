@@ -596,6 +596,10 @@
         "description": "Hold Alt (Option on macOS) and click to move the cursor to that position.",
         "title": "Hold Alt/Option and Click to Move Cursor"
       },
+      "terminalApplicationTitleEnabled": {
+        "description": "Allow terminal applications to update the active tab title.",
+        "title": "Application Title"
+      },
       "terminalAutoCompleteAcceptKeys": {
         "description": "Set which key applies the highlighted auto-complete suggestion.",
         "title": "Auto Complete Apply Shortcut"
@@ -636,6 +640,10 @@
         "description": "Use a regular expression to customize prompt parsing before command text. Leave empty to use the default rules.",
         "placeholder": "^.*[#$%>]\\s+",
         "title": "Customize Auto Complete Prompt Parsing"
+      },
+      "terminalBellAttentionMode": {
+        "description": "Choose how standalone terminal Bell events request your attention.",
+        "title": "Bell Attention"
       },
       "terminalBracketedPasteEnabled": {
         "description": "Wrap pasted text in safe paste markers to prevent immediate execution.",
@@ -782,6 +790,10 @@
         "placeholder": "0",
         "title": "Smooth Scroll Duration"
       },
+      "terminalTabProgressEnabled": {
+        "description": "Show application-reported progress in terminal tabs and the window taskbar.",
+        "title": "Tab Progress"
+      },
       "terminalTabStopWidth": {
         "description": "Set the tab width in the terminal.",
         "placeholder": "8",
@@ -892,6 +904,13 @@
         "tab": "Tab",
         "tabEnter": "Tab/Enter"
       },
+      "terminalBellAttentionMode": {
+        "all": "All",
+        "audible": "Sound only",
+        "none": "None",
+        "taskbar": "Taskbar only",
+        "visual": "Visual only"
+      },
       "terminalClipboardAccess": {
         "askAlways": "Always ask",
         "off": "Off",
@@ -958,6 +977,7 @@
       "connection": "Connection",
       "editorDefaults": "Defaults",
       "localization": "Localization",
+      "presentation": "Presentation",
       "proxy": "Proxy",
       "runtime": "Runtime",
       "search": "Search",

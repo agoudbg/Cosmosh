@@ -49,6 +49,11 @@ import {
   type TerminalForceSelectionModifier,
   type TerminalRightClickAction,
 } from './terminal-interaction';
+import {
+  DEFAULT_TERMINAL_BELL_ATTENTION_MODE,
+  TERMINAL_BELL_ATTENTION_MODES,
+  type TerminalBellAttentionMode,
+} from './terminal-presentation';
 
 // ── SettingsValues — strict canonical TypeScript interface ────
 
@@ -113,6 +118,9 @@ export interface SettingsValues {
   localTerminalClipboardAccess: TerminalClipboardAccess;
   terminalContextLaunchBehavior: 'openDefaultLocalTerminal' | 'openLocalTerminalList' | 'off';
   defaultLocalTerminalProfile: string;
+  terminalApplicationTitleEnabled: boolean;
+  terminalTabProgressEnabled: boolean;
+  terminalBellAttentionMode: TerminalBellAttentionMode;
   terminalSelectionSearchEngine: 'google' | 'bing' | 'duckduckgo' | 'baidu' | 'custom';
   terminalSelectionSearchUrlTemplate: string;
   terminalAutoCompleteEnabled: boolean;
@@ -185,6 +193,7 @@ export const SETTINGS_CATEGORIES = {
         labelI18nKey: 'settings.sections.terminalSelection',
       },
       search: { labelI18nKey: 'settings.sections.search' },
+      presentation: { labelI18nKey: 'settings.sections.presentation' },
       runtime: { labelI18nKey: 'settings.sections.runtime' },
       autoComplete: { labelI18nKey: 'settings.sections.autoComplete' },
       advancedTerminal: { labelI18nKey: 'settings.sections.advancedTerminal' },
@@ -1096,6 +1105,47 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     path: 'terminal.selection.copyOnSelection.enabled',
     commandActionId: 'settings.terminal.selection.copyOnSelection.enabled.toggle',
     searchTerms: ['terminal', 'selection', 'copy on selection', 'clipboard', 'mouse selection'],
+  },
+  {
+    key: 'terminalApplicationTitleEnabled',
+    valueType: 'boolean',
+    defaultValue: true,
+    nameI18nKey: 'settings.items.terminalApplicationTitleEnabled.title',
+    descriptionI18nKey: 'settings.items.terminalApplicationTitleEnabled.description',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.presentation,
+    control: 'switch',
+    path: 'terminal.presentation.applicationTitle.enabled',
+    commandActionId: 'settings.terminal.presentation.applicationTitle.enabled.toggle',
+    searchTerms: ['terminal', 'presentation', 'application title', 'osc 0', 'osc 2', 'tab title'],
+  },
+  {
+    key: 'terminalTabProgressEnabled',
+    valueType: 'boolean',
+    defaultValue: true,
+    nameI18nKey: 'settings.items.terminalTabProgressEnabled.title',
+    descriptionI18nKey: 'settings.items.terminalTabProgressEnabled.description',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.presentation,
+    control: 'switch',
+    path: 'terminal.presentation.progress.enabled',
+    commandActionId: 'settings.terminal.presentation.progress.enabled.toggle',
+    searchTerms: ['terminal', 'presentation', 'progress', 'osc 9 4', 'tab progress', 'taskbar progress'],
+  },
+  {
+    key: 'terminalBellAttentionMode',
+    valueType: 'string',
+    defaultValue: DEFAULT_TERMINAL_BELL_ATTENTION_MODE,
+    nameI18nKey: 'settings.items.terminalBellAttentionMode.title',
+    descriptionI18nKey: 'settings.items.terminalBellAttentionMode.description',
+    optionI18nNamespace: 'terminalBellAttentionMode',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.presentation,
+    control: 'select',
+    path: 'terminal.presentation.bell.attentionMode',
+    commandActionId: 'settings.terminal.presentation.bell.attentionMode.set',
+    searchTerms: ['terminal', 'presentation', 'bell', 'attention', 'sound', 'visual', 'taskbar', 'flash'],
+    options: TERMINAL_BELL_ATTENTION_MODES.map((value) => ({ value })),
   },
   {
     key: 'terminalTextDropMode',

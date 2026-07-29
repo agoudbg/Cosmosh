@@ -44,7 +44,7 @@ flowchart TB
   - `src/index.ts`：应用启动、窗口配置、IPC 处理器、后端子进程管理。
   - `src/window-close-guard.ts`：根据 backend 持有的 SSH/SFTP 活动状态串行处理窗口关闭与应用退出决策，并对探测失败采用保守确认策略。
   - `src/renderer-close-confirmation.ts`：绑定发送方并校验 request ID 的 Main 到 Renderer 关闭确认 broker，包含超时与 renderer 销毁处理。
-  - `src/terminal-window-activity.ts`：经过校验的窗口级 taskbar 进度映射与独立 Bell Flash edge 去重。
+  - `src/terminal-window-activity.ts`：经过校验的窗口级 taskbar 进度映射，以及分别节流的独立 Bell 声音/Flash edge 处理。
   - `src/ipc/register-app-utility-ipc.ts`：特权应用工具 IPC，例如原生对话框、文件管理器集成、SFTP 临时文件创建，以及已校验的系统打开/打开方式流程。
   - `src/ipc/register-terminal-window-activity-ipc.ts`：绑定发送方的 Terminal Presentation 窗口快照 channel 与 `BrowserWindow` controller 生命周期。
   - `src/ipc/sftp-open-with-runtime.ts`：负责 SFTP 打开方式使用的内核锚定 Windows 系统可执行文件/库解析、OS known-folder 子进程环境，以及 macOS 打包态与开发态 helper 选择。
@@ -108,6 +108,7 @@ flowchart TB
 - `src/settings-registry.ts`：所有设置定义的**唯一来源**——类型、默认值、约束、枚举集、UI 控件元数据、分类与辅助函数。增删设置项仅需编辑此文件。
 - `src/settings.ts`：基于注册表的通用校验与规范化辅助函数（`normalizeSettingsValuesStrict`、`normalizeSettingsValuesWithDefaults`），供 backend 与 renderer 共享。
 - `src/sftp.ts`：SFTP 条目/名称排序共享 helper，供后端会话列表与渲染层浏览器/树视图复用。
+- `src/terminal-presentation.ts`：供设置与 Renderer 投影共享的 Bell attention mode 枚举、默认值和 effect-policy 判断函数。
 - `src/terminal-protocol.ts`：Backend 与 renderer 共享的协议 v2 终端 WebSocket union、远端 shell event/capability 常量，以及 bootstrap/runtime 状态类型。
 
 ### `packages/i18n`

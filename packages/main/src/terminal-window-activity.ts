@@ -7,6 +7,14 @@ export type TerminalWindowActivityTarget = Pick<
   'flashFrame' | 'isDestroyed' | 'isFocused' | 'setProgressBar'
 >;
 
+/** Minimum interval between repeated Bell effects of the same kind. */
+export const TERMINAL_BELL_EFFECT_THROTTLE_MS = 1_000;
+
+/** Privileged Bell side effects supplied by the Electron integration boundary. */
+export type TerminalWindowActivityEffects = {
+  beep: () => void;
+};
+
 type AppliedProgress = Pick<TerminalWindowActivity, 'progressState' | 'progressValue'>;
 
 /**
@@ -21,13 +29,19 @@ export class TerminalWindowActivityController {
   private appliedProgress: AppliedProgress | null = null;
   private latestBellReceivedAt = -1;
   private readonly latestBellKeys = new Set<string>();
+  private lastAudibleBellAt = Number.NEGATIVE_INFINITY;
+  private lastFlashBellAt = Number.NEGATIVE_INFINITY;
 
   /**
    * Creates a controller bound to one BrowserWindow.
    *
    * @param targetWindow Window that owns the renderer sending activity.
+   * @param effects Privileged operating-system effects for Bell attention.
    */
-  constructor(private readonly targetWindow: TerminalWindowActivityTarget) {}
+  constructor(
+    private readonly targetWindow: TerminalWindowActivityTarget,
+    private readonly effects: TerminalWindowActivityEffects,
+  ) {}
 
   /**
    * Validates and applies one renderer-provided activity snapshot.
@@ -46,7 +60,7 @@ export class TerminalWindowActivityController {
     }
 
     this.applyProgress(activity);
-    this.applyBellEvent(activity.latestBellEvent);
+    this.applyBellEvent(activity);
     return true;
   }
 
@@ -97,12 +111,17 @@ export class TerminalWindowActivityController {
   }
 
   /**
-   * Flashes only for a new standalone Bell edge while the window is unfocused.
+   * Applies independently throttled sound and Flash effects for a new Bell edge.
    *
-   * @param event Latest Bell identity from the renderer snapshot.
+   * Every new edge advances the replay guard even when its configured effect is
+   * disabled or throttled. Changing settings therefore cannot replay an older
+   * Bell that was already observed by Main.
+   *
+   * @param activity Validated window activity snapshot.
    * @returns Nothing.
    */
-  private applyBellEvent(event: TerminalWindowActivity['latestBellEvent']): void {
+  private applyBellEvent(activity: TerminalWindowActivity): void {
+    const event = activity.latestBellEvent;
     if (!event || event.receivedAt < this.latestBellReceivedAt) {
       return;
     }
@@ -118,7 +137,17 @@ export class TerminalWindowActivityController {
     }
 
     this.latestBellKeys.add(eventKey);
-    if (!this.targetWindow.isFocused()) {
+    if (activity.bellAudibleEnabled && event.receivedAt - this.lastAudibleBellAt >= TERMINAL_BELL_EFFECT_THROTTLE_MS) {
+      this.lastAudibleBellAt = event.receivedAt;
+      this.effects.beep();
+    }
+
+    if (
+      activity.bellFlashEnabled &&
+      !this.targetWindow.isFocused() &&
+      event.receivedAt - this.lastFlashBellAt >= TERMINAL_BELL_EFFECT_THROTTLE_MS
+    ) {
+      this.lastFlashBellAt = event.receivedAt;
       this.targetWindow.flashFrame(true);
     }
   }

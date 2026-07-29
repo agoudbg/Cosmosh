@@ -1,5 +1,5 @@
 import { TERMINAL_WINDOW_ACTIVITY_IPC_CHANNEL } from '@cosmosh/api-contract';
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, shell } from 'electron';
 
 import { TerminalWindowActivityController } from '../terminal-window-activity';
 
@@ -22,7 +22,11 @@ export const registerTerminalWindowActivityIpcHandler = (): void => {
 
     let controller = controllers.get(targetWindow);
     if (!controller) {
-      controller = new TerminalWindowActivityController(targetWindow);
+      controller = new TerminalWindowActivityController(targetWindow, {
+        beep: () => {
+          shell.beep();
+        },
+      });
       controllers.set(targetWindow, controller);
       targetWindow.on('focus', () => {
         controller?.acknowledgeWindowFocus();

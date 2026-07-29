@@ -5,6 +5,8 @@ import type { TabItem, TerminalTabPresentation } from '../types/tabs';
 type AggregateTerminalWindowActivityParams = {
   tabs: ReadonlyArray<TabItem>;
   activeTabId: string;
+  bellAudibleEnabled: boolean;
+  bellFlashEnabled: boolean;
 };
 
 type TabProgressCandidate = {
@@ -33,6 +35,8 @@ const WINDOW_PROGRESS_SEVERITY: Readonly<Record<TerminalWindowProgressState, num
 export const aggregateTerminalWindowActivity = ({
   tabs,
   activeTabId,
+  bellAudibleEnabled,
+  bellFlashEnabled,
 }: AggregateTerminalWindowActivityParams): TerminalWindowActivity => {
   const progress = selectWindowProgress(tabs, activeTabId);
   const latestBellEvent = selectLatestWindowBellEvent(tabs);
@@ -41,6 +45,8 @@ export const aggregateTerminalWindowActivity = ({
     progressState: progress?.progressState ?? 'none',
     progressValue: progress?.progressValue ?? null,
     bellAttention: tabs.some((tab) => tab.terminalPresentation?.bellAttention),
+    bellAudibleEnabled,
+    bellFlashEnabled,
     latestBellEvent,
   };
 };

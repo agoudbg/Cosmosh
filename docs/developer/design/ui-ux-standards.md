@@ -170,6 +170,8 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - The status slot remains allocated while an SSH tab is alive, including its empty state, so spinner, progress, warning/error, and Bell transitions do not shift the title or close control.
 - The active pane owns the tab title and ordinary progress presentation. Background panes may retain error, warning, and Bell attention without exposing ordinary background progress as if it belonged to the active pane.
 - Dynamic OSC application titles are memory-only display input. Tab chrome must sanitize and bound them before display, never log or persist them, and preserve connection/default/manual title sources separately.
+- Terminal settings expose one Presentation section with independent Application Title and Tab Progress switches plus a Bell Attention select. Disabling a display option must not stop passive parser state collection or collapse the fixed tab status slot.
+- Bell Attention modes map exactly to sound (`audible`), tab status (`visual`), window taskbar Flash (`taskbar`), all three (`all`), or no attention effects (`none`). Progress completion remains visually independent and must never imply Bell attention.
 
 ## 7.5 Plain Text Selection Context Menu
 

@@ -596,6 +596,10 @@
         "description": "按住 Alt（在 macOS 上使用 Option）并点击时，将光标移动到点击位置。",
         "title": "按住 Alt/Option 并点击来移动光标"
       },
+      "terminalApplicationTitleEnabled": {
+        "description": "允许终端应用更新当前标签页标题。",
+        "title": "应用标题"
+      },
       "terminalAutoCompleteAcceptKeys": {
         "description": "设置用于应用当前高亮自动补全候选的按键。",
         "title": "自动补全应用快捷键"
@@ -636,6 +640,10 @@
         "description": "使用正则表达式自定义命令文本前的提示符解析方式。留空来使用默认规则。",
         "placeholder": "^.*[#$%>]\\s+",
         "title": "自定义自动补全提示符解析"
+      },
+      "terminalBellAttentionMode": {
+        "description": "选择独立终端 Bell 事件如何提醒你。",
+        "title": "Bell 提醒"
       },
       "terminalBracketedPasteEnabled": {
         "description": "包装粘贴内容为安全粘贴格式来避免内容粘贴后被立即执行。",
@@ -782,6 +790,10 @@
         "placeholder": "0",
         "title": "平滑滚动时长"
       },
+      "terminalTabProgressEnabled": {
+        "description": "在终端标签页和窗口任务栏中显示应用报告的进度。",
+        "title": "标签页进度"
+      },
       "terminalTabStopWidth": {
         "description": "设置终端中的制表符宽度。",
         "placeholder": "8",
@@ -892,6 +904,13 @@
         "tab": "Tab",
         "tabEnter": "Tab/Enter"
       },
+      "terminalBellAttentionMode": {
+        "all": "全部",
+        "audible": "仅声音",
+        "none": "无",
+        "taskbar": "仅任务栏",
+        "visual": "仅视觉"
+      },
       "terminalClipboardAccess": {
         "askAlways": "始终询问",
         "off": "关闭",
@@ -958,6 +977,7 @@
       "connection": "连接",
       "editorDefaults": "默认值",
       "localization": "本地化",
+      "presentation": "展示",
       "proxy": "代理",
       "runtime": "运行时",
       "search": "搜索",

@@ -109,6 +109,14 @@ export {
 } from './terminal-interaction';
 export type { TerminalForceSelectionModifier, TerminalRightClickAction } from './terminal-interaction';
 export {
+  DEFAULT_TERMINAL_BELL_ATTENTION_MODE,
+  TERMINAL_BELL_ATTENTION_MODES,
+  isTerminalBellAudible,
+  isTerminalBellTaskbar,
+  isTerminalBellVisual,
+} from './terminal-presentation';
+export type { TerminalBellAttentionMode } from './terminal-presentation';
+export {
   REMOTE_SHELL_CAPABILITIES,
   REMOTE_SHELL_EVENT_NAMES,
   REMOTE_SHELL_NAMES,

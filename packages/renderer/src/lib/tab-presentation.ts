@@ -1,5 +1,12 @@
 import type { TabItem, TerminalTabPresentation } from '../types/tabs';
 
+/** User-configurable display policy applied after passive parser state aggregation. */
+export type TerminalPresentationDisplayPolicy = {
+  applicationTitleEnabled: boolean;
+  progressEnabled: boolean;
+  bellVisualEnabled: boolean;
+};
+
 /** Baseline tab presentation used before a terminal runtime emits state. */
 export const EMPTY_TERMINAL_TAB_PRESENTATION: TerminalTabPresentation = Object.freeze({
   applicationTitle: null,
@@ -9,6 +16,12 @@ export const EMPTY_TERMINAL_TAB_PRESENTATION: TerminalTabPresentation = Object.f
   bellAttention: false,
   bellAttentionPaneIds: Object.freeze([]) as ReadonlyArray<string>,
   latestBellEvent: null,
+});
+
+const DEFAULT_TERMINAL_PRESENTATION_DISPLAY_POLICY: TerminalPresentationDisplayPolicy = Object.freeze({
+  applicationTitleEnabled: true,
+  progressEnabled: true,
+  bellVisualEnabled: true,
 });
 
 /**
@@ -41,14 +54,31 @@ export const resolveTerminalTabTitle = (
  *
  * @param tab Stored tab model.
  * @param presentation Optional pane-aggregated presentation state.
+ * @param policy User-configurable display policy.
  * @returns Tab view model with resolved title and a stable status-slot payload.
  */
-export const projectTabPresentation = (tab: TabItem, presentation: TerminalTabPresentation | undefined): TabItem => {
+export const projectTabPresentation = (
+  tab: TabItem,
+  presentation: TerminalTabPresentation | undefined,
+  policy: TerminalPresentationDisplayPolicy = DEFAULT_TERMINAL_PRESENTATION_DISPLAY_POLICY,
+): TabItem => {
   if (tab.page !== 'ssh') {
     return tab;
   }
 
-  const resolvedPresentation = presentation ?? EMPTY_TERMINAL_TAB_PRESENTATION;
+  const sourcePresentation = presentation ?? EMPTY_TERMINAL_TAB_PRESENTATION;
+  const resolvedPresentation =
+    policy.applicationTitleEnabled && policy.progressEnabled && policy.bellVisualEnabled
+      ? sourcePresentation
+      : {
+          ...sourcePresentation,
+          applicationTitle: policy.applicationTitleEnabled ? sourcePresentation.applicationTitle : null,
+          progressState: policy.progressEnabled ? sourcePresentation.progressState : 'none',
+          progressValue: policy.progressEnabled ? sourcePresentation.progressValue : null,
+          progressSource: policy.progressEnabled ? sourcePresentation.progressSource : null,
+          bellAttention: policy.bellVisualEnabled ? sourcePresentation.bellAttention : false,
+          bellAttentionPaneIds: policy.bellVisualEnabled ? sourcePresentation.bellAttentionPaneIds : [],
+        };
   return {
     ...tab,
     title: resolveTerminalTabTitle(tab, resolvedPresentation),

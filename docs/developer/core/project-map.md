@@ -44,7 +44,7 @@ flowchart TB
   - `src/index.ts`: app bootstrap, BrowserWindow config, IPC handlers, backend subprocess management.
   - `src/window-close-guard.ts`: serialized window/app close decisions based on backend-owned SSH/SFTP activity, including conservative probe-failure handling.
   - `src/renderer-close-confirmation.ts`: sender-bound, request-ID-validated Main-to-Renderer close confirmation broker with timeout and renderer-destruction handling.
-  - `src/terminal-window-activity.ts`: validated per-window taskbar progress mapping and standalone-Bell Flash edge de-duplication.
+  - `src/terminal-window-activity.ts`: validated per-window taskbar progress mapping plus independently throttled standalone-Bell sound/Flash edge handling.
   - `src/ipc/register-app-utility-ipc.ts`: privileged app utility IPC such as native dialogs, file manager integration, SFTP temp-file creation, and validated OS-open/Open With flows.
   - `src/ipc/register-terminal-window-activity-ipc.ts`: sender-bound Terminal Presentation window snapshot channel and `BrowserWindow` controller lifecycle.
   - `src/ipc/sftp-open-with-runtime.ts`: kernel-anchored Windows system executable/library resolution, OS-known-folder child environments, and packaged-versus-development macOS helper selection for SFTP Open With.
@@ -108,6 +108,7 @@ Shared protocol constants, request/response types, OpenAPI source, generated con
 - `src/settings-registry.ts`: **single source of truth** for all settings definitions — types, defaults, constraints, enum sets, UI control metadata, categories, and helper functions. Adding/removing a setting only requires editing this file.
 - `src/settings.ts`: generic, registry-driven validation and normalization helpers (`normalizeSettingsValuesStrict`, `normalizeSettingsValuesWithDefaults`) shared by backend and renderer.
 - `src/sftp.ts`: shared SFTP entry/name ordering helpers consumed by backend session listings and renderer browser/tree views.
+- `src/terminal-presentation.ts`: shared Bell attention mode enum, default, and effect-policy predicates used by settings and Renderer projection.
 - `src/terminal-protocol.ts`: protocol-v2 terminal WebSocket unions, remote shell event/capability constants, and bootstrap/runtime status types shared by backend and renderer.
 
 ### `packages/i18n`

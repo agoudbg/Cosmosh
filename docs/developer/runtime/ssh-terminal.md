@@ -214,9 +214,10 @@ flowchart LR
 - Terminal tab titles retain separate sources and resolve as `manualTitle > activePane.applicationTitle > connectionTitle > defaultTitle`. The application title remains an ephemeral projection: it is not written back to stored tab/session state, command logs, or settings.
 - Focusing a pane acknowledges Bell attention for that pane only. A standalone Bell received while its active pane is already focused is acknowledged immediately; switching tabs and programmatically focusing the active terminal follow the same acknowledgement path.
 - The window aggregator evaluates every live terminal tab with severity `error > warning > indeterminate > normal > none`. The active tab wins among equal-severity candidates; otherwise stable tab order is used. Main maps warning to Electron's paused taskbar mode and clears taskbar progress with `setProgressBar(-1)` when the aggregate is `none`.
-- The latest Bell event keeps `{ tabId, paneId, sequence, receivedAt }` independently from current Bell attention. Main flashes an unfocused owner window only for a new event at or above its receipt-time high-water mark, stops Flash on window focus, and ignores an older event revealed by pane/tab cleanup. Progress state `none` never enters this Bell path.
-- `App` is the only renderer owner of Window Activity Aggregation and the preload call. Pane and tab domains never invoke Electron directly; preload and Main both validate the shared `TerminalWindowActivity` contract, and Main derives the target window from the sending `webContents`.
-- Bell mode settings and notification throttling are planned for the next phase. Current Phase 4 behavior applies taskbar progress and unfocused-window Flash without adding audible notifications.
+- The latest Bell event keeps `{ tabId, paneId, sequence, receivedAt }` independently from current Bell attention. Main consumes each new event at or above its receipt-time high-water mark before applying policy, so a disabled or throttled event cannot replay after a setting change. Audible Bell and unfocused-window Flash use independent one-second throttle windows; window focus stops an active Flash. Progress state `none` never enters this Bell path.
+- `App` is the only renderer owner of Window Activity Aggregation and the preload call. Pane and tab domains never invoke Electron directly; preload exposes only the fixed activity bridge method, Main validates the shared `TerminalWindowActivity` runtime contract, and Main derives the target window from the sending `webContents`.
+- `terminalApplicationTitleEnabled` filters application titles only at the tab projection boundary. `terminalTabProgressEnabled` filters tab progress and forces the window aggregate to `none`, which clears Electron taskbar progress. Neither setting disables xterm parser registration or mutates pane state.
+- `terminalBellAttentionMode` maps `audible` to operating-system sound, `visual` to tab-local Bell attention, `taskbar` to unfocused-window Flash, `all` to all three effects, and `none` to no attention effects. The latest Bell edge remains available for Main replay protection in every mode.
 - This module intentionally excludes OSC 7, OSC 133, shell bootstrap, and OSC 777 Remote Enhancements. Those protocols retain their existing owners and lifecycle gates.
 
 ```mermaid
@@ -236,8 +237,23 @@ flowchart LR
   WINDOW --> PRELOAD[Secure preload IPC]
   PRELOAD --> MAIN[Electron Main controller]
   MAIN --> TASKBAR[Taskbar progress]
+  MAIN --> SOUND[Audible Bell]
   MAIN --> FLASH[Unfocused-window Bell Flash]
 ```
+
+### 3.4 Acceptance
+
+Automated acceptance is transport-independent because local PTY and SSH output converge at the same pane-owned `terminal.write(...)` boundary:
+
+- `pnpm --filter @cosmosh/renderer test:ssh` covers fragmented OSC input, malformed OSC 9;4 states, OSC-terminating BEL versus standalone BEL, pane/tab aggregation, acknowledgement, reconnect cleanup, and settings projection.
+- `pnpm --filter @cosmosh/main test:terminal-presentation` covers window progress mapping, sender payload validation, Bell replay protection, sound/Flash policy, and independent throttling.
+
+Manual release acceptance must exercise both installed agent CLIs through Cosmosh:
+
+1. In a Cosmosh local terminal, start current Claude Code and Kimi Code sessions. Confirm emitted application titles replace only the application-title source, progress transitions stay inside the fixed status slot/taskbar, and one standalone Bell follows the configured mode.
+2. Repeat from a Cosmosh SSH terminal on a host where each CLI is installed. Confirm the same behavior without enabling Remote Enhancements or installing presentation-specific bootstrap content.
+3. Toggle each Presentation setting while the CLI remains active. Confirm parser-driven state resumes when re-enabled, old Bell events are not replayed, and disabling Tab Progress clears window taskbar progress.
+4. Reconnect and close panes/tabs during active presentation state. Confirm stale titles/progress/attention are removed and no closed source can overwrite the remaining window aggregate.
 
 ## 4. Host Verification & Trust Flow
 

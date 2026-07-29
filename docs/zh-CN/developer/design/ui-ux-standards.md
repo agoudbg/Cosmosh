@@ -170,6 +170,8 @@ SSH 页面中的终端文本选区交互必须满足以下规则：
 - SSH 标签页存活期间始终保留状态槽尺寸，包括空状态；spinner、progress、warning/error 与 Bell 的切换不得推动标题或关闭控件。
 - active pane 负责 Tab 标题与普通进度展示。后台 pane 可以保留 error、warning 和 Bell attention，但不能把普通后台进度伪装成 active pane 的状态。
 - 动态 OSC 应用标题只是纯内存展示输入。标签栏展示前必须完成清理与长度限制，不得记录或持久化，并且必须分别保留 connection/default/manual 标题来源。
+- 终端设置使用一个独立的“展示”分区，包含“应用标题”和“标签页进度”开关，以及“Bell 提醒”选择项。关闭展示选项不得停止被动 parser 状态收集，也不得取消标签页固定状态槽。
+- Bell 提醒模式严格映射为声音（`audible`）、标签页状态（`visual`）、窗口任务栏 Flash（`taskbar`）、全部三项（`all`）或不产生提醒效果（`none`）。进度完成在视觉与事件语义上始终独立，绝不能推导出 Bell attention。
 
 ## 7.5 普通文本选区右键菜单
 

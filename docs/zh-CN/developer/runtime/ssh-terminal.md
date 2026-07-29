@@ -214,9 +214,10 @@ flowchart LR
 - 终端 Tab 会保留独立标题来源，并按 `manualTitle > activePane.applicationTitle > connectionTitle > defaultTitle` 解析。应用标题始终只是内存中的派生投影，不会回写已存储的 Tab/session state、命令日志或设置。
 - 聚焦某个 pane 只确认该 pane 的 Bell attention。若独立 Bell 到达时对应 active pane 已经聚焦，则立即确认；切换 Tab 后程序化聚焦 active terminal 也走同一确认路径。
 - Window 聚合器按 `error > warning > indeterminate > normal > none` 严重度检查所有存活终端 Tab。同级候选优先 active Tab，否则使用稳定 Tab 顺序。Main 将 warning 映射为 Electron paused taskbar 模式，并在聚合结果为 `none` 时通过 `setProgressBar(-1)` 清除 taskbar 进度。
-- 最近 Bell 事件独立于当前 Bell attention 保留 `{ tabId, paneId, sequence, receivedAt }`。Main 仅为达到或超过接收时间高水位的新事件 Flash 未聚焦的所有者窗口，在窗口聚焦时停止 Flash，并忽略 pane/Tab 清理后显露的旧事件。进度状态 `none` 永远不会进入这条 Bell 路径。
-- `App` 是 renderer 中 Window Activity Aggregation 与 preload 调用的唯一所有者。Pane 和 Tab 领域绝不直接调用 Electron；preload 与 Main 都会校验共享的 `TerminalWindowActivity` 契约，Main 根据发送 `webContents` 推导目标窗口。
-- Bell 模式设置和通知节流规划在下一阶段实现。当前第四阶段只应用 taskbar 进度与未聚焦窗口 Flash，不添加 audible notification。
+- 最近 Bell 事件独立于当前 Bell attention 保留 `{ tabId, paneId, sequence, receivedAt }`。Main 会先消费达到或超过接收时间高水位的每个新事件，再应用用户策略，因此被关闭或被节流的事件不会在切换设置后重放。Audible Bell 与未聚焦窗口 Flash 分别使用独立的一秒节流窗口；窗口聚焦会停止当前 Flash。进度状态 `none` 永远不会进入这条 Bell 路径。
+- `App` 是 renderer 中 Window Activity Aggregation 与 preload 调用的唯一所有者。Pane 和 Tab 领域绝不直接调用 Electron；preload 只暴露固定的 activity bridge 方法，Main 校验共享的 `TerminalWindowActivity` 运行时契约，并根据发送 `webContents` 推导目标窗口。
+- `terminalApplicationTitleEnabled` 只在 Tab 投影边界过滤应用标题。`terminalTabProgressEnabled` 会过滤 Tab 进度并强制窗口聚合结果为 `none`，从而清除 Electron taskbar 进度。这两个设置都不会注销 xterm parser，也不会修改 pane 原始状态。
+- `terminalBellAttentionMode` 将 `audible` 映射为操作系统声音、`visual` 映射为 Tab 内 Bell attention、`taskbar` 映射为未聚焦窗口 Flash、`all` 映射为全部三项效果，`none` 则不产生 attention 效果。在所有模式下，最近 Bell edge 都会继续用于 Main 的防重放保护。
 - 本模块明确排除 OSC 7、OSC 133、Shell Bootstrap 与 OSC 777 远端增强；这些协议继续由其现有 owner 和生命周期门控负责。
 
 ```mermaid
@@ -236,8 +237,23 @@ flowchart LR
   WINDOW --> PRELOAD[安全 preload IPC]
   PRELOAD --> MAIN[Electron Main controller]
   MAIN --> TASKBAR[Taskbar 进度]
+  MAIN --> SOUND[Audible Bell]
   MAIN --> FLASH[未聚焦窗口 Bell Flash]
 ```
+
+### 3.4 验收
+
+自动化验收与 transport 无关，因为本地 PTY 和 SSH 输出最终都汇合到 pane 所属的同一个 `terminal.write(...)` 边界：
+
+- `pnpm --filter @cosmosh/renderer test:ssh` 覆盖 OSC 跨 chunk 分片、非法 OSC 9;4 状态、OSC terminator BEL 与独立 BEL 的区分、pane/Tab 聚合、attention 确认、重连清理和设置投影。
+- `pnpm --filter @cosmosh/main test:terminal-presentation` 覆盖窗口进度映射、发送方 payload 校验、Bell 防重放、声音/Flash 策略和分别节流。
+
+发布前手动验收必须让两种已安装的 Agent CLI 都实际经过 Cosmosh：
+
+1. 在 Cosmosh 本地终端中分别启动当前版本的 Claude Code 与 Kimi Code。确认其应用标题只替换 application-title 来源，进度切换始终位于固定状态槽/任务栏内，并且一个独立 Bell 按配置模式触发。
+2. 在安装了对应 CLI 的主机上通过 Cosmosh SSH 终端重复验收。确认无需启用远端增强，也无需安装展示功能专属 bootstrap 内容，就能得到相同行为。
+3. CLI 运行期间逐项切换“展示”设置。确认重新开启时恢复展示 parser 已接收的状态、旧 Bell 不会重放，并且关闭“标签页进度”会清除窗口任务栏进度。
+4. 在存在活动展示状态时执行重连以及关闭 pane/Tab。确认旧标题、进度和 attention 被清理，已关闭来源无法覆盖剩余窗口聚合结果。
 
 ## 4. 主机校验与信任流程
 

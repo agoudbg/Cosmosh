@@ -76,6 +76,36 @@ test('terminal projection is ephemeral and leaves the stored tab unchanged', () 
   assert.equal(BASE_TAB.terminalPresentation, undefined);
 });
 
+test('display policy masks presentation without discarding the latest Bell edge', () => {
+  const latestBellEvent = { paneId: 'pane-1', sequence: 2, receivedAt: 3_000 };
+  const projected = projectTabPresentation(
+    BASE_TAB,
+    {
+      ...APPLICATION_PRESENTATION,
+      bellAttention: true,
+      bellAttentionPaneIds: ['pane-1'],
+      latestBellEvent,
+    },
+    {
+      applicationTitleEnabled: false,
+      progressEnabled: false,
+      bellVisualEnabled: false,
+    },
+  );
+
+  assert.equal(projected.title, 'production.example.com');
+  assert.deepEqual(projected.terminalPresentation, {
+    applicationTitle: null,
+    progressState: 'none',
+    progressValue: null,
+    progressSource: null,
+    bellAttention: false,
+    bellAttentionPaneIds: [],
+    latestBellEvent,
+  });
+  assert.equal(APPLICATION_PRESENTATION.applicationTitle, 'Claude Code task');
+});
+
 test('non-terminal tabs remain unchanged by terminal presentation projection', () => {
   const homeTab: TabItem = {
     id: 'home',

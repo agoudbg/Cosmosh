@@ -1,4 +1,9 @@
-import type { AppCloseConfirmationRequest } from '@cosmosh/api-contract';
+import {
+  type AppCloseConfirmationRequest,
+  isTerminalBellAudible,
+  isTerminalBellTaskbar,
+  isTerminalBellVisual,
+} from '@cosmosh/api-contract';
 import classNames from 'classnames';
 import React from 'react';
 
@@ -54,6 +59,9 @@ const pageLoadingFallback = (
 const App: React.FC = () => {
   const terminalContextLaunchBehavior = useSettingsValue('terminalContextLaunchBehavior');
   const defaultLocalTerminalProfile = useSettingsValue('defaultLocalTerminalProfile');
+  const terminalApplicationTitleEnabled = useSettingsValue('terminalApplicationTitleEnabled');
+  const terminalTabProgressEnabled = useSettingsValue('terminalTabProgressEnabled');
+  const terminalBellAttentionMode = useSettingsValue('terminalBellAttentionMode');
   const [showSystemMonitorOverlay, setShowSystemMonitorOverlay] = React.useState<boolean>(() => {
     return readShowSystemMonitorOverlayPreference();
   });
@@ -117,15 +125,29 @@ const App: React.FC = () => {
     return new Map(tabs.map((tab) => [tab.id, tab] as const));
   }, [tabs]);
   const presentedTabs = React.useMemo(() => {
-    return tabs.map((tab) => projectTabPresentation(tab, terminalTabPresentations[tab.id]));
-  }, [tabs, terminalTabPresentations]);
+    return tabs.map((tab) =>
+      projectTabPresentation(tab, terminalTabPresentations[tab.id], {
+        applicationTitleEnabled: terminalApplicationTitleEnabled,
+        progressEnabled: terminalTabProgressEnabled,
+        bellVisualEnabled: isTerminalBellVisual(terminalBellAttentionMode),
+      }),
+    );
+  }, [
+    tabs,
+    terminalApplicationTitleEnabled,
+    terminalBellAttentionMode,
+    terminalTabPresentations,
+    terminalTabProgressEnabled,
+  ]);
   const terminalWindowActivity = React.useMemo(
     () =>
       aggregateTerminalWindowActivity({
         tabs: presentedTabs,
         activeTabId,
+        bellAudibleEnabled: isTerminalBellAudible(terminalBellAttentionMode),
+        bellFlashEnabled: isTerminalBellTaskbar(terminalBellAttentionMode),
       }),
-    [activeTabId, presentedTabs],
+    [activeTabId, presentedTabs, terminalBellAttentionMode],
   );
   const [contentTabOrder, setContentTabOrder] = React.useState<string[]>(() => tabs.map((tab) => tab.id));
 

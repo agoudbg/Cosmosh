@@ -4,6 +4,11 @@ import test from 'node:test';
 import type { TabItem, TerminalTabPresentation } from '../types/tabs';
 import { aggregateTerminalWindowActivity } from './terminal-window-activity';
 
+const BELL_EFFECT_POLICY = {
+  bellAudibleEnabled: true,
+  bellFlashEnabled: true,
+} as const;
+
 /**
  * Creates a terminal tab with a complete presentation projection.
  *
@@ -36,25 +41,42 @@ test('window aggregation applies error, warning, indeterminate, normal, and none
     createTerminalTab('error', { progressState: 'error', progressValue: 20 }),
   ];
 
-  assert.deepEqual(aggregateTerminalWindowActivity({ tabs, activeTabId: 'normal' }), {
+  assert.deepEqual(aggregateTerminalWindowActivity({ tabs, activeTabId: 'normal', ...BELL_EFFECT_POLICY }), {
     progressState: 'error',
     progressValue: 20,
     bellAttention: false,
+    bellAudibleEnabled: true,
+    bellFlashEnabled: true,
     latestBellEvent: null,
   });
   assert.equal(
-    aggregateTerminalWindowActivity({ tabs: tabs.slice(0, 3), activeTabId: 'normal' }).progressState,
+    aggregateTerminalWindowActivity({
+      tabs: tabs.slice(0, 3),
+      activeTabId: 'normal',
+      ...BELL_EFFECT_POLICY,
+    }).progressState,
     'warning',
   );
   assert.equal(
-    aggregateTerminalWindowActivity({ tabs: tabs.slice(0, 2), activeTabId: 'normal' }).progressState,
+    aggregateTerminalWindowActivity({
+      tabs: tabs.slice(0, 2),
+      activeTabId: 'normal',
+      ...BELL_EFFECT_POLICY,
+    }).progressState,
     'indeterminate',
   );
   assert.equal(
-    aggregateTerminalWindowActivity({ tabs: tabs.slice(0, 1), activeTabId: 'normal' }).progressState,
+    aggregateTerminalWindowActivity({
+      tabs: tabs.slice(0, 1),
+      activeTabId: 'normal',
+      ...BELL_EFFECT_POLICY,
+    }).progressState,
     'normal',
   );
-  assert.equal(aggregateTerminalWindowActivity({ tabs: [], activeTabId: 'none' }).progressState, 'none');
+  assert.equal(
+    aggregateTerminalWindowActivity({ tabs: [], activeTabId: 'none', ...BELL_EFFECT_POLICY }).progressState,
+    'none',
+  );
 });
 
 test('active tab wins among equal-severity progress candidates', () => {
@@ -63,7 +85,7 @@ test('active tab wins among equal-severity progress candidates', () => {
     createTerminalTab('active', { progressState: 'normal', progressValue: 25 }),
   ];
 
-  const aggregated = aggregateTerminalWindowActivity({ tabs, activeTabId: 'active' });
+  const aggregated = aggregateTerminalWindowActivity({ tabs, activeTabId: 'active', ...BELL_EFFECT_POLICY });
 
   assert.equal(aggregated.progressState, 'normal');
   assert.equal(aggregated.progressValue, 25);
@@ -83,10 +105,12 @@ test('Bell attention and latest event aggregate independently from progress', ()
     }),
   ];
 
-  assert.deepEqual(aggregateTerminalWindowActivity({ tabs, activeTabId: 'tab-1' }), {
+  assert.deepEqual(aggregateTerminalWindowActivity({ tabs, activeTabId: 'tab-1', ...BELL_EFFECT_POLICY }), {
     progressState: 'normal',
     progressValue: 100,
     bellAttention: true,
+    bellAudibleEnabled: true,
+    bellFlashEnabled: true,
     latestBellEvent: {
       tabId: 'tab-2',
       paneId: 'pane-2',
@@ -105,6 +129,7 @@ test('acknowledged Bell retains its latest event identity without attention', ()
       }),
     ],
     activeTabId: 'tab-1',
+    ...BELL_EFFECT_POLICY,
   });
 
   assert.equal(aggregated.bellAttention, false);
@@ -114,4 +139,23 @@ test('acknowledged Bell retains its latest event identity without attention', ()
     sequence: 2,
     receivedAt: 3_000,
   });
+});
+
+test('window aggregation carries Bell effect policy independently from visual attention', () => {
+  const aggregated = aggregateTerminalWindowActivity({
+    tabs: [
+      createTerminalTab('tab-1', {
+        bellAttention: false,
+        latestBellEvent: { paneId: 'pane-1', sequence: 3, receivedAt: 4_000 },
+      }),
+    ],
+    activeTabId: 'tab-1',
+    bellAudibleEnabled: true,
+    bellFlashEnabled: false,
+  });
+
+  assert.equal(aggregated.bellAttention, false);
+  assert.equal(aggregated.bellAudibleEnabled, true);
+  assert.equal(aggregated.bellFlashEnabled, false);
+  assert.equal(aggregated.latestBellEvent?.sequence, 3);
 });

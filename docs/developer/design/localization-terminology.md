@@ -47,6 +47,7 @@ The glossary matrix lives only on this English source page. Localized documentat
 | Port Forwarding Rule | 端口转发规则 | Port Forwarding Rule |
 | Remote Enhancements | 远端增强 | Remote Enhancements |
 | Remote Enhancement Helper | 远端增强帮助程序 | remote enhancement helper |
+| Terminal Presentation Integration | 终端展示集成 | Terminal Presentation Integration |
 | Command Timeline | 命令时间线 | Command Timeline |
 | Orbit Bar | Orbit Bar | Orbit Bar |
 | Terminal Auto Complete | 终端自动补全 | Terminal Auto Complete |

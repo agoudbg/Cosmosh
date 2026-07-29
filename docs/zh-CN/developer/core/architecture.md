@@ -72,8 +72,8 @@ flowchart LR
 - Renderer 启动优先从本地缓存水合设置，再在后台向 backend 拉取权威值并同步覆盖。
 - 开发态 StrictMode 改为通过 `VITE_ENABLE_STRICT_MODE=true` 显式开启，降低本地性能排查时重复 effect 执行带来的干扰。
 - SSH 页面使用 tab 作用域的连接意图快照与 pane 作用域的运行时。每个 primary/secondary pane 独立持有 xterm、WebSocket/session、transport 状态、telemetry、补全状态、远端增强状态、调试历史与可信命令时间线 marker；所有 inbound message 统一经过 pane-aware reducer。时间线中的完整命令从 xterm 已渲染输入重建，并且只保存在对应 pane runtime 的内存中。
-- Terminal Presentation Integration 是独立的 pane 级 renderer 领域。PTY 输出保持原样进入 `terminal.write(...)`，xterm parser 是 OSC 0/2 应用标题、OSC 9;4 进度与独立 BEL 事件的唯一控制序列解析入口。由此产生的纯内存状态会在重连时重置并随 pane 删除，再通过纯 Tab 与 Window 聚合器投影为 active pane 标题、优先级进度、保留的 Bell/error attention 和单个窗口活动快照。`App` 只把临时 Tab 投影提供给标签栏，并仅通过 preload 发送窗口快照；它不会把应用标题写入已存储的 Tab identity。该领域既不依赖也不会启用 Shell Integration、Remote Bootstrap 或 OSC 777 远端增强。
-- 窗口活动仅通过绑定发送方的 `app:set-terminal-window-activity` IPC channel 跨进程。Main 根据 `event.sender` 解析所属 `BrowserWindow`，再次校验共享的 IPC-only payload，按 `error > warning > indeterminate > normal > none` 映射 Electron taskbar 模式，无进度时通过 `setProgressBar(-1)` 清除，并且仅在窗口未聚焦时为新的独立 Bell 触发 Flash。Bell 事件 identity/接收时间与 acknowledgement 状态保持独立，因此 renderer 重渲染、进度结束和关闭 Tab 后显露旧事件都不会重放 attention。
+- Terminal Presentation Integration 是独立的 pane 级 renderer 领域。PTY 输出保持原样进入 `terminal.write(...)`，xterm parser 是 OSC 0/2 应用标题、OSC 9;4 进度与独立 BEL 事件的唯一控制序列解析入口。由此产生的纯内存状态会在重连时重置并随 pane 删除，再通过纯 Tab 与 Window 聚合器投影为 active pane 标题、优先级进度、保留的 Bell/error attention 和单个窗口活动快照。`App` 只在这个投影边界应用用户展示策略，把临时 Tab 投影提供给标签栏，并仅通过 preload 发送窗口快照；它不会关闭被动解析，也不会把应用标题写入已存储的 Tab identity。该领域既不依赖也不会启用 Shell Integration、Remote Bootstrap 或 OSC 777 远端增强。
+- 窗口活动仅通过绑定发送方的 `app:set-terminal-window-activity` IPC channel 跨进程。Main 根据 `event.sender` 解析所属 `BrowserWindow`，再次校验共享的 IPC-only payload，按 `error > warning > indeterminate > normal > none` 映射 Electron taskbar 模式，无进度时通过 `setProgressBar(-1)` 清除，并按 renderer 提供的策略分别节流 audible Bell 与未聚焦窗口 Flash。Bell 事件 identity/接收时间与 acknowledgement 状态保持独立，因此 renderer 重渲染、设置切换、进度结束和关闭 Tab 后显露旧事件都不会重放 attention。
 - 隐藏 tab 不会启动新的 SSH 连接副作用。重新激活时，可选的切回重连路径会分别检查每个失败 pane；第一次激活始终启动延迟创建的 primary pane。重试或重连任一 pane 时，所有同级 pane runtime 都会保持存活。
 - Renderer 按 pane 消费 backend 的 `bootstrap-status`、`remote-enhancement-runtime-status` 与可信协议 v2 `remote-shell-event`。调试入口由 `remoteEnhancementsDebugEnabled` 控制，浮层始终展示其来源/活动 pane。
 
@@ -155,7 +155,7 @@ sequenceDiagram
 - `contextIsolation: true`
 - Renderer 仅获得显式 bridge API（`contextBridge.exposeInMainWorld`）。
 - Renderer 的 Content Security Policy 将 `script-src` 限制为 `'self'` 加 `'wasm-unsafe-eval'`。WebAssembly 许可用于 `@xterm/addon-image` 等 renderer 打包库执行内联图片解码，不会开启通用 JavaScript `eval`。
-- sandboxed preload 脚本不得在运行时导入 workspace package。它可以在编译期使用共享 API contract 类型，但 preload 内部使用的运行时校验器必须保持本地实现或被打包进 preload，避免 Electron 在 bridge 加载前解析项目模块。
+- sandboxed preload 脚本不得在运行时导入 workspace package。它可以在编译期使用共享 API contract 类型；固定的 bridge 方法只能转发到各自的白名单 channel，并由 Main 使用共享运行时契约执行零信任 payload 校验。确实必须在 preload 内执行的校验器必须保持本地实现或被打包进 preload，避免 Electron 在 bridge 加载前解析项目模块。
 - 特权操作保留在 Main/Backend 进程。
 - Renderer 发起的应用窗口默认被拒绝。当前白名单仅允许同 renderer 的 SFTP 属性弹窗，这些子窗口复用安全 preload，并保持 `nodeIntegration` 关闭、`contextIsolation` 开启。
 

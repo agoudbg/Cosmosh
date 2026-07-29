@@ -94,7 +94,6 @@ import type {
   SystemProxyResolveResult,
   TerminalWindowActivity,
 } from '@cosmosh/api-contract';
-import { parseTerminalWindowActivity, TERMINAL_WINDOW_ACTIVITY_IPC_CHANNEL } from '@cosmosh/api-contract';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 const PRELOAD_APP_MENU_ACTIONS: ReadonlySet<AppMenuAction> = new Set([
@@ -377,10 +376,7 @@ contextBridge.exposeInMainWorld('electron', {
     sendIpc('app:close-window');
   },
   setTerminalWindowActivity: (value: TerminalWindowActivity) => {
-    const activity = parseTerminalWindowActivity(value);
-    if (activity) {
-      sendIpc(TERMINAL_WINDOW_ACTIVITY_IPC_CHANNEL, activity);
-    }
+    sendIpc('app:set-terminal-window-activity', value);
   },
   onCloseConfirmationRequested,
   respondToCloseConfirmation: (value: AppCloseConfirmationResponse) => {

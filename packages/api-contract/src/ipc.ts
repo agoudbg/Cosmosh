@@ -46,6 +46,8 @@ export type TerminalWindowActivity = {
   progressState: TerminalWindowProgressState;
   progressValue: number | null;
   bellAttention: boolean;
+  bellAudibleEnabled: boolean;
+  bellFlashEnabled: boolean;
   latestBellEvent: TerminalWindowBellEvent | null;
 };
 
@@ -103,7 +105,9 @@ export const parseTerminalWindowActivity = (value: unknown): TerminalWindowActiv
   if (
     typeof candidate.progressState !== 'string' ||
     !TERMINAL_WINDOW_PROGRESS_STATE_SET.has(candidate.progressState) ||
-    typeof candidate.bellAttention !== 'boolean'
+    typeof candidate.bellAttention !== 'boolean' ||
+    typeof candidate.bellAudibleEnabled !== 'boolean' ||
+    typeof candidate.bellFlashEnabled !== 'boolean'
   ) {
     return null;
   }
@@ -145,6 +149,8 @@ export const parseTerminalWindowActivity = (value: unknown): TerminalWindowActiv
       progressState,
       progressValue: expectsProgressValue ? (candidate.progressValue as number) : null,
       bellAttention: candidate.bellAttention,
+      bellAudibleEnabled: candidate.bellAudibleEnabled,
+      bellFlashEnabled: candidate.bellFlashEnabled,
       latestBellEvent: {
         tabId: bellCandidate.tabId,
         paneId: bellCandidate.paneId,
@@ -158,6 +164,8 @@ export const parseTerminalWindowActivity = (value: unknown): TerminalWindowActiv
     progressState,
     progressValue: expectsProgressValue ? (candidate.progressValue as number) : null,
     bellAttention: candidate.bellAttention,
+    bellAudibleEnabled: candidate.bellAudibleEnabled,
+    bellFlashEnabled: candidate.bellFlashEnabled,
     latestBellEvent: null,
   };
 };
