@@ -19,6 +19,7 @@
     "build": "tsc && electron-builder --publish never",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
+    "test:terminal-presentation": "tsx --test src/terminal-window-activity.test.ts",
     "format": "prettier --write \"src/**/*.ts\""
   },
   "devDependencies": {

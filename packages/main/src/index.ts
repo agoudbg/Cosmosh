@@ -37,6 +37,7 @@ import { BackendRequestTraceStore } from './ipc/backend-request-trace-store';
 import { registerAppUtilityIpcHandlers } from './ipc/register-app-utility-ipc';
 import { registerBackendIpcHandlers } from './ipc/register-backend-ipc';
 import { registerDebugIpcHandlers } from './ipc/register-debug-ipc';
+import { registerTerminalWindowActivityIpcHandler } from './ipc/register-terminal-window-activity-ipc';
 import { SftpDownloadTargetAuthorizationRegistry } from './ipc/sftp-download-target-authorizations';
 import {
   cleanupSftpTemporaryRoot,
@@ -1686,6 +1687,8 @@ registerBackendIpcHandlers({
 registerDebugIpcHandlers({
   backendRequestTraceStore,
 });
+
+registerTerminalWindowActivityIpcHandler();
 
 // -----------------------------------------------------------------------------
 // Shutdown hooks

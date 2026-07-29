@@ -105,14 +105,53 @@ test('Bell attention is retained independently across all live panes', () => {
     activePaneId: 'pane-1',
     paneIds: ['pane-1', 'pane-2', 'removed-pane', 'pane-3'],
     paneStates: {
-      'pane-1': createPaneState({ bellAttention: true }),
+      'pane-1': createPaneState({
+        bellAttention: true,
+        lastBellAt: 1_000,
+        bellSequence: 2,
+      }),
       'pane-2': createPaneState({ bellAttention: false }),
-      'pane-3': createPaneState({ bellAttention: true }),
+      'pane-3': createPaneState({
+        bellAttention: true,
+        lastBellAt: 2_000,
+        bellSequence: 1,
+      }),
     },
   });
 
   assert.equal(aggregated.bellAttention, true);
   assert.deepEqual(aggregated.bellAttentionPaneIds, ['pane-1', 'pane-3']);
+  assert.deepEqual(aggregated.latestBellEvent, {
+    paneId: 'pane-3',
+    sequence: 1,
+    receivedAt: 2_000,
+  });
+});
+
+test('latest Bell event survives acknowledgement and breaks equal timestamps with pane sequence', () => {
+  const aggregated = aggregateTerminalTabPresentation({
+    activePaneId: 'pane-1',
+    paneIds: ['pane-1', 'pane-2'],
+    paneStates: {
+      'pane-1': createPaneState({
+        bellAttention: false,
+        lastBellAt: 3_000,
+        bellSequence: 2,
+      }),
+      'pane-2': createPaneState({
+        bellAttention: false,
+        lastBellAt: 3_000,
+        bellSequence: 3,
+      }),
+    },
+  });
+
+  assert.equal(aggregated.bellAttention, false);
+  assert.deepEqual(aggregated.latestBellEvent, {
+    paneId: 'pane-2',
+    sequence: 3,
+    receivedAt: 3_000,
+  });
 });
 
 test('presentation equality compares ordered Bell sources without relying on object identity', () => {
@@ -133,6 +172,17 @@ test('presentation equality compares ordered Bell sources without relying on obj
     areTerminalTabPresentationsEqual(first, {
       ...duplicate,
       bellAttentionPaneIds: ['pane-2'],
+    }),
+    false,
+  );
+  assert.equal(
+    areTerminalTabPresentationsEqual(first, {
+      ...duplicate,
+      latestBellEvent: {
+        paneId: 'pane-1',
+        sequence: 1,
+        receivedAt: 4_000,
+      },
     }),
     false,
   );

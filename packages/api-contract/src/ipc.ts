@@ -24,6 +24,34 @@ export type AppCloseConfirmationResponse = {
   confirmed: boolean;
 };
 
+/** Window-level progress states accepted by Electron presentation IPC. */
+export type TerminalWindowProgressState = 'none' | 'normal' | 'error' | 'indeterminate' | 'warning';
+
+/** Identity of the latest standalone Bell observed across one renderer window. */
+export type TerminalWindowBellEvent = {
+  tabId: string;
+  paneId: string;
+  sequence: number;
+  receivedAt: number;
+};
+
+/**
+ * Memory-only terminal activity snapshot sent from renderer to its owning window.
+ *
+ * Progress and Bell remain independent: clearing progress never creates a Bell
+ * event, and acknowledging Bell attention does not discard the latest event
+ * identity used for edge de-duplication.
+ */
+export type TerminalWindowActivity = {
+  progressState: TerminalWindowProgressState;
+  progressValue: number | null;
+  bellAttention: boolean;
+  latestBellEvent: TerminalWindowBellEvent | null;
+};
+
+/** Allow-listed renderer-to-main channel for terminal window activity snapshots. */
+export const TERMINAL_WINDOW_ACTIVITY_IPC_CHANNEL = 'app:set-terminal-window-activity';
+
 export type SystemProxyResolveRequest = {
   host: string;
   port: number;
@@ -34,6 +62,105 @@ export type SystemProxyResolveResult = {
 };
 
 const APP_MENU_ACTION_SET: ReadonlySet<string> = new Set(APP_MENU_ACTIONS);
+const TERMINAL_WINDOW_PROGRESS_STATE_SET: ReadonlySet<string> = new Set([
+  'none',
+  'normal',
+  'error',
+  'indeterminate',
+  'warning',
+]);
+const MAX_TERMINAL_WINDOW_ACTIVITY_SOURCE_ID_LENGTH = 128;
+
+/**
+ * Checks whether one Bell source identifier is safe to carry across IPC.
+ *
+ * @param value Unknown source identifier.
+ * @returns Whether the value is bounded and contains no terminal controls.
+ */
+const isTerminalWindowActivitySourceId = (value: unknown): value is string => {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_TERMINAL_WINDOW_ACTIVITY_SOURCE_ID_LENGTH) {
+    return false;
+  }
+
+  return Array.from(value).every((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && codePoint > 0x1f && !(codePoint >= 0x7f && codePoint <= 0x9f);
+  });
+};
+
+/**
+ * Parses an untrusted terminal window activity IPC payload.
+ *
+ * @param value Unknown renderer payload.
+ * @returns A cloned, strictly validated snapshot, or `null` when malformed.
+ */
+export const parseTerminalWindowActivity = (value: unknown): TerminalWindowActivity | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.progressState !== 'string' ||
+    !TERMINAL_WINDOW_PROGRESS_STATE_SET.has(candidate.progressState) ||
+    typeof candidate.bellAttention !== 'boolean'
+  ) {
+    return null;
+  }
+
+  const progressState = candidate.progressState as TerminalWindowProgressState;
+  const expectsProgressValue = progressState === 'normal' || progressState === 'error' || progressState === 'warning';
+  if (
+    (expectsProgressValue &&
+      (typeof candidate.progressValue !== 'number' ||
+        !Number.isInteger(candidate.progressValue) ||
+        candidate.progressValue < 0 ||
+        candidate.progressValue > 100)) ||
+    (!expectsProgressValue && candidate.progressValue !== null)
+  ) {
+    return null;
+  }
+
+  const latestBellEvent = candidate.latestBellEvent;
+  if (latestBellEvent !== null) {
+    if (!latestBellEvent || typeof latestBellEvent !== 'object' || Array.isArray(latestBellEvent)) {
+      return null;
+    }
+
+    const bellCandidate = latestBellEvent as Record<string, unknown>;
+    if (
+      !isTerminalWindowActivitySourceId(bellCandidate.tabId) ||
+      !isTerminalWindowActivitySourceId(bellCandidate.paneId) ||
+      typeof bellCandidate.sequence !== 'number' ||
+      !Number.isSafeInteger(bellCandidate.sequence) ||
+      bellCandidate.sequence <= 0 ||
+      typeof bellCandidate.receivedAt !== 'number' ||
+      !Number.isSafeInteger(bellCandidate.receivedAt) ||
+      bellCandidate.receivedAt < 0
+    ) {
+      return null;
+    }
+
+    return {
+      progressState,
+      progressValue: expectsProgressValue ? (candidate.progressValue as number) : null,
+      bellAttention: candidate.bellAttention,
+      latestBellEvent: {
+        tabId: bellCandidate.tabId,
+        paneId: bellCandidate.paneId,
+        sequence: bellCandidate.sequence,
+        receivedAt: bellCandidate.receivedAt,
+      },
+    };
+  }
+
+  return {
+    progressState,
+    progressValue: expectsProgressValue ? (candidate.progressValue as number) : null,
+    bellAttention: candidate.bellAttention,
+    latestBellEvent: null,
+  };
+};
 
 /**
  * Checks whether an IPC payload is a supported app menu action.

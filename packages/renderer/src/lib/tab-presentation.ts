@@ -8,6 +8,7 @@ export const EMPTY_TERMINAL_TAB_PRESENTATION: TerminalTabPresentation = Object.f
   progressSource: null,
   bellAttention: false,
   bellAttentionPaneIds: Object.freeze([]) as ReadonlyArray<string>,
+  latestBellEvent: null,
 });
 
 /**

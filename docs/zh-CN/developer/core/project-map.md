@@ -44,7 +44,9 @@ flowchart TB
   - `src/index.ts`：应用启动、窗口配置、IPC 处理器、后端子进程管理。
   - `src/window-close-guard.ts`：根据 backend 持有的 SSH/SFTP 活动状态串行处理窗口关闭与应用退出决策，并对探测失败采用保守确认策略。
   - `src/renderer-close-confirmation.ts`：绑定发送方并校验 request ID 的 Main 到 Renderer 关闭确认 broker，包含超时与 renderer 销毁处理。
+  - `src/terminal-window-activity.ts`：经过校验的窗口级 taskbar 进度映射与独立 Bell Flash edge 去重。
   - `src/ipc/register-app-utility-ipc.ts`：特权应用工具 IPC，例如原生对话框、文件管理器集成、SFTP 临时文件创建，以及已校验的系统打开/打开方式流程。
+  - `src/ipc/register-terminal-window-activity-ipc.ts`：绑定发送方的 Terminal Presentation 窗口快照 channel 与 `BrowserWindow` controller 生命周期。
   - `src/ipc/sftp-open-with-runtime.ts`：负责 SFTP 打开方式使用的内核锚定 Windows 系统可执行文件/库解析、OS known-folder 子进程环境，以及 macOS 打包态与开发态 helper 选择。
   - `src/ipc/register-debug-ipc.ts`：开发诊断 IPC，包括 backend 请求镜像的列表、清空与事件通道。
   - `src/ipc/backend-request-trace-store.ts`：仅开发态使用的 backend proxy 请求镜像脱敏 ring buffer。
@@ -76,7 +78,7 @@ flowchart TB
   - `src/components/ui`：基于 Radix 的原子组件封装、可复用侧边栏导航（`SidebarNav`）、可复用查找/替换面板、CodeMirror 文本右键菜单与样式契约。
   - `src/components/home`：Home/SSH 共享实体模块（卡片/图标渲染、基于 TanStack Virtual 的视觉编辑器、可复用的创建文件夹弹窗）。
   - `src/components/terminal`：终端交互复合组件（右键菜单、选区工具条、自动补全面板）。
-  - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）、renderer 请求 trace 镜像启动逻辑（`backend-request-trace-mirror.ts`）、共享时间显示格式化工具（`date-time-format.ts`）、纯内存终端 Tab 标题/展示投影（`tab-presentation.ts`）、共享 CodeMirror 语法高亮与查找/替换 adapter，以及工具抽象（含共享实体视觉工具、Home 文件夹分组与创建文件夹 Hook）。
+  - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）、renderer 请求 trace 镜像启动逻辑（`backend-request-trace-mirror.ts`）、共享时间显示格式化工具（`date-time-format.ts`）、纯内存终端 Tab 标题/展示投影（`tab-presentation.ts`）、窗口级终端活动聚合（`terminal-window-activity.ts`）、共享 CodeMirror 语法高亮与查找/替换 adapter，以及工具抽象（含共享实体视觉工具、Home 文件夹分组与创建文件夹 Hook）。
   - `theme`：生成 CSS Variables 的令牌源。
 
 ### `packages/backend`
@@ -102,7 +104,7 @@ flowchart TB
 共享协议常量、请求/响应类型、OpenAPI 源与生成产物。
 
 - `src/http.ts`：API path token 与 query string 解析 helper，供 main IPC 代理与 renderer browser transport 共享。
-- `src/ipc.ts`：共享未由 OpenAPI 生成的 IPC-only payload 枚举与结构，例如应用菜单动作、SFTP 打开方式应用描述与开发态 backend 请求 trace。
+- `src/ipc.ts`：共享未由 OpenAPI 生成的 IPC-only payload 枚举、校验器与结构，例如应用菜单动作、终端窗口活动快照、SFTP 打开方式应用描述与开发态 backend 请求 trace。
 - `src/settings-registry.ts`：所有设置定义的**唯一来源**——类型、默认值、约束、枚举集、UI 控件元数据、分类与辅助函数。增删设置项仅需编辑此文件。
 - `src/settings.ts`：基于注册表的通用校验与规范化辅助函数（`normalizeSettingsValuesStrict`、`normalizeSettingsValuesWithDefaults`），供 backend 与 renderer 共享。
 - `src/sftp.ts`：SFTP 条目/名称排序共享 helper，供后端会话列表与渲染层浏览器/树视图复用。

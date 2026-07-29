@@ -50,6 +50,7 @@ export const aggregateTerminalTabPresentation = ({
   const selectedProgress =
     selectActivePaneProgress(activePaneState) ?? selectBackgroundAttentionProgress(activePaneId, paneIds, paneStates);
   const bellAttentionPaneIds = paneIds.filter((paneId) => paneStates[paneId]?.bellAttention);
+  const latestBellEvent = selectLatestBellEvent(paneIds, paneStates);
 
   return {
     applicationTitle: activePaneState?.applicationTitle ?? null,
@@ -58,6 +59,7 @@ export const aggregateTerminalTabPresentation = ({
     progressSource: selectedProgress?.progressSource ?? null,
     bellAttention: bellAttentionPaneIds.length > 0,
     bellAttentionPaneIds,
+    latestBellEvent,
   };
 };
 
@@ -82,9 +84,50 @@ export const areTerminalTabPresentationsEqual = (
     left.progressValue === right.progressValue &&
     left.progressSource === right.progressSource &&
     left.bellAttention === right.bellAttention &&
+    left.latestBellEvent?.paneId === right.latestBellEvent?.paneId &&
+    left.latestBellEvent?.sequence === right.latestBellEvent?.sequence &&
+    left.latestBellEvent?.receivedAt === right.latestBellEvent?.receivedAt &&
     left.bellAttentionPaneIds.length === right.bellAttentionPaneIds.length &&
     left.bellAttentionPaneIds.every((paneId, index) => paneId === right.bellAttentionPaneIds[index])
   );
+};
+
+/**
+ * Selects the newest standalone Bell event without depending on acknowledgement state.
+ *
+ * Pane-local sequence breaks equal-timestamp ties when one pane emits multiple
+ * Bells in the same clock tick. Stable pane order resolves all remaining ties.
+ *
+ * @param paneIds Stable pane layout order.
+ * @param paneStates Pane-indexed presentation state.
+ * @returns Latest Bell event, or `null` when no live pane has received one.
+ */
+const selectLatestBellEvent = (
+  paneIds: ReadonlyArray<string>,
+  paneStates: TerminalPresentationStateMap,
+): TerminalTabPresentation['latestBellEvent'] => {
+  let selected: TerminalTabPresentation['latestBellEvent'] = null;
+
+  for (const paneId of paneIds) {
+    const state = paneStates[paneId];
+    if (!state || state.lastBellAt === null || state.bellSequence <= 0) {
+      continue;
+    }
+
+    if (
+      !selected ||
+      state.lastBellAt > selected.receivedAt ||
+      (state.lastBellAt === selected.receivedAt && state.bellSequence > selected.sequence)
+    ) {
+      selected = {
+        paneId,
+        sequence: state.bellSequence,
+        receivedAt: state.lastBellAt,
+      };
+    }
+  }
+
+  return selected;
 };
 
 type SelectedProgress = {

@@ -11,6 +11,16 @@ export type TerminalTabProgressState = 'none' | 'normal' | 'error' | 'indetermin
 /** Source selected for the progress indicator rendered in one terminal tab. */
 export type TerminalTabProgressSource = 'active-pane' | 'background-attention' | null;
 
+/** Latest standalone Bell event retained by one terminal tab projection. */
+export type TerminalTabBellEvent = {
+  /** Pane that received the standalone Bell. */
+  paneId: string;
+  /** Pane-local monotonic Bell sequence. */
+  sequence: number;
+  /** Local receipt time used for window-level event ordering. */
+  receivedAt: number;
+};
+
 /** Memory-only presentation state derived from all terminal panes in one tab. */
 export type TerminalTabPresentation = {
   /** Sanitized title emitted by the active terminal pane through OSC 0/2. */
@@ -25,6 +35,8 @@ export type TerminalTabPresentation = {
   bellAttention: boolean;
   /** Pane ids retaining Bell attention, ordered by the tab pane layout. */
   bellAttentionPaneIds: ReadonlyArray<string>;
+  /** Latest standalone Bell edge, retained after acknowledgement for IPC de-duplication. */
+  latestBellEvent: TerminalTabBellEvent | null;
 };
 
 /** Independent title sources retained for terminal-specific title precedence. */

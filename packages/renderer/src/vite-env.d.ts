@@ -89,6 +89,7 @@ import type {
   SftpUploadFileSelection,
   SystemProxyResolveRequest,
   SystemProxyResolveResult,
+  TerminalWindowActivity,
 } from '@cosmosh/api-contract';
 
 type LocalTerminalListResponse = ApiLocalTerminalListProfilesResponse;
@@ -108,6 +109,7 @@ declare global {
   interface Window {
     electron?: {
       closeWindow: () => void;
+      setTerminalWindowActivity: (activity: TerminalWindowActivity) => void;
       onCloseConfirmationRequested: (listener: (request: AppCloseConfirmationRequest) => void) => () => void;
       respondToCloseConfirmation: (response: AppCloseConfirmationResponse) => void;
       getLocale: () => Promise<string>;

@@ -92,7 +92,9 @@ import type {
   SftpUploadFileSelection,
   SystemProxyResolveRequest,
   SystemProxyResolveResult,
+  TerminalWindowActivity,
 } from '@cosmosh/api-contract';
+import { parseTerminalWindowActivity, TERMINAL_WINDOW_ACTIVITY_IPC_CHANNEL } from '@cosmosh/api-contract';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 const PRELOAD_APP_MENU_ACTIONS: ReadonlySet<AppMenuAction> = new Set([
@@ -373,6 +375,12 @@ contextBridge.exposeInMainWorld('electron', {
   // ---------------------------------------------------------------------------
   closeWindow: () => {
     sendIpc('app:close-window');
+  },
+  setTerminalWindowActivity: (value: TerminalWindowActivity) => {
+    const activity = parseTerminalWindowActivity(value);
+    if (activity) {
+      sendIpc(TERMINAL_WINDOW_ACTIVITY_IPC_CHANNEL, activity);
+    }
   },
   onCloseConfirmationRequested,
   respondToCloseConfirmation: (value: AppCloseConfirmationResponse) => {

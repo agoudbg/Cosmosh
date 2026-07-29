@@ -23,6 +23,7 @@ const APPLICATION_PRESENTATION: TerminalTabPresentation = {
   progressSource: 'active-pane',
   bellAttention: false,
   bellAttentionPaneIds: [],
+  latestBellEvent: null,
 };
 
 test('terminal title priority keeps manual, application, connection, and default sources independent', () => {

@@ -44,7 +44,9 @@ flowchart TB
   - `src/index.ts`: app bootstrap, BrowserWindow config, IPC handlers, backend subprocess management.
   - `src/window-close-guard.ts`: serialized window/app close decisions based on backend-owned SSH/SFTP activity, including conservative probe-failure handling.
   - `src/renderer-close-confirmation.ts`: sender-bound, request-ID-validated Main-to-Renderer close confirmation broker with timeout and renderer-destruction handling.
+  - `src/terminal-window-activity.ts`: validated per-window taskbar progress mapping and standalone-Bell Flash edge de-duplication.
   - `src/ipc/register-app-utility-ipc.ts`: privileged app utility IPC such as native dialogs, file manager integration, SFTP temp-file creation, and validated OS-open/Open With flows.
+  - `src/ipc/register-terminal-window-activity-ipc.ts`: sender-bound Terminal Presentation window snapshot channel and `BrowserWindow` controller lifecycle.
   - `src/ipc/sftp-open-with-runtime.ts`: kernel-anchored Windows system executable/library resolution, OS-known-folder child environments, and packaged-versus-development macOS helper selection for SFTP Open With.
   - `src/ipc/register-debug-ipc.ts`: development diagnostics IPC, including the backend request mirror list/clear/event channels.
   - `src/ipc/backend-request-trace-store.ts`: development-only sanitized ring buffer for backend proxy request mirrors.
@@ -76,7 +78,7 @@ flowchart TB
   - `src/components/ui`: Radix-based primitive wrappers, reusable sidebar navigation (`SidebarNav`), reusable search/replace panel, CodeMirror text context menu, and styling contracts.
   - `src/components/home`: home/SSH shared entity modules (card/icon rendering, TanStack Virtual-backed visual picker, reusable folder-creation dialog).
   - `src/components/terminal`: terminal interaction composites (context menu, selection bar, autocomplete menu).
-  - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), renderer request-trace mirror bootstrap (`backend-request-trace-mirror.ts`), shared date-time display formatting (`date-time-format.ts`), memory-only terminal tab title/presentation projection (`tab-presentation.ts`), shared CodeMirror syntax highlighting and search/replace adapter, and utility abstractions (including shared entity visual helpers, Home folder grouping, and the folder-dialog hook).
+  - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), renderer request-trace mirror bootstrap (`backend-request-trace-mirror.ts`), shared date-time display formatting (`date-time-format.ts`), memory-only terminal tab title/presentation projection (`tab-presentation.ts`), window-level terminal activity aggregation (`terminal-window-activity.ts`), shared CodeMirror syntax highlighting and search/replace adapter, and utility abstractions (including shared entity visual helpers, Home folder grouping, and the folder-dialog hook).
   - `theme`: token source used to generate CSS variable system.
 
 ### `packages/backend`
@@ -102,7 +104,7 @@ flowchart TB
 Shared protocol constants, request/response types, OpenAPI source, generated contracts.
 
 - `src/http.ts`: API path-token and query-string resolution helpers shared by main IPC proxying and renderer browser transport.
-- `src/ipc.ts`: shared IPC-only payload enums and structs that are not generated from OpenAPI, such as app menu actions, SFTP Open With application descriptors, and development backend request traces.
+- `src/ipc.ts`: shared IPC-only payload enums, validators, and structs that are not generated from OpenAPI, such as app menu actions, terminal window activity snapshots, SFTP Open With application descriptors, and development backend request traces.
 - `src/settings-registry.ts`: **single source of truth** for all settings definitions — types, defaults, constraints, enum sets, UI control metadata, categories, and helper functions. Adding/removing a setting only requires editing this file.
 - `src/settings.ts`: generic, registry-driven validation and normalization helpers (`normalizeSettingsValuesStrict`, `normalizeSettingsValuesWithDefaults`) shared by backend and renderer.
 - `src/sftp.ts`: shared SFTP entry/name ordering helpers consumed by backend session listings and renderer browser/tree views.

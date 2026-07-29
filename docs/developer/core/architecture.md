@@ -72,7 +72,8 @@ Development and packaging intentionally use different native targets. The Main a
 - Renderer bootstrap hydrates settings from local cache first, then refreshes canonical values from backend in background.
 - Development StrictMode is opt-in via `VITE_ENABLE_STRICT_MODE=true` to reduce duplicate effect execution during local performance profiling.
 - SSH page uses tab-scoped connection intent snapshots and pane-scoped runtimes. Every primary/secondary pane owns its xterm, WebSocket/session, transport state, telemetry, completion state, Remote Enhancements state, debug history, and trusted command timeline markers; all inbound messages use one pane-aware reducer. Complete timeline command text is reconstructed from rendered xterm input and remains only in that pane runtime's memory.
-- Terminal Presentation Integration is a separate pane-scoped renderer domain. PTY output reaches `terminal.write(...)` unchanged, and the xterm parser is the only control-sequence parser for OSC 0/2 application titles, OSC 9;4 progress, and standalone BEL events. The resulting memory-only state is reset on reconnect and removed with its pane, then projected through a pure tab aggregator into the active-pane title, prioritized progress, and retained Bell/error attention. `App` supplies this ephemeral projection to tab chrome without writing application titles into stored tab identity. It neither depends on nor enables Shell Integration, Remote Bootstrap, or OSC 777 Remote Enhancements.
+- Terminal Presentation Integration is a separate pane-scoped renderer domain. PTY output reaches `terminal.write(...)` unchanged, and the xterm parser is the only control-sequence parser for OSC 0/2 application titles, OSC 9;4 progress, and standalone BEL events. The resulting memory-only state is reset on reconnect and removed with its pane, then projected through pure tab and window aggregators into the active-pane title, prioritized progress, retained Bell/error attention, and one window activity snapshot. `App` supplies the ephemeral tab projection to chrome and sends only the window snapshot through preload; it never writes application titles into stored tab identity. This domain neither depends on nor enables Shell Integration, Remote Bootstrap, or OSC 777 Remote Enhancements.
+- Window activity crosses one sender-bound `app:set-terminal-window-activity` IPC channel. Main resolves the owning `BrowserWindow` from `event.sender`, validates the shared IPC-only payload again, maps `error > warning > indeterminate > normal > none` to Electron taskbar modes, clears absent progress with `setProgressBar(-1)`, and flashes only for a new standalone Bell while the window is unfocused. Bell event identity and receipt time remain separate from acknowledgement state so rerenders, progress completion, and revealing an older event after tab closure cannot replay attention.
 - Hidden tabs cannot start new SSH connect side effects. On reactivation, the optional reconnect-on-focus path evaluates every failed pane independently, while the first activation always starts a deferred primary pane. Retrying or reconnecting one pane preserves all sibling pane runtimes.
 - Renderer consumes backend `bootstrap-status`, `remote-enhancement-runtime-status`, and trusted protocol-v2 `remote-shell-event` messages per pane. Debug visibility is controlled by `remoteEnhancementsDebugEnabled`, and the overlay always reflects its source/active pane.
 
@@ -97,6 +98,10 @@ sequenceDiagram
   WS-->>UI: { type: 'ready' }
   UI->>WS: { type: 'input' | 'resize' | 'ping' }
   WS-->>UI: { type: 'output' | 'telemetry' | 'pong' | 'exit' }
+
+  UI->>PB: setTerminalWindowActivity(snapshot)
+  PB->>MP: ipcRenderer.send('app:set-terminal-window-activity', validated snapshot)
+  MP->>MP: sender-bound taskbar progress / Bell flash
 
   UI->>PB: close session
   PB->>MP: ipcRenderer.invoke('backend:ssh-close-session', sessionId)

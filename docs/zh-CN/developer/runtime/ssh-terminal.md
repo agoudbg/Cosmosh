@@ -213,6 +213,10 @@ flowchart LR
 - Tab 聚合器跟随 active pane 的应用标题，并优先展示该 pane 的进度状态。active pane 没有进度时，后台 `error` 与 `warning` 状态可以保留 Tab attention；普通后台进度不会接管 active pane 的状态槽。Bell attention 独立汇总所有存活 pane。
 - 终端 Tab 会保留独立标题来源，并按 `manualTitle > activePane.applicationTitle > connectionTitle > defaultTitle` 解析。应用标题始终只是内存中的派生投影，不会回写已存储的 Tab/session state、命令日志或设置。
 - 聚焦某个 pane 只确认该 pane 的 Bell attention。若独立 Bell 到达时对应 active pane 已经聚焦，则立即确认；切换 Tab 后程序化聚焦 active terminal 也走同一确认路径。
+- Window 聚合器按 `error > warning > indeterminate > normal > none` 严重度检查所有存活终端 Tab。同级候选优先 active Tab，否则使用稳定 Tab 顺序。Main 将 warning 映射为 Electron paused taskbar 模式，并在聚合结果为 `none` 时通过 `setProgressBar(-1)` 清除 taskbar 进度。
+- 最近 Bell 事件独立于当前 Bell attention 保留 `{ tabId, paneId, sequence, receivedAt }`。Main 仅为达到或超过接收时间高水位的新事件 Flash 未聚焦的所有者窗口，在窗口聚焦时停止 Flash，并忽略 pane/Tab 清理后显露的旧事件。进度状态 `none` 永远不会进入这条 Bell 路径。
+- `App` 是 renderer 中 Window Activity Aggregation 与 preload 调用的唯一所有者。Pane 和 Tab 领域绝不直接调用 Electron；preload 与 Main 都会校验共享的 `TerminalWindowActivity` 契约，Main 根据发送 `webContents` 推导目标窗口。
+- Bell 模式设置和通知节流规划在下一阶段实现。当前第四阶段只应用 taskbar 进度与未聚焦窗口 Flash，不添加 audible notification。
 - 本模块明确排除 OSC 7、OSC 133、Shell Bootstrap 与 OSC 777 远端增强；这些协议继续由其现有 owner 和生命周期门控负责。
 
 ```mermaid
@@ -228,6 +232,11 @@ flowchart LR
   BELL --> STATE
   STATE --> TAB[Tab State Aggregator]
   TAB --> CHROME[派生 Tab 标题与固定状态槽]
+  TAB --> WINDOW[Window Activity Aggregator]
+  WINDOW --> PRELOAD[安全 preload IPC]
+  PRELOAD --> MAIN[Electron Main controller]
+  MAIN --> TASKBAR[Taskbar 进度]
+  MAIN --> FLASH[未聚焦窗口 Bell Flash]
 ```
 
 ## 4. 主机校验与信任流程

@@ -18,6 +18,7 @@ import { t } from './lib/i18n';
 import { useSettingsValue } from './lib/settings-store';
 import { createSshConnectionIntent, toLocalTerminalTargetId } from './lib/ssh-connection-intent';
 import { projectTabPresentation } from './lib/tab-presentation';
+import { aggregateTerminalWindowActivity } from './lib/terminal-window-activity';
 import { AppToastProvider } from './lib/toast';
 import { useTabs } from './lib/useTabs';
 import Home from './pages/Home';
@@ -118,7 +119,19 @@ const App: React.FC = () => {
   const presentedTabs = React.useMemo(() => {
     return tabs.map((tab) => projectTabPresentation(tab, terminalTabPresentations[tab.id]));
   }, [tabs, terminalTabPresentations]);
+  const terminalWindowActivity = React.useMemo(
+    () =>
+      aggregateTerminalWindowActivity({
+        tabs: presentedTabs,
+        activeTabId,
+      }),
+    [activeTabId, presentedTabs],
+  );
   const [contentTabOrder, setContentTabOrder] = React.useState<string[]>(() => tabs.map((tab) => tab.id));
+
+  React.useEffect(() => {
+    window.electron?.setTerminalWindowActivity(terminalWindowActivity);
+  }, [terminalWindowActivity]);
 
   /**
    * Stores one memory-only terminal tab projection without rewriting stable tab identity.

@@ -2,7 +2,12 @@ export type { components, operations, paths } from './generated';
 export { createApiError, createApiSuccess } from './envelope';
 export { appendApiQueryParams, replaceApiPathToken, resolveApiPath } from './http';
 export type { ApiPathParams, ApiQueryParams } from './http';
-export { APP_MENU_ACTIONS, isAppMenuAction } from './ipc';
+export {
+  APP_MENU_ACTIONS,
+  TERMINAL_WINDOW_ACTIVITY_IPC_CHANNEL,
+  isAppMenuAction,
+  parseTerminalWindowActivity,
+} from './ipc';
 export type {
   AppCloseConfirmationRequest,
   AppCloseConfirmationResponse,
@@ -11,6 +16,9 @@ export type {
   BackendRequestTraceBody,
   BackendRequestTraceBodyKind,
   BackendRequestTraceMethod,
+  TerminalWindowActivity,
+  TerminalWindowBellEvent,
+  TerminalWindowProgressState,
   SystemProxyResolveRequest,
   SystemProxyResolveResult,
   SftpOpenWithApplication,

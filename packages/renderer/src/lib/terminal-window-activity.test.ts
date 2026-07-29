@@ -1,0 +1,117 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import type { TabItem, TerminalTabPresentation } from '../types/tabs';
+import { aggregateTerminalWindowActivity } from './terminal-window-activity';
+
+/**
+ * Creates a terminal tab with a complete presentation projection.
+ *
+ * @param id Stable tab id.
+ * @param presentation Targeted presentation overrides.
+ * @returns Terminal tab test fixture.
+ */
+const createTerminalTab = (id: string, presentation: Partial<TerminalTabPresentation>): TabItem => ({
+  id,
+  title: id,
+  page: 'ssh',
+  iconKey: 'ssh',
+  terminalPresentation: {
+    applicationTitle: null,
+    progressState: 'none',
+    progressValue: null,
+    progressSource: null,
+    bellAttention: false,
+    bellAttentionPaneIds: [],
+    latestBellEvent: null,
+    ...presentation,
+  },
+});
+
+test('window aggregation applies error, warning, indeterminate, normal, and none severity', () => {
+  const tabs = [
+    createTerminalTab('normal', { progressState: 'normal', progressValue: 70 }),
+    createTerminalTab('indeterminate', { progressState: 'indeterminate' }),
+    createTerminalTab('warning', { progressState: 'warning', progressValue: 45 }),
+    createTerminalTab('error', { progressState: 'error', progressValue: 20 }),
+  ];
+
+  assert.deepEqual(aggregateTerminalWindowActivity({ tabs, activeTabId: 'normal' }), {
+    progressState: 'error',
+    progressValue: 20,
+    bellAttention: false,
+    latestBellEvent: null,
+  });
+  assert.equal(
+    aggregateTerminalWindowActivity({ tabs: tabs.slice(0, 3), activeTabId: 'normal' }).progressState,
+    'warning',
+  );
+  assert.equal(
+    aggregateTerminalWindowActivity({ tabs: tabs.slice(0, 2), activeTabId: 'normal' }).progressState,
+    'indeterminate',
+  );
+  assert.equal(
+    aggregateTerminalWindowActivity({ tabs: tabs.slice(0, 1), activeTabId: 'normal' }).progressState,
+    'normal',
+  );
+  assert.equal(aggregateTerminalWindowActivity({ tabs: [], activeTabId: 'none' }).progressState, 'none');
+});
+
+test('active tab wins among equal-severity progress candidates', () => {
+  const tabs = [
+    createTerminalTab('background', { progressState: 'normal', progressValue: 90 }),
+    createTerminalTab('active', { progressState: 'normal', progressValue: 25 }),
+  ];
+
+  const aggregated = aggregateTerminalWindowActivity({ tabs, activeTabId: 'active' });
+
+  assert.equal(aggregated.progressState, 'normal');
+  assert.equal(aggregated.progressValue, 25);
+});
+
+test('Bell attention and latest event aggregate independently from progress', () => {
+  const tabs = [
+    createTerminalTab('tab-1', {
+      progressState: 'normal',
+      progressValue: 100,
+      latestBellEvent: { paneId: 'pane-1', sequence: 4, receivedAt: 1_000 },
+    }),
+    createTerminalTab('tab-2', {
+      bellAttention: true,
+      bellAttentionPaneIds: ['pane-2'],
+      latestBellEvent: { paneId: 'pane-2', sequence: 1, receivedAt: 2_000 },
+    }),
+  ];
+
+  assert.deepEqual(aggregateTerminalWindowActivity({ tabs, activeTabId: 'tab-1' }), {
+    progressState: 'normal',
+    progressValue: 100,
+    bellAttention: true,
+    latestBellEvent: {
+      tabId: 'tab-2',
+      paneId: 'pane-2',
+      sequence: 1,
+      receivedAt: 2_000,
+    },
+  });
+});
+
+test('acknowledged Bell retains its latest event identity without attention', () => {
+  const aggregated = aggregateTerminalWindowActivity({
+    tabs: [
+      createTerminalTab('tab-1', {
+        bellAttention: false,
+        latestBellEvent: { paneId: 'pane-1', sequence: 2, receivedAt: 3_000 },
+      }),
+    ],
+    activeTabId: 'tab-1',
+  });
+
+  assert.equal(aggregated.bellAttention, false);
+  assert.deepEqual(aggregated.latestBellEvent, {
+    tabId: 'tab-1',
+    paneId: 'pane-1',
+    sequence: 2,
+    receivedAt: 3_000,
+  });
+});
