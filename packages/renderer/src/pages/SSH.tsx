@@ -26,7 +26,7 @@ import { t } from '../lib/i18n';
 import { useSettingsValues } from '../lib/settings-store';
 import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
-import type { SshConnectionIntent, TabIconColorKey, TabIconKey } from '../types/tabs';
+import type { SshConnectionIntent, TabIconColorKey, TabIconKey, TerminalTabPresentation } from '../types/tabs';
 import { RemoteEnhancementsDebugPanel } from './ssh/RemoteEnhancementsDebugPanel';
 import { INTERNAL_TERMINAL_TEXT_DRAG_MIME, type TerminalSelectionSettings } from './ssh/ssh-types';
 import {
@@ -43,6 +43,7 @@ import { SSHSidebar } from './ssh/SSHSidebar';
 import { SSHTerminalPaneLayout } from './ssh/SSHTerminalPaneLayout';
 import type { TerminalInlineImageSettings, TerminalWebLinksPlatform } from './ssh/terminal-addons';
 import { COMMAND_TIMELINE_SCROLLBAR_WIDTH_PX } from './ssh/terminal-command-timeline-state';
+import { aggregateTerminalTabPresentation } from './ssh/terminal-presentation-tab-state';
 import { type TerminalSearchDirection, useSshCore } from './ssh/use-ssh-core';
 import { useTerminalClipboardProvider } from './ssh/use-terminal-clipboard-provider';
 
@@ -57,6 +58,7 @@ type SSHProps = {
   onOpenDirectoryInSFTP?: (serverId: string, serverName: string, initialPath: string) => void;
   onTabTitleChange?: (title: string) => void;
   onTabVisualChange?: (visual: { iconKey: TabIconKey; iconColorKey?: TabIconColorKey }) => void;
+  onTerminalPresentationChange?: (tabId: string, presentation: TerminalTabPresentation) => void;
 };
 
 /** Delay used to debounce query-driven xterm search jumps while typing. */
@@ -133,6 +135,7 @@ const SSH: React.FC<SSHProps> = ({
   onOpenDirectoryInSFTP,
   onTabTitleChange,
   onTabVisualChange,
+  onTerminalPresentationChange,
 }) => {
   const { error: notifyError, info: notifyInfo, success: notifySuccess, warning: notifyWarning } = useToast();
   const { formatTime } = useDateTimeFormatter();
@@ -405,6 +408,7 @@ const SSH: React.FC<SSHProps> = ({
     state: {
       terminalPaneIds,
       activePaneId,
+      terminalPresentationStates,
       connectionState,
       paneConnectionStates,
       telemetryState,
@@ -445,6 +449,15 @@ const SSH: React.FC<SSHProps> = ({
     },
     refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
   } = sshCore;
+  const terminalTabPresentation = React.useMemo(
+    () =>
+      aggregateTerminalTabPresentation({
+        activePaneId,
+        paneIds: terminalPaneIds,
+        paneStates: terminalPresentationStates,
+      }),
+    [activePaneId, terminalPaneIds, terminalPresentationStates],
+  );
   const terminalPaneIdsRef = React.useRef<string[]>(terminalPaneIds);
   const dispatchedStartupCommandIntentIdRef = React.useRef<string | null>(null);
   const [terminalSearchOpen, setTerminalSearchOpen] = React.useState<boolean>(false);
@@ -455,6 +468,10 @@ const SSH: React.FC<SSHProps> = ({
   const [remoteEnhancementsDebugPanelOpen, setRemoteEnhancementsDebugPanelOpen] = React.useState<boolean>(false);
   const [terminalPasteWarningRequest, setTerminalPasteWarningRequest] =
     React.useState<TerminalPasteWarningRequest | null>(null);
+
+  React.useEffect(() => {
+    onTerminalPresentationChange?.(tabId, terminalTabPresentation);
+  }, [onTerminalPresentationChange, tabId, terminalTabPresentation]);
   const [exitHostFingerprintPrompt, clearExitHostFingerprintPrompt] = useDialogExitSnapshot(hostFingerprintPrompt);
   const [exitTerminalPasteWarningRequest, clearExitTerminalPasteWarningRequest] =
     useDialogExitSnapshot(terminalPasteWarningRequest);

@@ -164,6 +164,13 @@ SSH 页面中的终端文本选区交互必须满足以下规则：
 - 文件夹组按文件夹名称排列，每组内部沿用当前模式的项目排序，并将没有文件夹的实体放入最后一个本地化分组。
 - SSH、Keychains 与 Port Forwarding 分别保留独立的排序/分组偏好。Port Forwarding 不提供文件夹分组。
 
+### 7.4.3 终端展示状态
+
+- SSH 标签页必须稳定保留服务器/本地终端身份图标。应用进度与 Bell attention 使用独立的固定尺寸状态槽，绝不能替换身份图标。
+- SSH 标签页存活期间始终保留状态槽尺寸，包括空状态；spinner、progress、warning/error 与 Bell 的切换不得推动标题或关闭控件。
+- active pane 负责 Tab 标题与普通进度展示。后台 pane 可以保留 error、warning 和 Bell attention，但不能把普通后台进度伪装成 active pane 的状态。
+- 动态 OSC 应用标题只是纯内存展示输入。标签栏展示前必须完成清理与长度限制，不得记录或持久化，并且必须分别保留 connection/default/manual 标题来源。
+
 ## 7.5 普通文本选区右键菜单
 
 - 非编辑态 DOM 文本选区应提供仅包含“复制”的极简兜底右键菜单。

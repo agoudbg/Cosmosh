@@ -90,6 +90,15 @@ export const useTabs = (options?: UseTabsOptions) => {
   const buildTab = React.useCallback((page: TabPage, overrides?: Partial<TabItem>): TabItem => {
     const defaults = resolvePageDefaults(page);
     const id = `tab-${Date.now()}-${tabCounterRef.current++}`;
+    const terminalTitleSources =
+      page === 'ssh'
+        ? {
+            defaultTitle: defaults.title,
+            connectionTitle: overrides?.title?.trim() || null,
+            manualTitle: null,
+            ...overrides?.terminalTitleSources,
+          }
+        : overrides?.terminalTitleSources;
     return {
       id,
       page,
@@ -97,6 +106,7 @@ export const useTabs = (options?: UseTabsOptions) => {
       iconKey: defaults.iconKey,
       closable: true,
       ...overrides,
+      terminalTitleSources,
     };
   }, []);
 
@@ -141,6 +151,15 @@ export const useTabs = (options?: UseTabsOptions) => {
               title: defaults.title,
               iconKey: defaults.iconKey,
               iconColorKey: undefined,
+              terminalPresentation: undefined,
+              terminalTitleSources:
+                page === 'ssh'
+                  ? {
+                      defaultTitle: defaults.title,
+                      connectionTitle: null,
+                      manualTitle: null,
+                    }
+                  : undefined,
             }
           : tab,
       ),

@@ -164,6 +164,13 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - Folder groups follow folder-name order, preserve the active per-mode item sort inside each group, and place entities without a folder in a final localized group.
 - SSH, Keychains, and Port Forwarding retain independent sort/group preferences. Folder grouping is not available in Port Forwarding.
 
+### 7.4.3 Terminal Presentation Status
+
+- SSH tabs keep the server/local-terminal identity icon stable. Application progress and Bell attention render in a separate fixed-size status slot and must never replace the identity icon.
+- The status slot remains allocated while an SSH tab is alive, including its empty state, so spinner, progress, warning/error, and Bell transitions do not shift the title or close control.
+- The active pane owns the tab title and ordinary progress presentation. Background panes may retain error, warning, and Bell attention without exposing ordinary background progress as if it belonged to the active pane.
+- Dynamic OSC application titles are memory-only display input. Tab chrome must sanitize and bound them before display, never log or persist them, and preserve connection/default/manual title sources separately.
+
 ## 7.5 Plain Text Selection Context Menu
 
 - Non-editable DOM text selections should expose a minimal fallback context menu with Copy only.

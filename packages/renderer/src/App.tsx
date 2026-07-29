@@ -17,10 +17,12 @@ import { requestOpenLocalTerminalList } from './lib/home-target';
 import { t } from './lib/i18n';
 import { useSettingsValue } from './lib/settings-store';
 import { createSshConnectionIntent, toLocalTerminalTargetId } from './lib/ssh-connection-intent';
+import { projectTabPresentation } from './lib/tab-presentation';
 import { AppToastProvider } from './lib/toast';
 import { useTabs } from './lib/useTabs';
 import Home from './pages/Home';
-import type { TabIconKey } from './types/tabs';
+import { areTerminalTabPresentationsEqual } from './pages/ssh/terminal-presentation-tab-state';
+import type { TabIconKey, TerminalTabPresentation } from './types/tabs';
 
 const AuditLogs = React.lazy(() => import('./pages/AuditLogs'));
 const Debug = React.lazy(() => import('./pages/Debug'));
@@ -107,10 +109,39 @@ const App: React.FC = () => {
   } = useTabs({
     onLastTabClose: handleLastTabClose,
   });
+  const [terminalTabPresentations, setTerminalTabPresentations] = React.useState<
+    Readonly<Record<string, TerminalTabPresentation>>
+  >({});
   const tabsById = React.useMemo(() => {
     return new Map(tabs.map((tab) => [tab.id, tab] as const));
   }, [tabs]);
+  const presentedTabs = React.useMemo(() => {
+    return tabs.map((tab) => projectTabPresentation(tab, terminalTabPresentations[tab.id]));
+  }, [tabs, terminalTabPresentations]);
   const [contentTabOrder, setContentTabOrder] = React.useState<string[]>(() => tabs.map((tab) => tab.id));
+
+  /**
+   * Stores one memory-only terminal tab projection without rewriting stable tab identity.
+   *
+   * @param tabId Owning SSH tab id.
+   * @param presentation Pane-aggregated presentation projection.
+   * @returns Nothing.
+   */
+  const handleTerminalTabPresentationChange = React.useCallback(
+    (tabId: string, presentation: TerminalTabPresentation): void => {
+      setTerminalTabPresentations((current) => {
+        if (areTerminalTabPresentationsEqual(current[tabId], presentation)) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [tabId]: presentation,
+        };
+      });
+    },
+    [],
+  );
 
   React.useEffect(() => {
     setContentTabOrder((previousOrder) => {
@@ -130,6 +161,18 @@ const App: React.FC = () => {
       const isSameOrder =
         nextOrder.length === previousOrder.length && nextOrder.every((tabId, index) => tabId === previousOrder[index]);
       return isSameOrder ? previousOrder : nextOrder;
+    });
+  }, [tabs]);
+
+  React.useEffect(() => {
+    setTerminalTabPresentations((current) => {
+      const liveSshTabIds = new Set(tabs.filter((tab) => tab.page === 'ssh').map((tab) => tab.id));
+      const retainedEntries = Object.entries(current).filter(([tabId]) => liveSshTabIds.has(tabId));
+      if (retainedEntries.length === Object.keys(current).length) {
+        return current;
+      }
+
+      return Object.fromEntries(retainedEntries);
     });
   }, [tabs]);
 
@@ -188,8 +231,7 @@ const App: React.FC = () => {
       }
 
       const targetId = toLocalTerminalTargetId(targetProfile.id);
-      const tabId = addTab('ssh');
-      updateTab(tabId, {
+      addTab('ssh', {
         title: targetProfile.name,
         iconKey: 'terminal',
         iconColorKey: undefined,
@@ -200,7 +242,7 @@ const App: React.FC = () => {
     } catch {
       handleOpenLocalTerminalList();
     }
-  }, [addTab, defaultLocalTerminalProfile, handleOpenLocalTerminalList, updateTab]);
+  }, [addTab, defaultLocalTerminalProfile, handleOpenLocalTerminalList]);
 
   const handleLaunchWorkingDirectory = React.useCallback(async () => {
     if (terminalContextLaunchBehavior === 'off') {
@@ -404,21 +446,29 @@ const App: React.FC = () => {
                   onTabVisualChange={handleHomeTabVisualChange}
                   onOpenSSH={(serverId, tabTitle, options) => {
                     if (options?.openInNewTab) {
-                      const newTabId = addTab('ssh', undefined, {
-                        insertAfterTabId: tab.id,
-                      });
-                      updateTab(newTabId, {
-                        ...(tabTitle ? { title: tabTitle } : {}),
-                        state: {
-                          sshConnectionIntent: createSshConnectionIntent(serverId),
+                      addTab(
+                        'ssh',
+                        {
+                          ...(tabTitle ? { title: tabTitle } : {}),
+                          state: {
+                            sshConnectionIntent: createSshConnectionIntent(serverId),
+                          },
                         },
-                      });
+                        {
+                          insertAfterTabId: tab.id,
+                        },
+                      );
                       return;
                     }
 
                     openPageInTab(tab.id, 'ssh');
                     updateTab(tab.id, {
                       ...(tabTitle ? { title: tabTitle } : {}),
+                      terminalTitleSources: {
+                        defaultTitle: t('tabs.page.ssh'),
+                        connectionTitle: tabTitle?.trim() || null,
+                        manualTitle: null,
+                      },
                       state: {
                         ...(tab.state ?? {}),
                         sshConnectionIntent: createSshConnectionIntent(serverId),
@@ -497,7 +547,13 @@ const App: React.FC = () => {
                       });
                     }}
                     onTabTitleChange={(title) => {
-                      updateTab(tab.id, { title });
+                      updateTab(tab.id, {
+                        terminalTitleSources: {
+                          defaultTitle: tab.terminalTitleSources?.defaultTitle ?? t('tabs.page.ssh'),
+                          connectionTitle: title.trim() || null,
+                          manualTitle: tab.terminalTitleSources?.manualTitle ?? null,
+                        },
+                      });
                     }}
                     onTabVisualChange={(visual) => {
                       updateTab(tab.id, {
@@ -505,6 +561,7 @@ const App: React.FC = () => {
                         iconColorKey: visual.iconColorKey,
                       });
                     }}
+                    onTerminalPresentationChange={handleTerminalTabPresentationChange}
                     onOpenDirectoryInSFTP={(serverId, serverName, initialPath) => {
                       const nextIntent = {
                         serverId,
@@ -659,6 +716,7 @@ const App: React.FC = () => {
     addTab,
     contentTabOrder,
     handleHomeTabVisualChange,
+    handleTerminalTabPresentationChange,
     handleShowSystemMonitorOverlayChange,
     openPageInTab,
     setActiveTabId,
@@ -679,7 +737,7 @@ const App: React.FC = () => {
         >
           <Header
             className="flex-shrink-0"
-            tabs={tabs}
+            tabs={presentedTabs}
             activeTab={activeTabId}
             onActiveTabChange={setActiveTabId}
             onAddTab={handleAddServerTab}
@@ -710,7 +768,7 @@ const App: React.FC = () => {
         <AppCommandPaletteHost
           ref={commandPaletteHostRef}
           activeTabId={activeTabId}
-          tabs={tabs}
+          tabs={presentedTabs}
           addTab={addTab}
           closeTab={closeTab}
           closeRightTabs={closeRightTabs}

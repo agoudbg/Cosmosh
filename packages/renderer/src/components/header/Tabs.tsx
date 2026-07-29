@@ -20,13 +20,27 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import * as RadixTabs from '@radix-ui/react-tabs';
 import classNames from 'classnames';
-import { ChevronLeft, ChevronRight, Command, CornerUpRight, KeyRound, PlusIcon, Server, XIcon } from 'lucide-react';
+import {
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CircleGauge,
+  Command,
+  CornerUpRight,
+  KeyRound,
+  LoaderCircle,
+  PlusIcon,
+  Server,
+  TriangleAlert,
+  XIcon,
+} from 'lucide-react';
 import React from 'react';
 
 import { getEntityColorClassName } from '../../lib/entity-visuals';
 import { t } from '../../lib/i18n';
 import { renderTabIcon } from '../../lib/tab-icon';
-import type { TabItem } from '../../types/tabs';
+import type { TabItem, TerminalTabPresentation } from '../../types/tabs';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -43,6 +57,84 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+
+type TabPresentationStatusIndicatorProps = {
+  presentation: TerminalTabPresentation | undefined;
+  elevated?: boolean;
+  withTooltip?: boolean;
+};
+
+/**
+ * Renders the fixed terminal status slot without replacing connection identity.
+ *
+ * @param props Presentation projection and rendering context.
+ * @returns Stable-width status slot with optional localized tooltip.
+ */
+const TabPresentationStatusIndicator: React.FC<TabPresentationStatusIndicatorProps> = ({
+  presentation,
+  elevated = false,
+  withTooltip = true,
+}) => {
+  const progressState = presentation?.progressState ?? 'none';
+  const bellAttention = presentation?.bellAttention ?? false;
+  const hasProgress = progressState !== 'none';
+  const hasStatus = hasProgress || bellAttention;
+  const progressValue = presentation?.progressValue ?? 0;
+
+  let progressIcon: React.ReactNode = null;
+  let progressLabel: string | null = null;
+  if (progressState === 'normal') {
+    progressIcon = <CircleGauge className="h-4 w-4 text-status-good" />;
+    progressLabel = t('tabs.presentation.progressNormal', { value: progressValue });
+  } else if (progressState === 'error') {
+    progressIcon = <CircleAlert className="h-4 w-4 text-status-bad" />;
+    progressLabel = t('tabs.presentation.progressError', { value: progressValue });
+  } else if (progressState === 'warning') {
+    progressIcon = <TriangleAlert className="h-4 w-4 text-status-warn" />;
+    progressLabel = t('tabs.presentation.progressWarning', { value: progressValue });
+  } else if (progressState === 'indeterminate') {
+    progressIcon = <LoaderCircle className="h-4 w-4 animate-spin text-header-text-muted" />;
+    progressLabel = t('tabs.presentation.progressIndeterminate');
+  }
+
+  const bellLabel = bellAttention ? t('tabs.presentation.bellAttention') : null;
+  const statusLabel =
+    progressLabel && bellLabel
+      ? t('tabs.presentation.combined', { progress: progressLabel, attention: bellLabel })
+      : (progressLabel ?? bellLabel);
+  const slot = (
+    <span
+      data-role="terminal-tab-presentation-status"
+      aria-hidden={!hasStatus}
+      aria-label={statusLabel ?? undefined}
+      className={classNames(
+        'relative inline-flex h-4 w-4 flex-none items-center justify-center',
+        elevated ? 'z-[1]' : '',
+      )}
+      role={hasStatus ? 'img' : undefined}
+    >
+      {progressIcon}
+      {bellAttention && !hasProgress ? <Bell className="h-4 w-4 text-status-warn" /> : null}
+      {bellAttention && hasProgress ? (
+        <Bell className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 text-status-warn" />
+      ) : null}
+    </span>
+  );
+
+  if (!withTooltip || !statusLabel) {
+    return slot;
+  }
+
+  return (
+    <TooltipProvider delayDuration={180}>
+      <Tooltip>
+        <TooltipTrigger asChild>{slot}</TooltipTrigger>
+        <TooltipContent>{statusLabel}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
 
 const DragOverlayTab: React.FC<{ tab: TabItem; width: number; applySshServerVisuals: boolean }> = ({
   tab,
@@ -63,6 +155,12 @@ const DragOverlayTab: React.FC<{ tab: TabItem; width: number; applySshServerVisu
         {renderTabIcon(tab, !shouldApplySshTabVisual && isServerBackedTab(tab) && applySshServerVisuals)}
       </span>
       <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-start text-sm">{tab.title}</span>
+      {tab.page === 'ssh' ? (
+        <TabPresentationStatusIndicator
+          presentation={tab.terminalPresentation}
+          withTooltip={false}
+        />
+      ) : null}
       {tab.closable && <XIcon className="h-4 w-4" />}
     </div>
   );
@@ -166,6 +264,12 @@ const SortableTab = React.forwardRef<
           >
             {tab.title}
           </span>
+          {tab.page === 'ssh' ? (
+            <TabPresentationStatusIndicator
+              elevated={shouldApplySshTabVisual && !isDragging}
+              presentation={tab.terminalPresentation}
+            />
+          ) : null}
           {tab.closable && (
             <button
               type="button"

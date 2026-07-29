@@ -210,6 +210,9 @@ flowchart LR
 - `terminal.parser.registerOscHandler(9, ...)` 只处理 `4;<state>;<progress>` 命名空间。状态映射为 `none`、`normal`、`error`、`indeterminate` 与 `warning`；非法 OSC 9;4 payload 会被消费但不改变状态，无关 OSC 9 payload 仍可交给其他 handler。
 - `terminal.onBell(...)` 是 Bell attention 的唯一来源。用于终止 OSC 0/2 或 OSC 9;4 的 BEL 会被 xterm 作为 terminator 消费，不会产生独立 Bell 事件。OSC 9;4 state `0` 只清除进度，绝不会合成 Bell attention。
 - 展示状态按 pane 独立归属。连接重试只清理该 pane 的旧标题/进度/Bell 状态，terminal dispose 会注销所有 parser listener，pane 删除会移除对应状态。
+- Tab 聚合器跟随 active pane 的应用标题，并优先展示该 pane 的进度状态。active pane 没有进度时，后台 `error` 与 `warning` 状态可以保留 Tab attention；普通后台进度不会接管 active pane 的状态槽。Bell attention 独立汇总所有存活 pane。
+- 终端 Tab 会保留独立标题来源，并按 `manualTitle > activePane.applicationTitle > connectionTitle > defaultTitle` 解析。应用标题始终只是内存中的派生投影，不会回写已存储的 Tab/session state、命令日志或设置。
+- 聚焦某个 pane 只确认该 pane 的 Bell attention。若独立 Bell 到达时对应 active pane 已经聚焦，则立即确认；切换 Tab 后程序化聚焦 active terminal 也走同一确认路径。
 - 本模块明确排除 OSC 7、OSC 133、Shell Bootstrap 与 OSC 777 远端增强；这些协议继续由其现有 owner 和生命周期门控负责。
 
 ```mermaid
@@ -223,6 +226,8 @@ flowchart LR
   TITLE --> STATE[Pane TerminalPresentationState]
   PROGRESS --> STATE
   BELL --> STATE
+  STATE --> TAB[Tab State Aggregator]
+  TAB --> CHROME[派生 Tab 标题与固定状态槽]
 ```
 
 ## 4. 主机校验与信任流程

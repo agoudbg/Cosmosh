@@ -58,6 +58,7 @@ import {
   type TerminalPresentationStateAction,
   type TerminalPresentationStateMap,
 } from './terminal-presentation-state';
+import { shouldAcknowledgeFocusedPaneBell } from './terminal-presentation-tab-state';
 import { useSshAutocomplete } from './use-ssh-autocomplete';
 import { useSshMirrorPanes } from './use-ssh-mirror-panes';
 import { useSshPrimarySession } from './use-ssh-primary-session';
@@ -593,6 +594,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   const characterWidthCompatibilityModeEnabledRef = React.useRef<boolean>(characterWidthCompatibilityModeEnabled);
   const sshConnectionTimeoutSecRef = React.useRef<number>(sshConnectionTimeoutSec);
   const sshReconnectOnFocusRef = React.useRef<boolean>(sshReconnectOnFocus);
+  const isTabActiveRef = React.useRef<boolean>(isActive);
   const wasActiveRef = React.useRef<boolean>(isActive);
   const hasEverBeenActiveRef = React.useRef<boolean>(isActive);
   const terminalInlineImageSettingsRef = React.useRef<TerminalInlineImageSettings>(terminalInlineImageSettings);
@@ -725,13 +727,54 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    * @param action Pane lifecycle or xterm presentation action.
    * @returns Nothing.
    */
-  const dispatchTerminalPresentationState = React.useCallback((action: TerminalPresentationStateAction): void => {
-    terminalPresentationStatesRef.current = reduceTerminalPresentationState(
-      terminalPresentationStatesRef.current,
-      action,
-    );
-    dispatchTerminalPresentationStateReducer(action);
-  }, []);
+  const dispatchTerminalPresentationState = React.useCallback(
+    (action: TerminalPresentationStateAction): void => {
+      let nextState = reduceTerminalPresentationState(terminalPresentationStatesRef.current, action);
+      const focusedPaneContainer =
+        action.type === 'bell'
+          ? (runtimeRef.current.paneContainerMap.get(action.paneId) ??
+            runtimeRef.current.paneRuntimeMap.get(action.paneId)?.containerElement)
+          : null;
+      const shouldAcknowledgeFocusedBell =
+        action.type === 'bell' &&
+        shouldAcknowledgeFocusedPaneBell({
+          isTabActive: isTabActiveRef.current,
+          activePaneId: activePaneIdRef.current,
+          eventPaneId: action.paneId,
+          paneContainsFocus: Boolean(focusedPaneContainer?.contains(document.activeElement)),
+        });
+
+      if (shouldAcknowledgeFocusedBell) {
+        nextState = reduceTerminalPresentationState(nextState, {
+          type: 'acknowledge-bell',
+          paneId: action.paneId,
+        });
+      }
+
+      terminalPresentationStatesRef.current = nextState;
+      dispatchTerminalPresentationStateReducer(action);
+      if (shouldAcknowledgeFocusedBell) {
+        dispatchTerminalPresentationStateReducer({
+          type: 'acknowledge-bell',
+          paneId: action.paneId,
+        });
+      }
+    },
+    [activePaneIdRef],
+  );
+
+  /**
+   * Acknowledges Bell attention only for the pane the user reached.
+   *
+   * @param paneId Focused terminal pane id.
+   * @returns Nothing.
+   */
+  const acknowledgeTerminalBell = React.useCallback(
+    (paneId: string): void => {
+      dispatchTerminalPresentationState({ type: 'acknowledge-bell', paneId });
+    },
+    [dispatchTerminalPresentationState],
+  );
 
   /**
    * Clears application-owned presentation state before one pane reconnects.
@@ -753,6 +796,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   React.useEffect(() => {
     terminalPresentationStatesRef.current = terminalPresentationStates;
   }, [terminalPresentationStates]);
+
+  React.useLayoutEffect(() => {
+    isTabActiveRef.current = isActive;
+  }, [isActive]);
 
   React.useEffect(() => {
     onTabTitleChangeRef.current = onTabTitleChange;
@@ -1258,6 +1305,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     resetPaneState,
     resetTerminalPresentationState,
     dispatchTerminalPresentationState,
+    acknowledgeTerminalBell,
     setPaneTransportState,
     setSessionTargetReady,
     handlePaneServerMessage,
@@ -1304,6 +1352,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     resetPaneState,
     resetTerminalPresentationState,
     dispatchTerminalPresentationState,
+    acknowledgeTerminalBell,
     setPaneTransportState,
     handlePaneServerMessage,
     recordPaneInputCommandMarker,
@@ -1512,8 +1561,20 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    * @returns Nothing.
    */
   const focusActiveTerminal = React.useCallback(() => {
-    terminalRef.current?.focus();
-  }, [terminalRef]);
+    const paneId = activePaneIdRef.current;
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+
+    terminal.focus();
+    const paneContainer =
+      runtimeRef.current.paneContainerMap.get(paneId) ??
+      runtimeRef.current.paneRuntimeMap.get(paneId)?.containerElement;
+    if (paneContainer?.contains(document.activeElement)) {
+      acknowledgeTerminalBell(paneId);
+    }
+  }, [acknowledgeTerminalBell, activePaneIdRef, terminalRef]);
 
   /**
    * Sends Ctrl+L clear-screen sequence to active session.

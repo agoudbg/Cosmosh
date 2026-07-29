@@ -13,7 +13,7 @@
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "test:oobe": "tsx --test src/lib/oobe.test.ts",
-    "test:ssh": "tsx --test src/pages/ssh/ssh-command-markers.test.ts src/pages/ssh/ssh-pane-state.test.ts src/pages/ssh/ssh-utils.test.ts src/pages/ssh/terminal-command-timeline-state.test.ts src/pages/ssh/terminal-presentation-integration.test.ts src/pages/ssh/terminal-presentation-state.test.ts",
+    "test:ssh": "tsx --test src/lib/tab-presentation.test.ts src/pages/ssh/ssh-command-markers.test.ts src/pages/ssh/ssh-pane-state.test.ts src/pages/ssh/ssh-utils.test.ts src/pages/ssh/terminal-command-timeline-state.test.ts src/pages/ssh/terminal-presentation-integration.test.ts src/pages/ssh/terminal-presentation-state.test.ts src/pages/ssh/terminal-presentation-tab-state.test.ts",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "theme:sync": "node ./scripts/sync-theme.cjs"
   },

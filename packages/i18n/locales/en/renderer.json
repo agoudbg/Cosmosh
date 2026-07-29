@@ -1650,6 +1650,14 @@
       "sftp": "SFTP",
       "ssh": "SSH"
     },
+    "presentation": {
+      "bellAttention": "Terminal bell needs attention",
+      "combined": "{progress}; {attention}",
+      "progressError": "Progress failed at {value}%",
+      "progressIndeterminate": "Task in progress",
+      "progressNormal": "Progress: {value}%",
+      "progressWarning": "Progress warning at {value}%"
+    },
     "scrollLeft": "Scroll left",
     "scrollRight": "Scroll right",
     "switcherEmpty": "No matching tabs",

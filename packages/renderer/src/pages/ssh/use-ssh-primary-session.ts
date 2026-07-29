@@ -67,6 +67,7 @@ type UseSshPrimarySessionParams = {
   resetPaneState: (paneId: string) => void;
   resetTerminalPresentationState: (paneId: string) => void;
   dispatchTerminalPresentationState: (action: TerminalPresentationStateAction) => void;
+  acknowledgeTerminalBell: (paneId: string) => void;
   setPaneTransportState: (paneId: string, state: 'connecting' | 'connected' | 'failed', error?: string) => void;
   setSessionTargetReady: (ready: boolean) => void;
   handlePaneServerMessage: (paneId: string, terminal: Terminal, payload: ServerInboundMessage) => void;
@@ -128,6 +129,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     resetPaneState,
     resetTerminalPresentationState,
     dispatchTerminalPresentationState,
+    acknowledgeTerminalBell,
     setPaneTransportState,
     setSessionTargetReady,
     handlePaneServerMessage,
@@ -524,8 +526,13 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     const trackPointerPosition = (event: MouseEvent | PointerEvent): void => {
       selectionPointerClientXRef.current = event.clientX;
     };
+    const handleTerminalFocus = (): void => {
+      setActivePane(paneId);
+      acknowledgeTerminalBell(paneId);
+    };
     containerElement.addEventListener('pointerup', trackPointerPosition);
     containerElement.addEventListener('mouseup', trackPointerPosition);
+    containerElement.addEventListener('focusin', handleTerminalFocus);
     const disposeTerminalInput = terminal.onData((data) => {
       if (activePaneIdRef.current !== paneId) {
         setActivePane(paneId);
@@ -670,6 +677,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
       terminalPresentationIntegration.dispose();
       containerElement.removeEventListener('pointerup', trackPointerPosition);
       containerElement.removeEventListener('mouseup', trackPointerPosition);
+      containerElement.removeEventListener('focusin', handleTerminalFocus);
       containerElement.removeEventListener('keydown', handleAutocompleteKeyDown, true);
       window.removeEventListener('resize', handleWindowResize);
       disposeResize();
@@ -679,6 +687,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
 
     return disposeRuntime;
   }, [
+    acknowledgeTerminalBell,
     activePaneIdRef,
     applyAutocompleteInputData,
     characterWidthCompatibilityModeEnabledRef,

@@ -1650,6 +1650,14 @@
       "sftp": "SFTP",
       "ssh": "SSH"
     },
+    "presentation": {
+      "bellAttention": "终端铃声等待处理",
+      "combined": "{progress}；{attention}",
+      "progressError": "进度失败于 {value}%",
+      "progressIndeterminate": "任务进行中",
+      "progressNormal": "进度：{value}%",
+      "progressWarning": "进度警告于 {value}%"
+    },
     "scrollLeft": "向左滚动",
     "scrollRight": "向右移动",
     "switcherEmpty": "未找到匹配的标签页",

@@ -52,6 +52,7 @@ type UseSshMirrorPanesParams = {
   resetPaneState: (paneId: string) => void;
   resetTerminalPresentationState: (paneId: string) => void;
   dispatchTerminalPresentationState: (action: TerminalPresentationStateAction) => void;
+  acknowledgeTerminalBell: (paneId: string) => void;
   setPaneTransportState: (paneId: string, state: 'connecting' | 'connected' | 'failed', error?: string) => void;
   handlePaneServerMessage: (
     paneId: string,
@@ -108,6 +109,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     resetPaneState,
     resetTerminalPresentationState,
     dispatchTerminalPresentationState,
+    acknowledgeTerminalBell,
     setPaneTransportState,
     handlePaneServerMessage,
     recordPaneInputCommandMarker,
@@ -241,6 +243,11 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
         setActivePane(paneId);
       };
 
+      const handleTerminalFocus = (): void => {
+        setActivePane(paneId);
+        acknowledgeTerminalBell(paneId);
+      };
+
       const disposeTerminalInput = terminal.onData((data) => {
         if (activePaneIdRef.current !== paneId) {
           setActivePane(paneId);
@@ -317,6 +324,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
       containerElement.addEventListener('keydown', handleAutocompleteKeyDown, true);
       containerElement.addEventListener('mousedown', handleSetActivePane, true);
       containerElement.addEventListener('contextmenu', handleSetActivePane, true);
+      containerElement.addEventListener('focusin', handleTerminalFocus);
 
       /**
        * Closes the current transport while preserving the pane's xterm instance.
@@ -522,6 +530,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
         containerElement.removeEventListener('keydown', handleAutocompleteKeyDown, true);
         containerElement.removeEventListener('mousedown', handleSetActivePane, true);
         containerElement.removeEventListener('contextmenu', handleSetActivePane, true);
+        containerElement.removeEventListener('focusin', handleTerminalFocus);
         terminal.dispose();
       };
     });
@@ -538,6 +547,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     scheduleFitAndResizeSyncRef.current?.();
     setActivePane(activePaneIdRef.current);
   }, [
+    acknowledgeTerminalBell,
     activePaneIdRef,
     applyAutocompleteInputData,
     characterWidthCompatibilityModeEnabledRef,
