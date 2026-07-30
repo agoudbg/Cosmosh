@@ -29,7 +29,7 @@ Rules:
 - Keep typography compact, readable, and consistent across controls and content areas.
 - Preserve a stable body/control baseline and avoid arbitrary size jumps between adjacent components.
 - Use clear hierarchy for titles, labels, helper text, and status messages.
-- Shared form labels use the semantic `color.form.text.label` tier between primary form text and `color.form.text.muted`; helper and description text stay muted.
+- Shared form labels use the semantic `font.size.form.label` size (`0.8rem`) and the `color.form.text.label` tier between primary form text and `color.form.text.muted`. Registry-driven Settings descriptions use `color.form.text.muted` at 80% opacity so they stay subordinate to the compact labels; other helper text stays muted.
 - Second-level headings inside form sections use the shared `FormSectionHeading` primitive (`formStyles.sectionHeading`): 15 px, semibold, and the primary `color.text` token. Settings, SSH server, and SSH keychain editors must consume this primitive instead of restyling section headings locally.
 
 ## 4. Radius Logic
@@ -56,7 +56,7 @@ Implementation principles:
 - Scroll affordances inside menu wrappers must stay outside normal item flow; showing or hiding up/down indicators must not reserve blank rows, resize the active viewport, or shift the current scroll position. Overlay affordances must carry a tokenized surface background and backdrop blur so translucent menus do not reveal items underneath.
 - Menu single-choice/radio items must use the shared leading checkmark indicator, matching checkbox/menu selection affordances instead of dot markers.
 - Third-party editor overlays that cannot use Radix wrappers, such as CodeMirror autocomplete and info tooltips, must still use the shared menu/tooltip token rhythm: `bg-bg-subtle`, `shadow-menu-content` or `shadow-soft`, 4px panel gutters, 6px/10px item padding, `rounded-lg` panels, `rounded-md` items, and `bg-menu-control-hover` for hover/selection.
-- Reusable search/replace panels must use `SearchReplacePanel` from `packages/renderer/src/components/ui`. The panel is controlled by its caller, supports hidden/readonly/editable replacement modes, configurable filter toggles, match-count display, compact density, and action-level disabled/hidden states. Surface-specific adapters own search algorithms and map their state into this generic panel instead of forking the UI.
+- Reusable search/replace panels must use `SearchReplacePanel` from `packages/renderer/src/components/ui`. The panel is controlled by its caller, supports hidden/readonly/editable replacement modes, configurable filter toggles, match-count display, compact density, and action-level disabled/hidden states. Surface-specific adapters own search algorithms and map their state into this generic panel instead of forking the UI. The panel renders as a floating viewport-sized card by default; hosts that embed it in their layout flow (such as the CodeMirror `docked-bottom` placement) set `docked` so it becomes a full-width bar without the floating card chrome. Narrow editor panes must prefer the docked placement so controls never clip and content is pushed aside instead of covered by an overlay. Below 480px of available width the panel automatically switches to a stacked layout — search input with the close button, replace input with its actions, then a find-options row — instead of letting controls wrap into arbitrary positions.
 - CodeMirror editor syntax uses a VS Code-inspired default palette through semantic tokens; editor chrome, autocomplete, diagnostics, search/replace panels, and context menus still follow Cosmosh surface/menu tokens.
 
 ### 5.1 Dialog Exit-State Lifecycle
@@ -94,6 +94,13 @@ Implementation principles:
 - The active roving-focus row and rows that own inline editing, an open context menu, or the native drag source stay mounted when necessary. Keyboard movement to an offscreen row must reveal it through the virtualizer before focus moves, and virtualized options/tree items must expose their logical position, collection size, and tree hierarchy to assistive technology.
 - Current-directory tree positioning uses flattened logical row geometry and preserves the existing upper-third target when the parent/current/expanded-child context does not fit in the viewport.
 - Directory marquee selection resolves intersections from the complete fixed-row model, including unmounted rows reached through edge auto-scroll. Virtualization must not weaken blank-area selection, modifier extension, drag/drop targeting, inline editing, or dirty-preview protection.
+
+### 6.4 Settings Category Navigation
+
+- The Settings page category list uses the shared `SidebarNav` component (`src/components/ui/sidebar-nav.tsx`): a labelled `nav` landmark of full-width buttons whose active entry exposes `aria-current="page"`.
+- The list uses roving focus: `Tab` enters the list once at the active category, `ArrowUp`/`ArrowDown` move focus between categories via the shared directional-navigation hook, and `Enter`/`Space` activate the focused category through native button semantics.
+- The SSH server editor reuses `SplitWorkbenchLayout`, `SplitWorkbenchMainPanel`, and `SidebarNav` for its Information, Connection, Enhancements, and Advanced surfaces. Category changes reset the right content pane to the top without replacing the current form draft.
+- Information contains identity and classification controls. Connection contains host details and authentication, with username and keychain controls on separate rows. Classification also places folder and tag controls on separate rows. Enhancements contains terminal enhancements, clipboard permissions, and the per-server MCP command confirmation policy. Advanced contains proxy, host-key verification, character-width compatibility, and transport compression. The compact editor omits a duplicate current-category heading above the content pane and uses a 175 px navigation sidebar. The dialog title aligns with the leading edge of the sidebar item icons.
 
 ## 7. Orbit Bar Standard
 

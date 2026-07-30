@@ -34,6 +34,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
@@ -173,12 +174,12 @@ const LanguageMenu: React.FC<LanguageMenuProps> = ({ iconOnly = false, locale, o
  */
 const SettingLabel: React.FC<SettingLabelProps> = ({ description, htmlFor, label }) => (
   <div className="flex min-w-0 items-center gap-1.5">
-    <label
+    <Label
       htmlFor={htmlFor}
-      className="min-w-0 text-sm font-medium text-form-text"
+      className="min-w-0 px-0 font-medium !text-form-text"
     >
       {label}
-    </label>
+    </Label>
     {description ? (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -472,7 +473,7 @@ const FirstRunExperience: React.FC = () => {
                         >
                           <h2
                             id="oobe-theme-heading"
-                            className="text-sm font-medium text-form-text"
+                            className="text-form-label font-medium text-form-text"
                           >
                             {translate('settings.items.theme.title')}
                           </h2>

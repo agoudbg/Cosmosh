@@ -198,7 +198,9 @@ const createEditorExtensions = (options: {
     ]),
   ),
   createSftpEditorTheme(),
-  createCodeMirrorSearchReplaceExtension(),
+  // The preview pane is usually a narrow sidebar, so pin search/replace to the bottom
+  // edge as a full-width bar instead of a floating overlay that clips or covers content.
+  createCodeMirrorSearchReplaceExtension({ placement: 'docked-bottom' }),
   cosmoshCodeMirrorSyntaxHighlighting,
   EditorView.lineWrapping,
   EditorState.tabSize.of(2),

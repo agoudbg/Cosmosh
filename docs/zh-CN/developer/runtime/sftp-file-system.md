@@ -232,7 +232,7 @@ Renderer 会保留完整的筛选/排序条目数组和扁平化展开树顺序�
 - 默认文件打开与打开方式也仍是普通文件的单条目动作。Renderer 会先向 main 请求 Main 拥有的每次运行 SFTP 临时根目录下绑定所有者且可复用的唯一路径，复用现有 SFTP 下载端点将文件落地，再要求 main 仅打开该已校验的临时路径。
 - 预览读取由 renderer 驱动，且仅支持单条目。文本/代码预览调用有上限的 UTF-8 文件读取端点；超过 `sftpTextPreviewWarningThresholdBytes` 的文件在读取前需要确认，读取大小仍受 backend 最大值限制。图片预览复用临时下载路径，但使用预览专属、经过 size/mtime 校验的缓存，并与 Open/Open With 临时文件分离；超过 `sftpImagePreviewWarningThresholdBytes` 的图片在下载前需要确认，但确认不会绕过下载前检查的图片预览硬大小上限。
 - CodeMirror 预览保存会在标签页本地串行通道中加入`保存`任务。请求会携带 UTF-8 内容，以及已选文件打开时的 `size` 与 `modifiedAt` 快照到 `POST /api/v1/sftp/sessions/{sessionId}/file`。远程快照不匹配时返回 `SFTP_UPLOAD_CONFLICT`；renderer 会复用覆盖确认弹窗，并且只在用户显式确认后用 `overwrite: true` 重试。
-- CodeMirror 预览内的键盘快捷键会保留在编辑器作用域内，包括 `Ctrl`/`Cmd+S` 保存与 `Ctrl`/`Cmd+F` 查找/替换。它的右键菜单使用共享的 Cosmosh 文本编辑菜单表面，提供撤销、重做、查找/替换、剪切、复制、粘贴和全选。查找/替换面板使用 renderer 可复用的 `SearchReplacePanel`；只读预览仍保留查找能力，并以只读状态呈现替换控制。SFTP 页面级文件列表快捷键和全局兜底右键菜单必须忽略来自编辑器、文本输入或 contenteditable 目标的事件。
+- CodeMirror 预览内的键盘快捷键会保留在编辑器作用域内，包括 `Ctrl`/`Cmd+S` 保存与 `Ctrl`/`Cmd+F` 查找/替换。它的右键菜单使用共享的 Cosmosh 文本编辑菜单表面，提供撤销、重做、查找/替换、剪切、复制、粘贴和全选。查找/替换面板使用 renderer 可复用的 `SearchReplacePanel`；只读预览仍保留查找能力，并以只读状态呈现替换控制。由于预览窗格通常是狭窄的侧栏，面板采用 CodeMirror 适配器的 `docked-bottom` 放置方式：以全宽横条固定在编辑器底边并参与布局流，因此控件不会因窗格宽度被裁剪，预览内容向上让位而不是被浮动浮层遮挡；窗格宽度低于 480px 时面板折叠为堆叠布局（查找输入框与关闭按钮、替换输入框与其操作、查找选项各一行）。SFTP 页面级文件列表快捷键和全局兜底右键菜单必须忽略来自编辑器、文本输入或 contenteditable 目标的事件。
 - 未保存的 CodeMirror 预览编辑会阻止那些会隐藏或替换当前预览的选择切换和工具栏侧栏模式切换。打开另一个 SFTP 连接等硬运行时重置仍会清除标签页内预览状态，因为原远程会话上下文已经不再有效。
 - 默认打开或打开方式动作成功后，main 会为该临时文件启动防抖监听，并且只向拥有该监听的 renderer webContents 推送变更事件。Renderer 对每个远程路径只保留一个待处理上传提示，因此编辑器连续保存事件会合并到一次提示，直到用户上传或忽略。
 - 用户接受上传提示后，会加入一个并发`上传`任务。上传请求携带打开远程文件时的 `size` 与 `modifiedAt`；backend 写入前会将这些值与当前远程 `stat` 比较。不一致时，backend 返回 `SFTP_UPLOAD_CONFLICT`，且这次请求不会覆盖远程文件。

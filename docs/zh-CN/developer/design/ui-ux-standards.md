@@ -29,7 +29,7 @@ flowchart LR
 - 字体应保持紧凑、可读，并在各类控件和内容区间保持一致。
 - 正文与控件字号基线应稳定，避免相邻组件出现突兀跳变。
 - 标题、标签、辅助文案、状态信息需要明确层级。
-- 共享表单标签使用位于主表单文本与 `color.form.text.muted` 之间的语义色阶 `color.form.text.label`，辅助说明与描述文本继续使用弱化色。
+- 共享表单标签使用语义字号 `font.size.form.label`（`0.8rem`），并使用位于主表单文本与 `color.form.text.muted` 之间的语义色阶 `color.form.text.label`。注册表驱动的 Settings 描述使用 80% 不透明度的 `color.form.text.muted`，以保持低于紧凑标签的视觉层级；其他辅助说明继续使用弱化色。
 - 表单分组内的二级标题使用共享 `FormSectionHeading` 原语（`formStyles.sectionHeading`）：15 px、半粗字重和主文本 `color.text` token。Settings、SSH 服务器与 SSH Keychain 编辑器必须复用该原语，不得在页面内重复定义分组标题样式。
 
 ## 4. 圆角逻辑
@@ -56,7 +56,7 @@ flowchart TD
 - 菜单封装内的滚动提示必须脱离普通项目流；上下指示的显示或隐藏不得预留空白行、改变当前 viewport 尺寸，也不得导致当前滚动位置跳动。叠层提示必须带有 token 化表面背景和 backdrop blur，避免半透明菜单透出下方内容。
 - 菜单中的单选/Radio 项必须使用共享的前置对勾选中标识，与 checkbox/menu 选中反馈保持一致，不使用小点标记。
 - 无法使用 Radix 封装的第三方编辑器浮层（例如 CodeMirror autocomplete 与 info tooltip）仍必须遵循共享菜单/tooltip 的 token 节奏：`bg-bg-subtle`、`shadow-menu-content` 或 `shadow-soft`、4px 面板边距、6px/10px 项目内边距、`rounded-lg` 面板、`rounded-md` 项目，以及用于 hover/selection 的 `bg-menu-control-hover`。
-- 可复用查找/替换面板必须使用 `packages/renderer/src/components/ui` 中的 `SearchReplacePanel`。该面板由调用方受控，支持隐藏/只读/可编辑替换模式、可配置 filter toggle、匹配计数显示、紧凑密度，以及 action 级禁用/隐藏状态。具体 surface 的 adapter 负责搜索算法，并将自身状态映射到这个通用面板，而不是复制 UI。
+- 可复用查找/替换面板必须使用 `packages/renderer/src/components/ui` 中的 `SearchReplacePanel`。该面板由调用方受控，支持隐藏/只读/可编辑替换模式、可配置 filter toggle、匹配计数显示、紧凑密度，以及 action 级禁用/隐藏状态。具体 surface 的 adapter 负责搜索算法，并将自身状态映射到这个通用面板，而不是复制 UI。面板默认渲染为按视口尺寸约束的浮动卡片；将其嵌入布局流的宿主（例如 CodeMirror 的 `docked-bottom` 放置方式）应设置 `docked`，使其成为不占浮层样式的全宽横条。狭窄的编辑器面板必须优先使用 docked 放置，确保控件不被裁剪，且内容被推开而不是被浮层遮挡。可用宽度低于 480px 时，面板自动切换为堆叠布局——查找输入框与关闭按钮一行、替换输入框与其操作一行、查找选项一行——而不是让控件随意换行。
 - CodeMirror 编辑器语法使用受 VS Code 启发的默认调色板，并通过语义 token 落地；编辑器外壳、补全、诊断、查找/替换面板与右键菜单仍沿用 Cosmosh 表面/菜单 token。
 
 ### 5.1 对话框退场状态生命周期
@@ -94,6 +94,13 @@ flowchart TD
 - 当前 roving-focus 行，以及承载行内编辑、已打开右键菜单或原生拖拽源的行，必须在需要时保持挂载。键盘移动到离屏行时必须先通过虚拟化器将其显示再移动焦点，虚拟化 option/treeitem 还必须向辅助技术暴露其逻辑位置、集合大小与树层级。
 - 当前目录树定位使用扁平化逻辑行几何；当父级/当前/已展开子级上下文无法完整放入视口时，继续保持视口上方约三分之一的目标位置。
 - 目录框选必须基于完整固定行模型计算相交项，包括通过边缘自动滚动触达的未挂载行。虚拟化不得削弱空白区域选择、修饰键扩展、拖放目标、行内编辑或脏预览保护。
+
+### 6.4 设置分类导航
+
+- 设置页分类列表使用共享的 `SidebarNav` 组件（`src/components/ui/sidebar-nav.tsx`）：一个带无障碍名称的 `nav` 地标，内部为全宽按钮，当前激活项暴露 `aria-current="page"`。
+- 列表采用 roving focus：`Tab` 在当前分类处进入列表一次，`ArrowUp`/`ArrowDown` 通过共享的方向导航 hook 在分类间移动焦点，`Enter`/`Space` 通过原生按钮语义激活聚焦的分类。
+- SSH 服务器编辑器复用 `SplitWorkbenchLayout`、`SplitWorkbenchMainPanel` 和 `SidebarNav`，组织为“信息”“连接”“增强”“高级”四个界面。切换分类时，右侧内容面板复位到顶部，但不替换当前表单草稿。
+- “信息”包含标识与分类控件；“连接”包含主机信息和认证，用户名与钥匙链控件分两行排列；“分类”中的文件夹与标签控件也分两行排列；“增强”包含终端增强、剪贴板权限和每台服务器的 MCP 命令确认策略；“高级”包含代理、主机密钥校验、字符宽度兼容与传输压缩。紧凑编辑器不在内容面板顶部重复显示当前分类标题，左侧导航宽度为 175 px。Dialog 标题与左侧导航项目的前置图标左边缘对齐。
 
 ## 7. Orbit Bar 规范
 

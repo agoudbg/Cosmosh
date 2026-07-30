@@ -159,7 +159,7 @@ sequenceDiagram
 - Vite renderer 开发服务器同样显式绑定 `127.0.0.1`。Electron 开发加载 URL、renderer 弹窗可信 origin、renderer CSP 与 Backend CORS 必须使用这一精确 origin 和共享的 `COSMOSH_RENDERER_DEV_PORT`；`localhost` 不能作为可互换的开发 origin。
 - electron-main 模式还会使用内部运行时 token（`COSMOSH_INTERNAL_TOKEN`）保护 `/api/v1/*`。standalone 模式即使不要求该 token，也必须保持仅 loopback 可访问。
 - Main 进程注入头信息，不向 renderer 暴露内部 token。
-- 开发态请求镜像：在未打包的开发运行中，Main 会把已经发生的 backend proxy 请求记录为脱敏后的内存 ring buffer，并通过 debug IPC 暴露给自定义 DevTools 面板。它不改变真实请求链路（`renderer -> preload IPC -> main -> backend`），不发送 mirror fetch，也不会在原生 Network tab 里增加伪造请求行。镜像数据在进入 renderer/DevTools 前会移除内部鉴权头、secret-like payload key 与本地绝对路径。生产包不会采集 trace，也不会加载 extension。如果开发态没有看到 `Cosmosh Requests` 面板，先查看 main 进程终端里的 `[debug]` extension load/skip 日志。
+- 开发态 DevTools extension：在未打包运行中、renderer 页面加载前，Main 会把 React DevTools 和自定义 backend 请求面板加载到 Electron default session。React DevTools 通过 `electron-devtools-installer` 获取；首次开发启动可能会把它下载到 Electron 开发态 `userData`，后续启动复用缓存文件。下载或加载失败只记录非致命 warning，离线开发仍可正常启动。Main 会把已经发生的 backend proxy 请求记录为脱敏后的内存 ring buffer，并通过 debug IPC 暴露给自定义面板。它不改变真实请求链路（`renderer -> preload IPC -> main -> backend`），不发送 mirror fetch，也不会在原生 Network tab 里增加伪造请求行。镜像数据在进入 renderer/DevTools 前会移除内部鉴权头、secret-like payload key 与本地绝对路径。生产包不会采集 trace、解析 React DevTools 依赖或加载任一 extension。如果开发态缺少面板，先查看 main 进程终端里的 `[debug]` extension load/skip/failure 日志。
 - Main 还会对本地 SFTP 下载目标实施能力授权。应用工具 IPC 为发起请求的 renderer webContents 授权一个精确的规范化路径；backend 代理会拒绝没有该所有者授权的下载路径。临时预览/打开路径可复用，Downloads 与保存对话框路径在一次请求后即被消费。
 - 凭据加密 key 由 `COSMOSH_SECRET_KEY` / 内部 token 哈希在后端启动时推导。
 - HTTP i18n 采用请求级作用域：后端中间件优先从 `x-cosmosh-locale`（回退 `accept-language`）解析语言，并为每个请求注入翻译函数供路由统一生成响应消息。

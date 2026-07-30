@@ -554,6 +554,7 @@
       "terminal": "Terminal",
       "theme": "Theme"
     },
+    "categoryNavLabel": "Settings categories",
     "databaseSecurity": {
       "close": "Close",
       "description": "Read-only diagnostics for current database encryption bootstrap state.",
@@ -1692,9 +1693,14 @@
     "saveServerFailed": "Failed to save server.",
     "saving": "Saving...",
     "sectionAuthentication": "Authentication",
-    "sectionBasicConnection": "Basic Connection",
+    "sectionClipboardPermissions": "Clipboard Permissions",
+    "sectionCompatibility": "Compatibility",
+    "sectionMcp": "MCP",
+    "sectionProxy": "Proxy",
     "sectionSecurity": "Security",
-    "sectionSettings": "Settings",
+    "sectionSettings": "Classification",
+    "sectionTerminalEnhancements": "Terminal Enhancements",
+    "sectionTransport": "Transport",
     "selectionBarAskAiComingSoon": "Ask AI is coming soon.",
     "selectionBarAskAiLabel": "Ask AI",
     "selectionBarClose": "Close Orbit Bar",
@@ -1714,6 +1720,13 @@
     "selectionBarSearch": "Search selected text online",
     "selectionBarSearchFailed": "Failed to open browser search.",
     "serverCreatedSuccessfully": "Server created.",
+    "serverEditorCategories": {
+      "advanced": "Advanced",
+      "connection": "Connection",
+      "enhancements": "Enhancements",
+      "information": "Information"
+    },
+    "serverEditorCategoryNavLabel": "Server editor categories",
     "serverEditorDialogDescription": "Create or edit an SSH server connection profile.",
     "serverNamePlaceholder": "Server name",
     "serverUpdatedSuccessfully": "Server updated.",

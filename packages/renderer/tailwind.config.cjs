@@ -14,7 +14,7 @@ const mapVars = (obj, prefix, pathParts = []) => {
       }
 
       return [key, toVar(prefix, [...pathParts, key])];
-    })
+    }),
   );
 };
 
@@ -32,6 +32,9 @@ module.exports = {
       fontFamily: {
         sans: ['var(--font-sans)'],
         mono: ['var(--font-mono)'],
+      },
+      fontSize: {
+        'form-label': 'var(--font-size-form-label)',
       },
       borderRadius: {
         ...themeRadius,

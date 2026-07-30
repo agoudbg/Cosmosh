@@ -1,5 +1,11 @@
 import { normalizeSettingsValuesStrict, type SettingValidationError } from '@cosmosh/api-contract';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  measureElement as measureVirtualElement,
+  observeElementRect as observeVirtualElementRect,
+  type Rect,
+  useVirtualizer,
+  type Virtualizer,
+} from '@tanstack/react-virtual';
 import {
   Bot,
   Cloud,
@@ -45,6 +51,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Menubar } from '../components/ui/menubar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { SidebarNav, type SidebarNavItem } from '../components/ui/sidebar-nav';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
 import type { LocalTerminalProfile } from '../lib/api/transport';
@@ -760,14 +767,106 @@ const Settings: React.FC<SettingsProps> = ({ initialCategoryId, initialSearchQue
     return rows;
   }, [sections]);
 
+  const settingsRowHeightsRef = React.useRef(new Map<unknown, number>());
+
+  /**
+   * Measures one virtual row, keeping the last real height while the tab is hidden.
+   *
+   * Inactive tabs stay mounted under `display: none`, where ResizeObserver
+   * reports zero-sized boxes. Accepting those zeros would collapse every row
+   * offset to 0, so on the next frame all rows render stacked on top of each
+   * other and the collapsed total size lets the browser clamp the scroll offset.
+   *
+   * @param element Row element being measured.
+   * @param entry ResizeObserver entry provided by the virtualizer.
+   * @param instance Virtualizer instance requesting the measurement.
+   * @returns Measured row height, or the last known height while hidden.
+   */
+  const measureSettingsRow = React.useCallback(
+    (
+      element: HTMLDivElement,
+      entry: ResizeObserverEntry | undefined,
+      instance: Virtualizer<HTMLDivElement, HTMLDivElement>,
+    ): number => {
+      const measured = measureVirtualElement(element, entry, instance);
+      const itemIndex = instance.indexFromElement(element);
+      const itemKey = instance.options.getItemKey ? instance.options.getItemKey(itemIndex) : itemIndex;
+
+      if (measured > 0) {
+        settingsRowHeightsRef.current.set(itemKey, measured);
+        return measured;
+      }
+
+      return settingsRowHeightsRef.current.get(itemKey) ?? measured;
+    },
+    [],
+  );
+
+  /**
+   * Observes the scroll viewport, ignoring the zero rect reported while hidden.
+   *
+   * Without this guard the virtualizer would treat a `display: none` tab as a
+   * zero-height viewport, unmount every row, and flash a blank list on the
+   * first frame after the tab becomes visible again.
+   *
+   * @param instance Virtualizer instance observing the scroll element.
+   * @param cb Callback receiving non-zero viewport rects.
+   * @returns Cleanup function returned by the underlying observer.
+   */
+  const observeSettingsScrollRect = React.useCallback(
+    (instance: Virtualizer<HTMLDivElement, HTMLDivElement>, cb: (rect: Rect) => void) => {
+      return observeVirtualElementRect(instance, (rect) => {
+        if (rect.width === 0 && rect.height === 0) {
+          return;
+        }
+
+        cb(rect);
+      });
+    },
+    [],
+  );
+
   const settingsVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: settingsListRows.length,
     estimateSize: (index) =>
       settingsListRows[index]?.kind === 'heading' ? SETTINGS_HEADING_ROW_ESTIMATE_PX : SETTINGS_FIELD_ROW_ESTIMATE_PX,
     getItemKey: (index) => settingsListRows[index]?.key ?? index,
     getScrollElement: () => settingsScrollRef.current,
+    measureElement: measureSettingsRow,
+    observeElementRect: observeSettingsScrollRect,
     overscan: SETTINGS_VIRTUAL_OVERSCAN_ROWS,
   });
+
+  const lastVisibleScrollTopRef = React.useRef<number>(0);
+
+  React.useEffect(() => {
+    // Restore the scroll offset after a display:none tab switch in case the
+    // browser reset scrollTop while the settings list was hidden.
+    const scrollElement = settingsScrollRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    const handleScroll = () => {
+      if (scrollElement.clientHeight > 0) {
+        lastVisibleScrollTopRef.current = scrollElement.scrollTop;
+      }
+    };
+
+    const observer = new ResizeObserver(() => {
+      if (scrollElement.clientHeight > 0 && scrollElement.scrollTop !== lastVisibleScrollTopRef.current) {
+        scrollElement.scrollTop = lastVisibleScrollTopRef.current;
+      }
+    });
+
+    scrollElement.addEventListener('scroll', handleScroll, { passive: true });
+    observer.observe(scrollElement);
+
+    return () => {
+      scrollElement.removeEventListener('scroll', handleScroll);
+      observer.disconnect();
+    };
+  }, []);
 
   const updateField = React.useCallback(<K extends SettingKey>(key: K, value: SettingsFormState[K]) => {
     setFormState((previous) => ({
@@ -1093,24 +1192,20 @@ const Settings: React.FC<SettingsProps> = ({ initialCategoryId, initialSearchQue
           </div>
 
           <div className="gutter-box-y min-h-0 flex-1 overflow-auto pb-2">
-            <div className="">
-              {SETTINGS_CATEGORY_IDS.map((categoryId) => {
-                const category = SETTINGS_CATEGORIES[categoryId];
+            <SidebarNav
+              activeId={activeCategoryId}
+              ariaLabel={t('settings.categoryNavLabel')}
+              items={SETTINGS_CATEGORY_IDS.map((categoryId): SidebarNavItem<SettingsCategoryId> => {
                 const Icon = categoryIconMap[categoryId];
 
-                return (
-                  <Button
-                    key={categoryId}
-                    variant={activeCategoryId === categoryId ? 'default' : 'ghost'}
-                    className="w-full !justify-start"
-                    onClick={() => setActiveCategoryId(categoryId)}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{t(category.labelI18nKey)}</span>
-                  </Button>
-                );
+                return {
+                  icon: <Icon className="h-4 w-4" />,
+                  id: categoryId,
+                  label: t(SETTINGS_CATEGORIES[categoryId].labelI18nKey),
+                };
               })}
-            </div>
+              onSelect={setActiveCategoryId}
+            />
           </div>
         </>
       }

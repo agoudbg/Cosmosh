@@ -7,6 +7,7 @@
 :root {
   --font-sans: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-size-form-label: 0.8rem;
   --radius-xs: 2px;
   --radius-xs-2: 4px;
   --radius-sm: 6px;

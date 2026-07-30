@@ -411,14 +411,14 @@ const SSHServerEditorDialog: React.FC<SSHServerEditorDialogProps> = ({
       >
         <DialogContent
           showCloseButton={!isSubmitting}
-          className="max-h-[92vh] !max-w-4xl gap-0 p-0"
+          className="h-[min(760px,92vh)] !max-w-5xl grid-rows-[auto,minmax(0,1fr),auto] gap-0 p-0"
         >
-          <DialogHeader className="px-2.5">
+          <DialogHeader className="px-6">
             <DialogTitle>{displayServerId ? t('home.contextEdit') : t('home.quickAddServer')}</DialogTitle>
             <DialogDescription className="sr-only">{t('ssh.serverEditorDialogDescription')}</DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[calc(92vh-136px)] overflow-auto">
+          <div className="min-h-0 overflow-hidden">
             <SSHServerEditorForm
               formId="home-ssh-editor-form"
               formState={formState}

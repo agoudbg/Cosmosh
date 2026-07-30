@@ -2,9 +2,9 @@ export const formStyles = {
   root: 'grid gap-4',
   field: 'grid gap-2',
   sectionHeading: 'px-2.5 text-[15px] font-semibold text-text',
-  label: 'px-2.5 text-sm text-form-text-label',
+  label: 'px-2.5 text-form-label text-form-text-label',
   inlineLabel: 'px-0 !text-form-text',
-  helperText: 'px-2.5 text-xs text-form-text-muted',
+  helperText: 'px-2.5 text-xs text-form-text-muted opacity-80',
   message: 'text-xs text-form-message-error',
   input:
     'menu-menubar-field flex h-[34px] w-full rounded-lg bg-form-control px-2.5 text-sm text-form-text outline-none placeholder:text-form-text-muted/80 hover:bg-form-control-hover disabled:cursor-not-allowed disabled:opacity-50 [-webkit-app-region:no-drag]',

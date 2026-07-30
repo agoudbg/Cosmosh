@@ -18,6 +18,7 @@ import {
 } from '../../components/ui/dialog';
 import { useDialogExitSnapshot } from '../../components/ui/dialog-lifecycle';
 import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { t } from '../../lib/i18n';
 import {
@@ -129,12 +130,12 @@ export const SftpArchiveCompressionDialog: React.FC<SftpArchiveCompressionDialog
           }}
         >
           <div className="space-y-1.5">
-            <label
-              className="text-sm font-medium text-form-text"
+            <Label
+              className="px-0 font-medium !text-form-text"
               htmlFor="sftp-archive-name"
             >
               {t('sftp.archive.nameLabel')}
-            </label>
+            </Label>
             <Input
               autoFocus
               id="sftp-archive-name"
@@ -150,12 +151,12 @@ export const SftpArchiveCompressionDialog: React.FC<SftpArchiveCompressionDialog
           </div>
           <div className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
             <div className="space-y-1.5">
-              <label
-                className="text-sm font-medium text-form-text"
+              <Label
+                className="px-0 font-medium !text-form-text"
                 htmlFor="sftp-archive-format"
               >
                 {t('sftp.archive.formatLabel')}
-              </label>
+              </Label>
               <Select
                 value={format}
                 onValueChange={(value) => {
@@ -181,12 +182,12 @@ export const SftpArchiveCompressionDialog: React.FC<SftpArchiveCompressionDialog
               </Select>
             </div>
             <div className="space-y-1.5">
-              <label
-                className="text-sm font-medium text-form-text"
+              <Label
+                className="px-0 font-medium !text-form-text"
                 htmlFor="sftp-archive-level"
               >
                 {t('sftp.archive.levelLabel')}
-              </label>
+              </Label>
               <Select
                 key={format === 'tar' ? 'store-only' : 'compressed'}
                 value={selectedCompressionLevel}
@@ -284,12 +285,12 @@ export const SftpArchiveDestinationDialog: React.FC<SftpArchiveDestinationDialog
           }}
         >
           <div className="space-y-1.5">
-            <label
-              className="text-sm font-medium text-form-text"
+            <Label
+              className="px-0 font-medium !text-form-text"
               htmlFor="sftp-archive-destination"
             >
               {t('sftp.archive.destinationLabel')}
-            </label>
+            </Label>
             <Input
               autoFocus
               id="sftp-archive-destination"

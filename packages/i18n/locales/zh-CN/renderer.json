@@ -554,6 +554,7 @@
       "terminal": "终端",
       "theme": "主题"
     },
+    "categoryNavLabel": "设置分类",
     "databaseSecurity": {
       "close": "关闭",
       "description": "当前数据库加密引导状态的只读诊断信息。",
@@ -1692,9 +1693,14 @@
     "saveServerFailed": "保存服务器失败。",
     "saving": "保存中...",
     "sectionAuthentication": "认证",
-    "sectionBasicConnection": "基础连接",
+    "sectionClipboardPermissions": "剪贴板权限",
+    "sectionCompatibility": "兼容性",
+    "sectionMcp": "MCP",
+    "sectionProxy": "代理",
     "sectionSecurity": "安全",
-    "sectionSettings": "设置",
+    "sectionSettings": "分类",
+    "sectionTerminalEnhancements": "终端增强",
+    "sectionTransport": "传输",
     "selectionBarAskAiComingSoon": "问 AI 功能即将上线。",
     "selectionBarAskAiLabel": "问 AI",
     "selectionBarClose": "关闭 Orbit Bar",
@@ -1714,6 +1720,13 @@
     "selectionBarSearch": "联网搜索选中文本",
     "selectionBarSearchFailed": "打开浏览器搜索失败。",
     "serverCreatedSuccessfully": "服务器已创建。",
+    "serverEditorCategories": {
+      "advanced": "高级",
+      "connection": "连接",
+      "enhancements": "增强",
+      "information": "信息"
+    },
+    "serverEditorCategoryNavLabel": "服务器编辑分类",
     "serverEditorDialogDescription": "创建或编辑 SSH 服务器连接配置。",
     "serverNamePlaceholder": "服务器名称",
     "serverUpdatedSuccessfully": "服务器已更新。",

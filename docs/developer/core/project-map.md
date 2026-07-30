@@ -56,6 +56,7 @@ flowchart TB
   - `src/security/database-encryption.ts`: DB path/key handling helpers, including development profile database overrides.
   - `src/dev/dev-profile.ts`: development-only profile activation that maps selected profiles to Electron `userData`, SQLite, and backend secret storage paths before startup.
   - `src/dev/backend-runtime.ts`: validation boundary for the system Node executable used by Main's development backend child.
+  - `src/dev/react-devtools.ts`: non-fatal development-only React DevTools installer, loaded lazily before the renderer page.
   - `resources/installer.nsh`: Windows NSIS installer extensions, including assisted option pages, shell/terminal registration hooks, uninstall data cleanup, and installer DPI manifest settings.
   - `resources/helpers`: packaged OS helpers, including the macOS NSWorkspace SFTP Open With helper source/binary.
   - `resources/remote-bootstrap/manifest-url.json`: git-ignored CI packaging resource that records the default Remote Enhancements manifest URL for packaged backend startup when a release or `main` build provides one.
@@ -64,7 +65,7 @@ flowchart TB
   - `scripts/dev-preflight.cjs`: incremental development build check for API contract and i18n outputs.
   - `scripts/ensure-sqlcipher-native.cjs`: target-aware SQLCipher native ABI probe and rebuild path for system Node development and Electron packaging.
   - `scripts/write-remote-bootstrap-manifest-url.cjs`: CI packaging helper that writes the packaged Remote Enhancements manifest URL resource when `COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL` is set, and removes any stale ignored resource when it is not set.
-  - `devtools/request-trace-panel`: unpacked development-only DevTools extension loaded by Main in development runs; it reads the renderer mirror cache and does not alter backend transport.
+  - `devtools/request-trace-panel`: unpacked development-only DevTools extension loaded alongside React DevTools by Main; it reads the renderer mirror cache and does not alter backend transport.
 
 ### `packages/renderer`
 
@@ -75,7 +76,7 @@ flowchart TB
   - `src/pages/sftp`: SFTP page submodules. `SFTP.tsx` stays the tab-level orchestration entrypoint, while this folder owns browser UI composition, action/drop menus, directory/tree/detail panels, archive dialogs and archive-action polling, fixed-row virtualization helpers and tests, controller hooks for prompts, preferences, selection, keyboard shortcuts, drag/drop, preview actions, concurrent/serial renderer task lanes, failure-attention state, byte-progress presentation, and shared SFTP helpers. `src/lib/api/sftp-task-runtime.ts` owns fixed accepted-session task polling used by typed client wrappers.
   - `src/pages/settings-editor`: CodeMirror-backed settings JSON editor modules, including schema diagnostics, completion, hover details, and editor lifecycle wrappers.
   - `src/components/CloseWindowConfirmationDialog.tsx`: shared Renderer `Dialog` presentation for Main-owned active-session close decisions.
-  - `src/components/ui`: Radix-based primitive wrappers, reusable search/replace panel, CodeMirror text context menu, and styling contracts.
+  - `src/components/ui`: Radix-based primitive wrappers, reusable sidebar navigation (`SidebarNav`), reusable search/replace panel, CodeMirror text context menu, and styling contracts.
   - `src/components/home`: home/SSH shared entity modules (card/icon rendering, TanStack Virtual-backed visual picker, reusable folder-creation dialog).
   - `src/components/terminal`: terminal interaction composites (context menu, selection bar, autocomplete menu).
   - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), renderer request-trace mirror bootstrap (`backend-request-trace-mirror.ts`), shared date-time display formatting (`date-time-format.ts`), shared CodeMirror syntax highlighting and search/replace adapter, and utility abstractions (including shared entity visual helpers, Home folder grouping, and the folder-dialog hook). `agent-terminal-registry.ts` is the renderer-only SSH pane registry; `mcp-terminal-lifecycle.ts` holds pure launch/tab lifecycle decisions.

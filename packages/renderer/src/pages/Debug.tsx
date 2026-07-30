@@ -219,7 +219,7 @@ const Debug: React.FC<DebugProps> = ({
           <div className="flex items-center gap-2 text-sm">
             <Label
               htmlFor="debug-tab-title"
-              className="px-0 text-sm text-header-text-muted"
+              className="px-0 text-header-text-muted"
             >
               Name
             </Label>
@@ -241,7 +241,7 @@ const Debug: React.FC<DebugProps> = ({
           <div className="flex items-center gap-2 text-sm">
             <Label
               htmlFor="debug-tab-icon"
-              className="px-0 text-sm text-header-text-muted"
+              className="px-0 text-header-text-muted"
             >
               Icon
             </Label>

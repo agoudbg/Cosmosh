@@ -35,11 +35,22 @@ const CODEMIRROR_SEARCH_FILTER_IDS = ['caseSensitive', 'regexp', 'wholeWord'] as
 export type CodeMirrorSearchReplaceFilterId = (typeof CODEMIRROR_SEARCH_FILTER_IDS)[number];
 
 /**
+ * Panel placement for the CodeMirror search/replace adapter.
+ *
+ * `floating` overlays the panel near the editor's top-right corner and is the default.
+ * `docked-bottom` pins the panel to the editor's bottom edge as a full-width bar that
+ * participates in the layout flow, which keeps narrow panes (such as the SFTP preview
+ * sidebar) from clipping the controls or hiding content behind an overlay.
+ */
+export type CodeMirrorSearchReplacePlacement = 'floating' | 'docked-bottom';
+
+/**
  * Options for the reusable CodeMirror search/replace extension.
  */
 export type CodeMirrorSearchReplaceOptions = {
   compact?: boolean;
   filters?: readonly CodeMirrorSearchReplaceFilterId[];
+  placement?: CodeMirrorSearchReplacePlacement;
   replaceMode?: SearchReplaceReplaceMode;
   showMatchCount?: boolean;
 };
@@ -59,7 +70,9 @@ type SearchMatchSummary = {
 export const createCodeMirrorSearchReplaceExtension = (options: CodeMirrorSearchReplaceOptions = {}): Extension => [
   search({
     createPanel: (view) => new CosmoshCodeMirrorSearchPanel(view, options),
-    top: true,
+    // The custom panel owns its own `top` getter; this only keeps the shared
+    // search config facet consistent for any other extension that reads it.
+    top: options.placement !== 'docked-bottom',
   }),
   createCodeMirrorSearchReplaceTheme(),
 ];
@@ -89,6 +102,10 @@ const createCodeMirrorSearchReplaceTheme = (): Extension =>
         backgroundColor: 'transparent',
         border: '0',
         color: 'var(--color-header-text)',
+        // CodeMirror's base theme pins sticky panels at z-index 300, which paints docked
+        // panels above the app's portaled tooltips (z-50). In-flow panels never overlap
+        // editor content, so drop the stacking lift and let tooltips render on top.
+        zIndex: 'auto',
       },
       '.cm-panels-top': {
         borderBottom: '0',
@@ -362,12 +379,12 @@ class CosmoshCodeMirrorSearchPanel implements Panel {
   }
 
   /**
-   * Keeps the panel in the top panel group.
+   * Reports the panel group: floating overlays stay on top, docked bars join the bottom group.
    *
    * @returns Whether the panel is a top panel.
    */
   public get top(): boolean {
-    return true;
+    return this.options.placement !== 'docked-bottom';
   }
 
   /**
@@ -417,6 +434,7 @@ class CosmoshCodeMirrorSearchPanel implements Panel {
           selectAllMatches: { disabled: !canActOnMatches },
         }}
         compact={this.options.compact ?? true}
+        docked={this.options.placement === 'docked-bottom'}
         filters={createCodeMirrorFilterOptions(filterIds, query, (patch) => this.updateQuery(patch))}
         invalid={query.search.length > 0 && !query.valid}
         matchLabel={createMatchLabel(query, summary)}

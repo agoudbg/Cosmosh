@@ -27,6 +27,14 @@ const ICON_GRID_COLUMNS = 8;
 const ICON_GRID_GAP_PX = 4;
 const ICON_GRID_ITEM_SIZE_PX = 32;
 const ICON_GRID_OVERSCAN_ROWS = 2;
+/**
+ * Grace period before unmounting the virtual icon grid after close.
+ *
+ * Matches the shared `menuStyles.contentCloseMotion` exit animation (duration-150)
+ * with a small buffer, so the grid never flashes empty while the menu is still
+ * visibly animating out.
+ */
+const CLOSE_MOTION_UNMOUNT_DELAY_MS = 200;
 
 /**
  * Resolves arrow-key movement inside the fixed eight-column icon grid.
@@ -96,6 +104,24 @@ const EntityVisualPicker: React.FC<EntityVisualPickerProps> = ({ visual, label, 
 
   const iconRowCount = Math.ceil(filteredIcons.length / ICON_GRID_COLUMNS);
 
+  /**
+   * Keeps the virtual grid alive until the shared close motion finishes.
+   *
+   * The dropdown content is force-mounted and animates out over ~150ms, so
+   * disabling the virtualizer on `isOpen === false` would blank the grid while
+   * the menu is still visibly fading out.
+   */
+  const [isIconGridActive, setIsIconGridActive] = React.useState<boolean>(isOpen);
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsIconGridActive(true);
+      return;
+    }
+
+    const unmountTimer = window.setTimeout(() => setIsIconGridActive(false), CLOSE_MOTION_UNMOUNT_DELAY_MS);
+    return () => window.clearTimeout(unmountTimer);
+  }, [isOpen]);
+
   /** Keeps the DOM-owned focus row mounted when pointer scrolling moves it outside the visible range. */
   const extractIconRowRange = React.useCallback(
     (range: Range): number[] => {
@@ -116,7 +142,7 @@ const EntityVisualPicker: React.FC<EntityVisualPickerProps> = ({ visual, label, 
 
   const iconRowVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: iconRowCount,
-    enabled: isOpen,
+    enabled: isIconGridActive,
     estimateSize: () => ICON_GRID_ITEM_SIZE_PX,
     gap: ICON_GRID_GAP_PX,
     getScrollElement: () => iconViewportElement,

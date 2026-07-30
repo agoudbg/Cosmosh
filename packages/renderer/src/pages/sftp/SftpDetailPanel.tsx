@@ -1,4 +1,5 @@
 import type { ApiSftpEntry, SftpAuxiliarySidebarMode } from '@cosmosh/api-contract';
+import classNames from 'classnames';
 import { AlertTriangle, Code2, File, Image, Info, Loader2 } from 'lucide-react';
 import React from 'react';
 
@@ -172,7 +173,7 @@ export const SftpDetailPanel: React.FC<SftpDetailPanelProps> = ({
     if (previewState.status === 'large-file') {
       const { entry, previewType, thresholdBytes } = previewState.prompt;
       return (
-        <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="flex h-full min-h-0 flex-col gap-3 px-3">
           {renderPreviewHeader(entry, <AlertTriangle className="text-home-text h-4 w-4 shrink-0" />)}
           <div className="bg-home-card/70 rounded-lg border border-home-divider p-3 text-sm text-home-text-subtle">
             {t(previewType === 'image' ? 'sftp.previewLargeImage' : 'sftp.previewLargeText', {
@@ -201,11 +202,11 @@ export const SftpDetailPanel: React.FC<SftpDetailPanelProps> = ({
 
     if (previewState.status === 'image') {
       return (
-        <div className="flex h-full min-h-0 flex-col gap-2">
+        <div className="flex h-full min-h-0 flex-col gap-2 px-3">
           {renderPreviewHeader(previewState.entry, <Image className="text-home-text h-4 w-4 shrink-0" />)}
           <div
             data-input-context-menu-ignore="true"
-            className="bg-home-card/70 -mx-2 -mb-2 flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-lg"
+            className="bg-home-card/70 -mx-3 flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-lg"
           >
             <img
               alt={previewState.entry.name}
@@ -219,7 +220,7 @@ export const SftpDetailPanel: React.FC<SftpDetailPanelProps> = ({
 
     const isDirty = previewState.content !== previewState.savedContent;
     return (
-      <div className="flex h-full min-h-0 flex-col gap-2">
+      <div className="flex h-full min-h-0 flex-col gap-2 px-3">
         {renderPreviewHeader(
           previewState.entry,
           <Code2 className="text-home-text h-4 w-4 shrink-0" />,
@@ -227,7 +228,7 @@ export const SftpDetailPanel: React.FC<SftpDetailPanelProps> = ({
         )}
         <div
           data-input-context-menu-ignore="true"
-          className="-mx-2 -mb-2 min-h-0 flex-1 overflow-hidden"
+          className="-mx-3 min-h-0 flex-1 overflow-hidden"
         >
           <SftpPreviewEditorErrorBoundary
             key={previewState.entry.path}
@@ -262,7 +263,14 @@ export const SftpDetailPanel: React.FC<SftpDetailPanelProps> = ({
             {auxiliarySidebarMode === 'preview' ? t('sftp.previewTitle') : t('sftp.detailTitle')}
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
+        <div
+          className={classNames(
+            'min-h-0 flex-1 overflow-auto',
+            // Preview content manages its own gutter so the editor (and its docked
+            // search bar) can sit flush against the card edges; details keeps the inset.
+            auxiliarySidebarMode === 'preview' ? '-mx-1 -mb-1' : 'px-2 pb-2',
+          )}
+        >
           {auxiliarySidebarMode === 'preview' ? renderPreview() : renderDetails()}
         </div>
       </div>
