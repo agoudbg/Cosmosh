@@ -313,11 +313,9 @@
   },
   "mcp": {
     "actions": {
-      "copy": "复制",
-      "refresh": "刷新"
+      "copy": "复制"
     },
     "approvals": {
-      "description": "等待你授权的请求。",
       "empty": "没有待处理的授权请求。",
       "kindAttach": "附加终端",
       "kindCommand": "执行命令",
@@ -325,7 +323,6 @@
       "title": "待授权请求"
     },
     "clients": {
-      "description": "当前已连接到 Cosmosh 的外部 Agent。",
       "empty": "没有已连接的 Agent。",
       "started": "连接于 {time}",
       "title": "已连接客户端"
@@ -345,7 +342,6 @@
     "connections": {
       "close": "关闭连接",
       "commandCount": "{count} 条命令",
-      "description": "Agent 代你打开的 SSH 连接。",
       "empty": "没有活跃连接。",
       "mode": {
         "attached": "附加终端",
@@ -360,7 +356,6 @@
       },
       "title": "活跃连接"
     },
-    "disabledNotice": "MCP 访问已关闭。请在上方启用 Cosmosh MCP，以允许外部 Agent 连接。",
     "errors": {
       "connectionCloseFailed": "关闭连接失败。",
       "copyFailed": "复制到剪贴板失败。",

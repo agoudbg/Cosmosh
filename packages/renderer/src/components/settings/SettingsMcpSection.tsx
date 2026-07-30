@@ -1,5 +1,5 @@
 import type { ApiMcpClientSession, ApiMcpConnectionSummary, ApiMcpPendingApproval } from '@cosmosh/api-contract';
-import { Copy, KeyRound, Loader2, Plug, RefreshCcw, Trash2, XCircle } from 'lucide-react';
+import { Copy, KeyRound, Loader2, Plug, Trash2, XCircle } from 'lucide-react';
 import React from 'react';
 
 import {
@@ -17,9 +17,16 @@ import { setMcpApprovals, setMcpClients, setMcpConnections, setMcpStatus, useMcp
 import { useSettingsValue } from '../../lib/settings-store';
 import { useToast } from '../../lib/toast-context';
 import { Button } from '../ui/button';
+import { FormSectionHeading } from '../ui/form';
+import { formStyles } from '../ui/form-styles';
+import { MenuToggleGroup, MenuToggleGroupItem } from '../ui/menubar';
 
 /**
  * Renders an unframed Settings section with an optional action group.
+ *
+ * Composes the shared settings form styles (`FormSectionHeading`,
+ * `formStyles.helperText`) so the MCP surface tracks the standard Settings
+ * visual language automatically when those tokens evolve.
  *
  * @param props Section heading, actions, and content.
  * @returns Settings section element.
@@ -31,12 +38,12 @@ const ManagementSection: React.FC<{
   children: React.ReactNode;
 }> = ({ title, description, actions, children }) => (
   <section className="grid gap-3">
-    <div className="flex flex-wrap items-start justify-between gap-3 px-2.5 pb-1">
+    <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="grid min-w-0 gap-1">
-        <h2 className="text-[15px] font-medium text-home-text-subtle">{title}</h2>
-        {description ? <p className="text-xs text-form-text-muted">{description}</p> : null}
+        <FormSectionHeading>{title}</FormSectionHeading>
+        {description ? <p className={formStyles.helperText}>{description}</p> : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 items-center gap-2 px-2.5">{actions}</div> : null}
     </div>
     <div className="grid gap-3 px-2.5">{children}</div>
   </section>
@@ -132,21 +139,28 @@ const ClientConfigSection: React.FC<{
     >
       {launcherPath ? (
         <div className="grid gap-3">
-          <div
-            role="group"
-            aria-label={t('mcp.config.title')}
-            className="flex flex-wrap gap-2"
-          >
-            {variants.map((entry) => (
-              <Button
-                key={entry.id}
-                variant={variant === entry.id ? 'inverted' : 'ghost'}
-                aria-pressed={variant === entry.id}
-                onClick={() => setVariant(entry.id)}
-              >
-                {entry.label}
-              </Button>
-            ))}
+          <div>
+            <MenuToggleGroup
+              type="single"
+              value={variant}
+              aria-label={t('mcp.config.title')}
+              onValueChange={(value) => {
+                // Radix emits an empty value when the active item is clicked;
+                // keep the current selection so a snippet is always shown.
+                if (value) {
+                  setVariant(value as ClientConfigVariant);
+                }
+              }}
+            >
+              {variants.map((entry) => (
+                <MenuToggleGroupItem
+                  key={entry.id}
+                  value={entry.id}
+                >
+                  {entry.label}
+                </MenuToggleGroupItem>
+              ))}
+            </MenuToggleGroup>
           </div>
           <p className="text-xs text-form-text-muted">
             {variant === 'claudeCode'
@@ -189,9 +203,12 @@ const ClientConfigSection: React.FC<{
  * Settings-owned MCP management section for pairing tokens,
  * connected clients, active SSH connections, and pending approvals.
  *
- * The reactive lists are backed by the shared MCP store (kept live by the global
- * approval host's event channel); this section adds an explicit refresh and the
- * management actions (token rotation/revocation, connection close).
+ * The reactive lists are backed by the shared MCP store, which the global
+ * approval host keeps live through the backend event channel (streaming
+ * status/approval/connection/client events and refetching on reconnect).
+ * This section therefore only primes the store on mount and after its own
+ * management actions (token rotation/revocation, connection close) — no
+ * manual refresh control is needed.
  *
  * @returns MCP management content for the Settings surface.
  */
@@ -201,14 +218,12 @@ const SettingsMcpSection: React.FC = () => {
   const { formatDateTime } = useDateTimeFormatter();
   const { success: notifySuccess, error: notifyError } = useToast();
 
-  const [refreshing, setRefreshing] = React.useState<boolean>(false);
   const [rotating, setRotating] = React.useState<boolean>(false);
   const [revoking, setRevoking] = React.useState<boolean>(false);
   const [closingId, setClosingId] = React.useState<string | null>(null);
   const [freshToken, setFreshToken] = React.useState<string | null>(null);
 
   const refreshAll = React.useCallback(async (): Promise<void> => {
-    setRefreshing(true);
     try {
       const [statusResult, clientsResult, connectionsResult, approvalsResult] = await Promise.all([
         getMcpStatus(),
@@ -222,8 +237,6 @@ const SettingsMcpSection: React.FC = () => {
       setMcpApprovals(approvalsResult.data.items);
     } catch {
       notifyError(t('mcp.errors.refreshFailed'));
-    } finally {
-      setRefreshing(false);
     }
   }, [notifyError]);
 
@@ -297,30 +310,14 @@ const SettingsMcpSection: React.FC = () => {
     [connections, notifyError, notifySuccess],
   );
 
+  // Hide the whole management surface while MCP access is turned off; the
+  // category already exposes the enable switch above this section.
+  if (!mcpEnabled) {
+    return null;
+  }
+
   return (
-    <div className="grid gap-5 pb-4">
-      <div className="flex justify-end px-1">
-        <Button
-          variant="ghost"
-          disabled={refreshing}
-          onClick={() => {
-            void refreshAll();
-          }}
-        >
-          {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-          {t('mcp.actions.refresh')}
-        </Button>
-      </div>
-
-      {!mcpEnabled ? (
-        <div
-          role="status"
-          className="mx-2.5 rounded-lg border border-home-divider bg-form-control px-3 py-2 text-sm text-form-text-muted"
-        >
-          {t('mcp.disabledNotice')}
-        </div>
-      ) : null}
-
+    <div className="grid gap-8 pb-4">
       <ManagementSection
         title={t('mcp.token.title')}
         description={t('mcp.token.description')}
@@ -328,7 +325,7 @@ const SettingsMcpSection: React.FC = () => {
           <>
             <Button
               variant="ghost"
-              disabled={!mcpEnabled || revoking || !status?.tokenConfigured}
+              disabled={revoking || !status?.tokenConfigured}
               onClick={() => {
                 void handleRevokeToken();
               }}
@@ -338,7 +335,7 @@ const SettingsMcpSection: React.FC = () => {
             </Button>
             <Button
               variant="inverted"
-              disabled={!mcpEnabled || rotating}
+              disabled={rotating}
               onClick={() => {
                 void handleRotateToken();
               }}
@@ -387,20 +384,14 @@ const SettingsMcpSection: React.FC = () => {
         onCopy={handleCopy}
       />
 
-      <ManagementSection
-        title={t('mcp.clients.title')}
-        description={t('mcp.clients.description')}
-      >
+      <ManagementSection title={t('mcp.clients.title')}>
         <McpClientList
           clients={clients}
           formatDateTime={formatDateTime}
         />
       </ManagementSection>
 
-      <ManagementSection
-        title={t('mcp.connections.title')}
-        description={t('mcp.connections.description')}
-      >
+      <ManagementSection title={t('mcp.connections.title')}>
         <McpConnectionList
           connections={connections}
           closingId={closingId}
@@ -411,10 +402,7 @@ const SettingsMcpSection: React.FC = () => {
         />
       </ManagementSection>
 
-      <ManagementSection
-        title={t('mcp.approvals.title')}
-        description={t('mcp.approvals.description')}
-      >
+      <ManagementSection title={t('mcp.approvals.title')}>
         <McpApprovalList
           approvals={approvals}
           formatDateTime={formatDateTime}

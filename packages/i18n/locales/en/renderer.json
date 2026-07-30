@@ -313,11 +313,9 @@
   },
   "mcp": {
     "actions": {
-      "copy": "Copy",
-      "refresh": "Refresh"
+      "copy": "Copy"
     },
     "approvals": {
-      "description": "Requests waiting for your authorization.",
       "empty": "No pending authorization requests.",
       "kindAttach": "Attach terminal",
       "kindCommand": "Command execution",
@@ -325,7 +323,6 @@
       "title": "Pending Authorizations"
     },
     "clients": {
-      "description": "External agents currently connected to Cosmosh.",
       "empty": "No agents are connected.",
       "started": "Connected {time}",
       "title": "Connected Clients"
@@ -345,7 +342,6 @@
     "connections": {
       "close": "Close connection",
       "commandCount": "{count} commands",
-      "description": "SSH connections opened by agents on your behalf.",
       "empty": "No active connections.",
       "mode": {
         "attached": "Attached terminal",
@@ -360,7 +356,6 @@
       },
       "title": "Active Connections"
     },
-    "disabledNotice": "MCP access is turned off. Enable Cosmosh MCP above to let external agents connect.",
     "errors": {
       "connectionCloseFailed": "Failed to close the connection.",
       "copyFailed": "Failed to copy to clipboard.",
