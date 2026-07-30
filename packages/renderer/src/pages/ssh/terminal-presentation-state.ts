@@ -134,7 +134,24 @@ export const parseTerminalOscProgress = (data: string): TerminalOscProgressParse
     return { matched: false };
   }
 
-  if (fields.length !== 3 || !OSC_PROGRESS_STATE.test(fields[1] ?? '') || !OSC_PROGRESS_INTEGER.test(fields[2] ?? '')) {
+  const state = fields[1] ?? '';
+  if (!OSC_PROGRESS_STATE.test(state)) {
+    return { matched: true, progress: null };
+  }
+
+  const isValuelessState = state === '0' || state === '3';
+  const hasOmittedProgress = fields.length === 2 || (fields.length === 3 && fields[2] === '');
+  if (isValuelessState && hasOmittedProgress) {
+    return {
+      matched: true,
+      progress: {
+        state: state === '0' ? 'none' : 'indeterminate',
+        value: null,
+      },
+    };
+  }
+
+  if (fields.length !== 3 || !OSC_PROGRESS_INTEGER.test(fields[2] ?? '')) {
     return { matched: true, progress: null };
   }
 
@@ -143,7 +160,6 @@ export const parseTerminalOscProgress = (data: string): TerminalOscProgressParse
     return { matched: true, progress: null };
   }
 
-  const state = fields[1];
   if (state === '0') {
     return {
       matched: true,

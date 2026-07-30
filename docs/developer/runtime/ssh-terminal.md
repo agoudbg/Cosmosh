@@ -207,7 +207,7 @@ flowchart LR
 - Cosmosh passively observes standard terminal control sequences emitted by local PTYs, SSH sessions, alternate-screen TUIs, and agent CLIs. Renderer does not inject bootstrap bytes or parse OSC in WebSocket/transport code.
 - Every output chunk is written unchanged to the owning pane's xterm instance. xterm's streaming parser therefore owns cross-chunk reassembly and terminator handling.
 - `terminal.onTitleChange(...)` receives complete OSC 0/2 application-title events. Titles are kept only in pane memory, never logged or persisted, and are sanitized by removing terminal/directional controls, collapsing whitespace, and limiting display content to 256 Unicode code points.
-- `terminal.parser.registerOscHandler(9, ...)` handles only the `4;<state>;<progress>` namespace. States map to `none`, `normal`, `error`, `indeterminate`, and `warning`; malformed OSC 9;4 payloads are consumed without changing state, while unrelated OSC 9 payloads remain available to other handlers.
+- `terminal.parser.registerOscHandler(9, ...)` handles only the `4;<state>;<progress>` namespace. States map to `none`, `normal`, `error`, `indeterminate`, and `warning`. Determinate states require a canonical integer from 0 through 100. Because `none` and `indeterminate` do not use a value, their parser also accepts an omitted or empty progress field for compatibility with Kimi Code's ConEmu-style output; all other malformed OSC 9;4 payloads are consumed without changing state, while unrelated OSC 9 payloads remain available to other handlers.
 - `terminal.onBell(...)` is the only Bell attention source. A BEL used to terminate OSC 0/2 or OSC 9;4 is consumed by xterm as a terminator and does not produce a standalone Bell event. OSC 9;4 state `0` clears progress only and never synthesizes Bell attention.
 - Presentation state belongs to each pane independently. A connection retry clears only that pane's stale title/progress/Bell state, terminal disposal unregisters all parser listeners, and pane removal deletes the pane state.
 - The tab aggregator follows the active pane's application title and gives its progress state display priority. When the active pane has no progress, background `error` and `warning` states may retain tab attention; ordinary background progress does not take over the active-pane status slot. Bell attention is aggregated independently across all live panes.
@@ -245,7 +245,7 @@ flowchart LR
 
 Automated acceptance is transport-independent because local PTY and SSH output converge at the same pane-owned `terminal.write(...)` boundary:
 
-- `pnpm --filter @cosmosh/renderer test:ssh` covers fragmented OSC input, malformed OSC 9;4 states, OSC-terminating BEL versus standalone BEL, pane/tab aggregation, acknowledgement, reconnect cleanup, and settings projection.
+- `pnpm --filter @cosmosh/renderer test:ssh` covers fragmented OSC input, Kimi Code's valueless OSC 9;4 progress forms, malformed OSC 9;4 states, OSC-terminating BEL versus standalone BEL, pane/tab aggregation, acknowledgement, reconnect cleanup, and settings projection.
 - `pnpm --filter @cosmosh/main test:terminal-presentation` covers window progress mapping, sender payload validation, Bell replay protection, sound/Flash policy, and independent throttling.
 
 Manual release acceptance must exercise both installed agent CLIs through Cosmosh:

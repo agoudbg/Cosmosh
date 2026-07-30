@@ -207,7 +207,7 @@ flowchart LR
 - Cosmosh 被动观察本地 PTY、SSH 会话、Alternate Screen TUI 与 Agent CLI 输出的标准终端控制序列。Renderer 不注入 bootstrap 字节，也不在 WebSocket/transport 代码中解析 OSC。
 - 每个输出 chunk 都保持原样写入所属 pane 的 xterm 实例，因此跨 chunk 重组与 terminator 处理完全由 xterm streaming parser 负责。
 - `terminal.onTitleChange(...)` 接收完整的 OSC 0/2 应用标题事件。标题只保存在 pane 内存中，不写日志、不持久化；进入展示状态前会移除终端/方向控制字符、合并空白，并限制为 256 个 Unicode code point。
-- `terminal.parser.registerOscHandler(9, ...)` 只处理 `4;<state>;<progress>` 命名空间。状态映射为 `none`、`normal`、`error`、`indeterminate` 与 `warning`；非法 OSC 9;4 payload 会被消费但不改变状态，无关 OSC 9 payload 仍可交给其他 handler。
+- `terminal.parser.registerOscHandler(9, ...)` 只处理 `4;<state>;<progress>` 命名空间。状态映射为 `none`、`normal`、`error`、`indeterminate` 与 `warning`。确定型状态必须携带 0 到 100 的规范整数；由于 `none` 与 `indeterminate` 不使用数值，parser 也会接受省略或留空的进度字段，以兼容 Kimi Code 输出的 ConEmu 风格序列。其他非法 OSC 9;4 payload 会被消费但不改变状态，无关 OSC 9 payload 仍可交给其他 handler。
 - `terminal.onBell(...)` 是 Bell attention 的唯一来源。用于终止 OSC 0/2 或 OSC 9;4 的 BEL 会被 xterm 作为 terminator 消费，不会产生独立 Bell 事件。OSC 9;4 state `0` 只清除进度，绝不会合成 Bell attention。
 - 展示状态按 pane 独立归属。连接重试只清理该 pane 的旧标题/进度/Bell 状态，terminal dispose 会注销所有 parser listener，pane 删除会移除对应状态。
 - Tab 聚合器跟随 active pane 的应用标题，并优先展示该 pane 的进度状态。active pane 没有进度时，后台 `error` 与 `warning` 状态可以保留 Tab attention；普通后台进度不会接管 active pane 的状态槽。Bell attention 独立汇总所有存活 pane。
@@ -245,7 +245,7 @@ flowchart LR
 
 自动化验收与 transport 无关，因为本地 PTY 和 SSH 输出最终都汇合到 pane 所属的同一个 `terminal.write(...)` 边界：
 
-- `pnpm --filter @cosmosh/renderer test:ssh` 覆盖 OSC 跨 chunk 分片、非法 OSC 9;4 状态、OSC terminator BEL 与独立 BEL 的区分、pane/Tab 聚合、attention 确认、重连清理和设置投影。
+- `pnpm --filter @cosmosh/renderer test:ssh` 覆盖 OSC 跨 chunk 分片、Kimi Code 不携带数值的 OSC 9;4 形式、非法 OSC 9;4 状态、OSC terminator BEL 与独立 BEL 的区分、pane/Tab 聚合、attention 确认、重连清理和设置投影。
 - `pnpm --filter @cosmosh/main test:terminal-presentation` 覆盖窗口进度映射、发送方 payload 校验、Bell 防重放、声音/Flash 策略和分别节流。
 
 发布前手动验收必须让两种已安装的 Agent CLI 都实际经过 Cosmosh：

@@ -77,6 +77,37 @@ test('xterm parser routes fragmented OSC 0/2, OSC 9;4, and standalone Bell event
   }
 });
 
+test('xterm parser routes Kimi Code valueless progress sequences without treating terminators as Bell', async () => {
+  const terminal = new Terminal({ allowProposedApi: true });
+  const actions: TerminalPresentationStateAction[] = [];
+  const integration = registerTerminalPresentationIntegration({
+    paneId: 'pane-kimi',
+    terminal,
+    dispatch: (action) => actions.push(action),
+  });
+
+  try {
+    await writeTerminalChunk(terminal, '\u001b]9;4;3\u0007');
+    await writeTerminalChunk(terminal, '\u001b]9;4;0;\u0007');
+
+    assert.deepEqual(actions, [
+      {
+        type: 'progress',
+        paneId: 'pane-kimi',
+        progress: { state: 'indeterminate', value: null },
+      },
+      {
+        type: 'progress',
+        paneId: 'pane-kimi',
+        progress: { state: 'none', value: null },
+      },
+    ]);
+  } finally {
+    integration.dispose();
+    terminal.dispose();
+  }
+});
+
 test('OSC 9 integration consumes malformed progress but leaves unrelated OSC 9 payloads available', async () => {
   const terminal = new Terminal({ allowProposedApi: true });
   const fallbackPayloads: string[] = [];

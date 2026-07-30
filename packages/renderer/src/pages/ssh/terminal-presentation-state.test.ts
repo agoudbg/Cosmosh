@@ -54,6 +54,22 @@ test('OSC 9;4 parser maps every supported progress state', () => {
   });
 });
 
+test('OSC 9;4 parser accepts Kimi Code valueless indeterminate and clear payloads', () => {
+  for (const payload of ['4;3', '4;3;']) {
+    assert.deepEqual(parseTerminalOscProgress(payload), {
+      matched: true,
+      progress: { state: 'indeterminate', value: null },
+    });
+  }
+
+  for (const payload of ['4;0', '4;0;']) {
+    assert.deepEqual(parseTerminalOscProgress(payload), {
+      matched: true,
+      progress: { state: 'none', value: null },
+    });
+  }
+});
+
 test('OSC 9;4 parser leaves unrelated OSC 9 data unmatched and consumes malformed progress payloads', () => {
   assert.deepEqual(parseTerminalOscProgress('7;file://host/path'), { matched: false });
 
