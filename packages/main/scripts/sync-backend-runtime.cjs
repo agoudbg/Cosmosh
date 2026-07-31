@@ -18,6 +18,8 @@ const thirdPartyEntryPackages = [
   'intl-messageformat',
   '@prisma/adapter-better-sqlite3',
   'better-sqlite3-multiple-ciphers',
+  '@modelcontextprotocol/sdk',
+  'zod',
 ];
 const workspaceRuntimePackages = ['backend', 'api-contract', 'i18n'];
 const builtInModuleNames = new Set([...builtinModules, ...builtinModules.map((moduleName) => `node:${moduleName}`)]);
@@ -51,9 +53,33 @@ const findPackageRootFromEntry = async (entryPath, expectedPackageName) => {
   }
 };
 
+/**
+ * Resolves the on-disk root of an npm package.
+ *
+ * Prefers Node.js entry resolution so pnpm symlinks and export maps are
+ * honored. Falls back to the conventional `./package.json` subpath when the
+ * bare entry cannot be resolved — for example `@modelcontextprotocol/sdk@1.29.0`
+ * maps "." to a `dist/cjs/index.js` missing from the published tarball, and
+ * `dunder-proto@1.0.1` intentionally defines no "." export. The sync only
+ * needs the package root to copy files, so the package.json path is enough.
+ *
+ * @param {string} packageName npm package name, including scope when present.
+ * @param {string[]} resolvePaths node_modules roots to search, in priority order.
+ * @returns {Promise<string>} Absolute path to the package root directory.
+ * @throws {Error} When the package cannot be located from any resolve path.
+ */
 const resolvePackageRoot = async (packageName, resolvePaths) => {
-  const resolvedEntryPath = require.resolve(packageName, { paths: resolvePaths });
-  return await findPackageRootFromEntry(resolvedEntryPath, packageName);
+  try {
+    const resolvedEntryPath = require.resolve(packageName, { paths: resolvePaths });
+    return await findPackageRootFromEntry(resolvedEntryPath, packageName);
+  } catch (entryResolutionError) {
+    try {
+      const resolvedPackageJsonPath = require.resolve(`${packageName}/package.json`, { paths: resolvePaths });
+      return await findPackageRootFromEntry(resolvedPackageJsonPath, packageName);
+    } catch {
+      throw new Error(`Unable to resolve package root for ${packageName}`, { cause: entryResolutionError });
+    }
+  }
 };
 
 const normalizeRelativePath = (sourcePath, sourcePackageRoot) =>
@@ -394,6 +420,11 @@ const syncThirdPartyDependencies = async () => {
 
 /**
  * Validates that backend package production dependencies resolve from packaged runtime assets.
+ *
+ * Presence is checked with the same tolerant resolution used during sync:
+ * packages whose bare entry cannot be resolved (missing or intentionally
+ * absent root export) still count as present when their package directory
+ * exists in the packaged runtime, because consumers may only import subpaths.
  */
 const validateBackendRuntimeDependencies = async () => {
   const backendPackageJsonPath = path.join(workspaceRoot, 'packages', 'backend', 'package.json');
@@ -408,7 +439,7 @@ const validateBackendRuntimeDependencies = async () => {
     }
 
     try {
-      require.resolve(dependencyName, { paths: [runtimeNodeModulesRoot] });
+      await resolvePackageRoot(dependencyName, [runtimeNodeModulesRoot]);
     } catch {
       missingDependencyNames.push(dependencyName);
     }

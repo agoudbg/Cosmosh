@@ -1,3 +1,4 @@
+import type { SettingsCategoryId } from '@cosmosh/api-contract';
 import * as RadixAvatar from '@radix-ui/react-avatar';
 import classNames from 'classnames';
 import { Bug, Info, RefreshCcw, ScrollText, Settings } from 'lucide-react';
@@ -32,7 +33,7 @@ const Header: React.FC<{
   onCloseOtherTabs?: (id: string) => void;
   onReorderTabs?: (nextTabs: TabItem[]) => void;
   onOpenAuditLogsTab?: () => void;
-  onOpenSettingsTab?: (options?: { categoryId?: 'about' }) => void;
+  onOpenSettingsTab?: (options?: { categoryId?: SettingsCategoryId }) => void;
   onOpenSettingsEditorTab?: () => void;
   onOpenDebugTab?: () => void;
 }> = ({

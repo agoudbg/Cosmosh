@@ -20,7 +20,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "pretest:ssh-session": "pnpm run build:runtime-deps",
-    "test:ssh-session": "tsx --test src/ssh/remote-shell-events.test.ts src/ssh/session-service.bootstrap-transport.test.ts src/ssh/session-service.remote-shell-events.test.ts src/ssh/exec.test.ts src/remote-bootstrap/service.test.ts",
+    "test:ssh-session": "tsx --test src/ssh/agent-terminal.test.ts src/ssh/remote-shell-events.test.ts src/ssh/session-service.bootstrap-transport.test.ts src/ssh/session-service.remote-shell-events.test.ts src/ssh/exec.test.ts src/remote-bootstrap/service.test.ts",
+    "pretest:mcp": "pnpm run build:runtime-deps",
+    "test:mcp": "tsx --test src/mcp/approval-broker.test.ts src/mcp/connection-capacity.test.ts src/mcp/connection-registry.test.ts src/mcp/exec.test.ts src/mcp/pairing.test.ts src/mcp/policy.test.ts src/mcp/service.test.ts src/mcp/sessions.test.ts src/mcp/terminal-launch-broker.test.ts",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\""
@@ -29,6 +31,7 @@
     "@cosmosh/api-contract": "workspace:*",
     "@cosmosh/i18n": "workspace:*",
     "@hono/node-server": "^2.0.10",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/adapter-better-sqlite3": "6.19.3",
     "@prisma/client": "6.19.3",
     "@prisma/driver-adapter-utils": "6.19.3",
@@ -37,7 +40,8 @@
     "node-pty": "1.2.0-beta.11",
     "socks": "^2.8.9",
     "ssh2": "^1.17.0",
-    "ws": "^8.21.1"
+    "ws": "^8.21.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

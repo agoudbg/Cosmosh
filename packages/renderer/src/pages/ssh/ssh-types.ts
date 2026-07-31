@@ -1,4 +1,5 @@
 import type {
+  AgentTerminalAttachmentStatus,
   components,
   RemoteBootstrapStatus as ApiRemoteBootstrapStatus,
   RemoteEnhancementRuntimeStatus as ApiRemoteEnhancementRuntimeStatus,
@@ -52,6 +53,17 @@ export type RemoteShellEvent = RemoteShellEventMessage;
  * Backend-owned trust state for the installed remote enhancement runtime.
  */
 export type RemoteEnhancementRuntimeStatus = ApiRemoteEnhancementRuntimeStatus;
+
+/** Renderer-owned state needed to publish one pane to the Agent selector. */
+export type AgentTerminalPaneState = {
+  sessionId: string | null;
+  sessionType: TerminalPaneRuntime['sessionType'];
+  connectionState: SshConnectionState;
+  remoteEnhancementRuntimeStatus: RemoteEnhancementRuntimeStatus | null;
+  atPrompt: boolean;
+  lineLength: number;
+  attachmentStatus: AgentTerminalAttachmentStatus | null;
+};
 
 /**
  * Timestamped remote enhancement event retained for SSH debug inspection.

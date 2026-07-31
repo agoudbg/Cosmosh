@@ -153,3 +153,49 @@ test('pane reducer joins command start and end by command id', () => {
   ]);
   assert.equal(ended['pane-1']?.remoteEnhancementsDebugEvents.length, 2);
 });
+
+test('pane reducer tracks Agent attachment state and pessimistically invalidates prompt readiness on input', () => {
+  const promptReady = [
+    { ...REMOTE_EVENT_BASE, event: 'prompt-ready', promptGeneration: 4 },
+    { ...REMOTE_EVENT_BASE, event: 'line-state', promptGeneration: 4, lineLength: 0, cursorIndex: 0 },
+  ].reduce(
+    (state, payload, index) =>
+      reduceSshPaneState(state, {
+        type: 'server-message',
+        paneId: 'pane-1',
+        payload: payload as ServerInboundMessage,
+        receivedAt: index + 1,
+      }),
+    INITIAL_STATE,
+  );
+  const attached = reduceSshPaneState(promptReady, {
+    type: 'server-message',
+    paneId: 'pane-1',
+    receivedAt: 3,
+    payload: {
+      type: 'agent-attachment-status',
+      state: 'running',
+      connectionId: 'connection-1',
+      client: { name: 'test-agent', version: '1.0.0' },
+      mode: 'attached',
+      agentCreatedTab: false,
+    },
+  });
+  const withInput = reduceSshPaneState(attached, {
+    type: 'client-input',
+    paneId: 'pane-1',
+    data: 'x',
+  });
+
+  assert.equal(attached['pane-1']?.agentAttachmentStatus?.state, 'running');
+  assert.equal(withInput['pane-1']?.atPrompt, true);
+  assert.equal(withInput['pane-1']?.lineState?.lineLength, 1);
+
+  const submitted = reduceSshPaneState(withInput, {
+    type: 'client-input',
+    paneId: 'pane-1',
+    data: '\r',
+  });
+  assert.equal(submitted['pane-1']?.atPrompt, false);
+  assert.equal(submitted['pane-1']?.lineState, null);
+});

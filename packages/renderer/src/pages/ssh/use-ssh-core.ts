@@ -20,6 +20,7 @@ import {
   type SshPaneStateMap,
 } from './ssh-pane-state';
 import {
+  type AgentTerminalPaneState,
   type HostFingerprintPrompt,
   MAX_TERMINAL_PANES,
   type RemoteBootstrapStatus,
@@ -235,6 +236,7 @@ export type SshCoreState = {
   connectionState: SshConnectionState;
   connectionError: string;
   paneConnectionStates: Record<string, SshPaneConnectionSnapshot>;
+  agentTerminalPaneStates: Record<string, AgentTerminalPaneState>;
   telemetryState: SshTelemetryState;
   remoteBootstrapStatus: RemoteBootstrapStatus | null;
   remoteEnhancementRuntimeStatus: RemoteEnhancementRuntimeStatus | null;
@@ -616,11 +618,22 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     activePaneState.remoteEnhancementRuntimeStatus;
   const remoteEnhancementsDebugEvents: RemoteEnhancementsDebugEvent[] = activePaneState.remoteEnhancementsDebugEvents;
   const paneConnectionStates: Record<string, SshPaneConnectionSnapshot> = {};
+  const agentTerminalPaneStates: Record<string, AgentTerminalPaneState> = {};
   terminalPaneIds.forEach((paneId) => {
     const paneState = paneStateMap[paneId] ?? createSshPaneState();
+    const paneRuntime = paneRuntimeMapRef.current.get(paneId);
     paneConnectionStates[paneId] = {
       connectionState: paneState.connectionState,
       connectionError: paneState.connectionError,
+    };
+    agentTerminalPaneStates[paneId] = {
+      sessionId: paneRuntime?.sessionId ?? null,
+      sessionType: paneRuntime?.sessionType ?? null,
+      connectionState: paneState.connectionState,
+      remoteEnhancementRuntimeStatus: paneState.remoteEnhancementRuntimeStatus,
+      atPrompt: paneState.atPrompt,
+      lineLength: paneState.lineState?.lineLength ?? 0,
+      attachmentStatus: paneState.agentAttachmentStatus,
     };
   });
   const compiledPromptPrefixRegex = React.useMemo(
@@ -1335,10 +1348,11 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         data,
       });
       recordPaneInputCommandMarker(activePaneIdRef.current, data);
+      dispatchPaneState({ type: 'client-input', paneId: activePaneIdRef.current, data });
 
       return true;
     },
-    [activePaneIdRef, recordPaneInputCommandMarker, socketRef],
+    [activePaneIdRef, dispatchPaneState, recordPaneInputCommandMarker, socketRef],
   );
 
   /**
@@ -1574,6 +1588,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       connectionState,
       connectionError,
       paneConnectionStates,
+      agentTerminalPaneStates,
       telemetryState,
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,

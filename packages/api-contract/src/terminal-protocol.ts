@@ -1,3 +1,5 @@
+import type { McpClientInfo, McpConnectionMode } from './mcp';
+
 /** Current OSC contract version shared by the desktop runtime and remote helper. */
 export const REMOTE_SHELL_PROTOCOL_VERSION = 2;
 
@@ -33,6 +35,19 @@ export type RemoteShellEventName = (typeof REMOTE_SHELL_EVENT_NAMES)[number];
 
 /** Capability name advertised by a supported remote shell helper. */
 export type RemoteShellCapability = (typeof REMOTE_SHELL_CAPABILITIES)[number];
+
+/**
+ * Trusted helper capabilities required for Agent shared-PTY automation.
+ *
+ * Line-state is intentionally optional: Bash and Fish provide the authoritative
+ * command/prompt lifecycle while Cosmosh conservatively tracks whether local
+ * input has been submitted.
+ */
+export const AGENT_TERMINAL_REQUIRED_CAPABILITIES = [
+  'command-start',
+  'command-end',
+  'prompt-ready',
+] as const satisfies readonly RemoteShellCapability[];
 
 /** Shared fields carried by every trusted remote shell event. */
 type RemoteShellEventBase = {
@@ -96,6 +111,21 @@ export type RemoteEnhancementRuntimeStatus = {
   message?: string;
 };
 
+/**
+ * Current Agent attachment state for one renderer-owned SSH terminal.
+ *
+ * The payload intentionally excludes Agent commands and terminal/session
+ * credentials. It exists only to render ownership and collaboration controls.
+ */
+export type AgentTerminalAttachmentStatus = {
+  type: 'agent-attachment-status';
+  state: 'detached' | 'idle' | 'running';
+  connectionId?: string;
+  client?: McpClientInfo;
+  mode?: Extract<McpConnectionMode, 'terminal' | 'attached'>;
+  agentCreatedTab?: boolean;
+};
+
 /** Completion candidate transferred over a terminal WebSocket. */
 export type TerminalCompletionItem = {
   id: string;
@@ -156,4 +186,8 @@ export type TerminalServerMessage =
 
 /** Complete Backend-to-Renderer message contract for SSH terminal sessions. */
 export type SshTerminalServerMessage =
-  TerminalServerMessage | RemoteBootstrapStatus | RemoteEnhancementRuntimeStatus | RemoteShellEventMessage;
+  | TerminalServerMessage
+  | RemoteBootstrapStatus
+  | RemoteEnhancementRuntimeStatus
+  | RemoteShellEventMessage
+  | AgentTerminalAttachmentStatus;

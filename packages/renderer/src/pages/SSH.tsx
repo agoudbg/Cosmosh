@@ -1,6 +1,7 @@
 import '@xterm/xterm/css/xterm.css';
 import './ssh/terminal-image-layer.css';
 
+import type { AgentTerminalAttachmentStatus } from '@cosmosh/api-contract';
 import { type ITerminalOptions } from '@xterm/xterm';
 import classNames from 'classnames';
 import { CaseSensitive, Regex } from 'lucide-react';
@@ -21,12 +22,18 @@ import {
 } from '../components/ui/dialog';
 import { useDialogExitSnapshot } from '../components/ui/dialog-lifecycle';
 import { type SearchReplaceFilterOption, SearchReplacePanel } from '../components/ui/search-replace-panel';
+import {
+  removeAgentTerminalSurfacesForTab,
+  resolveAgentTerminalDisabledReason,
+  setAgentTerminalSurfacesForTab,
+} from '../lib/agent-terminal-registry';
+import { detachMcpConnection, interruptMcpConnection } from '../lib/backend';
 import { useDateTimeFormatter } from '../lib/date-time-format';
 import { t } from '../lib/i18n';
 import { useSettingsValues } from '../lib/settings-store';
 import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
-import type { SshConnectionIntent, TabIconColorKey, TabIconKey } from '../types/tabs';
+import type { AgentTerminalTabState, SshConnectionIntent, TabIconColorKey, TabIconKey } from '../types/tabs';
 import { RemoteEnhancementsDebugPanel } from './ssh/RemoteEnhancementsDebugPanel';
 import { INTERNAL_TERMINAL_TEXT_DRAG_MIME, type TerminalSelectionSettings } from './ssh/ssh-types';
 import {
@@ -51,12 +58,15 @@ import { useTerminalClipboardProvider } from './ssh/use-terminal-clipboard-provi
  */
 type SSHProps = {
   tabId: string;
+  tabTitle: string;
   isActive: boolean;
+  agentTerminal?: AgentTerminalTabState;
   connectionIntent: SshConnectionIntent;
   onConnectionIntentChange: (nextIntent: SshConnectionIntent) => void;
   onOpenDirectoryInSFTP?: (serverId: string, serverName: string, initialPath: string) => void;
   onTabTitleChange?: (title: string) => void;
   onTabVisualChange?: (visual: { iconKey: TabIconKey; iconColorKey?: TabIconColorKey }) => void;
+  onAgentTerminalAttachmentChange?: (status: AgentTerminalAttachmentStatus | null) => void;
 };
 
 /** Delay used to debounce query-driven xterm search jumps while typing. */
@@ -127,12 +137,15 @@ const resolveSelectionLink = (text: string): string | null => {
  */
 const SSH: React.FC<SSHProps> = ({
   tabId,
+  tabTitle,
   isActive,
+  agentTerminal,
   connectionIntent,
   onConnectionIntentChange,
   onOpenDirectoryInSFTP,
   onTabTitleChange,
   onTabVisualChange,
+  onAgentTerminalAttachmentChange,
 }) => {
   const { error: notifyError, info: notifyInfo, success: notifySuccess, warning: notifyWarning } = useToast();
   const { formatTime } = useDateTimeFormatter();
@@ -407,6 +420,7 @@ const SSH: React.FC<SSHProps> = ({
       activePaneId,
       connectionState,
       paneConnectionStates,
+      agentTerminalPaneStates,
       telemetryState,
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
@@ -445,6 +459,81 @@ const SSH: React.FC<SSHProps> = ({
     },
     refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
   } = sshCore;
+
+  React.useEffect(() => {
+    const target = connectionIntent.lastResolvedSnapshot;
+    if (target?.type !== 'ssh-server') {
+      setAgentTerminalSurfacesForTab(tabId, []);
+      return;
+    }
+
+    const nextSurfaces = terminalPaneIds.map((paneId, paneIndex) => {
+      const pane = agentTerminalPaneStates[paneId];
+      const disabledReason = resolveAgentTerminalDisabledReason({
+        connectionState: pane?.connectionState ?? 'connecting',
+        runtimeStatus: pane?.remoteEnhancementRuntimeStatus ?? null,
+        atPrompt: pane?.atPrompt ?? false,
+        lineLength: pane?.lineLength ?? 0,
+        attachmentStatus: pane?.attachmentStatus ?? null,
+      });
+      return {
+        surfaceId: `${tabId}:${paneId}`,
+        tabId,
+        tabTitle,
+        paneId,
+        paneIndex,
+        sessionId: pane?.sessionId ?? null,
+        serverId: target.serverId,
+        serverName: target.serverName,
+        isActiveTab: isActive,
+        isActivePane: activePaneId === paneId,
+        connectionState: pane?.connectionState ?? 'connecting',
+        runtimeStatus: pane?.remoteEnhancementRuntimeStatus ?? null,
+        atPrompt: pane?.atPrompt ?? false,
+        lineLength: pane?.lineLength ?? 0,
+        attachmentStatus: pane?.attachmentStatus ?? null,
+        disabledReason,
+      };
+    });
+    setAgentTerminalSurfacesForTab(tabId, nextSurfaces);
+  }, [
+    activePaneId,
+    agentTerminalPaneStates,
+    connectionIntent.lastResolvedSnapshot,
+    isActive,
+    tabId,
+    tabTitle,
+    terminalPaneIds,
+  ]);
+
+  React.useEffect(() => {
+    return () => {
+      removeAgentTerminalSurfacesForTab(tabId);
+    };
+  }, [tabId]);
+
+  const lastReportedAgentAttachmentRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const activeAttachment =
+      terminalPaneIds
+        .map((paneId) => agentTerminalPaneStates[paneId]?.attachmentStatus ?? null)
+        .find((status) => status?.state === 'idle' || status?.state === 'running') ?? null;
+    const reportKey = activeAttachment
+      ? `${activeAttachment.connectionId ?? ''}:${activeAttachment.state}`
+      : agentTerminal?.connectionId
+        ? 'detached'
+        : null;
+    if (lastReportedAgentAttachmentRef.current === reportKey) {
+      return;
+    }
+
+    lastReportedAgentAttachmentRef.current = reportKey;
+    if (activeAttachment) {
+      onAgentTerminalAttachmentChange?.(activeAttachment);
+    } else if (agentTerminal?.connectionId) {
+      onAgentTerminalAttachmentChange?.(null);
+    }
+  }, [agentTerminal?.connectionId, agentTerminalPaneStates, onAgentTerminalAttachmentChange, terminalPaneIds]);
   const terminalPaneIdsRef = React.useRef<string[]>(terminalPaneIds);
   const dispatchedStartupCommandIntentIdRef = React.useRef<string | null>(null);
   const [terminalSearchOpen, setTerminalSearchOpen] = React.useState<boolean>(false);
@@ -1405,6 +1494,51 @@ const SSH: React.FC<SSHProps> = ({
   const cardStyle = 'bg-ssh-card-bg-terminal h-full w-full flex-1 overflow-hidden rounded-[18px] p-1';
   const shouldSuppressOrbitBar = terminalSearchOpen;
   const canNavigateTerminalSearch = terminalSearchQuery.trim().length > 0;
+  const agentAttachmentStatuses = React.useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(agentTerminalPaneStates).map(([paneId, pane]) => [paneId, pane.attachmentStatus]),
+    );
+  }, [agentTerminalPaneStates]);
+
+  /**
+   * Sends a normal interrupt to the shared PTY without changing attachment ownership.
+   *
+   * @param connectionId Visible Agent connection id.
+   * @returns Nothing.
+   */
+  const handleStopAgentCommand = React.useCallback(
+    async (connectionId: string): Promise<void> => {
+      try {
+        const result = await interruptMcpConnection(connectionId);
+        if (!result.success) {
+          notifyError(t('ssh.agentTerminal.stopFailed'));
+        }
+      } catch {
+        notifyError(t('ssh.agentTerminal.stopFailed'));
+      }
+    },
+    [notifyError],
+  );
+
+  /**
+   * Revokes Agent access while preserving the current SSH terminal.
+   *
+   * @param connectionId Visible Agent connection id.
+   * @returns Nothing.
+   */
+  const handleDetachAgent = React.useCallback(
+    async (connectionId: string): Promise<void> => {
+      try {
+        const result = await detachMcpConnection(connectionId);
+        if (!result.success) {
+          notifyError(t('ssh.agentTerminal.detachFailed'));
+        }
+      } catch {
+        notifyError(t('ssh.agentTerminal.detachFailed'));
+      }
+    },
+    [notifyError],
+  );
 
   return (
     <div
@@ -1435,6 +1569,7 @@ const SSH: React.FC<SSHProps> = ({
           canOpenDirectoryInSftp={canOpenSelectionDirectoryInSftp}
           commandTimelineModels={commandTimelineModels}
           paneConnectionStates={paneConnectionStates}
+          agentAttachmentStatuses={agentAttachmentStatuses}
           setPaneContainerElement={setPaneContainerElement}
           setPrimaryPaneContainer={setPrimaryPaneContainer}
           onPaneActivate={activatePane}
@@ -1494,6 +1629,12 @@ const SSH: React.FC<SSHProps> = ({
           onToggleRemoteEnhancementsDebug={
             canShowRemoteEnhancementsDebug ? handleToggleRemoteEnhancementsDebugPanel : undefined
           }
+          onStopAgentCommand={(connectionId) => {
+            void handleStopAgentCommand(connectionId);
+          }}
+          onDetachAgent={(connectionId) => {
+            void handleDetachAgent(connectionId);
+          }}
         />
 
         {remoteEnhancementsDebugPanelOpen ? (

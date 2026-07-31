@@ -22,6 +22,34 @@ export type {
   SftpUploadRejectedLocalEntryReason,
 } from './ipc';
 export {
+  DEFAULT_MCP_COMMAND_POLICY,
+  DEFAULT_MCP_SERVER_COMMAND_POLICY,
+  isMcpApprovalUserDecision,
+  isMcpCommandPolicy,
+  isMcpServerCommandPolicy,
+  MCP_COMMAND_POLICY_OPTIONS,
+  MCP_SERVER_COMMAND_POLICY_OPTIONS,
+  parseMcpEventMessage,
+  resolveEffectiveMcpCommandPolicy,
+} from './mcp';
+export type {
+  McpApprovalDecision,
+  McpApprovalKind,
+  McpApprovalUserDecision,
+  McpClientInfo,
+  McpClientSessionSummary,
+  McpCommandPolicy,
+  McpConnectionMode,
+  McpConnectionStatus,
+  McpConnectionCloseReason,
+  McpConnectionSummary,
+  McpEventMessage,
+  McpPendingApprovalPayload,
+  McpPendingTerminalLaunch,
+  McpRuntimeStatus,
+  McpServerCommandPolicy,
+} from './mcp';
+export {
   GLOBAL_SERVER_PROXY_MODES,
   MAX_PROXY_URL_LENGTH,
   MAX_SYSTEM_PROXY_RULES_LENGTH,
@@ -101,12 +129,14 @@ export {
 } from './terminal-interaction';
 export type { TerminalForceSelectionModifier, TerminalRightClickAction } from './terminal-interaction';
 export {
+  AGENT_TERMINAL_REQUIRED_CAPABILITIES,
   REMOTE_SHELL_CAPABILITIES,
   REMOTE_SHELL_EVENT_NAMES,
   REMOTE_SHELL_NAMES,
   REMOTE_SHELL_PROTOCOL_VERSION,
 } from './terminal-protocol';
 export type {
+  AgentTerminalAttachmentStatus,
   RemoteBootstrapPhase,
   RemoteBootstrapState,
   RemoteBootstrapStatus,
@@ -370,3 +400,36 @@ export type ApiLocalTerminalCreateSessionResponse =
   paths['/api/v1/local-terminals/sessions']['post']['responses']['200']['content']['application/json'];
 export type ApiLocalTerminalCloseSessionRequest =
   paths['/api/v1/local-terminals/sessions/{sessionId}']['delete']['parameters']['path'];
+export type ApiMcpStatusResponse =
+  paths['/api/v1/mcp/status']['get']['responses']['200']['content']['application/json'];
+export type ApiMcpRotatePairingTokenResponse =
+  paths['/api/v1/mcp/pairing-token']['post']['responses']['200']['content']['application/json'];
+export type ApiMcpListClientsResponse =
+  paths['/api/v1/mcp/clients']['get']['responses']['200']['content']['application/json'];
+export type ApiMcpListConnectionsResponse =
+  paths['/api/v1/mcp/connections']['get']['responses']['200']['content']['application/json'];
+export type ApiMcpCloseConnectionRequest =
+  paths['/api/v1/mcp/connections/{connectionId}']['delete']['parameters']['path'];
+export type ApiMcpDetachConnectionRequest =
+  paths['/api/v1/mcp/connections/{connectionId}/detach']['post']['parameters']['path'];
+export type ApiMcpInterruptConnectionRequest =
+  paths['/api/v1/mcp/connections/{connectionId}/interrupt']['post']['parameters']['path'];
+export type ApiMcpListApprovalsResponse =
+  paths['/api/v1/mcp/approvals']['get']['responses']['200']['content']['application/json'];
+export type ApiMcpResolveApprovalRequest =
+  paths['/api/v1/mcp/approvals/{approvalId}/decision']['post']['requestBody']['content']['application/json'];
+export type ApiMcpResolveApprovalResponse =
+  paths['/api/v1/mcp/approvals/{approvalId}/decision']['post']['responses']['200']['content']['application/json'];
+export type ApiMcpCreateEventsChannelResponse =
+  paths['/api/v1/mcp/events-channel']['post']['responses']['200']['content']['application/json'];
+export type ApiMcpListTerminalLaunchesResponse =
+  paths['/api/v1/mcp/terminal-launches']['get']['responses']['200']['content']['application/json'];
+export type ApiMcpBindTerminalLaunchRequest =
+  paths['/api/v1/mcp/terminal-launches/{launchId}/bind']['post']['requestBody']['content']['application/json'];
+export type ApiMcpBindTerminalLaunchResponse =
+  paths['/api/v1/mcp/terminal-launches/{launchId}/bind']['post']['responses']['200']['content']['application/json'];
+export type ApiMcpStatusData = components['schemas']['McpStatusData'];
+export type ApiMcpClientSession = components['schemas']['McpClientSession'];
+export type ApiMcpConnectionSummary = components['schemas']['McpConnectionSummary'];
+export type ApiMcpPendingApproval = components['schemas']['McpPendingApproval'];
+export type ApiMcpPendingTerminalLaunch = components['schemas']['McpPendingTerminalLaunch'];

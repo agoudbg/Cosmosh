@@ -1,4 +1,4 @@
-import type { components } from '@cosmosh/api-contract';
+import type { components, McpClientInfo, SettingsCategoryId } from '@cosmosh/api-contract';
 
 export type TabPage = string;
 
@@ -49,6 +49,14 @@ export type HomeState = {
   initialPortForwardRuleId?: string;
 };
 
+/** Renderer-only marker for an Agent-created or Agent-attached SSH tab. */
+export type AgentTerminalTabState = {
+  client: McpClientInfo;
+  agentCreatedTab: boolean;
+  launchId?: string;
+  connectionId?: string;
+};
+
 export type TabItem = {
   id: string;
   title: string;
@@ -57,11 +65,12 @@ export type TabItem = {
   iconColorKey?: TabIconColorKey;
   closable?: boolean;
   state?: {
-    settingsCategory?: string;
+    settingsCategory?: SettingsCategoryId;
     settingsInitialSearch?: string;
     settingsEditorSettingKey?: string;
     sshConnectionIntent?: SshConnectionIntent;
     sftpConnectionIntent?: SftpConnectionIntent;
     home?: HomeState;
+    agentTerminal?: AgentTerminalTabState;
   };
 };

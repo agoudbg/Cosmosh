@@ -11,6 +11,7 @@ Current scope covers high-value operational events:
 - Host fingerprint trust actions (`ssh-host-trust`)
 - SSH server and keychain entity mutations (`ssh-server`, `ssh-keychain`)
 - SSH port forwarding rule and runtime actions (`port-forward`)
+- MCP client sessions, authorizations, connections, commands, and pairing-token lifecycle (`mcp`) — see [Cosmosh MCP Server](./mcp-server)
 - Settings mutation events (`settings`)
 
 Compatibility note:

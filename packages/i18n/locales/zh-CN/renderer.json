@@ -5,6 +5,7 @@
     },
     "categories": {
       "hostTrust": "主机信任",
+      "mcp": "MCP",
       "portForward": "端口转发",
       "settings": "设置",
       "sftpSession": "SFTP 会话",
@@ -310,6 +311,132 @@
     "selectAll": "全选",
     "undo": "撤销"
   },
+  "mcp": {
+    "actions": {
+      "copy": "复制"
+    },
+    "approvals": {
+      "empty": "没有待处理的授权请求。",
+      "kindAttach": "附加终端",
+      "kindCommand": "执行命令",
+      "kindConnection": "打开连接",
+      "title": "待授权请求"
+    },
+    "clients": {
+      "empty": "没有已连接的 Agent。",
+      "started": "连接于 {time}",
+      "title": "已连接客户端"
+    },
+    "config": {
+      "description": "将以下内容粘贴到 Agent 的 MCP 配置中，即可连接到 Cosmosh。",
+      "devDiscoveryLabel": "发现文件环境变量",
+      "devNotice": "客户端配置面向打包安装版本生成，此时 Cosmosh 会写入桥接启动器。开发模式下请让客户端指向本地构建的 cosmosh-mcp 产物，并设置下方的发现文件路径。",
+      "hintClaudeCode": "添加到项目的 .mcp.json（Claude Code）或 Cursor 的 mcp.json。",
+      "hintClaudeDesktop": "添加到 claude_desktop_config.json，然后重启 Claude Desktop。",
+      "hintRaw": "适用于分别填写 command、args、env 字段的客户端。",
+      "title": "客户端配置",
+      "variantClaudeCode": ".mcp.json",
+      "variantClaudeDesktop": "claude_desktop_config.json",
+      "variantRaw": "原始命令"
+    },
+    "connections": {
+      "close": "关闭连接",
+      "commandCount": "{count} 条命令",
+      "empty": "没有活跃连接。",
+      "mode": {
+        "attached": "附加终端",
+        "background": "后台连接",
+        "terminal": "可见终端"
+      },
+      "opened": "打开于 {time}",
+      "preApproved": "命令已预先放行",
+      "status": {
+        "busy": "忙碌",
+        "ready": "就绪"
+      },
+      "title": "活跃连接"
+    },
+    "errors": {
+      "connectionCloseFailed": "关闭连接失败。",
+      "copyFailed": "复制到剪贴板失败。",
+      "refreshFailed": "加载 MCP 状态失败。",
+      "tokenRevokeFailed": "吊销配对令牌失败。",
+      "tokenRotateFailed": "轮换配对令牌失败。"
+    },
+    "toasts": {
+      "connectionClosed": "连接已关闭。",
+      "copied": "已复制到剪贴板。",
+      "tokenRevoked": "配对令牌已吊销。",
+      "tokenRotated": "配对令牌已轮换。"
+    },
+    "token": {
+      "configured": "已配置配对令牌。",
+      "description": "Agent 使用此配对令牌向 Cosmosh 认证。轮换后旧令牌立即失效。",
+      "discoveryPath": "发现文件",
+      "freshNotice": "请立即复制此令牌——它只显示一次。",
+      "launcherPath": "桥接启动器",
+      "notConfigured": "尚未配置配对令牌。",
+      "revoke": "吊销",
+      "rotate": "轮换令牌",
+      "title": "配对令牌",
+      "tokenLabel": "配对令牌"
+    }
+  },
+  "mcpApproval": {
+    "actions": {
+      "approve": "批准",
+      "approveForConnection": "在本连接内批准",
+      "deny": "拒绝"
+    },
+    "attach": {
+      "description": "Agent 想使用一个由你选择的现有 SSH 终端。",
+      "disabledReasons": {
+        "already-attached": "已附加到其他 Agent",
+        "automation-unavailable": "可信 Remote Enhancements 不可用",
+        "connecting": "仍在连接",
+        "connection-failed": "连接失败",
+        "not-at-prompt": "前台命令正在运行",
+        "pending-input": "终端中存在未提交输入"
+      },
+      "noTerminals": "当前没有已打开的 SSH 终端。",
+      "paneLabel": "{tab} · 窗格 {pane}",
+      "selectTerminal": "选择 SSH 终端",
+      "title": "将 Agent 附加到终端"
+    },
+    "command": {
+      "description": "Agent 想在此连接上执行命令。",
+      "title": "授权命令"
+    },
+    "connection": {
+      "description": "Agent 想打开一个 SSH 连接。",
+      "title": "授权连接"
+    },
+    "errors": {
+      "resolveFailed": "提交你的决定失败。"
+    },
+    "fields": {
+      "client": "Agent",
+      "command": "命令",
+      "reason": "原因",
+      "server": "服务器",
+      "target": "目标",
+      "terminal": "终端",
+      "username": "用户"
+    },
+    "queue": {
+      "expiresIn": "{seconds} 秒后过期",
+      "remaining": "{count} 个等待中"
+    },
+    "serverList": {
+      "description": "Agent 想查看 Cosmosh 中配置的 SSH 服务器。",
+      "title": "授权查看服务器列表"
+    }
+  },
+  "mcpTerminal": {
+    "errors": {
+      "launchFailed": "Agent 无法附加到可见终端。该标签页仍可由你继续使用。"
+    }
+  },
   "oobe": {
     "actions": {
       "back": "返回",
@@ -421,6 +548,7 @@
       "advanced": "高级",
       "connection": "连接",
       "general": "通用",
+      "mcp": "MCP",
       "sftp": "SFTP",
       "terminal": "终端",
       "theme": "主题"
@@ -502,6 +630,18 @@
       "localTerminalClipboardAccess": {
         "description": "仅设置本地终端程序访问本地剪贴板的权限。",
         "title": "允许本地终端访问本地剪贴板"
+      },
+      "mcpCommandPolicy": {
+        "description": "设置 AI Agent 通过 MCP 连接执行命令时的默认确认策略。每台服务器可以单独覆盖此策略。",
+        "title": "Agent 命令确认"
+      },
+      "mcpEnabled": {
+        "description": "允许外部 AI Agent 通过 Model Context Protocol 连接 Cosmosh。建立连接始终需要你的确认，并且所有操作都会写入审计日志。",
+        "title": "启用 Cosmosh MCP"
+      },
+      "mcpListServersRequiresApproval": {
+        "description": "AI Agent 查看已配置 SSH 服务器的名称、主机、用户名、文件夹、标签和备注前，先征求你的批准。",
+        "title": "列出服务器时需要批准"
       },
       "remoteEnhancementsDebugEnabled": {
         "description": "在 SSH 终端菜单中显示当前分屏的引导安装与 Shell 集成诊断信息。",
@@ -853,6 +993,11 @@
         "en": "英语 (English)",
         "zh-CN": "简体中文 (Chinese, Simplified)"
       },
+      "mcpCommandPolicy": {
+        "allowWithinConnection": "每个连接确认一次",
+        "ask": "每条命令都确认",
+        "off": "关闭（拒绝命令）"
+      },
       "searchEngine": {
         "baidu": "百度",
         "bing": "必应",
@@ -958,6 +1103,8 @@
       "connection": "连接",
       "editorDefaults": "默认值",
       "localization": "本地化",
+      "mcpAccess": "访问",
+      "mcpPolicy": "授权策略",
       "proxy": "代理",
       "runtime": "运行时",
       "search": "搜索",
@@ -1376,6 +1523,16 @@
     }
   },
   "ssh": {
+    "agentTerminal": {
+      "detach": "分离 Agent",
+      "detachFailed": "分离 Agent 失败。",
+      "idle": "空闲",
+      "outputShared": "当前终端输出正与此 Agent 共享",
+      "running": "运行中",
+      "stop": "停止命令",
+      "stopFailed": "向 Agent 命令发送 Ctrl+C 失败。",
+      "unknownAgent": "Agent"
+    },
     "authTypeBoth": "密码和私钥",
     "authTypeKey": "私钥",
     "authTypePassword": "密码",
@@ -1453,6 +1610,15 @@
     "keychainOptionCreate": "添加钥匙链",
     "keychainOptionInline": "不使用钥匙链",
     "keychainSelectPlaceholder": "选择钥匙链",
+    "mcpCommandPolicyHint": "控制 AI Agent 通过 MCP 连接在此服务器上执行命令时是否需要你的确认。",
+    "mcpCommandPolicyLabel": "MCP Agent 命令确认",
+    "mcpCommandPolicyOptions": {
+      "allowWithinConnection": "每个连接确认一次",
+      "ask": "每条命令都确认",
+      "default": "使用全局设置",
+      "off": "关闭（拒绝命令）"
+    },
+    "mcpCommandPolicyPlaceholder": "选择命令策略",
     "noFolder": "无文件夹",
     "noteLabel": "备注",
     "notePlaceholder": "备注",
@@ -1532,6 +1698,7 @@
     "sectionAuthentication": "认证",
     "sectionClipboardPermissions": "剪贴板权限",
     "sectionCompatibility": "兼容性",
+    "sectionMcp": "MCP",
     "sectionProxy": "代理",
     "sectionSecurity": "安全",
     "sectionSettings": "分类",
@@ -1647,6 +1814,7 @@
       "portForwarding": "端口转发",
       "server": "服务器"
     },
+    "agentTerminal": "正与 Agent 共享",
     "closeCurrent": "关闭当前标签页",
     "closeOthers": "关闭其他标签页",
     "closeRight": "关闭右侧标签页",

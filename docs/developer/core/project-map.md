@@ -11,6 +11,8 @@ flowchart TB
   ROOT --> API[packages/api-contract]
   ROOT --> I18N[packages/i18n]
   ROOT --> REMOTE[packages/remote-bootstrap]
+  ROOT --> MCPB[packages/mcp-bridge]
+  ROOT --> SKILLS[skills]
   ROOT --> DOCS[docs]
   ROOT --> SCRIPTS[scripts]
   ROOT --> CI[".github/workflows"]
@@ -70,14 +72,14 @@ flowchart TB
 - **Role**: React UI layer.
 - **Key folders**:
   - `src/pages`: feature pages (`Home`, `SSH`, `SFTP`, `Settings`, `SettingsEditor`, etc.). Home owns the SSH server, keychain, and port-forwarding management surfaces.
-  - `src/pages/ssh`: SSH terminal controllers and pure runtime helpers. `use-ssh-core.ts` coordinates pane routing; primary/secondary hooks own independent session resources; `ssh-pane-state.ts` reduces all pane-scoped transport/helper messages; `ssh-command-markers.ts` owns pending/confirmed xterm marker lifecycles and pane-local command timeline models; `TerminalCommandTimeline.tsx` renders the trusted right-side command rail.
+  - `src/pages/ssh`: SSH terminal controllers and pure runtime helpers. `use-ssh-core.ts` coordinates pane routing; primary/secondary hooks own independent session resources; `ssh-pane-state.ts` reduces pane-scoped transport/helper/Agent attachment messages; `ssh-command-markers.ts` owns pending/confirmed xterm marker lifecycles and pane-local command timeline models; `TerminalCommandTimeline.tsx` renders the trusted right-side command rail; `SSHTerminalPaneLayout.tsx` owns the pane-local Agent status bar and Stop/Detach controls.
   - `src/pages/sftp`: SFTP page submodules. `SFTP.tsx` stays the tab-level orchestration entrypoint, while this folder owns browser UI composition, action/drop menus, directory/tree/detail panels, archive dialogs and archive-action polling, fixed-row virtualization helpers and tests, controller hooks for prompts, preferences, selection, keyboard shortcuts, drag/drop, preview actions, concurrent/serial renderer task lanes, failure-attention state, byte-progress presentation, and shared SFTP helpers. `src/lib/api/sftp-task-runtime.ts` owns fixed accepted-session task polling used by typed client wrappers.
   - `src/pages/settings-editor`: CodeMirror-backed settings JSON editor modules, including schema diagnostics, completion, hover details, and editor lifecycle wrappers.
   - `src/components/CloseWindowConfirmationDialog.tsx`: shared Renderer `Dialog` presentation for Main-owned active-session close decisions.
   - `src/components/ui`: Radix-based primitive wrappers, reusable sidebar navigation (`SidebarNav`), reusable search/replace panel, CodeMirror text context menu, and styling contracts.
   - `src/components/home`: home/SSH shared entity modules (card/icon rendering, TanStack Virtual-backed visual picker, reusable folder-creation dialog).
   - `src/components/terminal`: terminal interaction composites (context menu, selection bar, autocomplete menu).
-  - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), renderer request-trace mirror bootstrap (`backend-request-trace-mirror.ts`), shared date-time display formatting (`date-time-format.ts`), shared CodeMirror syntax highlighting and search/replace adapter, and utility abstractions (including shared entity visual helpers, Home folder grouping, and the folder-dialog hook).
+  - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), renderer request-trace mirror bootstrap (`backend-request-trace-mirror.ts`), shared date-time display formatting (`date-time-format.ts`), shared CodeMirror syntax highlighting and search/replace adapter, and utility abstractions (including shared entity visual helpers, Home folder grouping, and the folder-dialog hook). `agent-terminal-registry.ts` is the renderer-only SSH pane registry; `mcp-terminal-lifecycle.ts` holds pure launch/tab lifecycle decisions.
   - `theme`: token source used to generate CSS variable system.
 
 ### `packages/backend`
@@ -86,10 +88,11 @@ flowchart TB
 - **Key folders**:
   - `src/http/routes`: REST endpoints for settings, SSH entities, SFTP session/task operations, port-forwarding rules, and local terminal actions.
   - `src/audit`: local-first audit domain (sanitization, retention policy, query model, write service).
-  - `src/ssh`: SSH auth/session logic (`ssh2`, known-host trust, telemetry, keychain-backed credential resolution), the streaming OSC 777 parser/trust gate, structured command lifecycle consumption, and shared authenticated connection helpers for shell and non-shell transports. The helper creates fresh proxy sockets per transport and supports attempt-scoped compression and cancellation.
+  - `src/ssh`: SSH auth/session logic (`ssh2`, known-host trust, telemetry, keychain-backed credential resolution), the streaming OSC 777 parser/trust gate, structured command lifecycle consumption, shared Agent PTY attachment/command state machine (`agent-terminal.ts`), and authenticated connection helpers for shell and non-shell transports. The helper creates fresh proxy sockets per transport and supports attempt-scoped compression and cancellation.
   - `src/remote-bootstrap`: pre-shell Remote Enhancements orchestration. It shares concurrent manifest fetches through a five-minute success-only cache, probes the remote platform through a temporary SSH transport isolated from the interactive client, validates installed status, conditionally injects the download wrapper, returns a trusted helper contract, forwards `bootstrap-status`, and logs terminal bootstrap outcomes.
   - `src/port-forward`: SSH port-forwarding rule validation, SOCKS5 parsing, and active runtime session service.
   - `src/sftp`: SFTP browser, download, file-operation, task-scheduling, and remote-archive session logic. `session-service.ts` owns session authorization/lifecycle and ordinary `ssh2.sftp` operations; `task-scheduler.ts` owns per-session total/heavy/mutation admission, POSIX path claims, absolute deadlines, cancellation signals, and memory-only task snapshots; `archive-service.ts` owns fixed POSIX command construction, capability probing, async archive state, staging/commit, conflict merge, cancellation, audit, and cleanup under an exclusive scheduler claim. Single-file transfers retain their existing short-lived byte-progress records.
+  - `src/mcp`: externally-exposed MCP server runtime. `service.ts` is the lifecycle/settings-gated façade; `pairing.ts` owns encrypted pairing tokens and discovery; `sessions.ts` owns per-client transport state; `connection-capacity.ts` enforces the shared 8-connection cap; `connection-registry.ts` owns background and visible connection summaries/lifecycle; `approval-broker.ts` owns 120-second authorization requests; `terminal-launch-broker.ts` owns replayable 60-second visible-tab launches; `events-service.ts` streams approval/connection/launch/session events; `exec.ts` retains bounded background `ssh2.exec`; `tools.ts` registers six MCP tools. Default off via `mcpEnabled`.
   - `src/settings`: settings payload defaults, validation parsers, and shared AppSettings readers used by HTTP routes and runtime services.
   - `src/validation-utils.ts`: shared backend HTTP-boundary validation primitives used by route and domain payload parsers.
   - `src/local-terminal`: local PTY session logic (`node-pty`).
@@ -107,7 +110,7 @@ Shared protocol constants, request/response types, OpenAPI source, generated con
 - `src/settings-registry.ts`: **single source of truth** for all settings definitions — types, defaults, constraints, enum sets, UI control metadata, categories, and helper functions. Adding/removing a setting only requires editing this file.
 - `src/settings.ts`: generic, registry-driven validation and normalization helpers (`normalizeSettingsValuesStrict`, `normalizeSettingsValuesWithDefaults`) shared by backend and renderer.
 - `src/sftp.ts`: shared SFTP entry/name ordering helpers consumed by backend session listings and renderer browser/tree views.
-- `src/terminal-protocol.ts`: protocol-v2 terminal WebSocket unions, remote shell event/capability constants, and bootstrap/runtime status types shared by backend and renderer.
+- `src/terminal-protocol.ts`: protocol-v2 terminal WebSocket unions, remote shell event/capability constants, bootstrap/runtime status types, and renderer-safe Agent attachment status shared by backend and renderer.
 
 ### `packages/i18n`
 
@@ -125,6 +128,19 @@ Go source for the user-scoped remote installer used by Remote Enhancements. This
 - `cmd/cosmosh-bootstrap`: installs the downloaded bootstrap binary and Go-generated shell helper into user-scoped remote directories, or reports the validated installed runtime contract.
 - `internal/wrapper`: validates manifest-derived wrapper inputs and renders POSIX/fish shell source with shell-safe quoting.
 - `internal/install`: owns versioned helper generation, shell-accurate OSC capability declarations, exact helper/binary validation, atomic user-level installation, Bash interactive/login profile coverage, mode/symlink-preserving profile repair, installed status reporting, version marker writes, and line-delimited `bootstrap-status` output.
+
+### `packages/mcp-bridge`
+
+Standalone `cosmosh-mcp` stdio bridge that connects an external MCP client (Claude Code/Desktop, Cursor) to the running app. It performs transport-level JSON-RPC passthrough only and holds no product logic.
+
+- `src/discovery.ts`: resolves `<userData>/mcp/bridge.json` (via `--discovery`, `COSMOSH_MCP_DISCOVERY`, or the platform default) to obtain the loopback port and pairing token.
+- `src/proxy.ts`: bridges `StdioServerTransport` ↔ `StreamableHTTPClientTransport('http://127.0.0.1:<port>/mcp', { Authorization: Bearer })`, re-reading discovery to retry once on disconnect.
+- `src/index.ts`: CLI entry that emits a single actionable stderr line and exits non-zero when the app is not running or MCP is disabled.
+- Built by esbuild into a single-file `dist/cosmosh-mcp.cjs` (CJS, `platform=node`). Main `prebuild` copies it into `packages/main/resources/helpers/mcp-bridge/` (git-ignored) for packaging; the packaged app writes a launcher under `<userData>/bin/` that runs the bundle under Electron as Node.
+
+### `skills`
+
+Repository-hosted agent skills. `skills/cosmosh-mcp/SKILL.md` teaches an external agent how to use the Cosmosh MCP tools, the connection/command authorization model, and the audit/credential ground rules.
 
 ## 3. Feature Placement Rules
 
@@ -258,3 +274,27 @@ flowchart TD
   - `packages/renderer/src/lib/server-proxy.ts` decides whether system resolution is needed before SSH, SFTP, or port-forward startup.
 - Backend runtime:
   - `packages/backend/src/ssh/proxy.ts` owns precedence, PAC result parsing, tunnel construction, timeout sharing, and credential-safe errors.
+
+## 11. MCP Server Ownership Map (2026-07)
+
+- Contract and settings:
+  - `packages/api-contract/src/mcp.ts` owns `McpCommandPolicy` / `McpServerCommandPolicy`, event types, and defaults.
+  - `packages/api-contract/openapi/cosmosh.openapi.yaml` owns the `/api/v1/mcp/*` management endpoints; the `/mcp` JSON-RPC endpoint is intentionally not in OpenAPI.
+  - `packages/api-contract/src/settings-registry.ts` owns `mcpEnabled` (default false) and `mcpCommandPolicy` (default `ask`) under the `mcp` category.
+- Persistent model:
+  - `packages/backend/prisma/schema.prisma` owns `SshServer.mcpCommandPolicy` and the `McpPairingToken` model, with migration `20260726000100_mcp_pairing_and_policy`.
+- Backend runtime:
+  - `packages/backend/src/mcp/*` owns the MCP server, pairing/discovery, shared connection capacity, background/visible connection registry, approval broker, terminal launch broker, event channel, bounded background exec, and tool registration.
+  - `packages/backend/src/ssh/agent-terminal.ts` and `session-service.ts` own trusted shared-PTY attachment, one-command serialization, command-id output capture, intervention tracking, and terminal-close invalidation.
+  - `packages/backend/src/http/routes/mcp.ts` owns the management REST surface; `src/mcp/http.ts` owns the `/mcp` endpoint mount and Bearer auth.
+- Stdio bridge and packaging:
+  - `packages/mcp-bridge/*` owns the `cosmosh-mcp` bridge bundle.
+  - `packages/main/scripts/sync-mcp-bridge.cjs` and `packages/main/src/mcp-bridge-launcher.ts` own bundle sync and the per-user launcher script; the launcher path is advertised through `COSMOSH_MCP_BRIDGE_LAUNCHER`.
+- Bridge owner:
+  - `packages/main/src/ipc/register-backend-ipc.ts`, `packages/main/src/preload.ts`, and `packages/renderer/src/vite-env.d.ts` for the `backend:mcp-*` and `app:focus-main-window` channels.
+- Renderer owner:
+  - `packages/renderer/src/components/settings/SettingsMcpSection.tsx` owns status, pairing, client configuration, connections, and approvals inside `Settings > MCP`; there is no standalone MCP page or tab.
+  - `McpApprovalHost.tsx` owns pane selection; `McpTerminalHost.tsx` owns replay-safe visible-tab launch/bind/close behavior; `agent-terminal-registry.ts` owns renderer-private pane/session identity; and `use-mcp-events.ts` owns event backfill.
+  - `packages/renderer/src/components/ssh/SSHServerEditorDialog.tsx` for the per-server command-policy override.
+- Documentation owner:
+  - `docs/developer/runtime/mcp-server.md` and `docs/zh-CN/developer/runtime/mcp-server.md` as the runtime source pages; `skills/cosmosh-mcp/SKILL.md` as the external-agent guide.

@@ -185,6 +185,7 @@ export const saveServerFromEditor = async ({
     remoteEnhancementsEnabled: formState.remoteEnhancementsEnabled,
     disableCharacterWidthCompatibilityMode: formState.disableCharacterWidthCompatibilityMode,
     terminalClipboardAccess: formState.terminalClipboardAccess,
+    mcpCommandPolicy: formState.mcpCommandPolicy,
     proxyMode: formState.proxyMode,
     proxyUrl: formState.proxyUrl.trim() || undefined,
   };

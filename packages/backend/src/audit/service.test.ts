@@ -80,6 +80,28 @@ test('AuditEventService.logEvent swallows write errors and returns null', async 
   }
 });
 
+test('AuditEventService.logRequiredEvent propagates write errors', async () => {
+  const service = new AuditEventService({
+    getDbClient: () =>
+      createMockDbClient({
+        create: async () => {
+          throw new Error('required write failed');
+        },
+      }),
+  });
+
+  await assert.rejects(
+    service.logRequiredEvent({
+      category: 'mcp',
+      action: 'authorization-requested',
+      outcome: 'success',
+      severity: 'warning',
+      metadata: {},
+    }),
+    /required write failed/,
+  );
+});
+
 test('AuditEventService.listEvents returns normalized pagination payload', async () => {
   let receivedFindManyArgs: unknown;
 

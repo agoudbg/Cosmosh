@@ -1,7 +1,11 @@
 import type { components } from '@cosmosh/api-contract';
 import {
+  DEFAULT_MCP_SERVER_COMMAND_POLICY,
   DEFAULT_TERMINAL_CLIPBOARD_ACCESS,
+  isMcpServerCommandPolicy,
   isTerminalClipboardAccess,
+  MCP_SERVER_COMMAND_POLICY_OPTIONS,
+  type McpServerCommandPolicy,
   type SshServerProxyMode,
   TERMINAL_CLIPBOARD_ACCESS_OPTIONS,
   type TerminalClipboardAccess,
@@ -56,6 +60,7 @@ type ServerEditorFormState = {
   remoteEnhancementsEnabled: boolean;
   disableCharacterWidthCompatibilityMode: boolean;
   terminalClipboardAccess: TerminalClipboardAccess;
+  mcpCommandPolicy: McpServerCommandPolicy;
   proxyMode: SshServerProxyMode;
   proxyUrl: string;
 };
@@ -475,6 +480,43 @@ const SSHServerEditorForm: React.FC<SSHServerEditorFormProps> = ({
                                   value={option}
                                 >
                                   {t(`ssh.terminalClipboardAccessOptions.${option}`)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                      </FormField>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <FormSectionHeading>{t('ssh.sectionMcp')}</FormSectionHeading>
+                      <FormField>
+                        <FormLabelWithTooltip
+                          htmlFor="ssh-editor-mcp-command-policy"
+                          tooltip={t('ssh.mcpCommandPolicyHint')}
+                        >
+                          {t('ssh.mcpCommandPolicyLabel')}
+                        </FormLabelWithTooltip>
+                        <FormControl>
+                          <Select
+                            value={formState.mcpCommandPolicy}
+                            onValueChange={(value) => {
+                              onChangeForm(
+                                'mcpCommandPolicy',
+                                isMcpServerCommandPolicy(value) ? value : DEFAULT_MCP_SERVER_COMMAND_POLICY,
+                              );
+                            }}
+                          >
+                            <SelectTrigger id="ssh-editor-mcp-command-policy">
+                              <SelectValue placeholder={t('ssh.mcpCommandPolicyPlaceholder')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MCP_SERVER_COMMAND_POLICY_OPTIONS.map((option) => (
+                                <SelectItem
+                                  key={option}
+                                  value={option}
+                                >
+                                  {t(`ssh.mcpCommandPolicyOptions.${option}`)}
                                 </SelectItem>
                               ))}
                             </SelectContent>

@@ -26,6 +26,17 @@
       "sessionCreateFailedNoReason": "本地终端会话创建失败。",
       "sessionNotFound": "未找到本地终端会话。"
     },
+    "mcp": {
+      "approvalNotFound": "未找到授权请求，或该请求已被处理。",
+      "auditUnavailable": "无法记录授权决定，未执行远程操作。",
+      "connectionClosed": "SSH 连接在就绪前已被关闭。",
+      "connectionNotFound": "未找到 MCP 连接，或该连接已被关闭。",
+      "disabled": "MCP 已禁用。请在「设置 → MCP」中启用后再使用此功能。",
+      "invalidDecision": "授权决定无效。",
+      "pairingTokenNotFound": "不存在有效的 MCP 配对令牌。",
+      "terminalLaunchNotFound": "未找到待处理的终端启动请求，或该请求已过期。",
+      "terminalUnavailable": "所选终端尚未满足 Agent 自动化条件。"
+    },
     "portForward": {
       "ruleActive": "请在编辑端口转发规则前将其停止。",
       "ruleIdRequired": "必须提供规则编号。",
@@ -164,6 +175,17 @@
     "localTerminal": {
       "profilesFetched": "本地终端配置已加载。",
       "sessionCreated": "本地终端会话已创建。"
+    },
+    "mcp": {
+      "approvalResolved": "授权决定已记录。",
+      "approvalsFetched": "MCP 授权请求已加载。",
+      "clientsFetched": "MCP 客户端已加载。",
+      "connectionsFetched": "MCP 连接已加载。",
+      "eventsChannelCreated": "MCP 事件通道已创建。",
+      "pairingTokenRotated": "MCP 配对令牌已生成。",
+      "statusFetched": "MCP 状态已加载。",
+      "terminalLaunchBound": "可见终端已连接至 Agent。",
+      "terminalLaunchesFetched": "待处理的可见终端启动请求已加载。"
     },
     "portForward": {
       "ruleCreated": "端口转发规则已创建。",

@@ -55,6 +55,7 @@ const createSftpTaskRouteContext = (service: SftpTaskRouteService): BackendAppCo
     sftpSessionService: service as SftpSessionService,
     portForwardSessionService: {} as never,
     localTerminalSessionService: {} as never,
+    mcpService: {} as never,
   };
 };
 

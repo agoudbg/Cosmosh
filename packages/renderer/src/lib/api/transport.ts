@@ -7,6 +7,17 @@ import type {
   ApiLocalTerminalCreateSessionResponse,
   ApiLocalTerminalListProfilesResponse,
   ApiLocalTerminalProfile,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
+  ApiMcpCreateEventsChannelResponse,
+  ApiMcpListApprovalsResponse,
+  ApiMcpListClientsResponse,
+  ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
+  ApiMcpResolveApprovalRequest,
+  ApiMcpResolveApprovalResponse,
+  ApiMcpRotatePairingTokenResponse,
+  ApiMcpStatusResponse,
   ApiPortForwardCreateRuleRequest,
   ApiPortForwardCreateRuleResponse,
   ApiPortForwardListRulesResponse,
@@ -150,7 +161,16 @@ type ApiResponse =
   | ApiPortForwardStartRuleResponse
   | ApiPortForwardStopRuleResponse
   | ApiLocalTerminalListProfilesResponse
-  | ApiLocalTerminalCreateSessionResponse;
+  | ApiLocalTerminalCreateSessionResponse
+  | ApiMcpStatusResponse
+  | ApiMcpRotatePairingTokenResponse
+  | ApiMcpListClientsResponse
+  | ApiMcpListConnectionsResponse
+  | ApiMcpListTerminalLaunchesResponse
+  | ApiMcpBindTerminalLaunchResponse
+  | ApiMcpListApprovalsResponse
+  | ApiMcpResolveApprovalResponse
+  | ApiMcpCreateEventsChannelResponse;
 
 export type ApiTransport = {
   target: RuntimeTarget;
@@ -281,6 +301,26 @@ export type ApiTransport = {
   deleteSshServer: (serverId: string) => Promise<{ success: boolean }>;
   deleteSshFolder: (folderId: string) => Promise<{ success: boolean }>;
   deleteSshKeychain: (keychainId: string) => Promise<{ success: boolean }>;
+  getMcpStatus: () => Promise<ApiMcpStatusResponse | ApiErrorResponse>;
+  rotateMcpPairingToken: () => Promise<ApiMcpRotatePairingTokenResponse | ApiErrorResponse>;
+  revokeMcpPairingToken: () => Promise<{ success: boolean }>;
+  listMcpClients: () => Promise<ApiMcpListClientsResponse | ApiErrorResponse>;
+  listMcpConnections: () => Promise<ApiMcpListConnectionsResponse | ApiErrorResponse>;
+  closeMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
+  detachMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
+  interruptMcpConnection: (connectionId: string) => Promise<{ success: boolean }>;
+  listMcpApprovals: () => Promise<ApiMcpListApprovalsResponse | ApiErrorResponse>;
+  resolveMcpApproval: (
+    approvalId: string,
+    payload: ApiMcpResolveApprovalRequest,
+  ) => Promise<ApiMcpResolveApprovalResponse | ApiErrorResponse>;
+  listMcpTerminalLaunches: () => Promise<ApiMcpListTerminalLaunchesResponse | ApiErrorResponse>;
+  cancelMcpTerminalLaunch: (launchId: string) => Promise<{ success: boolean }>;
+  bindMcpTerminalLaunch: (
+    launchId: string,
+    payload: ApiMcpBindTerminalLaunchRequest,
+  ) => Promise<ApiMcpBindTerminalLaunchResponse | ApiErrorResponse>;
+  createMcpEventsChannel: () => Promise<ApiMcpCreateEventsChannelResponse | ApiErrorResponse>;
 };
 
 // Browser fallback uses build-time URL configuration to prepare for future web runtime.
@@ -519,6 +559,53 @@ const createElectronTransport = (): ApiTransport => {
     },
     deleteSshKeychain: async (keychainId) => {
       return await window.electron!.backendSshDeleteKeychain(keychainId);
+    },
+    getMcpStatus: async () => {
+      return (await window.electron!.backendMcpGetStatus()) as ApiMcpStatusResponse | ApiErrorResponse;
+    },
+    rotateMcpPairingToken: async () => {
+      return (await window.electron!.backendMcpRotatePairingToken()) as
+        ApiMcpRotatePairingTokenResponse | ApiErrorResponse;
+    },
+    revokeMcpPairingToken: async () => {
+      return await window.electron!.backendMcpRevokePairingToken();
+    },
+    listMcpClients: async () => {
+      return (await window.electron!.backendMcpListClients()) as ApiMcpListClientsResponse | ApiErrorResponse;
+    },
+    listMcpConnections: async () => {
+      return (await window.electron!.backendMcpListConnections()) as ApiMcpListConnectionsResponse | ApiErrorResponse;
+    },
+    closeMcpConnection: async (connectionId) => {
+      return await window.electron!.backendMcpCloseConnection(connectionId);
+    },
+    detachMcpConnection: async (connectionId) => {
+      return await window.electron!.backendMcpDetachConnection(connectionId);
+    },
+    interruptMcpConnection: async (connectionId) => {
+      return await window.electron!.backendMcpInterruptConnection(connectionId);
+    },
+    listMcpApprovals: async () => {
+      return (await window.electron!.backendMcpListApprovals()) as ApiMcpListApprovalsResponse | ApiErrorResponse;
+    },
+    resolveMcpApproval: async (approvalId, payload) => {
+      return (await window.electron!.backendMcpResolveApproval(approvalId, payload)) as
+        ApiMcpResolveApprovalResponse | ApiErrorResponse;
+    },
+    listMcpTerminalLaunches: async () => {
+      return (await window.electron!.backendMcpListTerminalLaunches()) as
+        ApiMcpListTerminalLaunchesResponse | ApiErrorResponse;
+    },
+    cancelMcpTerminalLaunch: async (launchId) => {
+      return await window.electron!.backendMcpCancelTerminalLaunch(launchId);
+    },
+    bindMcpTerminalLaunch: async (launchId, payload) => {
+      return (await window.electron!.backendMcpBindTerminalLaunch(launchId, payload)) as
+        ApiMcpBindTerminalLaunchResponse | ApiErrorResponse;
+    },
+    createMcpEventsChannel: async () => {
+      return (await window.electron!.backendMcpCreateEventsChannel()) as
+        ApiMcpCreateEventsChannelResponse | ApiErrorResponse;
     },
   };
 };
@@ -824,6 +911,96 @@ const createBrowserTransport = (): ApiTransport => {
       });
 
       return { success: response.status === 204 };
+    },
+    getMcpStatus: async () => {
+      return (await callBrowserApi(API_PATHS.mcpGetStatus, 'GET')) as ApiMcpStatusResponse | ApiErrorResponse;
+    },
+    rotateMcpPairingToken: async () => {
+      return (await callBrowserApi(API_PATHS.mcpRotatePairingToken, 'POST')) as
+        ApiMcpRotatePairingTokenResponse | ApiErrorResponse;
+    },
+    revokeMcpPairingToken: async () => {
+      const response = await fetch(`${resolveBrowserBaseUrl()}${API_PATHS.mcpRevokePairingToken}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+
+      return { success: response.status === 204 };
+    },
+    listMcpClients: async () => {
+      return (await callBrowserApi(API_PATHS.mcpListClients, 'GET')) as ApiMcpListClientsResponse | ApiErrorResponse;
+    },
+    listMcpConnections: async () => {
+      return (await callBrowserApi(API_PATHS.mcpListConnections, 'GET')) as
+        ApiMcpListConnectionsResponse | ApiErrorResponse;
+    },
+    closeMcpConnection: async (connectionId) => {
+      const path = replaceApiPathToken(API_PATHS.mcpCloseConnection, 'connectionId', connectionId);
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+
+      return { success: response.status === 204 };
+    },
+    detachMcpConnection: async (connectionId) => {
+      const path = replaceApiPathToken(API_PATHS.mcpDetachConnection, 'connectionId', connectionId);
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+      return { success: response.status === 204 };
+    },
+    interruptMcpConnection: async (connectionId) => {
+      const path = replaceApiPathToken(API_PATHS.mcpInterruptConnection, 'connectionId', connectionId);
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+      return { success: response.status === 204 };
+    },
+    listMcpApprovals: async () => {
+      return (await callBrowserApi(API_PATHS.mcpListApprovals, 'GET')) as
+        ApiMcpListApprovalsResponse | ApiErrorResponse;
+    },
+    resolveMcpApproval: async (approvalId, payload) => {
+      const path = replaceApiPathToken(API_PATHS.mcpResolveApproval, 'approvalId', approvalId);
+      return (await callBrowserApi(path, 'POST', payload)) as ApiMcpResolveApprovalResponse | ApiErrorResponse;
+    },
+    listMcpTerminalLaunches: async () => {
+      return (await callBrowserApi(API_PATHS.mcpListTerminalLaunches, 'GET')) as
+        ApiMcpListTerminalLaunchesResponse | ApiErrorResponse;
+    },
+    cancelMcpTerminalLaunch: async (launchId) => {
+      const path = replaceApiPathToken(API_PATHS.mcpCancelTerminalLaunch, 'launchId', launchId);
+      const response = await fetch(`${resolveBrowserBaseUrl()}${path}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${resolveBrowserAuthToken() ?? ''}`,
+          [API_HEADERS.locale]: navigator.language,
+        },
+      });
+      return { success: response.status === 204 };
+    },
+    bindMcpTerminalLaunch: async (launchId, payload) => {
+      const path = replaceApiPathToken(API_PATHS.mcpBindTerminalLaunch, 'launchId', launchId);
+      return (await callBrowserApi(path, 'POST', payload)) as ApiMcpBindTerminalLaunchResponse | ApiErrorResponse;
+    },
+    createMcpEventsChannel: async () => {
+      return (await callBrowserApi(API_PATHS.mcpCreateEventsChannel, 'POST')) as
+        ApiMcpCreateEventsChannelResponse | ApiErrorResponse;
     },
   };
 };

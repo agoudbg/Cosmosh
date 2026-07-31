@@ -1,4 +1,4 @@
-import type { AppCloseConfirmationRequest } from '@cosmosh/api-contract';
+import type { AgentTerminalAttachmentStatus, AppCloseConfirmationRequest } from '@cosmosh/api-contract';
 import classNames from 'classnames';
 import React from 'react';
 
@@ -6,6 +6,8 @@ import AppCommandPaletteHost, { type AppCommandPaletteHostHandle } from './compo
 import CloseWindowConfirmationDialog from './components/CloseWindowConfirmationDialog';
 import SystemPerformanceOverlay from './components/debug/SystemPerformanceOverlay';
 import Header from './components/header/Header';
+import McpApprovalHost from './components/McpApprovalHost';
+import McpTerminalHost from './components/McpTerminalHost';
 import { listLocalTerminalProfiles } from './lib/backend';
 import {
   readEnableHeapSnapshotPreference,
@@ -479,7 +481,9 @@ const App: React.FC = () => {
                 <React.Suspense fallback={pageLoadingFallback}>
                   <SSH
                     tabId={tab.id}
+                    tabTitle={tab.title}
                     isActive={tab.id === activeTabId}
+                    agentTerminal={tab.state?.agentTerminal}
                     connectionIntent={
                       tab.state?.sshConnectionIntent ?? {
                         intentId: `tab:${tab.id}:ssh`,
@@ -504,6 +508,35 @@ const App: React.FC = () => {
                         iconKey: visual.iconKey,
                         iconColorKey: visual.iconColorKey,
                       });
+                    }}
+                    onAgentTerminalAttachmentChange={(status: AgentTerminalAttachmentStatus | null) => {
+                      const currentMarker = tab.state?.agentTerminal;
+                      if (status?.state === 'idle' || status?.state === 'running') {
+                        if (!status.client || !status.connectionId) {
+                          return;
+                        }
+                        updateTab(tab.id, {
+                          state: {
+                            ...(tab.state ?? {}),
+                            agentTerminal: {
+                              client: status.client,
+                              agentCreatedTab: status.agentCreatedTab ?? currentMarker?.agentCreatedTab ?? false,
+                              launchId: currentMarker?.launchId,
+                              connectionId: status.connectionId,
+                            },
+                          },
+                        });
+                        return;
+                      }
+
+                      if (currentMarker?.connectionId) {
+                        updateTab(tab.id, {
+                          state: {
+                            ...(tab.state ?? {}),
+                            agentTerminal: undefined,
+                          },
+                        });
+                      }
                     }}
                     onOpenDirectoryInSFTP={(serverId, serverName, initialPath) => {
                       const nextIntent = {
@@ -726,6 +759,14 @@ const App: React.FC = () => {
         <CloseWindowConfirmationDialog
           open={closeConfirmationRequest !== null}
           onResolve={handleCloseConfirmationResolve}
+        />
+
+        <McpApprovalHost />
+        <McpTerminalHost
+          tabs={tabs}
+          addTab={addTab}
+          updateTab={updateTab}
+          closeTab={closeTab}
         />
       </div>
     </AppToastProvider>

@@ -6,6 +6,17 @@ import type {
   ApiLocalTerminalCreateSessionRequest,
   ApiLocalTerminalCreateSessionResponse,
   ApiLocalTerminalListProfilesResponse,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
+  ApiMcpCreateEventsChannelResponse,
+  ApiMcpListApprovalsResponse,
+  ApiMcpListClientsResponse,
+  ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
+  ApiMcpResolveApprovalRequest,
+  ApiMcpResolveApprovalResponse,
+  ApiMcpRotatePairingTokenResponse,
+  ApiMcpStatusResponse,
   ApiPortForwardCreateRuleRequest,
   ApiPortForwardCreateRuleResponse,
   ApiPortForwardListRulesResponse,
@@ -373,6 +384,9 @@ contextBridge.exposeInMainWorld('electron', {
   // ---------------------------------------------------------------------------
   closeWindow: () => {
     sendIpc('app:close-window');
+  },
+  focusWindow: () => {
+    return invokeIpc<boolean>('app:focus-main-window');
   },
   onCloseConfirmationRequested,
   respondToCloseConfirmation: (value: AppCloseConfirmationResponse) => {
@@ -780,6 +794,61 @@ contextBridge.exposeInMainWorld('electron', {
   },
   backendLocalTerminalCloseSession: (sessionId: string) => {
     return invokeIpc<{ success: boolean }>('backend:local-terminal-close-session', sessionId);
+  },
+
+  // ---------------------------------------------------------------------------
+  // MCP management channels
+  // ---------------------------------------------------------------------------
+  // MCP management IPC proxy group (renderer authorization UI + management panel).
+  backendMcpGetStatus: () => {
+    return invokeIpc<ApiMcpStatusResponse | ApiErrorResponse>('backend:mcp-get-status');
+  },
+  backendMcpRotatePairingToken: () => {
+    return invokeIpc<ApiMcpRotatePairingTokenResponse | ApiErrorResponse>('backend:mcp-rotate-pairing-token');
+  },
+  backendMcpRevokePairingToken: () => {
+    return invokeIpc<{ success: boolean }>('backend:mcp-revoke-pairing-token');
+  },
+  backendMcpListClients: () => {
+    return invokeIpc<ApiMcpListClientsResponse | ApiErrorResponse>('backend:mcp-list-clients');
+  },
+  backendMcpListConnections: () => {
+    return invokeIpc<ApiMcpListConnectionsResponse | ApiErrorResponse>('backend:mcp-list-connections');
+  },
+  backendMcpCloseConnection: (connectionId: string) => {
+    return invokeIpc<{ success: boolean }>('backend:mcp-close-connection', connectionId);
+  },
+  backendMcpDetachConnection: (connectionId: string) => {
+    return invokeIpc<{ success: boolean }>('backend:mcp-detach-connection', connectionId);
+  },
+  backendMcpInterruptConnection: (connectionId: string) => {
+    return invokeIpc<{ success: boolean }>('backend:mcp-interrupt-connection', connectionId);
+  },
+  backendMcpListApprovals: () => {
+    return invokeIpc<ApiMcpListApprovalsResponse | ApiErrorResponse>('backend:mcp-list-approvals');
+  },
+  backendMcpResolveApproval: (approvalId: string, payload: ApiMcpResolveApprovalRequest) => {
+    return invokeIpc<ApiMcpResolveApprovalResponse | ApiErrorResponse>(
+      'backend:mcp-resolve-approval',
+      approvalId,
+      payload,
+    );
+  },
+  backendMcpListTerminalLaunches: () => {
+    return invokeIpc<ApiMcpListTerminalLaunchesResponse | ApiErrorResponse>('backend:mcp-list-terminal-launches');
+  },
+  backendMcpCancelTerminalLaunch: (launchId: string) => {
+    return invokeIpc<{ success: boolean }>('backend:mcp-cancel-terminal-launch', launchId);
+  },
+  backendMcpBindTerminalLaunch: (launchId: string, payload: ApiMcpBindTerminalLaunchRequest) => {
+    return invokeIpc<ApiMcpBindTerminalLaunchResponse | ApiErrorResponse>(
+      'backend:mcp-bind-terminal-launch',
+      launchId,
+      payload,
+    );
+  },
+  backendMcpCreateEventsChannel: () => {
+    return invokeIpc<ApiMcpCreateEventsChannelResponse | ApiErrorResponse>('backend:mcp-create-events-channel');
   },
   platform: process.platform,
 });

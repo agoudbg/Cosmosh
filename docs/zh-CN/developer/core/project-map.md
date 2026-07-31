@@ -11,6 +11,8 @@ flowchart TB
   ROOT --> API[packages/api-contract]
   ROOT --> I18N[packages/i18n]
   ROOT --> REMOTE[packages/remote-bootstrap]
+  ROOT --> MCPB[packages/mcp-bridge]
+  ROOT --> SKILLS[skills]
   ROOT --> DOCS[docs]
   ROOT --> SCRIPTS[scripts]
   ROOT --> CI[".github/workflows"]
@@ -70,14 +72,14 @@ flowchart TB
 - **角色**：React UI 层。
 - **关键目录**：
   - `src/pages`：功能页面（`Home`、`SSH`、`SFTP`、`Settings`、`SettingsEditor`等）。Home 负责 SSH 服务器、钥匙链与端口转发管理界面。
-  - `src/pages/ssh`：SSH 终端 controller 与纯运行时 helper。`use-ssh-core.ts` 编排 pane 路由；primary/secondary hook 分别持有独立 session 资源；`ssh-pane-state.ts` 归并全部 pane 级 transport/helper 消息；`ssh-command-markers.ts` 负责待确认/已确认 xterm marker 生命周期与 pane-local 命令时间线模型；`TerminalCommandTimeline.tsx` 渲染可信的右侧命令轨道。
+  - `src/pages/ssh`：SSH 终端 controller 与纯运行时 helper。`use-ssh-core.ts` 编排 pane 路由；primary/secondary hook 分别持有独立 session 资源；`ssh-pane-state.ts` 归并全部 pane 级 transport/helper 与 Agent attachment 消息；`ssh-command-markers.ts` 负责待确认/已确认 xterm marker 生命周期与 pane-local 命令时间线模型；`TerminalCommandTimeline.tsx` 渲染可信的右侧命令轨道；`SSHTerminalPaneLayout.tsx` 渲染 pane-local Agent 状态栏。
   - `src/pages/sftp`：SFTP 页面子模块。`SFTP.tsx` 保持为 tab 级编排入口；该目录负责浏览器式 UI 编排、动作/拖拽菜单、目录/树/详情面板、归档 Dialog 与归档任务轮询、固定行虚拟化辅助函数与测试，以及 prompt、偏好设置、选择模型、键盘快捷键、拖拽、预览动作、renderer 并发/串行任务通道、失败注意状态、字节进度展示等 controller hooks 和共享 SFTP 辅助函数。`src/lib/api/sftp-task-runtime.ts`负责 typed client wrapper 使用的固定接纳 session 任务轮询。
   - `src/pages/settings-editor`：基于 CodeMirror 的设置 JSON 编辑器模块，包含 schema 诊断、补全、悬浮详情与编辑器生命周期封装。
   - `src/components/CloseWindowConfirmationDialog.tsx`：为 Main 持有的活动会话关闭决策提供共享 Renderer `Dialog` 界面。
   - `src/components/ui`：基于 Radix 的原子组件封装、可复用侧边栏导航（`SidebarNav`）、可复用查找/替换面板、CodeMirror 文本右键菜单与样式契约。
   - `src/components/home`：Home/SSH 共享实体模块（卡片/图标渲染、基于 TanStack Virtual 的视觉编辑器、可复用的创建文件夹弹窗）。
   - `src/components/terminal`：终端交互复合组件（右键菜单、选区工具条、自动补全面板）。
-  - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）、renderer 请求 trace 镜像启动逻辑（`backend-request-trace-mirror.ts`）、共享时间显示格式化工具（`date-time-format.ts`）、共享 CodeMirror 语法高亮与查找/替换 adapter，以及工具抽象（含共享实体视觉工具、Home 文件夹分组与创建文件夹 Hook）。
+  - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）、renderer 请求 trace 镜像启动逻辑（`backend-request-trace-mirror.ts`）、共享时间显示格式化工具（`date-time-format.ts`）、共享 CodeMirror 语法高亮与查找/替换 adapter，以及工具抽象（含共享实体视觉工具、Home 文件夹分组与创建文件夹 Hook、`agent-terminal-registry.ts` 终端 surface registry 和 `mcp-terminal-lifecycle.ts` launch/tab 生命周期 helper）。
   - `theme`：生成 CSS Variables 的令牌源。
 
 ### `packages/backend`
@@ -86,10 +88,11 @@ flowchart TB
 - **关键目录**：
   - `src/http/routes`：设置、SSH 实体、SFTP 会话/任务操作、端口转发规则与本地终端动作 REST 路由。
   - `src/audit`：本地优先审计领域（脱敏、保留策略、查询模型与写入服务）。
-  - `src/ssh`：SSH 认证/会话逻辑（`ssh2`、known-host 信任、遥测、钥匙链凭据解析）、流式 OSC 777 parser/信任 gate、结构化命令生命周期消费，以及供 shell 与非 shell transport 共用的已认证连接 helper。该 helper 会为每条 transport 创建新的 proxy socket，并支持 attempt 级压缩策略与取消信号。
+  - `src/ssh`：SSH 认证/会话逻辑（`ssh2`、known-host 信任、遥测、钥匙链凭据解析）、流式 OSC 777 parser/信任 gate、结构化命令生命周期消费、`agent-terminal.ts` 共享 PTY attachment/命令状态机，以及供 shell 与非 shell transport 共用的已认证连接 helper。该 helper 会为每条 transport 创建新的 proxy socket，并支持 attempt 级压缩策略与取消信号。
   - `src/remote-bootstrap`：交互 shell 打开前的远端增强编排。它通过五分钟 success-only cache 合并并发 manifest fetch，使用与交互 client 隔离的临时 SSH transport 探测远端平台，校验安装状态，按需注入下载 wrapper，返回可信 helper 契约，转发 `bootstrap-status` 并记录 bootstrap 终态审计。
   - `src/port-forward`：SSH 端口转发规则校验、SOCKS5 解析与活动运行时会话服务。
   - `src/sftp`：SFTP 浏览、下载、文件操作、任务调度与远端归档会话逻辑。`session-service.ts` 负责会话授权/生命周期与普通 `ssh2.sftp` 操作；`task-scheduler.ts` 负责每会话 total/heavy/mutation admission、POSIX path claim、绝对 deadline、取消信号与仅驻留内存的任务快照；`archive-service.ts` 在调度器独占 claim 下负责固定 POSIX 命令构造、能力探测、异步归档状态、暂存/提交、冲突合并、取消、审计与清理。单文件传输继续使用既有短期内存字节进度记录。
+  - `src/mcp`：对外暴露的 MCP 服务器运行时。`service.ts` 为受设置门控的生命周期门面；`pairing.ts` 负责加密配对令牌与 `<userData>/mcp/bridge.json` 发现文件；`http.ts` 挂载受 Bearer 保护的 `/mcp` Streamable HTTP 端点；`sessions.ts` 负责每客户端的 `McpServer` 与传输状态；`connection-registry.ts` 统一管理 background、terminal 与 attached 连接；`connection-capacity.ts` 实施共享八连接上限；`terminal-launch-broker.ts` 提供 60 秒可重放的可见标签页 launch；`approval-broker.ts` 负责待授权队列（120 秒超时即拒绝）；`events-service.ts` 向渲染层推送授权/连接/会话/launch 事件；`exec.ts` 执行带 stdout/stderr/exitCode 捕获的有界后台命令；`tools.ts` 注册六个 MCP 工具。由 `mcpEnabled` 默认关闭。
   - `src/settings`：设置默认值、请求校验解析，以及供 HTTP 路由和运行时服务复用的 AppSettings 读取器。
   - `src/validation-utils.ts`：后端 HTTP 边界校验共享原语，供路由与领域 payload 解析器复用。
   - `src/local-terminal`：本地 PTY 会话逻辑（`node-pty`）。
@@ -107,7 +110,7 @@ flowchart TB
 - `src/settings-registry.ts`：所有设置定义的**唯一来源**——类型、默认值、约束、枚举集、UI 控件元数据、分类与辅助函数。增删设置项仅需编辑此文件。
 - `src/settings.ts`：基于注册表的通用校验与规范化辅助函数（`normalizeSettingsValuesStrict`、`normalizeSettingsValuesWithDefaults`），供 backend 与 renderer 共享。
 - `src/sftp.ts`：SFTP 条目/名称排序共享 helper，供后端会话列表与渲染层浏览器/树视图复用。
-- `src/terminal-protocol.ts`：Backend 与 renderer 共享的协议 v2 终端 WebSocket union、远端 shell event/capability 常量，以及 bootstrap/runtime 状态类型。
+- `src/terminal-protocol.ts`：Backend 与 renderer 共享的协议 v2 终端 WebSocket union、远端 shell event/capability 常量、Agent attachment 状态，以及 bootstrap/runtime 状态类型。
 
 ### `packages/i18n`
 
@@ -125,6 +128,19 @@ main/backend/renderer 作用域共用的语言 JSON 源与运行时 i18n 包。
 - `cmd/cosmosh-bootstrap`：将下载得到的 bootstrap binary 与 Go 生成的 shell helper 安装到远端用户级目录，或报告经过校验的已安装运行时契约。
 - `internal/wrapper`：校验来自 manifest 的 wrapper 输入，并用 shell-safe quoting 渲染 POSIX/fish shell source。
 - `internal/install`：负责版本化 helper 生成、符合各 shell 真实能力的 OSC 声明、helper/binary 精确校验、原子用户级安装、Bash 交互/登录 profile 覆盖、保留模式与符号链接的 profile 修复、已安装状态报告、version marker 写入以及 line-delimited `bootstrap-status` 输出。
+
+### `packages/mcp-bridge`
+
+独立的 `cosmosh-mcp` stdio 桥接，用于将外部 MCP 客户端（Claude Code/Desktop、Cursor）连接到正在运行的应用。它仅做传输层 JSON-RPC 透传，不含任何产品逻辑。
+
+- `src/discovery.ts`：解析 `<userData>/mcp/bridge.json`（依次通过 `--discovery`、`COSMOSH_MCP_DISCOVERY` 或平台默认路径），取得回环端口与配对令牌。
+- `src/proxy.ts`：在 `StdioServerTransport` ↔ `StreamableHTTPClientTransport('http://127.0.0.1:<port>/mcp', { Authorization: Bearer })` 之间桥接，断连时重读发现文件重试一次。
+- `src/index.ts`：CLI 入口；当应用未运行或 MCP 未启用时，输出单行可操作的 stderr 错误并以非零码退出。
+- 由 esbuild 打包为单文件 `dist/cosmosh-mcp.cjs`（CJS，`platform=node`）。main 的 `prebuild` 会将其复制到 `packages/main/resources/helpers/mcp-bridge/`（已 gitignore）随打包发运；打包版应用在 `<userData>/bin/` 写入启动器，以 Electron 作为 Node 运行该产物。
+
+### `skills`
+
+仓库内置的 Agent Skill。`skills/cosmosh-mcp/SKILL.md` 指导外部 Agent 如何使用 Cosmosh MCP 工具、连接/命令授权模型以及审计与凭据底线规则。
 
 ## 3. 功能落位规则
 
@@ -258,3 +274,27 @@ flowchart TD
   - `packages/renderer/src/lib/server-proxy.ts` 在 SSH、SFTP 或端口转发启动前判断是否需要系统代理解析。
 - Backend 运行时：
   - `packages/backend/src/ssh/proxy.ts` 负责优先级、PAC 结果解析、隧道建立、共享超时与凭据安全错误。
+
+## 11. MCP 服务器归属映射（2026-07）
+
+- 契约与设置：
+  - `packages/api-contract/src/mcp.ts` 负责 `McpCommandPolicy` / `McpServerCommandPolicy`、事件类型与默认值。
+  - `packages/api-contract/openapi/cosmosh.openapi.yaml` 负责 `/api/v1/mcp/*` 管理端点；`/mcp` JSON-RPC 端点有意不进入 OpenAPI。
+  - `packages/api-contract/src/settings-registry.ts` 负责 `mcp` 分类下的 `mcpEnabled`（默认 false）与 `mcpCommandPolicy`（默认 `ask`）。
+- 持久化模型：
+  - `packages/backend/prisma/schema.prisma` 负责 `SshServer.mcpCommandPolicy` 与 `McpPairingToken` 模型，迁移为 `20260726000100_mcp_pairing_and_policy`。
+- 后端运行时：
+  - `packages/backend/src/mcp/*` 负责 MCP 服务器、配对/发现、三模式连接注册表、共享容量、terminal launch broker、授权 broker、事件通道、有界 exec 与六工具注册。
+  - `packages/backend/src/ssh/agent-terminal.ts` 负责可信 Remote Enhancements 门禁、共享 PTY attachment、单命令状态机与输出捕获。
+  - `packages/backend/src/http/routes/mcp.ts` 负责管理 REST 面；`src/mcp/http.ts` 负责 `/mcp` 端点挂载与 Bearer 认证。
+- stdio 桥接与打包：
+  - `packages/mcp-bridge/*` 负责 `cosmosh-mcp` 桥接产物。
+  - `packages/main/scripts/sync-mcp-bridge.cjs` 与 `packages/main/src/mcp-bridge-launcher.ts` 负责产物同步与每用户启动器脚本；启动器路径通过 `COSMOSH_MCP_BRIDGE_LAUNCHER` 通告。
+- 桥接归属：
+  - `packages/main/src/ipc/register-backend-ipc.ts`、`packages/main/src/preload.ts` 与 `packages/renderer/src/vite-env.d.ts` 负责 `backend:mcp-*` 与 `app:focus-main-window` 通道。
+- 渲染层归属：
+  - `packages/renderer/src/components/settings/SettingsMcpSection.tsx` 负责 `设置 > MCP` 内的状态、配对、客户端配置、连接与授权；不再存在独立 MCP 页面或标签页。
+  - `McpApprovalHost.tsx` 负责终端选择；`McpTerminalHost.tsx` 负责 launch 重放、标签页创建/聚焦、绑定与关闭/保留语义；`agent-terminal-registry.ts` 负责渲染层私有 pane/session 标识；`use-mcp-events.ts` 负责事件补齐。
+  - `packages/renderer/src/components/ssh/SSHServerEditorDialog.tsx` 负责每服务器命令策略覆盖。
+- 文档归属：
+  - `docs/developer/runtime/mcp-server.md` 与 `docs/zh-CN/developer/runtime/mcp-server.md` 作为运行时源页；`skills/cosmosh-mcp/SKILL.md` 作为外部 Agent 指南。

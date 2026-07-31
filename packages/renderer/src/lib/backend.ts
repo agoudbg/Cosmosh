@@ -2,6 +2,17 @@ import type {
   ApiAuditEventDetailResponse,
   ApiAuditEventListQuery,
   ApiAuditEventListResponse,
+  ApiMcpBindTerminalLaunchRequest,
+  ApiMcpBindTerminalLaunchResponse,
+  ApiMcpCreateEventsChannelResponse,
+  ApiMcpListApprovalsResponse,
+  ApiMcpListClientsResponse,
+  ApiMcpListConnectionsResponse,
+  ApiMcpListTerminalLaunchesResponse,
+  ApiMcpResolveApprovalRequest,
+  ApiMcpResolveApprovalResponse,
+  ApiMcpRotatePairingTokenResponse,
+  ApiMcpStatusResponse,
   ApiPortForwardCreateRuleRequest,
   ApiPortForwardCreateRuleResponse,
   ApiPortForwardListRulesResponse,
@@ -391,4 +402,66 @@ export const deleteSshFolder = async (folderId: string): Promise<{ success: bool
 
 export const deleteSshKeychain = async (keychainId: string): Promise<{ success: boolean }> => {
   return backendClient.deleteSshKeychain(keychainId);
+};
+
+export const getMcpStatus = async (): Promise<ApiMcpStatusResponse> => {
+  return backendClient.getMcpStatus();
+};
+
+export const rotateMcpPairingToken = async (): Promise<ApiMcpRotatePairingTokenResponse> => {
+  return backendClient.rotateMcpPairingToken();
+};
+
+export const revokeMcpPairingToken = async (): Promise<{ success: boolean }> => {
+  return backendClient.revokeMcpPairingToken();
+};
+
+export const listMcpClients = async (): Promise<ApiMcpListClientsResponse> => {
+  return backendClient.listMcpClients();
+};
+
+export const listMcpConnections = async (): Promise<ApiMcpListConnectionsResponse> => {
+  return backendClient.listMcpConnections();
+};
+
+export const closeMcpConnection = async (connectionId: string): Promise<{ success: boolean }> => {
+  return backendClient.closeMcpConnection(connectionId);
+};
+
+export const detachMcpConnection = async (connectionId: string): Promise<{ success: boolean }> => {
+  return backendClient.detachMcpConnection(connectionId);
+};
+
+export const interruptMcpConnection = async (connectionId: string): Promise<{ success: boolean }> => {
+  return backendClient.interruptMcpConnection(connectionId);
+};
+
+export const listMcpApprovals = async (): Promise<ApiMcpListApprovalsResponse> => {
+  return backendClient.listMcpApprovals();
+};
+
+export const resolveMcpApproval = async (
+  approvalId: string,
+  payload: ApiMcpResolveApprovalRequest,
+): Promise<ApiMcpResolveApprovalResponse> => {
+  return backendClient.resolveMcpApproval(approvalId, payload);
+};
+
+export const listMcpTerminalLaunches = async (): Promise<ApiMcpListTerminalLaunchesResponse> => {
+  return backendClient.listMcpTerminalLaunches();
+};
+
+export const cancelMcpTerminalLaunch = async (launchId: string): Promise<{ success: boolean }> => {
+  return backendClient.cancelMcpTerminalLaunch(launchId);
+};
+
+export const bindMcpTerminalLaunch = async (
+  launchId: string,
+  payload: ApiMcpBindTerminalLaunchRequest,
+): Promise<ApiMcpBindTerminalLaunchResponse> => {
+  return backendClient.bindMcpTerminalLaunch(launchId, payload);
+};
+
+export const createMcpEventsChannel = async (): Promise<ApiMcpCreateEventsChannelResponse> => {
+  return backendClient.createMcpEventsChannel();
 };

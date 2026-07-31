@@ -5,6 +5,7 @@
     },
     "categories": {
       "hostTrust": "Host Trust",
+      "mcp": "MCP",
       "portForward": "Port Forwarding",
       "settings": "Settings",
       "sftpSession": "SFTP Session",
@@ -310,6 +311,132 @@
     "selectAll": "Select All",
     "undo": "Undo"
   },
+  "mcp": {
+    "actions": {
+      "copy": "Copy"
+    },
+    "approvals": {
+      "empty": "No pending authorization requests.",
+      "kindAttach": "Attach terminal",
+      "kindCommand": "Command execution",
+      "kindConnection": "Open connection",
+      "title": "Pending Authorizations"
+    },
+    "clients": {
+      "empty": "No agents are connected.",
+      "started": "Connected {time}",
+      "title": "Connected Clients"
+    },
+    "config": {
+      "description": "Paste this into your agent's MCP configuration to connect it to Cosmosh.",
+      "devDiscoveryLabel": "Discovery environment variable",
+      "devNotice": "Client configuration is generated for packaged installs, where Cosmosh writes the bridge launcher. In development, point your client at a locally built cosmosh-mcp bundle and set the discovery path below.",
+      "hintClaudeCode": "Add to your project's .mcp.json (Claude Code) or Cursor's mcp.json.",
+      "hintClaudeDesktop": "Add to claude_desktop_config.json, then restart Claude Desktop.",
+      "hintRaw": "For clients that take separate command, args, and env fields.",
+      "title": "Client Configuration",
+      "variantClaudeCode": ".mcp.json",
+      "variantClaudeDesktop": "claude_desktop_config.json",
+      "variantRaw": "Raw command"
+    },
+    "connections": {
+      "close": "Close connection",
+      "commandCount": "{count} commands",
+      "empty": "No active connections.",
+      "mode": {
+        "attached": "Attached terminal",
+        "background": "Background",
+        "terminal": "Visible terminal"
+      },
+      "opened": "Opened {time}",
+      "preApproved": "Commands pre-approved",
+      "status": {
+        "busy": "Busy",
+        "ready": "Ready"
+      },
+      "title": "Active Connections"
+    },
+    "errors": {
+      "connectionCloseFailed": "Failed to close the connection.",
+      "copyFailed": "Failed to copy to clipboard.",
+      "refreshFailed": "Failed to load MCP status.",
+      "tokenRevokeFailed": "Failed to revoke the pairing token.",
+      "tokenRotateFailed": "Failed to rotate the pairing token."
+    },
+    "toasts": {
+      "connectionClosed": "Connection closed.",
+      "copied": "Copied to clipboard.",
+      "tokenRevoked": "Pairing token revoked.",
+      "tokenRotated": "Pairing token rotated."
+    },
+    "token": {
+      "configured": "A pairing token is configured.",
+      "description": "Agents authenticate to Cosmosh with this pairing token. Rotating it invalidates the previous token.",
+      "discoveryPath": "Discovery file",
+      "freshNotice": "Copy this token now — it is shown only once.",
+      "launcherPath": "Bridge launcher",
+      "notConfigured": "No pairing token is configured yet.",
+      "revoke": "Revoke",
+      "rotate": "Rotate token",
+      "title": "Pairing Token",
+      "tokenLabel": "Pairing token"
+    }
+  },
+  "mcpApproval": {
+    "actions": {
+      "approve": "Approve",
+      "approveForConnection": "Approve for this connection",
+      "deny": "Deny"
+    },
+    "attach": {
+      "description": "An agent wants to use an existing SSH terminal that you select.",
+      "disabledReasons": {
+        "already-attached": "Already attached to another Agent",
+        "automation-unavailable": "Trusted Remote Enhancements are unavailable",
+        "connecting": "Still connecting",
+        "connection-failed": "Connection failed",
+        "not-at-prompt": "A foreground command is running",
+        "pending-input": "The terminal has unsubmitted input"
+      },
+      "noTerminals": "No SSH terminals are open.",
+      "paneLabel": "{tab} · Pane {pane}",
+      "selectTerminal": "Select an SSH terminal",
+      "title": "Attach Agent to Terminal"
+    },
+    "command": {
+      "description": "An agent wants to run a command on this connection.",
+      "title": "Authorize Command"
+    },
+    "connection": {
+      "description": "An agent wants to open an SSH connection.",
+      "title": "Authorize Connection"
+    },
+    "errors": {
+      "resolveFailed": "Failed to submit your decision."
+    },
+    "fields": {
+      "client": "Agent",
+      "command": "Command",
+      "reason": "Reason",
+      "server": "Server",
+      "target": "Target",
+      "terminal": "Terminal",
+      "username": "User"
+    },
+    "queue": {
+      "expiresIn": "Expires in {seconds}s",
+      "remaining": "{count} waiting"
+    },
+    "serverList": {
+      "description": "An agent wants to view the SSH servers configured in Cosmosh.",
+      "title": "Authorize Server List Access"
+    }
+  },
+  "mcpTerminal": {
+    "errors": {
+      "launchFailed": "The Agent could not attach to the visible terminal. The tab remains available to you."
+    }
+  },
   "oobe": {
     "actions": {
       "back": "Back",
@@ -421,6 +548,7 @@
       "advanced": "Advanced",
       "connection": "Connection",
       "general": "General",
+      "mcp": "MCP",
       "sftp": "SFTP",
       "terminal": "Terminal",
       "theme": "Theme"
@@ -502,6 +630,18 @@
       "localTerminalClipboardAccess": {
         "description": "Set clipboard access for local terminal programs only.",
         "title": "Allow Local Terminal Clipboard Access"
+      },
+      "mcpCommandPolicy": {
+        "description": "Set the default confirmation policy for commands that AI agents run over MCP connections. Individual servers can override this policy.",
+        "title": "Agent Command Confirmation"
+      },
+      "mcpEnabled": {
+        "description": "Allow external AI agents to connect to Cosmosh through the Model Context Protocol. Opening connections always requires your confirmation, and every operation is written to the audit log.",
+        "title": "Enable Cosmosh MCP"
+      },
+      "mcpListServersRequiresApproval": {
+        "description": "Ask for your approval before an AI agent can view configured SSH server names, hosts, usernames, folders, tags, and notes.",
+        "title": "Require Approval to List Servers"
       },
       "remoteEnhancementsDebugEnabled": {
         "description": "Show pane-specific bootstrap and shell integration diagnostics in SSH terminal menus.",
@@ -853,6 +993,11 @@
         "en": "English",
         "zh-CN": "Chinese (Simplified)"
       },
+      "mcpCommandPolicy": {
+        "allowWithinConnection": "Ask once per connection",
+        "ask": "Ask for every command",
+        "off": "Off (reject commands)"
+      },
       "searchEngine": {
         "baidu": "Baidu",
         "bing": "Bing",
@@ -958,6 +1103,8 @@
       "connection": "Connection",
       "editorDefaults": "Defaults",
       "localization": "Localization",
+      "mcpAccess": "Access",
+      "mcpPolicy": "Authorization Policy",
       "proxy": "Proxy",
       "runtime": "Runtime",
       "search": "Search",
@@ -1376,6 +1523,16 @@
     }
   },
   "ssh": {
+    "agentTerminal": {
+      "detach": "Detach Agent",
+      "detachFailed": "Failed to detach the Agent.",
+      "idle": "Idle",
+      "outputShared": "Terminal output is shared with this Agent",
+      "running": "Running",
+      "stop": "Stop command",
+      "stopFailed": "Failed to send Ctrl+C to the Agent command.",
+      "unknownAgent": "Agent"
+    },
     "authTypeBoth": "Password and Private Key",
     "authTypeKey": "Private Key",
     "authTypePassword": "Password",
@@ -1453,6 +1610,15 @@
     "keychainOptionCreate": "Add Keychain",
     "keychainOptionInline": "Do not use keychain",
     "keychainSelectPlaceholder": "Select keychain",
+    "mcpCommandPolicyHint": "Controls whether AI agent commands over MCP connections to this server need your confirmation.",
+    "mcpCommandPolicyLabel": "MCP Agent Command Confirmation",
+    "mcpCommandPolicyOptions": {
+      "allowWithinConnection": "Ask once per connection",
+      "ask": "Ask for every command",
+      "default": "Use global setting",
+      "off": "Off (reject commands)"
+    },
+    "mcpCommandPolicyPlaceholder": "Select command policy",
     "noFolder": "No folder",
     "noteLabel": "Note",
     "notePlaceholder": "Note",
@@ -1532,6 +1698,7 @@
     "sectionAuthentication": "Authentication",
     "sectionClipboardPermissions": "Clipboard Permissions",
     "sectionCompatibility": "Compatibility",
+    "sectionMcp": "MCP",
     "sectionProxy": "Proxy",
     "sectionSecurity": "Security",
     "sectionSettings": "Classification",
@@ -1647,6 +1814,7 @@
       "portForwarding": "Port Forwarding",
       "server": "Servers"
     },
+    "agentTerminal": "Shared with an Agent",
     "closeCurrent": "Close Current Tab",
     "closeOthers": "Close Other Tabs",
     "closeRight": "Close Right Tabs",

@@ -26,6 +26,17 @@
       "sessionCreateFailedNoReason": "Failed to create local terminal session.",
       "sessionNotFound": "Local terminal session was not found."
     },
+    "mcp": {
+      "approvalNotFound": "Authorization request was not found or has already been resolved.",
+      "auditUnavailable": "The authorization decision could not be recorded. No remote action was performed.",
+      "connectionClosed": "The SSH connection was closed before it became ready.",
+      "connectionNotFound": "MCP connection was not found or has already been closed.",
+      "disabled": "MCP is disabled. Enable it in Settings → MCP to use this feature.",
+      "invalidDecision": "Authorization decision is invalid.",
+      "pairingTokenNotFound": "No active MCP pairing token exists.",
+      "terminalLaunchNotFound": "The pending terminal launch was not found or has expired.",
+      "terminalUnavailable": "The selected terminal is not ready for Agent automation."
+    },
     "portForward": {
       "ruleActive": "Stop this port-forwarding rule before editing or deleting it.",
       "ruleIdRequired": "Rule ID is required.",
@@ -164,6 +175,17 @@
     "localTerminal": {
       "profilesFetched": "Local terminal profiles loaded.",
       "sessionCreated": "Local terminal session created."
+    },
+    "mcp": {
+      "approvalResolved": "Authorization decision recorded.",
+      "approvalsFetched": "MCP authorization requests loaded.",
+      "clientsFetched": "MCP clients loaded.",
+      "connectionsFetched": "MCP connections loaded.",
+      "eventsChannelCreated": "MCP event channel created.",
+      "pairingTokenRotated": "MCP pairing token generated.",
+      "statusFetched": "MCP status loaded.",
+      "terminalLaunchBound": "Visible terminal connected to the Agent.",
+      "terminalLaunchesFetched": "Pending visible terminal launches loaded."
     },
     "portForward": {
       "ruleCreated": "Port-forwarding rule created.",

@@ -100,7 +100,7 @@ flowchart TD
 - 设置页分类列表使用共享的 `SidebarNav` 组件（`src/components/ui/sidebar-nav.tsx`）：一个带无障碍名称的 `nav` 地标，内部为全宽按钮，当前激活项暴露 `aria-current="page"`。
 - 列表采用 roving focus：`Tab` 在当前分类处进入列表一次，`ArrowUp`/`ArrowDown` 通过共享的方向导航 hook 在分类间移动焦点，`Enter`/`Space` 通过原生按钮语义激活聚焦的分类。
 - SSH 服务器编辑器复用 `SplitWorkbenchLayout`、`SplitWorkbenchMainPanel` 和 `SidebarNav`，组织为“信息”“连接”“增强”“高级”四个界面。切换分类时，右侧内容面板复位到顶部，但不替换当前表单草稿。
-- “信息”包含标识与分类控件；“连接”包含主机信息和认证，用户名与钥匙链控件分两行排列；“分类”中的文件夹与标签控件也分两行排列；“增强”包含终端增强和剪贴板权限；“高级”包含代理、主机密钥校验、字符宽度兼容与传输压缩。紧凑编辑器不在内容面板顶部重复显示当前分类标题，左侧导航宽度为 175 px。Dialog 标题与左侧导航项目的前置图标左边缘对齐。
+- “信息”包含标识与分类控件；“连接”包含主机信息和认证，用户名与钥匙链控件分两行排列；“分类”中的文件夹与标签控件也分两行排列；“增强”包含终端增强、剪贴板权限和每台服务器的 MCP 命令确认策略；“高级”包含代理、主机密钥校验、字符宽度兼容与传输压缩。紧凑编辑器不在内容面板顶部重复显示当前分类标题，左侧导航宽度为 175 px。Dialog 标题与左侧导航项目的前置图标左边缘对齐。
 
 ## 7. Orbit Bar 规范
 
@@ -128,6 +128,15 @@ SSH 页面中的终端文本选区交互必须满足以下规则：
 - 鼠标悬浮时，整组线条会 morph 为一个固定 256 px 宽、复用共享菜单的卡片；卡片锚定滚动条边缘，覆盖轨道并向左展开。卡片正常挂载，并通过 CSS `@starting-style` 以 transform/opacity 完成 180 ms 入场；只有鼠标离开触发的退场会在 140 ms transform/opacity 过渡期间保留 Portal，使快速反向操作可中断，同时避免隐藏菜单长期进入焦点或 Escape 处理链。入口、命令卡片与命令行操作菜单之间统一通过 `relatedTarget` 判断及 80 ms Portal 跨越宽限消除偶发悬浮失效，包括打开行右键菜单后的鼠标移动。命令行操作菜单不能把悬浮打开的父菜单主动恢复 xterm 焦点误判为 focus-out 关闭；鼠标离开、外部交互、Escape 与选择菜单项仍是有效关闭路径。由于无需点击、悬浮即会打开菜单，紧凑命中区域保持默认箭头光标。紧凑命中区域与菜单表面都不绘制外层焦点轮廓；键盘焦点改用全不透明紧凑线条，并保留菜单项高亮反馈。过渡始终露出滚动条，并把 token 化线条交叉淡化为命令行；键盘打开保持即时，reduced-motion 模式仅保留短暂透明度过渡。
 - 卡片通过共享菜单 wrapper 仅投影仍保留命令中最新的 100 条；不足 100 条时全部展示。该有界投影按从旧到新的顺序排列并自动滚动到底部。每行使用标准 UI 字体，并且只显示重建出的用户输入，不包含虚拟环境、用户名、主机名、工作目录或 prompt 文本。选择命令会定位其 pane-local xterm 输入 marker；右键命令行提供`复制命令`和`插入到终端`，插入时不附加 Enter。鼠标离开入口/菜单或按 Escape 会关闭整个界面。
 - 仅当 `remoteEnhancementsDebugEnabled` 启用时显示`远端增强调试`，并且必须展示来源/活动 pane 数据，不得回退到 primary pane 数据。
+
+### 7.1.1 Agent 终端 Attachment 规范
+
+- 每个 attached SSH pane 都在 xterm 上方显示一个紧凑、无卡片外框的状态栏，包含 Agent/client 名称、`空闲`或`运行中`状态，以及当前可见终端输出正在共享的直接提示。状态栏不得覆盖 xterm，也不得因状态文本变化而改变尺寸。
+- Stop 与 Detach 使用带本地化 Tooltip 的图标按钮。只有该 attachment 持有运行中 Agent 命令时 Stop 才可用，并发送普通 `Ctrl+C`；Detach 撤销 Agent 权限但保留 SSH 终端。
+- Agent 创建的 tab 带可识别 Bot 标记，并在批准后立即聚焦；现有 attached tab 在 attachment 期间显示该标记。非活动 SSH tab 保持挂载，attachment 状态变化不得重建 xterm 或 backend session。
+- Attach 授权选择器默认当前合格 SSH pane，并列出全部 SSH pane。连接中、失败、prompt 未就绪、信任/能力降级或已被绑定的 pane 仍显示，并附带本地化禁用原因。V1 不包含本地终端 pane。
+- 内部 tab、pane、SSH session、launch 与 WebSocket token 标识只属于控制面，绝不能出现在 Agent 文案或结果中。
+- 状态栏与选择器必须沿用 Cosmosh 现有高密度层级、主题 token 和共享 `Select`/`Tooltip` wrapper，并在浅色、深色、split pane 与窄窗口中保持可用的图标命中区域。
 
 ## 7.2 Tab 重排运行时连续性
 

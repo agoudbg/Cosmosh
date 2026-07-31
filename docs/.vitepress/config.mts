@@ -47,6 +47,7 @@ export default defineConfig({
             { text: 'Manage Servers', link: '/user/manage-servers' },
             { text: 'SSH Session Basics', link: '/user/ssh-session-basics' },
             { text: 'Local Terminal Usage', link: '/user/local-terminal' },
+            { text: 'MCP Access for AI Agents', link: '/user/mcp-access' },
             { text: 'Troubleshooting', link: '/user/troubleshooting' },
             { text: 'FAQ', link: '/user/faq' },
           ],
@@ -75,6 +76,7 @@ export default defineConfig({
             { text: 'Local-First Audit Events', link: '/developer/runtime/audit-events' },
             { text: 'Database Security', link: '/developer/runtime/database-security' },
             { text: 'SFTP File System', link: '/developer/runtime/sftp-file-system' },
+            { text: 'MCP Server', link: '/developer/runtime/mcp-server' },
           ],
         },
         {
@@ -129,6 +131,7 @@ export default defineConfig({
                 { text: '服务器管理', link: '/zh-CN/user/manage-servers' },
                 { text: 'SSH 会话基础', link: '/zh-CN/user/ssh-session-basics' },
                 { text: '本地终端使用', link: '/zh-CN/user/local-terminal' },
+                { text: '面向 AI Agent 的 MCP 访问', link: '/zh-CN/user/mcp-access' },
                 { text: '故障排查', link: '/zh-CN/user/troubleshooting' },
                 { text: '常见问题', link: '/zh-CN/user/faq' },
               ],
@@ -157,6 +160,7 @@ export default defineConfig({
                 { text: '本地优先审计事件', link: '/zh-CN/developer/runtime/audit-events' },
                 { text: '数据库安全', link: '/zh-CN/developer/runtime/database-security' },
                 { text: 'SFTP 文件系统', link: '/zh-CN/developer/runtime/sftp-file-system' },
+                { text: 'MCP 服务器', link: '/zh-CN/developer/runtime/mcp-server' },
               ],
             },
             {

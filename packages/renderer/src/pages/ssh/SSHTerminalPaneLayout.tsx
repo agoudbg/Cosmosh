@@ -1,11 +1,12 @@
-import type { TerminalRightClickAction } from '@cosmosh/api-contract';
+import type { AgentTerminalAttachmentStatus, TerminalRightClickAction } from '@cosmosh/api-contract';
 import classNames from 'classnames';
-import { RefreshCw } from 'lucide-react';
+import { Bot, RefreshCw, Square, Unplug } from 'lucide-react';
 import React from 'react';
 
 import { TerminalContextMenu } from '../../components/terminal/terminal-context-menu';
 import { Button } from '../../components/ui/button';
 import { Menubar } from '../../components/ui/menubar';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { t } from '../../lib/i18n';
 import type { SshPaneConnectionSnapshot, TerminalCommandTimelineModel } from './ssh-types';
 import { TerminalCommandTimeline } from './TerminalCommandTimeline';
@@ -13,6 +14,7 @@ import { TerminalCommandTimeline } from './TerminalCommandTimeline';
 type PaneActionHandler = (paneId: string) => void;
 type PaneCommandActionHandler = (paneId: string, command: string) => void;
 type PaneCommandSelectionHandler = (paneId: string, commandId: string) => void;
+type AgentConnectionActionHandler = (connectionId: string) => void;
 
 type SSHTerminalPaneLayoutProps = {
   terminalPaneIds: string[];
@@ -30,6 +32,7 @@ type SSHTerminalPaneLayoutProps = {
   canOpenDirectoryInSftp: boolean;
   commandTimelineModels: Record<string, TerminalCommandTimelineModel>;
   paneConnectionStates: Record<string, SshPaneConnectionSnapshot>;
+  agentAttachmentStatuses: Record<string, AgentTerminalAttachmentStatus | null>;
   setPaneContainerElement: (paneId: string, element: HTMLDivElement | null) => void;
   setPrimaryPaneContainer: (element: HTMLDivElement | null) => void;
   onPaneActivate: PaneActionHandler;
@@ -49,6 +52,8 @@ type SSHTerminalPaneLayoutProps = {
   onSplitPane: PaneActionHandler;
   onClosePane: PaneActionHandler;
   onToggleRemoteEnhancementsDebug?: PaneActionHandler;
+  onStopAgentCommand: AgentConnectionActionHandler;
+  onDetachAgent: AgentConnectionActionHandler;
 };
 
 /**
@@ -73,6 +78,7 @@ type SSHTerminalPaneLayoutProps = {
  * @param props.canOpenDirectoryInSftp Whether selected text can open an SFTP directory.
  * @param props.commandTimelineModels Pane-indexed trusted command timeline models.
  * @param props.paneConnectionStates Pane-indexed transport snapshots driving pane-scoped overlays.
+ * @param props.agentAttachmentStatuses Pane-indexed Agent ownership snapshots.
  * @param props.setPaneContainerElement Ref callback for pane containers.
  * @param props.setPrimaryPaneContainer Ref callback for primary pane container.
  * @param props.onPaneActivate Callback that activates a pane.
@@ -92,6 +98,8 @@ type SSHTerminalPaneLayoutProps = {
  * @param props.onSplitPane Callback for split action.
  * @param props.onClosePane Callback for close-pane action.
  * @param props.onToggleRemoteEnhancementsDebug Optional callback for the Remote Enhancements debug panel toggle.
+ * @param props.onStopAgentCommand Callback that sends Ctrl+C to the Agent command.
+ * @param props.onDetachAgent Callback that revokes Agent access without closing the terminal.
  * @returns Pane layout JSX subtree.
  */
 export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
@@ -110,6 +118,7 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   canOpenDirectoryInSftp,
   commandTimelineModels,
   paneConnectionStates,
+  agentAttachmentStatuses,
   setPaneContainerElement,
   setPrimaryPaneContainer,
   onPaneActivate,
@@ -129,6 +138,8 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   onSplitPane,
   onClosePane,
   onToggleRemoteEnhancementsDebug,
+  onStopAgentCommand,
+  onDetachAgent,
 }) => {
   const renderTerminalPane = (paneId: string, isPrimaryPane: boolean): React.ReactNode => {
     const commandTimelineModel = commandTimelineModels[paneId];
@@ -137,6 +148,8 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
       connectionError: '',
     };
     const paneIsConnected = paneConnection.connectionState === 'connected';
+    const agentStatus = agentAttachmentStatuses[paneId];
+    const agentAttached = agentStatus?.state === 'idle' || agentStatus?.state === 'running';
     return (
       <div className="relative h-full min-h-0 w-full min-w-0 overflow-hidden">
         <TerminalContextMenu
@@ -191,10 +204,62 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
                   setPrimaryPaneContainer(element);
                 }
               }}
-              className="h-full min-w-0 flex-1 py-2 pl-2"
+              className={classNames('h-full min-w-0 flex-1 pb-2 pl-2', agentAttached ? 'pt-10' : 'pt-2')}
             />
           </TerminalCommandTimeline>
         </TerminalContextMenu>
+        {agentAttached && agentStatus.connectionId ? (
+          <TooltipProvider delayDuration={160}>
+            <div className="absolute left-0 right-0 top-0 z-20 flex h-8 min-w-0 items-center gap-2 border-b border-ssh-terminal-split-divider bg-bg-subtle px-2 text-xs text-header-text">
+              <Bot
+                aria-hidden="true"
+                className="h-4 w-4 shrink-0"
+              />
+              <span className="min-w-0 shrink truncate font-medium">
+                {agentStatus.client?.name ?? t('ssh.agentTerminal.unknownAgent')}
+              </span>
+              <span className="shrink-0 text-header-text-muted">
+                {agentStatus.state === 'running' ? t('ssh.agentTerminal.running') : t('ssh.agentTerminal.idle')}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-header-text-muted">
+                {t('ssh.agentTerminal.outputShared')}
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-header-text-muted hover:bg-header-tab-hover hover:text-header-text disabled:pointer-events-none disabled:opacity-40"
+                    aria-label={t('ssh.agentTerminal.stop')}
+                    disabled={agentStatus.state !== 'running'}
+                    onClick={() => onStopAgentCommand(agentStatus.connectionId!)}
+                  >
+                    <Square
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t('ssh.agentTerminal.stop')}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-header-text-muted hover:bg-header-tab-hover hover:text-header-text"
+                    aria-label={t('ssh.agentTerminal.detach')}
+                    onClick={() => onDetachAgent(agentStatus.connectionId!)}
+                  >
+                    <Unplug
+                      aria-hidden="true"
+                      className="h-4 w-4"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t('ssh.agentTerminal.detach')}</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+        ) : null}
         {!paneIsConnected ? (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-ssh-card-bg-terminal px-4">
             <div className="text-center text-sm text-header-text">
