@@ -5546,7 +5546,7 @@ components:
               $ref: '#/components/schemas/McpConnectionListData'
     McpApprovalKind:
       type: string
-      enum: ['connection-open', 'terminal-attach', 'command-execute']
+      enum: ['server-list', 'connection-open', 'terminal-attach', 'command-execute']
     McpPendingApproval:
       type: object
       required:

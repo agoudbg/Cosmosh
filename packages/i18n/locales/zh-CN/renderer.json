@@ -426,6 +426,10 @@
     "queue": {
       "expiresIn": "{seconds} 秒后过期",
       "remaining": "{count} 个等待中"
+    },
+    "serverList": {
+      "description": "Agent 想查看 Cosmosh 中配置的 SSH 服务器。",
+      "title": "授权查看服务器列表"
     }
   },
   "mcpTerminal": {
@@ -634,6 +638,10 @@
       "mcpEnabled": {
         "description": "允许外部 AI Agent 通过 Model Context Protocol 连接 Cosmosh。建立连接始终需要你的确认，并且所有操作都会写入审计日志。",
         "title": "启用 Cosmosh MCP"
+      },
+      "mcpListServersRequiresApproval": {
+        "description": "AI Agent 查看已配置 SSH 服务器的名称、主机、用户名、文件夹、标签和备注前，先征求你的批准。",
+        "title": "列出服务器时需要批准"
       },
       "remoteEnhancementsDebugEnabled": {
         "description": "在 SSH 终端菜单中显示当前分屏的引导安装与 Shell 集成诊断信息。",

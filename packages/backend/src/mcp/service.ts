@@ -6,8 +6,9 @@
  * manager. It is gated by the `mcpEnabled` setting (default off) — while
  * disabled it binds no event socket, writes no discovery file, and rejects the
  * `/mcp` endpoint with 503. It also implements {@link McpToolRuntime}, enforcing
- * the connection-open (always) and command-execute (policy-driven) authorization
- * gates and auditing every privileged action.
+ * the server-list (setting-driven), connection-open (always), and
+ * command-execute (policy-driven) authorization gates and auditing every
+ * privileged action.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -48,9 +49,9 @@ import { McpTerminalLaunchBroker } from './terminal-launch-broker.js';
 import type {
   McpAttachTerminalOutcome,
   McpCloseConnectionOutcome,
+  McpListServersOutcome,
   McpOpenConnectionOutcome,
   McpRunCommandOutcome,
-  McpServerListEntry,
   McpToolRuntime,
 } from './tools.js';
 import type { McpApprovalRequestInput } from './types.js';
@@ -83,6 +84,8 @@ export type McpBindTerminalLaunchResult =
 
 const MCP_AUDIT_UNAVAILABLE_MESSAGE =
   'The authorization request could not be recorded in the Cosmosh audit log. No remote action was performed.';
+const MCP_LIST_SERVERS_AUDIT_UNAVAILABLE_MESSAGE =
+  'The authorization request could not be recorded in the Cosmosh audit log. No server information was returned.';
 
 /**
  * Facade coordinating the MCP runtime and its authorization gates.
@@ -611,10 +614,51 @@ export class McpService implements McpToolRuntime {
     mcpSessionId: string;
     client: McpClientInfo;
     signal: AbortSignal;
-  }): Promise<McpServerListEntry[]> {
-    const settings = await readDefaultSettingsValues(this.getDbClient());
+  }): Promise<McpListServersOutcome> {
+    const db = this.getDbClient();
+    const settings = await readDefaultSettingsValues(db);
+    if (settings.mcpListServersRequiresApproval) {
+      const ticket = await this.requestApproval({
+        kind: 'server-list',
+        client: input.client,
+      });
+      if (!ticket) {
+        this.auditServerList({
+          client: input.client,
+          query: input.query,
+          outcome: 'failure',
+          reason: 'audit-unavailable',
+        });
+        return {
+          ok: false,
+          reason: 'audit-unavailable',
+          message: MCP_LIST_SERVERS_AUDIT_UNAVAILABLE_MESSAGE,
+        };
+      }
+
+      const decision = await this.broker.waitForDecision(ticket, input.signal);
+      if (decision !== 'approved') {
+        this.auditServerList({
+          client: input.client,
+          query: input.query,
+          outcome: 'failure',
+          reason: decision,
+        });
+        return { ok: false, reason: mapDenyReason(decision), message: denyMessage(decision) };
+      }
+      if (input.signal.aborted) {
+        this.auditServerList({
+          client: input.client,
+          query: input.query,
+          outcome: 'failure',
+          reason: 'superseded',
+        });
+        return { ok: false, reason: 'denied', message: denyMessage('superseded') };
+      }
+    }
+
     const globalPolicy: McpCommandPolicy = settings.mcpCommandPolicy;
-    const servers = await this.getDbClient().sshServer.findMany({
+    const servers = await db.sshServer.findMany({
       include: serverQueryInclude,
       orderBy: { name: 'asc' },
     });
@@ -647,17 +691,14 @@ export class McpService implements McpToolRuntime {
         note: server.note ?? undefined,
       }));
 
-    void this.auditEventService.logEvent({
-      category: 'mcp',
-      action: 'list-servers',
+    this.auditServerList({
+      client: input.client,
+      query: input.query,
       outcome: 'success',
-      severity: 'info',
-      entityType: 'mcp-session',
-      requestId: randomUUID(),
-      metadata: { client: input.client.name, count: entries.length, query: input.query },
+      count: entries.length,
     });
 
-    return entries;
+    return { ok: true, servers: entries };
   }
 
   /**
@@ -1410,6 +1451,34 @@ export class McpService implements McpToolRuntime {
         connectionId: payload.connectionId,
         reason: payload.reason,
         decision,
+      },
+    });
+  }
+
+  /**
+   * Records one server-list result without including returned server metadata.
+   *
+   * @param input Agent identity, filter, outcome, and optional count or failure reason.
+   */
+  private auditServerList(input: {
+    client: McpClientInfo;
+    query?: string;
+    outcome: 'success' | 'failure';
+    count?: number;
+    reason?: string;
+  }): void {
+    void this.auditEventService.logEvent({
+      category: 'mcp',
+      action: 'list-servers',
+      outcome: input.outcome,
+      severity: input.outcome === 'success' ? 'info' : 'warning',
+      entityType: 'mcp-session',
+      requestId: randomUUID(),
+      metadata: {
+        client: input.client.name,
+        count: input.count,
+        query: input.query,
+        reason: input.reason,
       },
     });
   }

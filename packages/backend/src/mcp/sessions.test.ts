@@ -16,7 +16,7 @@ const HTTP_PORT = 54_720;
  */
 const createRuntime = (): McpToolRuntime => {
   return {
-    listServers: async () => [],
+    listServers: async () => ({ ok: true, servers: [] }),
     openConnection: async () => ({ ok: false, reason: 'failed', message: 'Not used by this test.' }),
     attachTerminal: async () => ({ ok: false, reason: 'failed', message: 'Not used by this test.' }),
     listConnections: () => [],

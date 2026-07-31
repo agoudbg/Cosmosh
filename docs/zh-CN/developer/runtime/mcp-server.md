@@ -5,6 +5,7 @@ Cosmosh MCP 暴露一个本地 [Model Context Protocol](https://modelcontextprot
 ## 1. 产品规则
 
 - 该能力**默认关闭**（`mcpEnabled` 设置，默认 `false`）。
+- 可通过 `mcpListServersRequiresApproval`（默认 `false`）要求列出已配置服务器前先显式授权。启用后，Cosmosh 在批准前不会查询或返回服务器元数据。
 - **打开 SSH 连接始终需要用户在 Cosmosh 窗口中显式授权**，没有旁路。
 - `open_connection` 默认使用 `terminal`，创建并聚焦普通 Cosmosh SSH 标签页；`background` 保留隔离的 `ssh2.exec` 自动化；`attach_terminal` 允许用户选择现有合格 SSH pane，且不会向 Agent 暴露 Cosmosh 内部终端标识。
 - 共享 PTY 执行只在完整且可信的 Remote Enhancements 命令生命周期上可用。信任缺失、prompt 未就绪、存在未提交用户输入或已有运行中命令时，系统会以稳定 terminal 错误 fail closed，绝不会静默改变 Agent 请求的模式。
@@ -67,7 +68,7 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 
 | 工具               | 输入                                                                                                          | 行为                                                                                                                                                                                                                              |
 | ------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_servers`     | `query?`（字符串，≤200）                                                                                      | 返回 `{ servers, count }`；每项含 `serverId`、`name`、`host`、`port`、`username`、生效的 `commandPolicy`、`folder?`、`tags`、`note?`。绝不返回凭据。只读。                                                                        |
+| `list_servers`     | `query?`（字符串，≤200）                                                                                      | 根据 `mcpListServersRequiresApproval` 决定是否弹出授权提示，再返回 `{ servers, count }`；每项含 `serverId`、`name`、`host`、`port`、`username`、生效的 `commandPolicy`、`folder?`、`tags`、`note?`。绝不返回凭据。只读。 |
 | `open_connection`  | `serverId`（必填）、`reason?`（字符串，≤500）、`mode?`（`terminal` 或 `background`，默认 `terminal`）         | 始终弹出授权提示。`terminal` 请求 renderer 创建并聚焦 SSH tab，再等待其 primary pane bind；`background` 打开隔离 SSH client。返回 `{ connection }` 或 `{ error, message }`。                                                      |
 | `attach_terminal`  | `reason?`（字符串，≤500）                                                                                     | 始终弹出授权提示，选择器默认当前合格 SSH pane。Agent 只收到连接摘要，绝不会得到终端列表或内部 id。                                                                                                                                |
 | `list_connections` | _（无）_                                                                                                      | 返回该 Agent 活跃连接的 `{ connections, count }`。只读。                                                                                                                                                                          |
@@ -75,6 +76,8 @@ Agent 从不直接与后端通信。它启动 **`cosmosh-mcp` stdio 桥接**，�
 | `close_connection` | `connectionId`（必填）                                                                                        | 无需弹窗。关闭 background client、detach attached pane，或关闭 Agent 创建的 terminal tab/session。返回 `{ closed: true, connectionId }`。                                                                                         |
 
 失败原因会以枚举返回而非抛出。连接/open/attach 失败包括 `denied`、`timeout`、`audit-unavailable`、`server-not-found`、`server-changed`、`host-untrusted`、`limit-reached`、`terminal-launch-failed`、`terminal-automation-unavailable`、`terminal-not-ready`、`terminal-busy`、`no-eligible-terminal` 与 `failed`。命令失败另包括 `policy-off`、`connection-not-found`、`command-too-large` 与 `invalid-terminal-command`。
+
+启用服务器列表批准后，`list_servers` 还可能返回 `denied`、`timeout` 或 `audit-unavailable`。这些结果会在查询 SSH 服务器表前返回，因此不包含任何服务器元数据。
 
 取消 MCP 工具调用会立即撤回其待审批请求。已批准的 `background` open 会把取消信号传递到 SSH bootstrap；调用方停止等待时，待处理的可见 launch 会被取消。共享 PTY 的 `run_command` 被取消或超时时只停止 MCP 等待与输出捕获，不发送 `Ctrl+C`；连接会保持 `busy`，直到收到可信 command end 和下一次 prompt。
 
@@ -180,7 +183,7 @@ Launch 与 approval id 只属于带鉴权的 renderer/backend 控制面。MCP �
 | `connection-open`                                    | 每次 `open_connection` 或 `attach_terminal` 的结果，包含 mode 与仅状态类失败上下文。              |
 | `connection-close`                                   | 任何连接拆除（tool / ui / idle / shutdown / error / disabled）。                                  |
 | `command-execute`                                    | 每次 `run_command`，包含 mode、status、exit code、timeout、truncation 与 user-intervention 标志。 |
-| `list-servers`                                       | 每次 `list_servers` 调用。                                                                        |
+| `list-servers`                                       | 每次 `list_servers` 结果，包括批准拒绝、超时或审计失败。                                          |
 
 `authorization-requested` 与用户显式提交的 `authorization-resolved` 决定是同步必需写入。请求审计失败会丢弃尚未暴露的提示；决定审计失败会让提示保持待处理，并阻止等待中的工具调用继续。自动超时/撤回事件及非授权生命周期事件仍沿用本地优先审计服务的尽力而为错误策略。
 
@@ -189,12 +192,12 @@ Launch 与 approval id 只属于带鉴权的 renderer/backend 控制面。MCP �
 ## 11. 契约、设置与持久化
 
 - **共享类型：** `packages/api-contract/src/mcp.ts` —— 命令策略、`McpConnectionMode`、mode/status 连接摘要、terminal launch、授权与事件 payload；`terminal-protocol.ts` 持有 renderer 安全的 attachment 状态。
-- **设置：** 设置注册表中的 `mcpEnabled`（默认 `false`）与 `mcpCommandPolicy`（默认 `ask`）位于 `mcp` 类别（分区 `mcpAccess` / `mcpPolicy`）。运行状态、配对、客户端配置、连接与授权都组合在同一设置类别中；MCP 不再拥有独立工作区页面或标签页。
+- **设置：** 设置注册表中的 `mcpEnabled`（默认 `false`）、`mcpListServersRequiresApproval`（默认 `false`）与 `mcpCommandPolicy`（默认 `ask`）位于 `mcp` 类别（分区 `mcpAccess` / `mcpPolicy`）。运行状态、配对、客户端配置、连接与授权都组合在同一设置类别中；MCP 不再拥有独立工作区页面或标签页。服务器列表批准设置仅作用于全局，不提供按服务器覆盖。
 - **持久化：** `SshServer.mcpCommandPolicy String @default("default")` 与 `McpPairingToken` 模型（`tokenEncrypted`、`label`、`createdAt`、`lastUsedAt`、`revokedAt`），迁移 `20260726000100_mcp_pairing_and_policy`。
 
 ## 12. 测试与验证
 
-- **单元测试**（`tsx --test`）：backend MCP/SSH suites 覆盖授权与 required-audit fail closed、目标快照校验、共享连接容量、launch 重放/bind/过期、可信自动化门禁、单 attachment/单 command 归属、command-id 输出捕获、UTF-8 截断、用户介入、timeout 恢复、按模式生命周期、配对、background exec、策略解析与协议 session 隔离。Renderer tests 覆盖 terminal surface 合格性/默认选择、launch 去重/聚焦/bind 及关闭与保留语义。
+- **单元测试**（`tsx --test`）：backend MCP/SSH suites 覆盖可选服务器列表批准及批准前不读取服务器表、授权与 required-audit fail closed、目标快照校验、共享连接容量、launch 重放/bind/过期、可信自动化门禁、单 attachment/单 command 归属、command-id 输出捕获、UTF-8 截断、用户介入、timeout 恢复、按模式生命周期、配对、background exec、策略解析与协议 session 隔离。Renderer tests 覆盖 terminal surface 合格性/默认选择、launch 去重/聚焦/bind 及关闭与保留语义。
 - **手动 E2E：** 验证默认 open 创建并聚焦带 Agent 标记的可见 tab；命令和输出出现在 xterm；用户输入与 `Ctrl+C` 仍可用并设置 `userIntervened`；attach 当前/非当前 pane 均不泄漏内部 terminal id；`background` 不创建 tab 且保持 stdout/stderr 分离；Remote Enhancements 降级时 fail closed；显式 terminal close 会移除 Agent 创建的 tab，而 client 断开会保留并转成普通 tab。检查浅色/深色、单/split pane 与窄窗口布局。
 
 ## 已知限制（v1）

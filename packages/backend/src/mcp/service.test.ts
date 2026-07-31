@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 
+import { DEFAULT_SETTINGS_VALUES } from '@cosmosh/api-contract';
 import type { PrismaClient } from '@prisma/client';
 import type { Client, ClientChannel } from 'ssh2';
 
@@ -19,6 +20,9 @@ const SERVER = {
   username: 'operator',
   strictHostKey: true,
   mcpCommandPolicy: 'ask',
+  folder: null,
+  tags: [],
+  note: null,
   keychain: null,
   updatedAt: new Date('2026-07-27T00:00:00.000Z'),
 };
@@ -73,22 +77,38 @@ class FakeSshClient extends EventEmitter {
 const createService = (): {
   service: McpService;
   setRequiredAuditFailure: (failed: boolean) => void;
+  setListServersRequiresApproval: (required: boolean) => void;
   updateServer: (updates: Partial<typeof SERVER>) => void;
+  getServerListReadCount: () => number;
   requiredActions: string[];
   bestEffortEvents: { action: string; outcome: string; metadata?: Record<string, unknown> }[];
 } => {
   let requiredAuditFailure = false;
   let currentServer = { ...SERVER };
+  let currentSettings = { ...DEFAULT_SETTINGS_VALUES };
+  let serverListReadCount = 0;
   const requiredActions: string[] = [];
   const bestEffortEvents: { action: string; outcome: string; metadata?: Record<string, unknown> }[] = [];
   const db = {
     sshServer: {
       findUnique: async () => currentServer,
+      findMany: async () => {
+        serverListReadCount += 1;
+        return [currentServer];
+      },
     },
     sshKnownHost: {
       findMany: async () => [],
     },
-    $queryRaw: async () => [],
+    $queryRaw: async () => [
+      {
+        scopeAccountId: '',
+        scopeDeviceId: 'local-device',
+        payloadJson: JSON.stringify(currentSettings),
+        revision: 1,
+        updatedAt: new Date('2026-07-27T00:00:00.000Z'),
+      },
+    ],
   } as unknown as PrismaClient;
   const auditEventService = {
     logEvent: async (input: { action: string; outcome: string; metadata?: Record<string, unknown> }) => {
@@ -133,9 +153,16 @@ const createService = (): {
     setRequiredAuditFailure: (failed) => {
       requiredAuditFailure = failed;
     },
+    setListServersRequiresApproval: (required) => {
+      currentSettings = {
+        ...currentSettings,
+        mcpListServersRequiresApproval: required,
+      };
+    },
     updateServer: (updates) => {
       currentServer = { ...currentServer, ...updates };
     },
+    getServerListReadCount: () => serverListReadCount,
     requiredActions,
     bestEffortEvents,
   };
@@ -176,6 +203,126 @@ const openVisibleConnection = (service: McpService, signal: AbortSignal) => {
     signal,
   });
 };
+
+/**
+ * Starts one server-list operation with deterministic caller identity.
+ *
+ * @param service MCP service under test.
+ * @param signal Caller cancellation signal.
+ * @returns Pending tool outcome.
+ */
+const listServers = (service: McpService, signal: AbortSignal) => {
+  return service.listServers({
+    query: 'server',
+    mcpSessionId: 'session-1',
+    client: { name: 'test-client', version: '1.0.0' },
+    signal,
+  });
+};
+
+test('listServers preserves the approval-free default and returns configured servers', async () => {
+  const { service, getServerListReadCount, requiredActions } = createService();
+
+  const outcome = await listServers(service, new AbortController().signal);
+
+  assert.equal(outcome.ok, true);
+  if (outcome.ok) {
+    assert.equal(outcome.servers.length, 1);
+    assert.equal(outcome.servers[0]?.serverId, SERVER.id);
+  }
+  assert.equal(getServerListReadCount(), 1);
+  assert.deepEqual(requiredActions, []);
+});
+
+test('listServers waits for server-list approval before reading configured servers', async () => {
+  const { service, setListServersRequiresApproval, getServerListReadCount, requiredActions } = createService();
+  setListServersRequiresApproval(true);
+  const outcomePromise = listServers(service, new AbortController().signal);
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+
+  const approval = service.listApprovals()[0];
+  assert.ok(approval);
+  assert.equal(approval.kind, 'server-list');
+  assert.equal(getServerListReadCount(), 0);
+  assert.equal(await service.resolveApproval(approval.approvalId, 'approved'), 'resolved');
+
+  const outcome = await outcomePromise;
+  assert.equal(outcome.ok, true);
+  assert.equal(getServerListReadCount(), 1);
+  assert.deepEqual(requiredActions, ['authorization-requested', 'authorization-resolved']);
+});
+
+test('listServers denial returns no server information and never reads the server table', async () => {
+  const { service, setListServersRequiresApproval, getServerListReadCount, bestEffortEvents } = createService();
+  setListServersRequiresApproval(true);
+  const outcomePromise = listServers(service, new AbortController().signal);
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+
+  const approval = service.listApprovals()[0];
+  assert.ok(approval);
+  assert.equal(await service.resolveApproval(approval.approvalId, 'denied'), 'resolved');
+
+  const outcome = await outcomePromise;
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) {
+    assert.equal(outcome.reason, 'denied');
+  }
+  assert.equal(getServerListReadCount(), 0);
+  assert.equal(
+    bestEffortEvents.some(
+      (event) => event.action === 'list-servers' && event.outcome === 'failure' && event.metadata?.reason === 'denied',
+    ),
+    true,
+  );
+});
+
+test('listServers fails closed before reading servers when required request auditing is unavailable', async () => {
+  const { service, setListServersRequiresApproval, setRequiredAuditFailure, getServerListReadCount, requiredActions } =
+    createService();
+  setListServersRequiresApproval(true);
+  setRequiredAuditFailure(true);
+  const originalConsoleError = console.error;
+  console.error = () => undefined;
+
+  try {
+    const outcome = await listServers(service, new AbortController().signal);
+
+    assert.equal(outcome.ok, false);
+    if (!outcome.ok) {
+      assert.equal(outcome.reason, 'audit-unavailable');
+    }
+    assert.equal(getServerListReadCount(), 0);
+    assert.deepEqual(requiredActions, ['authorization-requested']);
+    assert.equal(service.listApprovals().length, 0);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test('listServers cancellation withdraws approval without reading configured servers', async () => {
+  const { service, setListServersRequiresApproval, getServerListReadCount } = createService();
+  setListServersRequiresApproval(true);
+  const controller = new AbortController();
+  const outcomePromise = listServers(service, controller.signal);
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+
+  assert.equal(service.listApprovals()[0]?.kind, 'server-list');
+  controller.abort();
+
+  const outcome = await outcomePromise;
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) {
+    assert.equal(outcome.reason, 'denied');
+  }
+  assert.equal(getServerListReadCount(), 0);
+  assert.equal(service.listApprovals().length, 0);
+});
 
 test('connection approval is not exposed when its required request audit fails', async () => {
   const { service, setRequiredAuditFailure, requiredActions } = createService();

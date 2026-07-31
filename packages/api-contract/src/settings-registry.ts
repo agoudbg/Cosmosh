@@ -140,6 +140,7 @@ export interface SettingsValues {
   sftpImagePreviewWarningThresholdBytes: number;
   sftpDirectoryListView: SftpDirectoryListViewSetting;
   mcpEnabled: boolean;
+  mcpListServersRequiresApproval: boolean;
   mcpCommandPolicy: McpCommandPolicy;
 }
 
@@ -1677,6 +1678,19 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     path: 'mcp.access.enabled',
     commandActionId: 'settings.mcp.access.enabled.toggle',
     searchTerms: ['mcp', 'model context protocol', 'agent', 'ai', 'automation', 'external access'],
+  },
+  {
+    key: 'mcpListServersRequiresApproval',
+    valueType: 'boolean',
+    defaultValue: false,
+    nameI18nKey: 'settings.items.mcpListServersRequiresApproval.title',
+    descriptionI18nKey: 'settings.items.mcpListServersRequiresApproval.description',
+    category: SETTINGS_CATEGORIES.mcp,
+    section: SETTINGS_CATEGORIES.mcp.sections.mcpPolicy,
+    control: 'switch',
+    path: 'mcp.policy.listServersRequiresApproval',
+    commandActionId: 'settings.mcp.policy.listServersRequiresApproval.toggle',
+    searchTerms: ['mcp', 'list servers', 'server list', 'authorization', 'approval', 'agent'],
   },
   {
     key: 'mcpCommandPolicy',

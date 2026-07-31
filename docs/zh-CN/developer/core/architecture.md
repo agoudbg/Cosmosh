@@ -265,11 +265,11 @@ sequenceDiagram
 - 传输为后端回环 Streamable HTTP 端点（`/mcp`，`127.0.0.1`）加上随应用附带、由外部客户端拉起的 `cosmosh-mcp` stdio 桥接；桥接仅做传输层 JSON-RPC 透传。
 - `/mcp` 的认证独立于 `/api/v1/*` 内部令牌守卫：它要求 `Bearer` 配对令牌，禁用时返回 503，并开启 SDK 的 DNS-rebinding 防护，`allowedHosts` 限定为 `127.0.0.1`/`localhost`。会话是有状态的（`sessionIdGenerator: randomUUID`）。
 - 桥接读取 `<userData>/mcp/bridge.json`（`{version, port, token, pid, appVersion, startedAt}`，目录 `0700` / 文件 `0600`）以发现当前端口与配对令牌。该文件仅在 MCP 启用期间存在，轮换时重写、禁用/退出时删除。
-- 暴露六个工具：`list_servers`（不含凭据）、`open_connection`（始终弹窗征询用户）、`attach_terminal`（由用户选择现有合格 SSH pane）、`list_connections`、`run_command`（受策略门控且有界）与 `close_connection`。三种模式共用最多 8 个连接的上限与 10 分钟闲置超时。
+- 暴露六个工具：`list_servers`（不含凭据且可选择启用批准门控）、`open_connection`（始终弹窗征询用户）、`attach_terminal`（由用户选择现有合格 SSH pane）、`list_connections`、`run_command`（受策略门控且有界）与 `close_connection`。三种模式共用最多 8 个连接的上限与 10 分钟闲置超时。
 - `open_connection` 默认使用 `terminal`：批准后创建并聚焦普通 Renderer SSH 标签页，再由 60 秒 Backend launch broker 绑定其 primary session。显式 `background` 保留隔离的 `ssh2.exec` 及独立 stdout/stderr/exit 元数据。`attached` 不向 Agent 枚举 pane；Renderer 选择 pane 后，仅通过内部管理 API 提交私有 session id。
 - 可见终端自动化对完整可信 Remote Enhancements 契约（`command-start`、`command-end`、`prompt-ready` 与 `line-state`）执行 fail closed。每个 session 最多附加一个 Agent，且同时最多运行一条 Agent 命令。输出按匹配的可信 command id 截取；取消或超时只停止 MCP 等待，不发送 `Ctrl+C`。
 - Agent 命令运行期间仍允许用户输入，并设置 `userIntervened`；Agent 状态栏提供显式停止（`Ctrl+C`）与 Detach 控件。Agent 或 UI 显式关闭拥有 Agent 创建标签页的生命周期；客户端断开、令牌吊销、禁用及闲置清理只解除 Agent attachment，并保留可见标签页。
-- 打开连接**始终**弹出应用内授权对话框。命令执行遵循有效策略——当 `server.mcpCommandPolicy` 非 `default` 时取它，否则取全局 `mcpCommandPolicy`——解析为 `off`（拒绝）、`ask`（逐条弹窗）或 `allowWithinConnection`（首条弹窗，其余可在该连接内放行）。未回应的授权在 120 秒后按拒绝超时；若无渲染器窗口在线则只能超时。
+- 启用全局 `mcpListServersRequiresApproval` 设置后，`list_servers` 会弹出应用内授权对话框；为保持向后兼容，该设置默认关闭。批准前，服务不会查询或返回服务器元数据。打开连接**始终**弹出授权对话框。命令执行遵循有效策略——当 `server.mcpCommandPolicy` 非 `default` 时取它，否则取全局 `mcpCommandPolicy`——解析为 `off`（拒绝）、`ask`（逐条弹窗）或 `allowWithinConnection`（首条弹窗，其余可在该连接内放行）。未回应的授权在 120 秒后按拒绝超时；若无渲染器窗口在线则只能超时。
 - 每一次 MCP 操作都会以 `mcp` 类别写入审计流。完整的工具契约、端点与审计分类体系参见 [MCP 服务器](../runtime/mcp-server.md)。
 
 ## 6. 核心数据流视图

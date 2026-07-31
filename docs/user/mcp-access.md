@@ -21,7 +21,8 @@ An agent can never read your stored passwords or private keys, add or edit serve
 
 1. Open `Settings > MCP`.
 2. Enable `MCP Access`.
-3. Use the pairing, client-configuration, connected-client, connection, and approval sections on the same page.
+3. Optionally enable `Require Approval to List Servers` if agents should ask before viewing configured server metadata.
+4. Use the pairing, client-configuration, connected-client, connection, and approval sections on the same page.
 
 While MCP is enabled, Cosmosh keeps a small local file that lets the bridge find the running app. Turning MCP off removes it.
 
@@ -45,8 +46,9 @@ Agents authenticate to Cosmosh with a **pairing token**. You manage it from the 
 
 Rotate or revoke any time you suspect a client should no longer have access.
 
-## Approving Connections and Commands
+## Approving Server Lists, Connections, and Commands
 
+- **Listing servers can ask you first.** Enable `Require Approval to List Servers` in `Settings > MCP` to require a dialog before an agent can view server names, hosts, usernames, folders, tags, or notes. The setting is off by default.
 - **Opening a connection always asks you first.** A dialog shows which agent is asking, which server, and the reason it gave. Nothing connects until you approve.
 - A normal open defaults to a visible Agent-marked SSH tab and focuses it immediately after approval. A request marked `Background` stays out of the tab strip and uses isolated command execution.
 - **Attaching a terminal also asks you first.** The selector starts on the current eligible SSH pane and lists other SSH panes. A disabled pane shows why it cannot be shared, such as not being ready, missing trusted Remote Enhancements, or already belonging to another Agent.

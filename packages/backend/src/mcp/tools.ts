@@ -32,6 +32,17 @@ export type McpServerListEntry = {
 };
 
 /**
+ * Outcome of a `list_servers` tool call.
+ */
+export type McpListServersOutcome =
+  | { ok: true; servers: McpServerListEntry[] }
+  | {
+      ok: false;
+      reason: 'denied' | 'timeout' | 'audit-unavailable';
+      message: string;
+    };
+
+/**
  * Outcome of an `open_connection` tool call.
  */
 export type McpOpenConnectionOutcome =
@@ -119,7 +130,7 @@ export type McpToolCaller = {
  * High-level operations the tools delegate to. Implemented by {@link McpService}.
  */
 export type McpToolRuntime = {
-  listServers(input: McpToolCaller & { query?: string; signal: AbortSignal }): Promise<McpServerListEntry[]>;
+  listServers(input: McpToolCaller & { query?: string; signal: AbortSignal }): Promise<McpListServersOutcome>;
   openConnection(
     input: {
       serverId: string;
@@ -200,12 +211,15 @@ export const registerMcpTools = (
     },
     async (args, extra) => {
       const caller = resolveCaller();
-      const servers = await runtime.listServers({
+      const outcome = await runtime.listServers({
         query: args.query,
         signal: extra.signal,
         ...caller,
       });
-      return jsonResult({ servers, count: servers.length });
+      if (!outcome.ok) {
+        return jsonResult({ error: outcome.reason, message: outcome.message }, true);
+      }
+      return jsonResult({ servers: outcome.servers, count: outcome.servers.length });
     },
   );
 

@@ -89,7 +89,7 @@ export const resolveEffectiveMcpCommandPolicy = (
 /**
  * Operation kinds that require explicit user authorization.
  */
-export type McpApprovalKind = 'connection-open' | 'terminal-attach' | 'command-execute';
+export type McpApprovalKind = 'server-list' | 'connection-open' | 'terminal-attach' | 'command-execute';
 
 /**
  * Terminal states of one authorization request.

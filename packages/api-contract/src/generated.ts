@@ -2286,7 +2286,7 @@ export interface components {
       data: components['schemas']['McpConnectionListData'];
     };
     /** @enum {string} */
-    McpApprovalKind: 'connection-open' | 'terminal-attach' | 'command-execute';
+    McpApprovalKind: 'server-list' | 'connection-open' | 'terminal-attach' | 'command-execute';
     McpPendingApproval: {
       approvalId: string;
       kind: components['schemas']['McpApprovalKind'];

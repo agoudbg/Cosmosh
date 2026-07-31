@@ -107,18 +107,23 @@ const ApprovalDialogBody: React.FC<ApprovalDialogBodyProps> = ({
     };
   }, [approval.expiresAt, approval.approvalId]);
 
+  const isServerList = approval.kind === 'server-list';
   const isCommand = approval.kind === 'command-execute';
   const isTerminalAttach = approval.kind === 'terminal-attach';
-  const title = isCommand
-    ? t('mcpApproval.command.title')
-    : isTerminalAttach
-      ? t('mcpApproval.attach.title')
-      : t('mcpApproval.connection.title');
-  const description = isCommand
-    ? t('mcpApproval.command.description')
-    : isTerminalAttach
-      ? t('mcpApproval.attach.description')
-      : t('mcpApproval.connection.description');
+  const title = isServerList
+    ? t('mcpApproval.serverList.title')
+    : isCommand
+      ? t('mcpApproval.command.title')
+      : isTerminalAttach
+        ? t('mcpApproval.attach.title')
+        : t('mcpApproval.connection.title');
+  const description = isServerList
+    ? t('mcpApproval.serverList.description')
+    : isCommand
+      ? t('mcpApproval.command.description')
+      : isTerminalAttach
+        ? t('mcpApproval.attach.description')
+        : t('mcpApproval.connection.description');
   const clientLabel = `${approval.client.name} ${approval.client.version}`.trim();
   const serverTarget = approval.host && approval.port !== undefined ? `${approval.host}:${approval.port}` : null;
   const selectedSurface = terminalSurfaces.find((surface) => surface.surfaceId === selectedSurfaceId) ?? null;
