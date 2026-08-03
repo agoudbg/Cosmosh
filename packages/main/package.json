@@ -19,6 +19,7 @@
     "build": "tsc && electron-builder --publish never",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
+    "pretest:terminal-presentation": "pnpm --filter @cosmosh/api-contract build",
     "test:terminal-presentation": "tsx --test src/preload-runtime-boundary.test.ts src/terminal-window-activity.test.ts",
     "format": "prettier --write \"src/**/*.ts\""
   },
