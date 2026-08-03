@@ -25,6 +25,12 @@ export type TerminalPresentationIntegration = {
    */
   resetAfterPendingWrites: (reset: () => void) => void;
   /**
+   * Clears session-owned title and progress after xterm drains queued output.
+   *
+   * @returns Nothing.
+   */
+  endSessionAfterPendingWrites: () => void;
+  /**
    * Removes every registered presentation listener without disposing xterm itself.
    *
    * @returns Nothing.
@@ -79,27 +85,48 @@ export const registerTerminalPresentationIntegration = (
   let disposed = false;
 
   /**
-   * Places a cancellable reset behind xterm's current parser queue.
+   * Places a cancellable presentation lifecycle callback behind xterm's parser queue.
    *
-   * @param reset Reset callback owned by the pane state coordinator.
+   * @param callback Lifecycle callback to run after queued writes.
    * @returns Nothing.
    */
-  const resetAfterPendingWrites = (reset: () => void): void => {
+  const runAfterPendingWrites = (callback: () => void): void => {
     if (disposed) {
       return;
     }
 
     // The empty write is a parser barrier: old presentation events run before
-    // reset, while replacement-connection output remains ordered after it.
+    // lifecycle cleanup, while later output remains ordered after it.
     terminal.write('', () => {
       if (!disposed) {
-        reset();
+        callback();
       }
     });
   };
 
   /**
-   * Disables pending resets and releases all xterm presentation listeners.
+   * Places a caller-owned reset behind xterm's current parser queue.
+   *
+   * @param reset Reset callback owned by the pane state coordinator.
+   * @returns Nothing.
+   */
+  const resetAfterPendingWrites = (reset: () => void): void => {
+    runAfterPendingWrites(reset);
+  };
+
+  /**
+   * Ends the current presentation session without discarding Bell attention.
+   *
+   * @returns Nothing.
+   */
+  const endSessionAfterPendingWrites = (): void => {
+    runAfterPendingWrites(() => {
+      dispatch({ type: 'session-ended', paneId });
+    });
+  };
+
+  /**
+   * Disables pending lifecycle callbacks and releases all xterm presentation listeners.
    *
    * @returns Nothing.
    */
@@ -116,6 +143,7 @@ export const registerTerminalPresentationIntegration = (
 
   return {
     resetAfterPendingWrites,
+    endSessionAfterPendingWrites,
     dispose,
   };
 };

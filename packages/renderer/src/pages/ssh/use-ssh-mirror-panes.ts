@@ -467,6 +467,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
               return;
             }
 
+            terminalPresentationIntegration.endSessionAfterPendingWrites();
             runtime.socket = null;
             if (activePaneIdRef.current === paneId) {
               socketRef.current = null;
@@ -479,6 +480,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
               return;
             }
 
+            terminalPresentationIntegration.endSessionAfterPendingWrites();
             runtime.socket = null;
             notifyWarning(t('ssh.websocketTransportFailed'));
             if (activePaneIdRef.current === paneId) {

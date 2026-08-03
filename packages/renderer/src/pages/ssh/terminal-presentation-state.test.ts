@@ -198,6 +198,38 @@ test('pane lifecycle actions ensure, reset, and remove isolated presentation sta
   assert.equal(removed['pane-2'], INITIAL_STATE['pane-2']);
 });
 
+test('session end clears application title and progress while retaining Bell attention', () => {
+  const activeSessionState = {
+    ...INITIAL_STATE,
+    'pane-1': {
+      applicationTitle: 'Agent task',
+      progressState: 'indeterminate' as const,
+      progressValue: null,
+      bellAttention: true,
+      lastBellAt: 1_000,
+      bellSequence: 3,
+    },
+  };
+  const ended = reduceTerminalPresentationState(activeSessionState, {
+    type: 'session-ended',
+    paneId: 'pane-1',
+  });
+  const duplicateEnd = reduceTerminalPresentationState(ended, {
+    type: 'session-ended',
+    paneId: 'pane-1',
+  });
+
+  assert.deepEqual(ended['pane-1'], {
+    applicationTitle: null,
+    progressState: 'none',
+    progressValue: null,
+    bellAttention: true,
+    lastBellAt: 1_000,
+    bellSequence: 3,
+  });
+  assert.equal(duplicateEnd, ended);
+});
+
 test('pane reducer ignores invalid Bell timestamps and events for unknown panes', () => {
   const invalidBell = reduceTerminalPresentationState(INITIAL_STATE, {
     type: 'bell',

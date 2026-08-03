@@ -188,3 +188,36 @@ test('reconnect reset drains old parser work before accepting replacement connec
     terminal.dispose();
   }
 });
+
+test('session end drains queued output and preserves Bell attention metadata', async () => {
+  const terminal = new Terminal({ allowProposedApi: true });
+  let state: TerminalPresentationStateMap = {
+    'pane-1': createTerminalPresentationState(),
+  };
+  const integration = registerTerminalPresentationIntegration({
+    paneId: 'pane-1',
+    terminal,
+    dispatch: (action) => {
+      state = reduceTerminalPresentationState(state, action);
+    },
+    now: () => 100,
+  });
+
+  try {
+    terminal.write('\u001b]0;Ended task\u0007\u001b]9;4;1;80\u0007\u0007');
+    integration.endSessionAfterPendingWrites();
+    await writeTerminalChunk(terminal, '');
+
+    assert.deepEqual(state['pane-1'], {
+      applicationTitle: null,
+      progressState: 'none',
+      progressValue: null,
+      bellAttention: true,
+      lastBellAt: 100,
+      bellSequence: 1,
+    });
+  } finally {
+    integration.dispose();
+    terminal.dispose();
+  }
+});

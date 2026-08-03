@@ -484,6 +484,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
             return;
           }
 
+          terminalPresentationIntegration.endSessionAfterPendingWrites();
           primarySocketRef.current = null;
           paneRuntime.socket = null;
           if (activePaneIdRef.current === paneId) {
@@ -498,6 +499,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
             return;
           }
 
+          terminalPresentationIntegration.endSessionAfterPendingWrites();
           primarySocketRef.current = null;
           paneRuntime.socket = null;
           if (activePaneIdRef.current === paneId) {

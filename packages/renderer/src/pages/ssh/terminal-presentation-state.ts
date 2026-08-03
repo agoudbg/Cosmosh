@@ -60,6 +60,7 @@ export type TerminalPresentationStateMap = Readonly<Record<string, TerminalPrese
 export type TerminalPresentationStateAction =
   | { type: 'ensure-pane'; paneId: string }
   | { type: 'reset-pane'; paneId: string }
+  | { type: 'session-ended'; paneId: string }
   | { type: 'remove-pane'; paneId: string }
   | { type: 'application-title'; paneId: string; title: string }
   | { type: 'progress'; paneId: string; progress: TerminalPresentationProgress }
@@ -218,6 +219,25 @@ export const reduceTerminalPresentationState = (
       ...state,
       [action.paneId]: createTerminalPresentationState(),
     };
+  }
+
+  if (action.type === 'session-ended') {
+    const previousPaneState = state[action.paneId];
+    if (
+      !previousPaneState ||
+      (previousPaneState.applicationTitle === null &&
+        previousPaneState.progressState === 'none' &&
+        previousPaneState.progressValue === null)
+    ) {
+      return state;
+    }
+
+    return replacePaneState(state, action.paneId, {
+      ...previousPaneState,
+      applicationTitle: null,
+      progressState: 'none',
+      progressValue: null,
+    });
   }
 
   const previousPaneState = state[action.paneId];
