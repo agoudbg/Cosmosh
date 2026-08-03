@@ -23,7 +23,7 @@ type AppliedProgress = Pick<TerminalWindowActivity, 'progressState' | 'progressV
  * The controller de-duplicates OS calls and tracks a Bell receipt-time high
  * water mark. An older Bell exposed after a newer tab closes therefore cannot
  * replay attention, while distinct Bells received in the same clock tick
- * retain their pane-local event identities.
+ * retain their renderer-window event identities.
  */
 export class TerminalWindowActivityController {
   private appliedProgress: AppliedProgress | null = null;

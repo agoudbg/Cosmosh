@@ -153,11 +153,13 @@ test('Bell events retain distinct sequence edges and acknowledgement keeps event
   const firstBell = reduceTerminalPresentationState(INITIAL_STATE, {
     type: 'bell',
     paneId: 'pane-1',
+    sequence: 1,
     receivedAt: 100,
   });
   const secondBell = reduceTerminalPresentationState(firstBell, {
     type: 'bell',
     paneId: 'pane-1',
+    sequence: 2,
     receivedAt: 100,
   });
   const acknowledged = reduceTerminalPresentationState(secondBell, {
@@ -234,6 +236,7 @@ test('pane reducer ignores invalid Bell timestamps and events for unknown panes'
   const invalidBell = reduceTerminalPresentationState(INITIAL_STATE, {
     type: 'bell',
     paneId: 'pane-1',
+    sequence: 1,
     receivedAt: Number.NaN,
   });
   const unknownPaneTitle = reduceTerminalPresentationState(INITIAL_STATE, {

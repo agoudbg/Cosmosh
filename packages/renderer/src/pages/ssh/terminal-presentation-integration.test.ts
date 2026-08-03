@@ -49,7 +49,7 @@ test('xterm parser routes fragmented OSC 0/2, OSC 9;4, and standalone Bell event
       await writeTerminalChunk(terminal, chunk);
     }
 
-    assert.deepEqual(actions, [
+    assert.deepEqual(actions.slice(0, 3), [
       {
         type: 'application-title',
         paneId: 'pane-2',
@@ -65,12 +65,13 @@ test('xterm parser routes fragmented OSC 0/2, OSC 9;4, and standalone Bell event
         paneId: 'pane-2',
         progress: { state: 'indeterminate', value: null },
       },
-      {
-        type: 'bell',
-        paneId: 'pane-2',
-        receivedAt: 1234,
-      },
     ]);
+    assert.equal(actions[3]?.type, 'bell');
+    if (actions[3]?.type === 'bell') {
+      assert.equal(actions[3].paneId, 'pane-2');
+      assert.equal(actions[3].receivedAt, 1234);
+      assert.ok(actions[3].sequence > 0);
+    }
   } finally {
     integration.dispose();
     terminal.dispose();
@@ -105,6 +106,47 @@ test('xterm parser routes Kimi Code valueless progress sequences without treatin
   } finally {
     integration.dispose();
     terminal.dispose();
+  }
+});
+
+test('independent terminals share one renderer-window Bell sequence', async () => {
+  const firstTerminal = new Terminal({ allowProposedApi: true });
+  const secondTerminal = new Terminal({ allowProposedApi: true });
+  const bellActions: Extract<TerminalPresentationStateAction, { type: 'bell' }>[] = [];
+  /**
+   * Registers one test terminal against the shared module sequence.
+   *
+   * @param paneId Logical pane identity.
+   * @param terminal Test xterm instance.
+   * @returns Disposable presentation integration.
+   */
+  const register = (paneId: string, terminal: XtermTerminal) =>
+    registerTerminalPresentationIntegration({
+      paneId,
+      terminal,
+      dispatch: (action) => {
+        if (action.type === 'bell') {
+          bellActions.push(action);
+        }
+      },
+      now: () => 2_000,
+    });
+  const firstIntegration = register('pane-1', firstTerminal);
+  const secondIntegration = register('pane-2', secondTerminal);
+
+  try {
+    await writeTerminalChunk(firstTerminal, '\u0007');
+    await writeTerminalChunk(secondTerminal, '\u0007');
+
+    assert.equal(bellActions.length, 2);
+    assert.equal(bellActions[0]?.receivedAt, 2_000);
+    assert.equal(bellActions[1]?.receivedAt, 2_000);
+    assert.ok((bellActions[1]?.sequence ?? 0) > (bellActions[0]?.sequence ?? 0));
+  } finally {
+    firstIntegration.dispose();
+    secondIntegration.dispose();
+    firstTerminal.dispose();
+    secondTerminal.dispose();
   }
 });
 
@@ -194,10 +236,14 @@ test('session end drains queued output and preserves Bell attention metadata', a
   let state: TerminalPresentationStateMap = {
     'pane-1': createTerminalPresentationState(),
   };
+  let observedBellSequence = 0;
   const integration = registerTerminalPresentationIntegration({
     paneId: 'pane-1',
     terminal,
     dispatch: (action) => {
+      if (action.type === 'bell') {
+        observedBellSequence = action.sequence;
+      }
       state = reduceTerminalPresentationState(state, action);
     },
     now: () => 100,
@@ -214,8 +260,9 @@ test('session end drains queued output and preserves Bell attention metadata', a
       progressValue: null,
       bellAttention: true,
       lastBellAt: 100,
-      bellSequence: 1,
+      bellSequence: observedBellSequence,
     });
+    assert.ok(observedBellSequence > 0);
   } finally {
     integration.dispose();
     terminal.dispose();

@@ -96,12 +96,12 @@ test('Bell attention and latest event aggregate independently from progress', ()
     createTerminalTab('tab-1', {
       progressState: 'normal',
       progressValue: 100,
-      latestBellEvent: { paneId: 'pane-1', sequence: 4, receivedAt: 1_000 },
+      latestBellEvent: { paneId: 'pane-1', sequence: 1, receivedAt: 1_000 },
     }),
     createTerminalTab('tab-2', {
       bellAttention: true,
       bellAttentionPaneIds: ['pane-2'],
-      latestBellEvent: { paneId: 'pane-2', sequence: 1, receivedAt: 2_000 },
+      latestBellEvent: { paneId: 'pane-2', sequence: 2, receivedAt: 2_000 },
     }),
   ];
 
@@ -114,9 +114,31 @@ test('Bell attention and latest event aggregate independently from progress', ()
     latestBellEvent: {
       tabId: 'tab-2',
       paneId: 'pane-2',
-      sequence: 1,
+      sequence: 2,
       receivedAt: 2_000,
     },
+  });
+});
+
+test('window aggregation advances equal-timestamp Bell edges by renderer sequence', () => {
+  const aggregated = aggregateTerminalWindowActivity({
+    tabs: [
+      createTerminalTab('tab-1', {
+        latestBellEvent: { paneId: 'pane-1', sequence: 10, receivedAt: 2_000 },
+      }),
+      createTerminalTab('tab-2', {
+        latestBellEvent: { paneId: 'pane-2', sequence: 11, receivedAt: 2_000 },
+      }),
+    ],
+    activeTabId: 'tab-1',
+    ...BELL_EFFECT_POLICY,
+  });
+
+  assert.deepEqual(aggregated.latestBellEvent, {
+    tabId: 'tab-2',
+    paneId: 'pane-2',
+    sequence: 11,
+    receivedAt: 2_000,
   });
 });
 

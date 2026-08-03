@@ -2,6 +2,19 @@ import type { Terminal } from '@xterm/xterm';
 
 import { parseTerminalOscProgress, type TerminalPresentationStateAction } from './terminal-presentation-state';
 
+/** Renderer-window Bell sequence shared by every terminal integration instance. */
+let terminalBellSequence = 0;
+
+/**
+ * Allocates a total-order identity for one standalone Bell edge.
+ *
+ * @returns Positive renderer-window sequence number.
+ */
+const allocateTerminalBellSequence = (): number => {
+  terminalBellSequence += 1;
+  return terminalBellSequence;
+};
+
 /** Dependencies required to passively observe one pane's xterm presentation events. */
 export type TerminalPresentationIntegrationOptions = {
   /** Logical pane that owns the terminal instance. */
@@ -79,6 +92,7 @@ export const registerTerminalPresentationIntegration = (
     dispatch({
       type: 'bell',
       paneId,
+      sequence: allocateTerminalBellSequence(),
       receivedAt: now(),
     });
   });

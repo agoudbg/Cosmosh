@@ -108,13 +108,13 @@ test('Bell attention is retained independently across all live panes', () => {
       'pane-1': createPaneState({
         bellAttention: true,
         lastBellAt: 1_000,
-        bellSequence: 2,
+        bellSequence: 1,
       }),
       'pane-2': createPaneState({ bellAttention: false }),
       'pane-3': createPaneState({
         bellAttention: true,
         lastBellAt: 2_000,
-        bellSequence: 1,
+        bellSequence: 2,
       }),
     },
   });
@@ -123,12 +123,12 @@ test('Bell attention is retained independently across all live panes', () => {
   assert.deepEqual(aggregated.bellAttentionPaneIds, ['pane-1', 'pane-3']);
   assert.deepEqual(aggregated.latestBellEvent, {
     paneId: 'pane-3',
-    sequence: 1,
+    sequence: 2,
     receivedAt: 2_000,
   });
 });
 
-test('latest Bell event survives acknowledgement and breaks equal timestamps with pane sequence', () => {
+test('latest Bell event survives acknowledgement and breaks equal timestamps with renderer sequence', () => {
   const aggregated = aggregateTerminalTabPresentation({
     activePaneId: 'pane-1',
     paneIds: ['pane-1', 'pane-2'],

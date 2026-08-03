@@ -31,6 +31,7 @@ export type TerminalWindowProgressState = 'none' | 'normal' | 'error' | 'indeter
 export type TerminalWindowBellEvent = {
   tabId: string;
   paneId: string;
+  /** Renderer-window monotonic Bell sequence used to order equal timestamps. */
   sequence: number;
   receivedAt: number;
 };

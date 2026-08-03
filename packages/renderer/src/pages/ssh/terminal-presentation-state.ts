@@ -47,7 +47,7 @@ export type TerminalPresentationState = {
   /** Local receipt time of the newest valid standalone Bell event. */
   lastBellAt: number | null;
   /**
-   * Monotonic pane-local event identity used to preserve distinct Bell edges
+   * Monotonic renderer-window event identity used to preserve distinct Bell edges
    * when multiple events share the same wall-clock timestamp.
    */
   bellSequence: number;
@@ -64,7 +64,7 @@ export type TerminalPresentationStateAction =
   | { type: 'remove-pane'; paneId: string }
   | { type: 'application-title'; paneId: string; title: string }
   | { type: 'progress'; paneId: string; progress: TerminalPresentationProgress }
-  | { type: 'bell'; paneId: string; receivedAt: number }
+  | { type: 'bell'; paneId: string; sequence: number; receivedAt: number }
   | { type: 'acknowledge-bell'; paneId: string };
 
 /** Result of inspecting one xterm OSC 9 payload for the `9;4` progress namespace. */
@@ -288,7 +288,12 @@ export const reduceTerminalPresentationState = (
   }
 
   if (action.type === 'bell') {
-    if (!Number.isFinite(action.receivedAt) || action.receivedAt < 0) {
+    if (
+      !Number.isSafeInteger(action.sequence) ||
+      action.sequence <= previousPaneState.bellSequence ||
+      !Number.isFinite(action.receivedAt) ||
+      action.receivedAt < 0
+    ) {
       return state;
     }
 
@@ -296,7 +301,7 @@ export const reduceTerminalPresentationState = (
       ...previousPaneState,
       bellAttention: true,
       lastBellAt: action.receivedAt,
-      bellSequence: previousPaneState.bellSequence + 1,
+      bellSequence: action.sequence,
     });
   }
 

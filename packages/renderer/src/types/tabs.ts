@@ -15,7 +15,7 @@ export type TerminalTabProgressSource = 'active-pane' | 'background-attention' |
 export type TerminalTabBellEvent = {
   /** Pane that received the standalone Bell. */
   paneId: string;
-  /** Pane-local monotonic Bell sequence. */
+  /** Renderer-window monotonic Bell sequence. */
   sequence: number;
   /** Local receipt time used for window-level event ordering. */
   receivedAt: number;

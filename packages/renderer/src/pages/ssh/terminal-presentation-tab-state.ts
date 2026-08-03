@@ -95,8 +95,8 @@ export const areTerminalTabPresentationsEqual = (
 /**
  * Selects the newest standalone Bell event without depending on acknowledgement state.
  *
- * Pane-local sequence breaks equal-timestamp ties when one pane emits multiple
- * Bells in the same clock tick. Stable pane order resolves all remaining ties.
+ * Renderer-window sequence breaks equal-timestamp ties across every pane and
+ * tab. Stable pane order remains only as a defensive fallback for malformed state.
  *
  * @param paneIds Stable pane layout order.
  * @param paneStates Pane-indexed presentation state.
