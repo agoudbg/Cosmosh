@@ -5,6 +5,7 @@ import type { TabItem, TerminalTabPresentation } from '../types/tabs';
 type AggregateTerminalWindowActivityParams = {
   tabs: ReadonlyArray<TabItem>;
   activeTabId: string;
+  rendererEpoch: string;
   bellAudibleEnabled: boolean;
   bellFlashEnabled: boolean;
 };
@@ -35,11 +36,12 @@ const WINDOW_PROGRESS_SEVERITY: Readonly<Record<TerminalWindowProgressState, num
 export const aggregateTerminalWindowActivity = ({
   tabs,
   activeTabId,
+  rendererEpoch,
   bellAudibleEnabled,
   bellFlashEnabled,
 }: AggregateTerminalWindowActivityParams): TerminalWindowActivity => {
   const progress = selectWindowProgress(tabs, activeTabId);
-  const latestBellEvent = selectLatestWindowBellEvent(tabs);
+  const latestBellEvent = selectLatestWindowBellEvent(tabs, rendererEpoch);
 
   return {
     progressState: progress?.progressState ?? 'none',
@@ -55,6 +57,7 @@ export const aggregateTerminalWindowActivity = ({
  * Selects the highest-severity progress candidate for taskbar presentation.
  *
  * @param tabs Stable window tab order.
+ * @param rendererEpoch Current renderer-document epoch.
  * @param activeTabId Current active tab identity.
  * @returns Selected progress fields, or `null` when no terminal progress exists.
  */
@@ -90,25 +93,24 @@ const selectWindowProgress = (
  * @param tabs Stable window tab order.
  * @returns Window-scoped Bell identity, or `null` before the first Bell.
  */
-const selectLatestWindowBellEvent = (tabs: ReadonlyArray<TabItem>): TerminalWindowActivity['latestBellEvent'] => {
+const selectLatestWindowBellEvent = (
+  tabs: ReadonlyArray<TabItem>,
+  rendererEpoch: string,
+): TerminalWindowActivity['latestBellEvent'] => {
   let selected: TerminalWindowActivity['latestBellEvent'] = null;
 
   for (const tab of tabs) {
     const event = tab.terminalPresentation?.latestBellEvent;
-    if (!event) {
+    if (!event || event.rendererEpoch !== rendererEpoch) {
       continue;
     }
 
-    if (
-      !selected ||
-      event.receivedAt > selected.receivedAt ||
-      (event.receivedAt === selected.receivedAt && event.sequence > selected.sequence)
-    ) {
+    if (!selected || event.sequence > selected.sequence) {
       selected = {
+        rendererEpoch,
         tabId: tab.id,
         paneId: event.paneId,
         sequence: event.sequence,
-        receivedAt: event.receivedAt,
       };
     }
   }

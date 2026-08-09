@@ -23,6 +23,7 @@ import { t } from './lib/i18n';
 import { useSettingsValue } from './lib/settings-store';
 import { createSshConnectionIntent, toLocalTerminalTargetId } from './lib/ssh-connection-intent';
 import { projectTabPresentation } from './lib/tab-presentation';
+import { TERMINAL_BELL_RENDERER_EPOCH } from './lib/terminal-bell-identity';
 import { aggregateTerminalWindowActivity } from './lib/terminal-window-activity';
 import { AppToastProvider } from './lib/toast';
 import { useTabs } from './lib/useTabs';
@@ -144,6 +145,7 @@ const App: React.FC = () => {
       aggregateTerminalWindowActivity({
         tabs: presentedTabs,
         activeTabId,
+        rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
         bellAudibleEnabled: isTerminalBellAudible(terminalBellAttentionMode),
         bellFlashEnabled: isTerminalBellTaskbar(terminalBellAttentionMode),
       }),

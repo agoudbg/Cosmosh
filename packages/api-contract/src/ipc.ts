@@ -29,11 +29,12 @@ export type TerminalWindowProgressState = 'none' | 'normal' | 'error' | 'indeter
 
 /** Identity of the latest standalone Bell observed across one renderer window. */
 export type TerminalWindowBellEvent = {
+  /** Renderer-document lifecycle identity paired with the monotonic sequence. */
+  rendererEpoch: string;
   tabId: string;
   paneId: string;
-  /** Renderer-window monotonic Bell sequence used to order equal timestamps. */
+  /** Renderer-window monotonic Bell sequence used as the event total order. */
   sequence: number;
-  receivedAt: number;
 };
 
 /**
@@ -80,7 +81,7 @@ const MAX_TERMINAL_WINDOW_ACTIVITY_SOURCE_ID_LENGTH = 128;
  * @param value Unknown source identifier.
  * @returns Whether the value is bounded and contains no terminal controls.
  */
-const isTerminalWindowActivitySourceId = (value: unknown): value is string => {
+const isTerminalWindowActivityIdentifier = (value: unknown): value is string => {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_TERMINAL_WINDOW_ACTIVITY_SOURCE_ID_LENGTH) {
     return false;
   }
@@ -134,14 +135,12 @@ export const parseTerminalWindowActivity = (value: unknown): TerminalWindowActiv
 
     const bellCandidate = latestBellEvent as Record<string, unknown>;
     if (
-      !isTerminalWindowActivitySourceId(bellCandidate.tabId) ||
-      !isTerminalWindowActivitySourceId(bellCandidate.paneId) ||
+      !isTerminalWindowActivityIdentifier(bellCandidate.rendererEpoch) ||
+      !isTerminalWindowActivityIdentifier(bellCandidate.tabId) ||
+      !isTerminalWindowActivityIdentifier(bellCandidate.paneId) ||
       typeof bellCandidate.sequence !== 'number' ||
       !Number.isSafeInteger(bellCandidate.sequence) ||
-      bellCandidate.sequence <= 0 ||
-      typeof bellCandidate.receivedAt !== 'number' ||
-      !Number.isSafeInteger(bellCandidate.receivedAt) ||
-      bellCandidate.receivedAt < 0
+      bellCandidate.sequence <= 0
     ) {
       return null;
     }
@@ -153,10 +152,10 @@ export const parseTerminalWindowActivity = (value: unknown): TerminalWindowActiv
       bellAudibleEnabled: candidate.bellAudibleEnabled,
       bellFlashEnabled: candidate.bellFlashEnabled,
       latestBellEvent: {
+        rendererEpoch: bellCandidate.rendererEpoch,
         tabId: bellCandidate.tabId,
         paneId: bellCandidate.paneId,
         sequence: bellCandidate.sequence,
-        receivedAt: bellCandidate.receivedAt,
       },
     };
   }

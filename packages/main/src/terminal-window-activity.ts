@@ -12,7 +12,10 @@ export const TERMINAL_BELL_EFFECT_THROTTLE_MS = 1_000;
 
 /** Privileged Bell side effects supplied by the Electron integration boundary. */
 export type TerminalWindowActivityEffects = {
+  /** Plays the operating-system Bell signal. */
   beep: () => void;
+  /** Reads Main-process monotonic time for effect throttling. */
+  monotonicNow: () => number;
 };
 
 type AppliedProgress = Pick<TerminalWindowActivity, 'progressState' | 'progressValue'>;
@@ -20,15 +23,14 @@ type AppliedProgress = Pick<TerminalWindowActivity, 'progressState' | 'progressV
 /**
  * Applies validated renderer activity snapshots to one owning BrowserWindow.
  *
- * The controller de-duplicates OS calls and tracks a Bell receipt-time high
- * water mark. An older Bell exposed after a newer tab closes therefore cannot
- * replay attention, while distinct Bells received in the same clock tick
- * retain their renderer-window event identities.
+ * The controller de-duplicates OS calls and tracks a renderer epoch/sequence
+ * high-water mark. An older Bell exposed after a newer tab closes therefore
+ * cannot replay attention, while a renderer reload starts a distinct epoch.
  */
 export class TerminalWindowActivityController {
   private appliedProgress: AppliedProgress | null = null;
-  private latestBellReceivedAt = -1;
-  private readonly latestBellKeys = new Set<string>();
+  private latestBellRendererEpoch: string | null = null;
+  private latestBellSequence = 0;
   private lastAudibleBellAt = Number.NEGATIVE_INFINITY;
   private lastFlashBellAt = Number.NEGATIVE_INFINITY;
 
@@ -122,32 +124,32 @@ export class TerminalWindowActivityController {
    */
   private applyBellEvent(activity: TerminalWindowActivity): void {
     const event = activity.latestBellEvent;
-    if (!event || event.receivedAt < this.latestBellReceivedAt) {
+    if (!event) {
       return;
     }
 
-    if (event.receivedAt > this.latestBellReceivedAt) {
-      this.latestBellReceivedAt = event.receivedAt;
-      this.latestBellKeys.clear();
+    if (event.rendererEpoch !== this.latestBellRendererEpoch) {
+      this.latestBellRendererEpoch = event.rendererEpoch;
+      this.latestBellSequence = 0;
     }
 
-    const eventKey = `${event.tabId}\u001f${event.paneId}\u001f${event.sequence}`;
-    if (this.latestBellKeys.has(eventKey)) {
+    if (event.sequence <= this.latestBellSequence) {
       return;
     }
 
-    this.latestBellKeys.add(eventKey);
-    if (activity.bellAudibleEnabled && event.receivedAt - this.lastAudibleBellAt >= TERMINAL_BELL_EFFECT_THROTTLE_MS) {
-      this.lastAudibleBellAt = event.receivedAt;
+    this.latestBellSequence = event.sequence;
+    const effectTime = this.effects.monotonicNow();
+    if (activity.bellAudibleEnabled && effectTime - this.lastAudibleBellAt >= TERMINAL_BELL_EFFECT_THROTTLE_MS) {
+      this.lastAudibleBellAt = effectTime;
       this.effects.beep();
     }
 
     if (
       activity.bellFlashEnabled &&
       !this.targetWindow.isFocused() &&
-      event.receivedAt - this.lastFlashBellAt >= TERMINAL_BELL_EFFECT_THROTTLE_MS
+      effectTime - this.lastFlashBellAt >= TERMINAL_BELL_EFFECT_THROTTLE_MS
     ) {
-      this.lastFlashBellAt = event.receivedAt;
+      this.lastFlashBellAt = effectTime;
       this.targetWindow.flashFrame(true);
     }
   }

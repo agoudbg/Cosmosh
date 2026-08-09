@@ -77,7 +77,7 @@ test('terminal projection is ephemeral and leaves the stored tab unchanged', () 
 });
 
 test('display policy masks presentation without discarding the latest Bell edge', () => {
-  const latestBellEvent = { paneId: 'pane-1', sequence: 2, receivedAt: 3_000 };
+  const latestBellEvent = { rendererEpoch: 'renderer-epoch', paneId: 'pane-1', sequence: 2 };
   const projected = projectTabPresentation(
     BASE_TAB,
     {

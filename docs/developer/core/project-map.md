@@ -44,7 +44,7 @@ flowchart TB
   - `src/index.ts`: app bootstrap, BrowserWindow config, IPC handlers, backend subprocess management.
   - `src/window-close-guard.ts`: serialized window/app close decisions based on backend-owned SSH/SFTP activity, including conservative probe-failure handling.
   - `src/renderer-close-confirmation.ts`: sender-bound, request-ID-validated Main-to-Renderer close confirmation broker with timeout and renderer-destruction handling.
-  - `src/terminal-window-activity.ts`: validated per-window taskbar progress mapping plus independently throttled standalone-Bell sound/Flash edge handling.
+  - `src/terminal-window-activity.ts`: validated per-window taskbar progress mapping plus renderer epoch/sequence replay protection and Main-monotonic standalone-Bell sound/Flash throttling.
   - `src/ipc/register-app-utility-ipc.ts`: privileged app utility IPC such as native dialogs, file manager integration, SFTP temp-file creation, and validated OS-open/Open With flows.
   - `src/ipc/register-terminal-window-activity-ipc.ts`: sender-bound Terminal Presentation window snapshot channel and `BrowserWindow` controller lifecycle.
   - `src/ipc/sftp-open-with-runtime.ts`: kernel-anchored Windows system executable/library resolution, OS-known-folder child environments, and packaged-versus-development macOS helper selection for SFTP Open With.
@@ -78,7 +78,7 @@ flowchart TB
   - `src/components/ui`: Radix-based primitive wrappers, reusable sidebar navigation (`SidebarNav`), reusable search/replace panel, CodeMirror text context menu, and styling contracts.
   - `src/components/home`: home/SSH shared entity modules (card/icon rendering, TanStack Virtual-backed visual picker, reusable folder-creation dialog).
   - `src/components/terminal`: terminal interaction composites (context menu, selection bar, autocomplete menu).
-  - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), renderer request-trace mirror bootstrap (`backend-request-trace-mirror.ts`), shared date-time display formatting (`date-time-format.ts`), memory-only terminal tab title/presentation projection (`tab-presentation.ts`), window-level terminal activity aggregation (`terminal-window-activity.ts`), shared CodeMirror syntax highlighting and search/replace adapter, and utility abstractions (including shared entity visual helpers, Home folder grouping, and the folder-dialog hook).
+  - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), renderer request-trace mirror bootstrap (`backend-request-trace-mirror.ts`), shared date-time display formatting (`date-time-format.ts`), memory-only terminal tab title/presentation projection (`tab-presentation.ts`), renderer-document Bell epoch/sequence allocation (`terminal-bell-identity.ts`), window-level terminal activity aggregation (`terminal-window-activity.ts`), shared CodeMirror syntax highlighting and search/replace adapter, and utility abstractions (including shared entity visual helpers, Home folder grouping, and the folder-dialog hook).
   - `theme`: token source used to generate CSS variable system.
 
 ### `packages/backend`

@@ -208,13 +208,13 @@ flowchart LR
 - 每个输出 chunk 都保持原样写入所属 pane 的 xterm 实例，因此跨 chunk 重组与 terminator 处理完全由 xterm streaming parser 负责。
 - `terminal.onTitleChange(...)` 接收完整的 OSC 0/2 应用标题事件。标题只保存在 pane 内存中，不写日志、不持久化；进入展示状态前会移除终端/方向控制字符、合并空白，并限制为 256 个 Unicode code point。
 - `terminal.parser.registerOscHandler(9, ...)` 只处理 `4;<state>;<progress>` 命名空间。状态映射为 `none`、`normal`、`error`、`indeterminate` 与 `warning`。确定型状态必须携带 0 到 100 的规范整数；由于 `none` 与 `indeterminate` 不使用数值，parser 也会接受省略或留空的进度字段，以兼容 Kimi Code 输出的 ConEmu 风格序列。其他非法 OSC 9;4 payload 会被消费但不改变状态，无关 OSC 9 payload 仍可交给其他 handler。
-- `terminal.onBell(...)` 是 Bell attention 的唯一来源。用于终止 OSC 0/2 或 OSC 9;4 的 BEL 会被 xterm 作为 terminator 消费，不会产生独立 Bell 事件。OSC 9;4 state `0` 只清除进度，绝不会合成 Bell attention。每个独立 Bell 在进入 pane state 前都会获得 Renderer 窗口级单调序号，因此跨 pane 或 Tab 的相同墙钟时间戳仍具有全序。
+- `terminal.onBell(...)` 是 Bell attention 的唯一来源。用于终止 OSC 0/2 或 OSC 9;4 的 BEL 会被 xterm 作为 terminator 消费，不会产生独立 Bell 事件。OSC 9;4 state `0` 只清除进度，绝不会合成 Bell attention。每个独立 Bell 在进入 pane state 前都会获得 Renderer 窗口级单调序号，从而在当前 renderer epoch 内为跨 pane 与 Tab 的事件建立与时钟无关的全序。
 - 展示状态按 pane 独立归属。连接重试只清理该 pane 的旧标题/进度/Bell 状态。Transport 意外关闭或报错时，会在待处理的 xterm write 之后清除已结束会话的应用标题与进度，同时保留用户尚未确认的 Bell attention。Terminal dispose 会注销所有 parser listener，pane 删除会移除对应状态。
 - Tab 聚合器跟随 active pane 的应用标题，并优先展示该 pane 的进度状态。active pane 没有进度时，后台 `error` 与 `warning` 状态可以保留 Tab attention；普通后台进度不会接管 active pane 的状态槽。Bell attention 独立汇总所有存活 pane。
 - 终端 Tab 会保留独立标题来源，并按 `manualTitle > activePane.applicationTitle > connectionTitle > defaultTitle` 解析。应用标题始终只是内存中的派生投影，不会回写已存储的 Tab/session state、命令日志或设置。
 - 仅当 renderer document 可见且窗口实际拥有焦点时，聚焦某个 pane 才会确认该 pane 的 Bell attention。窗口处于后台时保留的 DOM active element 或程序化 terminal focus 不会确认 attention。若独立 Bell 到达时对应 active pane 已实际暴露焦点，则立即确认；切换 Tab 也遵循同一门控，回到可见且聚焦的窗口时会确认 active pane。
 - Window 聚合器按 `error > warning > indeterminate > normal > none` 严重度检查所有存活终端 Tab。同级候选优先 active Tab，否则使用稳定 Tab 顺序。Main 将 warning 映射为 Electron paused taskbar 模式，并在聚合结果为 `none` 时通过 `setProgressBar(-1)` 清除 taskbar 进度。
-- 最近 Bell 事件独立于当前 Bell attention 保留 `{ tabId, paneId, sequence, receivedAt }`。`sequence` 在 Renderer 窗口内单调递增，并在 Main 消费达到或超过接收时间高水位的事件前打破相同 `receivedAt` 的平局，因此被关闭或被节流的事件不会在切换设置后重放。Audible Bell 与未聚焦窗口 Flash 分别使用独立的一秒节流窗口；窗口聚焦会停止当前 Flash。进度状态 `none` 永远不会进入这条 Bell 路径。
+- 最近 Bell 事件独立于当前 Bell attention 保留 `{ rendererEpoch, tabId, paneId, sequence }`。随机 epoch 标识一个 renderer document，其中 renderer-window 单调 sequence 对 pane 和 Tab 间的 Bell edge 建立全序。Reload 或 Fast Refresh 后，Pane/Tab/Window 聚合会忽略旧 epoch 的 metadata；Main 仅在 epoch 变化时重置 sequence 高水位，并在应用 effect-policy 前记录每个已接受 edge，因此被关闭、节流或稍后显露的事件都不会重放。Audible Bell 与未聚焦窗口 Flash 使用 Main 单调时钟采样的独立一秒窗口；renderer 数据无法推进这些节流，窗口聚焦会停止当前 Flash。进度状态 `none` 永远不会进入这条 Bell 路径。
 - `App` 是 renderer 中 Window Activity Aggregation 与 preload 调用的唯一所有者。Pane 和 Tab 领域绝不直接调用 Electron；preload 只暴露固定的 activity bridge 方法，Main 校验共享的 `TerminalWindowActivity` 运行时契约，并根据发送 `webContents` 推导目标窗口。
 - `terminalApplicationTitleEnabled` 只在 Tab 投影边界过滤应用标题。`terminalTabProgressEnabled` 会过滤 Tab 进度并强制窗口聚合结果为 `none`，从而清除 Electron taskbar 进度。这两个设置都不会注销 xterm parser，也不会修改 pane 原始状态。
 - `terminalBellAttentionMode` 将 `audible` 映射为操作系统声音、`visual` 映射为 Tab 内 Bell attention、`taskbar` 映射为未聚焦窗口 Flash、`all` 映射为全部三项效果，`none` 则不产生 attention 效果。在所有模式下，最近 Bell edge 都会继续用于 Main 的防重放保护。
@@ -245,8 +245,8 @@ flowchart LR
 
 自动化验收与 transport 无关，因为本地 PTY 和 SSH 输出最终都汇合到 pane 所属的同一个 `terminal.write(...)` 边界：
 
-- `pnpm --filter @cosmosh/renderer test:ssh` 覆盖 OSC 跨 chunk 分片、Kimi Code 不携带数值的 OSC 9;4 形式、非法 OSC 9;4 状态、OSC terminator BEL 与独立 BEL 的区分、pane/Tab 聚合、attention 确认、重连清理和设置投影。
-- `pnpm --filter @cosmosh/main test:terminal-presentation` 覆盖窗口进度映射、发送方 payload 校验、Bell 防重放、声音/Flash 策略和分别节流。
+- `pnpm --filter @cosmosh/renderer test:ssh` 覆盖 OSC 跨 chunk 分片、Kimi Code 不携带数值的 OSC 9;4 形式、非法 OSC 9;4 状态、OSC terminator BEL 与独立 BEL 的区分、renderer-epoch Bell 排序、pane/Tab 聚合、attention 确认、重连清理和设置投影。
+- `pnpm --filter @cosmosh/main test:terminal-presentation` 覆盖窗口进度映射、发送方 payload 校验、renderer epoch/sequence 防重放、声音/Flash 策略和 Main 单调时钟分别节流。
 
 发布前手动验收必须让两种已安装的 Agent CLI 都实际经过 Cosmosh：
 

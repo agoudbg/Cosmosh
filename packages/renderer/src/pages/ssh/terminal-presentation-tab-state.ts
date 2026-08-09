@@ -5,6 +5,7 @@ type AggregateTerminalTabPresentationParams = {
   activePaneId: string;
   paneIds: ReadonlyArray<string>;
   paneStates: TerminalPresentationStateMap;
+  rendererEpoch: string;
 };
 
 type ShouldAcknowledgeFocusedPaneBellParams = {
@@ -47,12 +48,16 @@ export const aggregateTerminalTabPresentation = ({
   activePaneId,
   paneIds,
   paneStates,
+  rendererEpoch,
 }: AggregateTerminalTabPresentationParams): TerminalTabPresentation => {
   const activePaneState = paneStates[activePaneId];
   const selectedProgress =
     selectActivePaneProgress(activePaneState) ?? selectBackgroundAttentionProgress(activePaneId, paneIds, paneStates);
-  const bellAttentionPaneIds = paneIds.filter((paneId) => paneStates[paneId]?.bellAttention);
-  const latestBellEvent = selectLatestBellEvent(paneIds, paneStates);
+  const bellAttentionPaneIds = paneIds.filter((paneId) => {
+    const paneState = paneStates[paneId];
+    return paneState?.bellRendererEpoch === rendererEpoch && paneState.bellAttention;
+  });
+  const latestBellEvent = selectLatestBellEvent(paneIds, paneStates, rendererEpoch);
 
   return {
     applicationTitle: activePaneState?.applicationTitle ?? null,
@@ -86,9 +91,9 @@ export const areTerminalTabPresentationsEqual = (
     left.progressValue === right.progressValue &&
     left.progressSource === right.progressSource &&
     left.bellAttention === right.bellAttention &&
+    left.latestBellEvent?.rendererEpoch === right.latestBellEvent?.rendererEpoch &&
     left.latestBellEvent?.paneId === right.latestBellEvent?.paneId &&
     left.latestBellEvent?.sequence === right.latestBellEvent?.sequence &&
-    left.latestBellEvent?.receivedAt === right.latestBellEvent?.receivedAt &&
     left.bellAttentionPaneIds.length === right.bellAttentionPaneIds.length &&
     left.bellAttentionPaneIds.every((paneId, index) => paneId === right.bellAttentionPaneIds[index])
   );
@@ -97,34 +102,32 @@ export const areTerminalTabPresentationsEqual = (
 /**
  * Selects the newest standalone Bell event without depending on acknowledgement state.
  *
- * Renderer-window sequence breaks equal-timestamp ties across every pane and
- * tab. Stable pane order remains only as a defensive fallback for malformed state.
+ * Renderer-window sequence provides the total order across every pane and tab.
+ * State from an older renderer epoch is ignored after reload or Fast Refresh.
  *
  * @param paneIds Stable pane layout order.
  * @param paneStates Pane-indexed presentation state.
+ * @param rendererEpoch Current renderer-document epoch.
  * @returns Latest Bell event, or `null` when no live pane has received one.
  */
 const selectLatestBellEvent = (
   paneIds: ReadonlyArray<string>,
   paneStates: TerminalPresentationStateMap,
+  rendererEpoch: string,
 ): TerminalTabPresentation['latestBellEvent'] => {
   let selected: TerminalTabPresentation['latestBellEvent'] = null;
 
   for (const paneId of paneIds) {
     const state = paneStates[paneId];
-    if (!state || state.lastBellAt === null || state.bellSequence <= 0) {
+    if (!state || state.bellRendererEpoch !== rendererEpoch || state.bellSequence <= 0) {
       continue;
     }
 
-    if (
-      !selected ||
-      state.lastBellAt > selected.receivedAt ||
-      (state.lastBellAt === selected.receivedAt && state.bellSequence > selected.sequence)
-    ) {
+    if (!selected || state.bellSequence > selected.sequence) {
       selected = {
+        rendererEpoch,
         paneId,
         sequence: state.bellSequence,
-        receivedAt: state.lastBellAt,
       };
     }
   }

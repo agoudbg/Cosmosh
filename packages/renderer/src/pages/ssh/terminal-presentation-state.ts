@@ -1,3 +1,5 @@
+import { TERMINAL_BELL_RENDERER_EPOCH } from '../../lib/terminal-bell-identity';
+
 /** Maximum number of Unicode code points retained from an application-provided terminal title. */
 export const MAX_TERMINAL_APPLICATION_TITLE_CODE_POINTS = 256;
 
@@ -44,11 +46,11 @@ export type TerminalPresentationState = {
   progressValue: number | null;
   /** Whether this pane has Bell attention awaiting user acknowledgement. */
   bellAttention: boolean;
-  /** Local receipt time of the newest valid standalone Bell event. */
-  lastBellAt: number | null;
+  /** Renderer epoch that owns the newest valid standalone Bell event. */
+  bellRendererEpoch: string | null;
   /**
-   * Monotonic renderer-window event identity used to preserve distinct Bell edges
-   * when multiple events share the same wall-clock timestamp.
+   * Monotonic renderer-window event identity used to order Bell edges within
+   * the owning renderer epoch.
    */
   bellSequence: number;
 };
@@ -64,7 +66,7 @@ export type TerminalPresentationStateAction =
   | { type: 'remove-pane'; paneId: string }
   | { type: 'application-title'; paneId: string; title: string }
   | { type: 'progress'; paneId: string; progress: TerminalPresentationProgress }
-  | { type: 'bell'; paneId: string; sequence: number; receivedAt: number }
+  | { type: 'bell'; paneId: string; rendererEpoch: string; sequence: number }
   | { type: 'acknowledge-bell'; paneId: string };
 
 /** Result of inspecting one xterm OSC 9 payload for the `9;4` progress namespace. */
@@ -90,7 +92,7 @@ export const createTerminalPresentationState = (): TerminalPresentationState => 
   progressState: 'none',
   progressValue: null,
   bellAttention: false,
-  lastBellAt: null,
+  bellRendererEpoch: null,
   bellSequence: 0,
 });
 
@@ -289,10 +291,11 @@ export const reduceTerminalPresentationState = (
 
   if (action.type === 'bell') {
     if (
+      action.rendererEpoch !== TERMINAL_BELL_RENDERER_EPOCH ||
       !Number.isSafeInteger(action.sequence) ||
-      action.sequence <= previousPaneState.bellSequence ||
-      !Number.isFinite(action.receivedAt) ||
-      action.receivedAt < 0
+      action.sequence <= 0 ||
+      (previousPaneState.bellRendererEpoch === action.rendererEpoch &&
+        action.sequence <= previousPaneState.bellSequence)
     ) {
       return state;
     }
@@ -300,7 +303,7 @@ export const reduceTerminalPresentationState = (
     return replacePaneState(state, action.paneId, {
       ...previousPaneState,
       bellAttention: true,
-      lastBellAt: action.receivedAt,
+      bellRendererEpoch: action.rendererEpoch,
       bellSequence: action.sequence,
     });
   }

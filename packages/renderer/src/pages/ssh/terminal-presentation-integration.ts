@@ -1,19 +1,7 @@
 import type { Terminal } from '@xterm/xterm';
 
+import { allocateTerminalBellSequence, TERMINAL_BELL_RENDERER_EPOCH } from '../../lib/terminal-bell-identity';
 import { parseTerminalOscProgress, type TerminalPresentationStateAction } from './terminal-presentation-state';
-
-/** Renderer-window Bell sequence shared by every terminal integration instance. */
-let terminalBellSequence = 0;
-
-/**
- * Allocates a total-order identity for one standalone Bell edge.
- *
- * @returns Positive renderer-window sequence number.
- */
-const allocateTerminalBellSequence = (): number => {
-  terminalBellSequence += 1;
-  return terminalBellSequence;
-};
 
 /** Dependencies required to passively observe one pane's xterm presentation events. */
 export type TerminalPresentationIntegrationOptions = {
@@ -23,8 +11,6 @@ export type TerminalPresentationIntegrationOptions = {
   terminal: Terminal;
   /** Pane-aware reducer sink owned by the SSH runtime coordinator. */
   dispatch: (action: TerminalPresentationStateAction) => void;
-  /** Local clock used to timestamp standalone Bell events. */
-  now?: () => number;
 };
 
 /** Disposable listener group attached to one xterm instance. */
@@ -64,7 +50,7 @@ export type TerminalPresentationIntegration = {
 export const registerTerminalPresentationIntegration = (
   options: TerminalPresentationIntegrationOptions,
 ): TerminalPresentationIntegration => {
-  const { paneId, terminal, dispatch, now = Date.now } = options;
+  const { paneId, terminal, dispatch } = options;
   const titleDisposable = terminal.onTitleChange((title) => {
     dispatch({
       type: 'application-title',
@@ -92,8 +78,8 @@ export const registerTerminalPresentationIntegration = (
     dispatch({
       type: 'bell',
       paneId,
+      rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
       sequence: allocateTerminalBellSequence(),
-      receivedAt: now(),
     });
   });
   let disposed = false;

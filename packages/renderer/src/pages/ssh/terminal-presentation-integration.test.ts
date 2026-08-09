@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import type { Terminal as XtermTerminal } from '@xterm/xterm';
 
+import { TERMINAL_BELL_RENDERER_EPOCH } from '../../lib/terminal-bell-identity';
 import { registerTerminalPresentationIntegration } from './terminal-presentation-integration';
 import {
   createTerminalPresentationState,
@@ -34,7 +35,6 @@ test('xterm parser routes fragmented OSC 0/2, OSC 9;4, and standalone Bell event
     paneId: 'pane-2',
     terminal,
     dispatch: (action) => actions.push(action),
-    now: () => 1234,
   });
 
   try {
@@ -69,7 +69,7 @@ test('xterm parser routes fragmented OSC 0/2, OSC 9;4, and standalone Bell event
     assert.equal(actions[3]?.type, 'bell');
     if (actions[3]?.type === 'bell') {
       assert.equal(actions[3].paneId, 'pane-2');
-      assert.equal(actions[3].receivedAt, 1234);
+      assert.equal(actions[3].rendererEpoch, TERMINAL_BELL_RENDERER_EPOCH);
       assert.ok(actions[3].sequence > 0);
     }
   } finally {
@@ -129,7 +129,6 @@ test('independent terminals share one renderer-window Bell sequence', async () =
           bellActions.push(action);
         }
       },
-      now: () => 2_000,
     });
   const firstIntegration = register('pane-1', firstTerminal);
   const secondIntegration = register('pane-2', secondTerminal);
@@ -139,8 +138,8 @@ test('independent terminals share one renderer-window Bell sequence', async () =
     await writeTerminalChunk(secondTerminal, '\u0007');
 
     assert.equal(bellActions.length, 2);
-    assert.equal(bellActions[0]?.receivedAt, 2_000);
-    assert.equal(bellActions[1]?.receivedAt, 2_000);
+    assert.equal(bellActions[0]?.rendererEpoch, TERMINAL_BELL_RENDERER_EPOCH);
+    assert.equal(bellActions[1]?.rendererEpoch, TERMINAL_BELL_RENDERER_EPOCH);
     assert.ok((bellActions[1]?.sequence ?? 0) > (bellActions[0]?.sequence ?? 0));
   } finally {
     firstIntegration.dispose();
@@ -211,7 +210,6 @@ test('reconnect reset drains old parser work before accepting replacement connec
     paneId: 'pane-1',
     terminal,
     dispatch,
-    now: () => 100,
   });
 
   try {
@@ -246,7 +244,6 @@ test('session end drains queued output and preserves Bell attention metadata', a
       }
       state = reduceTerminalPresentationState(state, action);
     },
-    now: () => 100,
   });
 
   try {
@@ -259,7 +256,7 @@ test('session end drains queued output and preserves Bell attention metadata', a
       progressState: 'none',
       progressValue: null,
       bellAttention: true,
-      lastBellAt: 100,
+      bellRendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
       bellSequence: observedBellSequence,
     });
     assert.ok(observedBellSequence > 0);

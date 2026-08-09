@@ -13,12 +13,12 @@ export type TerminalTabProgressSource = 'active-pane' | 'background-attention' |
 
 /** Latest standalone Bell event retained by one terminal tab projection. */
 export type TerminalTabBellEvent = {
+  /** Renderer document that allocated this event sequence. */
+  rendererEpoch: string;
   /** Pane that received the standalone Bell. */
   paneId: string;
   /** Renderer-window monotonic Bell sequence. */
   sequence: number;
-  /** Local receipt time used for window-level event ordering. */
-  receivedAt: number;
 };
 
 /** Memory-only presentation state derived from all terminal panes in one tab. */

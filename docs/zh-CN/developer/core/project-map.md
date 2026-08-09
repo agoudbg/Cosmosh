@@ -44,7 +44,7 @@ flowchart TB
   - `src/index.ts`：应用启动、窗口配置、IPC 处理器、后端子进程管理。
   - `src/window-close-guard.ts`：根据 backend 持有的 SSH/SFTP 活动状态串行处理窗口关闭与应用退出决策，并对探测失败采用保守确认策略。
   - `src/renderer-close-confirmation.ts`：绑定发送方并校验 request ID 的 Main 到 Renderer 关闭确认 broker，包含超时与 renderer 销毁处理。
-  - `src/terminal-window-activity.ts`：经过校验的窗口级 taskbar 进度映射，以及分别节流的独立 Bell 声音/Flash edge 处理。
+  - `src/terminal-window-activity.ts`：经过校验的窗口级 taskbar 进度映射、renderer epoch/sequence 防重放，以及基于 Main 单调时钟分别节流的独立 Bell 声音/Flash 处理。
   - `src/ipc/register-app-utility-ipc.ts`：特权应用工具 IPC，例如原生对话框、文件管理器集成、SFTP 临时文件创建，以及已校验的系统打开/打开方式流程。
   - `src/ipc/register-terminal-window-activity-ipc.ts`：绑定发送方的 Terminal Presentation 窗口快照 channel 与 `BrowserWindow` controller 生命周期。
   - `src/ipc/sftp-open-with-runtime.ts`：负责 SFTP 打开方式使用的内核锚定 Windows 系统可执行文件/库解析、OS known-folder 子进程环境，以及 macOS 打包态与开发态 helper 选择。
@@ -78,7 +78,7 @@ flowchart TB
   - `src/components/ui`：基于 Radix 的原子组件封装、可复用侧边栏导航（`SidebarNav`）、可复用查找/替换面板、CodeMirror 文本右键菜单与样式契约。
   - `src/components/home`：Home/SSH 共享实体模块（卡片/图标渲染、基于 TanStack Virtual 的视觉编辑器、可复用的创建文件夹弹窗）。
   - `src/components/terminal`：终端交互复合组件（右键菜单、选区工具条、自动补全面板）。
-  - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）、renderer 请求 trace 镜像启动逻辑（`backend-request-trace-mirror.ts`）、共享时间显示格式化工具（`date-time-format.ts`）、纯内存终端 Tab 标题/展示投影（`tab-presentation.ts`）、窗口级终端活动聚合（`terminal-window-activity.ts`）、共享 CodeMirror 语法高亮与查找/替换 adapter，以及工具抽象（含共享实体视觉工具、Home 文件夹分组与创建文件夹 Hook）。
+  - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）、renderer 请求 trace 镜像启动逻辑（`backend-request-trace-mirror.ts`）、共享时间显示格式化工具（`date-time-format.ts`）、纯内存终端 Tab 标题/展示投影（`tab-presentation.ts`）、renderer-document Bell epoch/sequence 分配（`terminal-bell-identity.ts`）、窗口级终端活动聚合（`terminal-window-activity.ts`）、共享 CodeMirror 语法高亮与查找/替换 adapter，以及工具抽象（含共享实体视觉工具、Home 文件夹分组与创建文件夹 Hook）。
   - `theme`：生成 CSS Variables 的令牌源。
 
 ### `packages/backend`

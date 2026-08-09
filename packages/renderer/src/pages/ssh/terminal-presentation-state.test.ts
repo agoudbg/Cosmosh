@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { TERMINAL_BELL_RENDERER_EPOCH } from '../../lib/terminal-bell-identity';
 import {
   createTerminalPresentationState,
   MAX_TERMINAL_APPLICATION_TITLE_CODE_POINTS,
@@ -153,14 +154,14 @@ test('Bell events retain distinct sequence edges and acknowledgement keeps event
   const firstBell = reduceTerminalPresentationState(INITIAL_STATE, {
     type: 'bell',
     paneId: 'pane-1',
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
     sequence: 1,
-    receivedAt: 100,
   });
   const secondBell = reduceTerminalPresentationState(firstBell, {
     type: 'bell',
     paneId: 'pane-1',
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
     sequence: 2,
-    receivedAt: 100,
   });
   const acknowledged = reduceTerminalPresentationState(secondBell, {
     type: 'acknowledge-bell',
@@ -168,10 +169,10 @@ test('Bell events retain distinct sequence edges and acknowledgement keeps event
   });
 
   assert.equal(secondBell['pane-1']?.bellAttention, true);
-  assert.equal(secondBell['pane-1']?.lastBellAt, 100);
+  assert.equal(secondBell['pane-1']?.bellRendererEpoch, TERMINAL_BELL_RENDERER_EPOCH);
   assert.equal(secondBell['pane-1']?.bellSequence, 2);
   assert.equal(acknowledged['pane-1']?.bellAttention, false);
-  assert.equal(acknowledged['pane-1']?.lastBellAt, 100);
+  assert.equal(acknowledged['pane-1']?.bellRendererEpoch, TERMINAL_BELL_RENDERER_EPOCH);
   assert.equal(acknowledged['pane-1']?.bellSequence, 2);
 });
 
@@ -208,7 +209,7 @@ test('session end clears application title and progress while retaining Bell att
       progressState: 'indeterminate' as const,
       progressValue: null,
       bellAttention: true,
-      lastBellAt: 1_000,
+      bellRendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
       bellSequence: 3,
     },
   };
@@ -226,18 +227,33 @@ test('session end clears application title and progress while retaining Bell att
     progressState: 'none',
     progressValue: null,
     bellAttention: true,
-    lastBellAt: 1_000,
+    bellRendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
     bellSequence: 3,
   });
   assert.equal(duplicateEnd, ended);
 });
 
-test('pane reducer ignores invalid Bell timestamps and events for unknown panes', () => {
+test('pane reducer rejects stale renderer epochs and accepts a new epoch sequence after retained state', () => {
+  const staleState: TerminalPresentationStateMap = {
+    ...INITIAL_STATE,
+    'pane-1': {
+      ...createTerminalPresentationState(),
+      bellAttention: true,
+      bellRendererEpoch: 'stale-renderer-epoch',
+      bellSequence: 100,
+    },
+  };
   const invalidBell = reduceTerminalPresentationState(INITIAL_STATE, {
     type: 'bell',
     paneId: 'pane-1',
+    rendererEpoch: 'stale-renderer-epoch',
     sequence: 1,
-    receivedAt: Number.NaN,
+  });
+  const currentEpochBell = reduceTerminalPresentationState(staleState, {
+    type: 'bell',
+    paneId: 'pane-1',
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
+    sequence: 1,
   });
   const unknownPaneTitle = reduceTerminalPresentationState(INITIAL_STATE, {
     type: 'application-title',
@@ -246,5 +262,7 @@ test('pane reducer ignores invalid Bell timestamps and events for unknown panes'
   });
 
   assert.equal(invalidBell, INITIAL_STATE);
+  assert.equal(currentEpochBell['pane-1']?.bellRendererEpoch, TERMINAL_BELL_RENDERER_EPOCH);
+  assert.equal(currentEpochBell['pane-1']?.bellSequence, 1);
   assert.equal(unknownPaneTitle, INITIAL_STATE);
 });

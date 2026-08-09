@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { TabItem, TerminalTabPresentation } from '../types/tabs';
+import { TERMINAL_BELL_RENDERER_EPOCH } from './terminal-bell-identity';
 import { aggregateTerminalWindowActivity } from './terminal-window-activity';
 
 const BELL_EFFECT_POLICY = {
+  rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   bellAudibleEnabled: true,
   bellFlashEnabled: true,
 } as const;
@@ -96,12 +98,12 @@ test('Bell attention and latest event aggregate independently from progress', ()
     createTerminalTab('tab-1', {
       progressState: 'normal',
       progressValue: 100,
-      latestBellEvent: { paneId: 'pane-1', sequence: 1, receivedAt: 1_000 },
+      latestBellEvent: { rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH, paneId: 'pane-1', sequence: 1 },
     }),
     createTerminalTab('tab-2', {
       bellAttention: true,
       bellAttentionPaneIds: ['pane-2'],
-      latestBellEvent: { paneId: 'pane-2', sequence: 2, receivedAt: 2_000 },
+      latestBellEvent: { rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH, paneId: 'pane-2', sequence: 2 },
     }),
   ];
 
@@ -113,21 +115,21 @@ test('Bell attention and latest event aggregate independently from progress', ()
     bellFlashEnabled: true,
     latestBellEvent: {
       tabId: 'tab-2',
+      rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
       paneId: 'pane-2',
       sequence: 2,
-      receivedAt: 2_000,
     },
   });
 });
 
-test('window aggregation advances equal-timestamp Bell edges by renderer sequence', () => {
+test('window aggregation advances Bell edges by renderer sequence', () => {
   const aggregated = aggregateTerminalWindowActivity({
     tabs: [
       createTerminalTab('tab-1', {
-        latestBellEvent: { paneId: 'pane-1', sequence: 10, receivedAt: 2_000 },
+        latestBellEvent: { rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH, paneId: 'pane-1', sequence: 10 },
       }),
       createTerminalTab('tab-2', {
-        latestBellEvent: { paneId: 'pane-2', sequence: 11, receivedAt: 2_000 },
+        latestBellEvent: { rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH, paneId: 'pane-2', sequence: 11 },
       }),
     ],
     activeTabId: 'tab-1',
@@ -136,9 +138,31 @@ test('window aggregation advances equal-timestamp Bell edges by renderer sequenc
 
   assert.deepEqual(aggregated.latestBellEvent, {
     tabId: 'tab-2',
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
     paneId: 'pane-2',
     sequence: 11,
-    receivedAt: 2_000,
+  });
+});
+
+test('window aggregation ignores Bell events retained by a stale renderer epoch', () => {
+  const aggregated = aggregateTerminalWindowActivity({
+    tabs: [
+      createTerminalTab('stale-tab', {
+        latestBellEvent: { rendererEpoch: 'stale-renderer-epoch', paneId: 'pane-1', sequence: 100 },
+      }),
+      createTerminalTab('current-tab', {
+        latestBellEvent: { rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH, paneId: 'pane-2', sequence: 1 },
+      }),
+    ],
+    activeTabId: 'stale-tab',
+    ...BELL_EFFECT_POLICY,
+  });
+
+  assert.deepEqual(aggregated.latestBellEvent, {
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
+    tabId: 'current-tab',
+    paneId: 'pane-2',
+    sequence: 1,
   });
 });
 
@@ -147,7 +171,7 @@ test('acknowledged Bell retains its latest event identity without attention', ()
     tabs: [
       createTerminalTab('tab-1', {
         bellAttention: false,
-        latestBellEvent: { paneId: 'pane-1', sequence: 2, receivedAt: 3_000 },
+        latestBellEvent: { rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH, paneId: 'pane-1', sequence: 2 },
       }),
     ],
     activeTabId: 'tab-1',
@@ -157,9 +181,9 @@ test('acknowledged Bell retains its latest event identity without attention', ()
   assert.equal(aggregated.bellAttention, false);
   assert.deepEqual(aggregated.latestBellEvent, {
     tabId: 'tab-1',
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
     paneId: 'pane-1',
     sequence: 2,
-    receivedAt: 3_000,
   });
 });
 
@@ -168,10 +192,11 @@ test('window aggregation carries Bell effect policy independently from visual at
     tabs: [
       createTerminalTab('tab-1', {
         bellAttention: false,
-        latestBellEvent: { paneId: 'pane-1', sequence: 3, receivedAt: 4_000 },
+        latestBellEvent: { rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH, paneId: 'pane-1', sequence: 3 },
       }),
     ],
     activeTabId: 'tab-1',
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
     bellAudibleEnabled: true,
     bellFlashEnabled: false,
   });

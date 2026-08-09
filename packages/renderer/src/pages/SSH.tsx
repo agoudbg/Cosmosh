@@ -24,6 +24,7 @@ import { type SearchReplaceFilterOption, SearchReplacePanel } from '../component
 import { useDateTimeFormatter } from '../lib/date-time-format';
 import { t } from '../lib/i18n';
 import { useSettingsValues } from '../lib/settings-store';
+import { TERMINAL_BELL_RENDERER_EPOCH } from '../lib/terminal-bell-identity';
 import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
 import type { SshConnectionIntent, TabIconColorKey, TabIconKey, TerminalTabPresentation } from '../types/tabs';
@@ -455,6 +456,7 @@ const SSH: React.FC<SSHProps> = ({
         activePaneId,
         paneIds: terminalPaneIds,
         paneStates: terminalPresentationStates,
+        rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
       }),
     [activePaneId, terminalPaneIds, terminalPresentationStates],
   );

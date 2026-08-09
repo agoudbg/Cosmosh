@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { TERMINAL_BELL_RENDERER_EPOCH } from '../../lib/terminal-bell-identity';
 import {
   createTerminalPresentationState,
   type TerminalPresentationState,
@@ -40,11 +41,13 @@ test('tab aggregation follows the active pane title and progress', () => {
     activePaneId: 'pane-1',
     paneIds: ['pane-1', 'pane-2'],
     paneStates,
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   });
   const second = aggregateTerminalTabPresentation({
     activePaneId: 'pane-2',
     paneIds: ['pane-1', 'pane-2'],
     paneStates,
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   });
 
   assert.equal(first.applicationTitle, 'Claude Code');
@@ -63,6 +66,7 @@ test('active pane progress takes priority over background errors', () => {
       'pane-1': createPaneState({ progressState: 'normal', progressValue: 25 }),
       'pane-2': createPaneState({ progressState: 'error', progressValue: 80 }),
     },
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   });
 
   assert.equal(aggregated.progressState, 'normal');
@@ -79,6 +83,7 @@ test('background error and warning states retain attention when active progress 
       'pane-2': createPaneState({ progressState: 'warning', progressValue: 60 }),
       'pane-3': createPaneState({ progressState: 'error', progressValue: 35 }),
     },
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   });
 
   assert.equal(aggregated.progressState, 'error');
@@ -94,6 +99,7 @@ test('ordinary background progress does not occupy an idle active pane status sl
       'pane-1': createPaneState({}),
       'pane-2': createPaneState({ progressState: 'indeterminate' }),
     },
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   });
 
   assert.equal(aggregated.progressState, 'none');
@@ -107,50 +113,79 @@ test('Bell attention is retained independently across all live panes', () => {
     paneStates: {
       'pane-1': createPaneState({
         bellAttention: true,
-        lastBellAt: 1_000,
+        bellRendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
         bellSequence: 1,
       }),
       'pane-2': createPaneState({ bellAttention: false }),
       'pane-3': createPaneState({
         bellAttention: true,
-        lastBellAt: 2_000,
+        bellRendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
         bellSequence: 2,
       }),
     },
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   });
 
   assert.equal(aggregated.bellAttention, true);
   assert.deepEqual(aggregated.bellAttentionPaneIds, ['pane-1', 'pane-3']);
   assert.deepEqual(aggregated.latestBellEvent, {
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
     paneId: 'pane-3',
     sequence: 2,
-    receivedAt: 2_000,
   });
 });
 
-test('latest Bell event survives acknowledgement and breaks equal timestamps with renderer sequence', () => {
+test('latest Bell event survives acknowledgement and follows renderer sequence', () => {
   const aggregated = aggregateTerminalTabPresentation({
     activePaneId: 'pane-1',
     paneIds: ['pane-1', 'pane-2'],
     paneStates: {
       'pane-1': createPaneState({
         bellAttention: false,
-        lastBellAt: 3_000,
+        bellRendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
         bellSequence: 2,
       }),
       'pane-2': createPaneState({
         bellAttention: false,
-        lastBellAt: 3_000,
+        bellRendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
         bellSequence: 3,
       }),
     },
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   });
 
   assert.equal(aggregated.bellAttention, false);
   assert.deepEqual(aggregated.latestBellEvent, {
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
     paneId: 'pane-2',
     sequence: 3,
-    receivedAt: 3_000,
+  });
+});
+
+test('tab aggregation discards Bell attention retained by a stale renderer epoch', () => {
+  const aggregated = aggregateTerminalTabPresentation({
+    activePaneId: 'pane-1',
+    paneIds: ['pane-1', 'pane-2'],
+    paneStates: {
+      'pane-1': createPaneState({
+        bellAttention: true,
+        bellRendererEpoch: 'stale-renderer-epoch',
+        bellSequence: 100,
+      }),
+      'pane-2': createPaneState({
+        bellAttention: true,
+        bellRendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
+        bellSequence: 1,
+      }),
+    },
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
+  });
+
+  assert.deepEqual(aggregated.bellAttentionPaneIds, ['pane-2']);
+  assert.deepEqual(aggregated.latestBellEvent, {
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
+    paneId: 'pane-2',
+    sequence: 1,
   });
 });
 
@@ -161,6 +196,7 @@ test('presentation equality compares ordered Bell sources without relying on obj
     paneStates: {
       'pane-1': createPaneState({ applicationTitle: 'Task', bellAttention: true }),
     },
+    rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
   });
   const duplicate = {
     ...first,
@@ -179,9 +215,9 @@ test('presentation equality compares ordered Bell sources without relying on obj
     areTerminalTabPresentationsEqual(first, {
       ...duplicate,
       latestBellEvent: {
+        rendererEpoch: TERMINAL_BELL_RENDERER_EPOCH,
         paneId: 'pane-1',
         sequence: 1,
-        receivedAt: 4_000,
       },
     }),
     false,

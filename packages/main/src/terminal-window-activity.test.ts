@@ -14,6 +14,8 @@ type ProgressCall = {
   mode?: string;
 };
 
+const RENDERER_EPOCH = 'renderer-epoch-1';
+
 /**
  * Creates a controllable BrowserWindow test double.
  *
@@ -25,12 +27,12 @@ const createTarget = (): {
   flashCalls: boolean[];
   beepCalls: number[];
   effects: TerminalWindowActivityEffects;
-  state: { destroyed: boolean; focused: boolean };
+  state: { destroyed: boolean; focused: boolean; monotonicNow: number };
 } => {
   const progressCalls: ProgressCall[] = [];
   const flashCalls: boolean[] = [];
   const beepCalls: number[] = [];
-  const state = { destroyed: false, focused: false };
+  const state = { destroyed: false, focused: false, monotonicNow: 0 };
   const target = {
     flashFrame: (flag: boolean): void => {
       flashCalls.push(flag);
@@ -45,6 +47,7 @@ const createTarget = (): {
     beep: (): void => {
       beepCalls.push(beepCalls.length + 1);
     },
+    monotonicNow: (): number => state.monotonicNow,
   };
 
   return { target, progressCalls, flashCalls, beepCalls, effects, state };
@@ -106,10 +109,10 @@ test('Bell flashes once while unfocused and never follows progress clear', () =>
     progressValue: 80,
     bellAttention: true,
     latestBellEvent: {
+      rendererEpoch: RENDERER_EPOCH,
       tabId: 'tab-1',
       paneId: 'pane-1',
       sequence: 1,
-      receivedAt: 1_000,
     },
   });
 
@@ -128,20 +131,20 @@ test('older Bell exposed after a tab closes cannot replay attention', () => {
   controller.apply(
     createActivity({
       latestBellEvent: {
+        rendererEpoch: RENDERER_EPOCH,
         tabId: 'newer-tab',
         paneId: 'pane-1',
-        sequence: 1,
-        receivedAt: 2_000,
+        sequence: 4,
       },
     }),
   );
   controller.apply(
     createActivity({
       latestBellEvent: {
+        rendererEpoch: RENDERER_EPOCH,
         tabId: 'older-tab',
         paneId: 'pane-2',
-        sequence: 4,
-        receivedAt: 1_000,
+        sequence: 1,
       },
     }),
   );
@@ -157,10 +160,10 @@ test('focused Bell is consumed without delayed flash and focus stops an active f
   controller.apply(
     createActivity({
       latestBellEvent: {
+        rendererEpoch: RENDERER_EPOCH,
         tabId: 'tab-1',
         paneId: 'pane-1',
         sequence: 1,
-        receivedAt: 1_000,
       },
     }),
   );
@@ -207,10 +210,23 @@ test('malformed payloads and destroyed windows are rejected without OS calls', (
       bellAudibleEnabled: true,
       bellFlashEnabled: true,
       latestBellEvent: {
+        rendererEpoch: RENDERER_EPOCH,
         tabId: 'tab\u0007',
         paneId: 'pane-1',
         sequence: 1,
-        receivedAt: 1_000,
+      },
+    },
+    {
+      progressState: 'none',
+      progressValue: null,
+      bellAttention: true,
+      bellAudibleEnabled: true,
+      bellFlashEnabled: true,
+      latestBellEvent: {
+        rendererEpoch: 'renderer\u0007epoch',
+        tabId: 'tab-1',
+        paneId: 'pane-1',
+        sequence: 1,
       },
     },
   ];
@@ -225,21 +241,22 @@ test('malformed payloads and destroyed windows are rejected without OS calls', (
 });
 
 test('Bell sound and Flash are throttled independently without losing event edges', () => {
-  const { target, effects, flashCalls, beepCalls } = createTarget();
+  const { target, effects, flashCalls, beepCalls, state } = createTarget();
   const controller = new TerminalWindowActivityController(target, effects);
 
-  for (const [sequence, receivedAt] of [
-    [1, 1_000],
-    [2, 1_500],
-    [3, 2_000],
+  for (const [sequence, monotonicNow] of [
+    [1, 0],
+    [2, 500],
+    [3, 1_000],
   ] as const) {
+    state.monotonicNow = monotonicNow;
     controller.apply(
       createActivity({
         latestBellEvent: {
+          rendererEpoch: RENDERER_EPOCH,
           tabId: 'tab-1',
           paneId: 'pane-1',
           sequence,
-          receivedAt,
         },
       }),
     );
@@ -250,16 +267,16 @@ test('Bell sound and Flash are throttled independently without losing event edge
 });
 
 test('disabled Bell effects consume edges and cannot replay after policy changes', () => {
-  const { target, effects, flashCalls, beepCalls } = createTarget();
+  const { target, effects, flashCalls, beepCalls, state } = createTarget();
   const controller = new TerminalWindowActivityController(target, effects);
   const disabledBell = createActivity({
     bellAudibleEnabled: false,
     bellFlashEnabled: false,
     latestBellEvent: {
+      rendererEpoch: RENDERER_EPOCH,
       tabId: 'tab-1',
       paneId: 'pane-1',
       sequence: 1,
-      receivedAt: 1_000,
     },
   });
 
@@ -269,16 +286,98 @@ test('disabled Bell effects consume edges and cannot replay after policy changes
     bellAudibleEnabled: true,
     bellFlashEnabled: true,
   });
+  state.monotonicNow = 1_000;
   controller.apply(
     createActivity({
       latestBellEvent: {
+        rendererEpoch: RENDERER_EPOCH,
         tabId: 'tab-1',
         paneId: 'pane-1',
         sequence: 2,
-        receivedAt: 2_000,
       },
     }),
   );
+
+  assert.deepEqual(beepCalls, [1]);
+  assert.deepEqual(flashCalls, [true]);
+});
+
+test('renderer epoch change accepts a new sequence without replaying the previous epoch', () => {
+  const { target, effects, flashCalls, beepCalls, state } = createTarget();
+  const controller = new TerminalWindowActivityController(target, effects);
+
+  controller.apply(
+    createActivity({
+      latestBellEvent: {
+        rendererEpoch: RENDERER_EPOCH,
+        tabId: 'tab-1',
+        paneId: 'pane-1',
+        sequence: 10,
+      },
+    }),
+  );
+  state.monotonicNow = 1_000;
+  controller.apply(
+    createActivity({
+      latestBellEvent: {
+        rendererEpoch: 'renderer-epoch-2',
+        tabId: 'tab-1',
+        paneId: 'pane-1',
+        sequence: 1,
+      },
+    }),
+  );
+
+  assert.deepEqual(beepCalls, [1, 2]);
+  assert.deepEqual(flashCalls, [true, true]);
+});
+
+test('renderer wall-clock rollback cannot suppress a newer Bell sequence', () => {
+  const { target, effects, flashCalls, beepCalls, state } = createTarget();
+  const controller = new TerminalWindowActivityController(target, effects);
+
+  for (const [sequence, rendererTimestamp, monotonicNow] of [
+    [1, 2_000, 0],
+    [2, 1_000, 1_000],
+  ] as const) {
+    state.monotonicNow = monotonicNow;
+    controller.apply({
+      ...createActivity(),
+      latestBellEvent: {
+        rendererEpoch: RENDERER_EPOCH,
+        tabId: 'tab-1',
+        paneId: 'pane-1',
+        sequence,
+        receivedAt: rendererTimestamp,
+      },
+    });
+  }
+
+  assert.deepEqual(beepCalls, [1, 2]);
+  assert.deepEqual(flashCalls, [true, true]);
+});
+
+test('renderer timestamps cannot bypass Main-process monotonic Bell throttling', () => {
+  const { target, effects, flashCalls, beepCalls, state } = createTarget();
+  const controller = new TerminalWindowActivityController(target, effects);
+
+  for (const [sequence, rendererTimestamp] of [
+    [1, 1_000],
+    [2, 2_000],
+    [3, 3_000],
+  ] as const) {
+    state.monotonicNow = sequence * 100;
+    controller.apply({
+      ...createActivity(),
+      latestBellEvent: {
+        rendererEpoch: RENDERER_EPOCH,
+        tabId: 'tab-1',
+        paneId: 'pane-1',
+        sequence,
+        receivedAt: rendererTimestamp,
+      },
+    });
+  }
 
   assert.deepEqual(beepCalls, [1]);
   assert.deepEqual(flashCalls, [true]);

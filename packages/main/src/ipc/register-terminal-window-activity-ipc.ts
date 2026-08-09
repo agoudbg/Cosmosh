@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+
 import { TERMINAL_WINDOW_ACTIVITY_IPC_CHANNEL } from '@cosmosh/api-contract';
 import { BrowserWindow, ipcMain, shell } from 'electron';
 
@@ -26,6 +28,7 @@ export const registerTerminalWindowActivityIpcHandler = (): void => {
         beep: () => {
           shell.beep();
         },
+        monotonicNow: () => performance.now(),
       });
       controllers.set(targetWindow, controller);
       targetWindow.on('focus', () => {
