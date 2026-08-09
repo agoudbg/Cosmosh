@@ -188,16 +188,18 @@ test('presentation equality compares ordered Bell sources without relying on obj
   );
 });
 
-test('focused Bell acknowledgement requires the active tab, matching pane, and DOM focus', () => {
+test('focused Bell acknowledgement requires the active tab, matching pane, and exposed document focus', () => {
   const baseline = {
     isTabActive: true,
     activePaneId: 'pane-1',
     eventPaneId: 'pane-1',
     paneContainsFocus: true,
+    isDocumentFocusExposed: true,
   };
 
   assert.equal(shouldAcknowledgeFocusedPaneBell(baseline), true);
   assert.equal(shouldAcknowledgeFocusedPaneBell({ ...baseline, isTabActive: false }), false);
   assert.equal(shouldAcknowledgeFocusedPaneBell({ ...baseline, eventPaneId: 'pane-2' }), false);
   assert.equal(shouldAcknowledgeFocusedPaneBell({ ...baseline, paneContainsFocus: false }), false);
+  assert.equal(shouldAcknowledgeFocusedPaneBell({ ...baseline, isDocumentFocusExposed: false }), false);
 });

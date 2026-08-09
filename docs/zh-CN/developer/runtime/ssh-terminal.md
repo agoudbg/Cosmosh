@@ -212,7 +212,7 @@ flowchart LR
 - 展示状态按 pane 独立归属。连接重试只清理该 pane 的旧标题/进度/Bell 状态。Transport 意外关闭或报错时，会在待处理的 xterm write 之后清除已结束会话的应用标题与进度，同时保留用户尚未确认的 Bell attention。Terminal dispose 会注销所有 parser listener，pane 删除会移除对应状态。
 - Tab 聚合器跟随 active pane 的应用标题，并优先展示该 pane 的进度状态。active pane 没有进度时，后台 `error` 与 `warning` 状态可以保留 Tab attention；普通后台进度不会接管 active pane 的状态槽。Bell attention 独立汇总所有存活 pane。
 - 终端 Tab 会保留独立标题来源，并按 `manualTitle > activePane.applicationTitle > connectionTitle > defaultTitle` 解析。应用标题始终只是内存中的派生投影，不会回写已存储的 Tab/session state、命令日志或设置。
-- 聚焦某个 pane 只确认该 pane 的 Bell attention。若独立 Bell 到达时对应 active pane 已经聚焦，则立即确认；切换 Tab 后程序化聚焦 active terminal 也走同一确认路径。
+- 仅当 renderer document 可见且窗口实际拥有焦点时，聚焦某个 pane 才会确认该 pane 的 Bell attention。窗口处于后台时保留的 DOM active element 或程序化 terminal focus 不会确认 attention。若独立 Bell 到达时对应 active pane 已实际暴露焦点，则立即确认；切换 Tab 也遵循同一门控，回到可见且聚焦的窗口时会确认 active pane。
 - Window 聚合器按 `error > warning > indeterminate > normal > none` 严重度检查所有存活终端 Tab。同级候选优先 active Tab，否则使用稳定 Tab 顺序。Main 将 warning 映射为 Electron paused taskbar 模式，并在聚合结果为 `none` 时通过 `setProgressBar(-1)` 清除 taskbar 进度。
 - 最近 Bell 事件独立于当前 Bell attention 保留 `{ tabId, paneId, sequence, receivedAt }`。`sequence` 在 Renderer 窗口内单调递增，并在 Main 消费达到或超过接收时间高水位的事件前打破相同 `receivedAt` 的平局，因此被关闭或被节流的事件不会在切换设置后重放。Audible Bell 与未聚焦窗口 Flash 分别使用独立的一秒节流窗口；窗口聚焦会停止当前 Flash。进度状态 `none` 永远不会进入这条 Bell 路径。
 - `App` 是 renderer 中 Window Activity Aggregation 与 preload 调用的唯一所有者。Pane 和 Tab 领域绝不直接调用 Electron；preload 只暴露固定的 activity bridge 方法，Main 校验共享的 `TerminalWindowActivity` 运行时契约，并根据发送 `webContents` 推导目标窗口。

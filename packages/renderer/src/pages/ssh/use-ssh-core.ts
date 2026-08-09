@@ -722,6 +722,32 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   }, []);
 
   /**
+   * Checks whether one terminal pane is actually exposed to focused user attention.
+   *
+   * DOM active-element state survives application deactivation, so Bell
+   * acknowledgement also requires a visible document whose window owns focus.
+   *
+   * @param paneId Terminal pane whose focus exposure should be checked.
+   * @returns Whether the active tab and pane currently own visible document focus.
+   */
+  const isTerminalPaneFocusExposed = React.useCallback(
+    (paneId: string): boolean => {
+      const paneContainer =
+        runtimeRef.current.paneContainerMap.get(paneId) ??
+        runtimeRef.current.paneRuntimeMap.get(paneId)?.containerElement;
+
+      return shouldAcknowledgeFocusedPaneBell({
+        isTabActive: isTabActiveRef.current,
+        activePaneId: activePaneIdRef.current,
+        eventPaneId: paneId,
+        paneContainsFocus: Boolean(paneContainer?.contains(document.activeElement)),
+        isDocumentFocusExposed: document.visibilityState === 'visible' && document.hasFocus(),
+      });
+    },
+    [activePaneIdRef],
+  );
+
+  /**
    * Dispatches presentation state synchronously to the lifecycle ref and React reducer.
    *
    * @param action Pane lifecycle or xterm presentation action.
@@ -730,19 +756,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   const dispatchTerminalPresentationState = React.useCallback(
     (action: TerminalPresentationStateAction): void => {
       let nextState = reduceTerminalPresentationState(terminalPresentationStatesRef.current, action);
-      const focusedPaneContainer =
-        action.type === 'bell'
-          ? (runtimeRef.current.paneContainerMap.get(action.paneId) ??
-            runtimeRef.current.paneRuntimeMap.get(action.paneId)?.containerElement)
-          : null;
-      const shouldAcknowledgeFocusedBell =
-        action.type === 'bell' &&
-        shouldAcknowledgeFocusedPaneBell({
-          isTabActive: isTabActiveRef.current,
-          activePaneId: activePaneIdRef.current,
-          eventPaneId: action.paneId,
-          paneContainsFocus: Boolean(focusedPaneContainer?.contains(document.activeElement)),
-        });
+      const shouldAcknowledgeFocusedBell = action.type === 'bell' && isTerminalPaneFocusExposed(action.paneId);
 
       if (shouldAcknowledgeFocusedBell) {
         nextState = reduceTerminalPresentationState(nextState, {
@@ -760,7 +774,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         });
       }
     },
-    [activePaneIdRef],
+    [isTerminalPaneFocusExposed],
   );
 
   /**
@@ -771,10 +785,28 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    */
   const acknowledgeTerminalBell = React.useCallback(
     (paneId: string): void => {
+      if (!isTerminalPaneFocusExposed(paneId)) {
+        return;
+      }
+
       dispatchTerminalPresentationState({ type: 'acknowledge-bell', paneId });
     },
-    [dispatchTerminalPresentationState],
+    [dispatchTerminalPresentationState, isTerminalPaneFocusExposed],
   );
+
+  React.useEffect(() => {
+    /** Confirms retained attention once the owning document becomes user-visible again. */
+    const acknowledgeFocusExposedBell = (): void => {
+      acknowledgeTerminalBell(activePaneIdRef.current);
+    };
+
+    window.addEventListener('focus', acknowledgeFocusExposedBell);
+    document.addEventListener('visibilitychange', acknowledgeFocusExposedBell);
+    return () => {
+      window.removeEventListener('focus', acknowledgeFocusExposedBell);
+      document.removeEventListener('visibilitychange', acknowledgeFocusExposedBell);
+    };
+  }, [acknowledgeTerminalBell, activePaneIdRef]);
 
   /**
    * Clears application-owned presentation state before one pane reconnects.
@@ -1568,12 +1600,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     }
 
     terminal.focus();
-    const paneContainer =
-      runtimeRef.current.paneContainerMap.get(paneId) ??
-      runtimeRef.current.paneRuntimeMap.get(paneId)?.containerElement;
-    if (paneContainer?.contains(document.activeElement)) {
-      acknowledgeTerminalBell(paneId);
-    }
+    acknowledgeTerminalBell(paneId);
   }, [acknowledgeTerminalBell, activePaneIdRef, terminalRef]);
 
   /**

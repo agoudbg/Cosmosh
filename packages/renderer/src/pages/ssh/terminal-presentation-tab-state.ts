@@ -12,12 +12,13 @@ type ShouldAcknowledgeFocusedPaneBellParams = {
   activePaneId: string;
   eventPaneId: string;
   paneContainsFocus: boolean;
+  isDocumentFocusExposed: boolean;
 };
 
 /**
  * Determines whether a Bell receipt already belongs to the user's focused pane.
  *
- * @param params Tab visibility, pane identity, and current DOM focus relation.
+ * @param params Tab visibility, pane identity, and current document focus exposure.
  * @returns Whether the Bell edge should be retained only as metadata and immediately acknowledged.
  */
 export const shouldAcknowledgeFocusedPaneBell = ({
@@ -25,8 +26,9 @@ export const shouldAcknowledgeFocusedPaneBell = ({
   activePaneId,
   eventPaneId,
   paneContainsFocus,
+  isDocumentFocusExposed,
 }: ShouldAcknowledgeFocusedPaneBellParams): boolean => {
-  return isTabActive && activePaneId === eventPaneId && paneContainsFocus;
+  return isTabActive && activePaneId === eventPaneId && paneContainsFocus && isDocumentFocusExposed;
 };
 
 /**
