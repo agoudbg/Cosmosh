@@ -175,6 +175,7 @@ SSH 页面中的终端文本选区交互必须满足以下规则：
 - 兜底菜单只有在指针位于已选中文本矩形内部时才能打开，不能仅因为页面存在选区就接管右键。
 - 既有专用菜单保持优先级：input、textarea、contenteditable 区域、CodeMirror 编辑器表面、xterm/终端表面、SFTP 行、标签页，以及任何组件级右键菜单触发区域，都不能被兜底菜单替换。需要文本编辑命令的 CodeMirror 编辑器表面应通过共享内部 `ContextMenu` 样式和本地化文本编辑标签暴露这些命令，而不是回退到浏览器菜单。
 - 兜底菜单必须复用内部 `ContextMenu` 封装、token 化菜单样式、本地化后的 renderer 复制文案，以及平台快捷键提示。
+- 由于 Windows/Linux 移除了原生应用菜单（也就移除了会把`Ctrl+C`派发到`webContents.copy()`的 Edit 菜单 Copy 角色），兜底 provider 还必须兑现自己展示的快捷键：`Ctrl+C`通过与菜单项相同的剪贴板路径复制当前非编辑态 DOM 文本选区。键盘兜底会跳过可编辑表面、CodeMirror，以及专用右键菜单触发表面（包括 xterm 终端面板——终端内`Ctrl+C`保持发送 SIGINT，复制仍由`Ctrl+Shift+C`承担）；macOS 上由原生 Edit 菜单的 Copy 角色继续处理`Cmd+C`。
 - 独立 renderer document（包括 SFTP 条目属性弹窗）必须在 renderer 根部挂载同一套兜底 provider。
 
 ## 7.6 命令面板键盘焦点

@@ -35,6 +35,11 @@ const SELECTION_CONTEXT_MENU_IGNORE_SELECTOR = [
   CONTEXT_MENU_TRIGGER_SELECTOR,
   '.cm-editor',
 ].join(', ');
+const SELECTION_COPY_SHORTCUT_IGNORE_SELECTOR = [
+  INPUT_CONTEXT_MENU_IGNORE_SELECTOR,
+  CONTEXT_MENU_TRIGGER_SELECTOR,
+  '.cm-editor',
+].join(', ');
 
 /**
  * Resolves an event target to the closest element that can be queried with DOM selectors.
@@ -79,6 +84,30 @@ const isInsideIgnoredSelectionRegion = (node: EventTarget | null): boolean => {
   }
 
   return false;
+};
+
+/**
+ * Determines whether the keyboard selection copy shortcut must stay disabled.
+ *
+ * Unlike the context-menu ignore list this intentionally keeps generic
+ * interactive elements eligible: browsers still copy page selections while
+ * buttons, links, or Radix menu items hold focus, and menu items must keep
+ * the shortcut alive while the fallback menu displays its Ctrl+C hint.
+ *
+ * @param node Focused element or selection anchor node to inspect.
+ * @returns True when the surface owns its own copy behavior or is not resolvable.
+ */
+const isInsideSelectionCopyShortcutIgnoredRegion = (node: EventTarget | null): boolean => {
+  const element = resolveTargetElement(node);
+  if (!element) {
+    return true;
+  }
+
+  if (element.closest(SELECTION_COPY_SHORTCUT_IGNORE_SELECTOR)) {
+    return true;
+  }
+
+  return element instanceof HTMLElement && element.isContentEditable;
 };
 
 /**
@@ -219,7 +248,8 @@ const copySelectedText = async (text: string): Promise<void> => {
 };
 
 /**
- * Provides a global fallback context menu for ordinary non-editable text selections.
+ * Provides a global fallback context menu and copy shortcut for ordinary
+ * non-editable text selections.
  *
  * @param props.children Application content wrapped by the provider.
  * @returns Provider markup and hidden Radix trigger.
@@ -262,6 +292,58 @@ const SelectionContextMenuProvider: React.FC<React.PropsWithChildren> = ({ child
 
     return () => {
       document.removeEventListener('contextmenu', onContextMenuCapture, { capture: true });
+    };
+  }, []);
+
+  React.useEffect(() => {
+    // Windows/Linux remove the application menu, so no Edit-menu Copy role
+    // dispatches Ctrl+C into webContents.copy(). Editable targets still copy
+    // through Chromium's internal editing, but non-editable page selections
+    // need this renderer fallback to honor the shortcut the fallback menu
+    // displays. macOS keeps the native Edit menu Copy role instead.
+    if (window.electron?.platform === 'darwin') {
+      return;
+    }
+
+    const handleSelectionCopyShortcut = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.repeat || event.metaKey || event.altKey || event.shiftKey || !event.ctrlKey) {
+        return;
+      }
+
+      const normalizedKey = event.key.toLowerCase();
+      if (normalizedKey !== 'c' && event.code !== 'KeyC') {
+        return;
+      }
+
+      if (isInsideSelectionCopyShortcutIgnoredRegion(document.activeElement)) {
+        return;
+      }
+
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        return;
+      }
+
+      const text = selection.toString();
+      if (text.length === 0) {
+        return;
+      }
+
+      // Selections anchored inside dedicated surfaces such as xterm panes keep
+      // their own Ctrl+C semantics (sending SIGINT); terminal copy stays on
+      // Ctrl+Shift+C through the SSH page shortcut handler.
+      if (isInsideSelectionCopyShortcutIgnoredRegion(selection.anchorNode)) {
+        return;
+      }
+
+      event.preventDefault();
+      void copySelectedText(text);
+    };
+
+    window.addEventListener('keydown', handleSelectionCopyShortcut);
+
+    return () => {
+      window.removeEventListener('keydown', handleSelectionCopyShortcut);
     };
   }, []);
 
