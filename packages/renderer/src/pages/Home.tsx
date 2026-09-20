@@ -1449,6 +1449,7 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
   const [isKeychainDeleteSubmitting, setIsKeychainDeleteSubmitting] = React.useState<boolean>(false);
   const [draggingServerId, setDraggingServerId] = React.useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = React.useState<string | null>(null);
+  const homeDataRequestIdRef = React.useRef<number>(0);
   const previousIsActiveRef = React.useRef<boolean>(isActive);
   const portForwardRuleEditorSessionRef = React.useRef<number>(0);
   const pendingInitialPortForwardRuleIdRef = React.useRef<string | null>(
@@ -1477,6 +1478,10 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
   );
 
   const reloadHomeData = React.useCallback(async () => {
+    const requestId = homeDataRequestIdRef.current + 1;
+    homeDataRequestIdRef.current = requestId;
+    const isCurrentRequest = (): boolean => homeDataRequestIdRef.current === requestId;
+
     setIsLoading(true);
     setErrorMessage('');
 
@@ -1494,15 +1499,25 @@ const Home: React.FC<HomeProps> = ({ onOpenSSH, onOpenSFTP, tabId, onTabVisualCh
         listLocalTerminalProfiles(),
         listPortForwardRules(),
       ]);
+      if (!isCurrentRequest()) {
+        return;
+      }
+
       setFolders(foldersResponse.data.items);
       setServers(serversResponse.data.items);
       setKeychains(filterSharedKeychains(keychainsResponse.data.items));
       setLocalTerminalProfiles(localTerminalProfilesResponse.data.items);
       setPortForwardRules(portForwardRulesResponse.data.items);
     } catch (error: unknown) {
+      if (!isCurrentRequest()) {
+        return;
+      }
+
       setErrorMessage(error instanceof Error ? error.message : 'Failed to load home data.');
     } finally {
-      setIsLoading(false);
+      if (isCurrentRequest()) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
