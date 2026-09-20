@@ -9,6 +9,7 @@ import {
   selectCommandTimelineEntryItems,
   selectCommandTimelineMenuItems,
   shouldAllowCommandTimelineEntryPointerEvents,
+  shouldDismissCommandTimelineForPointerLeave,
   shouldShowCommandTimelineEntry,
 } from './terminal-command-timeline-state';
 
@@ -63,4 +64,12 @@ test('timeline entry requires command history and stays visible while either act
 test('timeline pointer target stays active while idle and disables only with unavailable history', () => {
   assert.equal(shouldAllowCommandTimelineEntryPointerEvents(true), true);
   assert.equal(shouldAllowCommandTimelineEntryPointerEvents(false), false);
+});
+
+test('timeline pointer leave does not dismiss an open row action menu', () => {
+  assert.equal(shouldDismissCommandTimelineForPointerLeave(false, false, true, false), false);
+  assert.equal(shouldDismissCommandTimelineForPointerLeave(false, false, false, true), false);
+  assert.equal(shouldDismissCommandTimelineForPointerLeave(true, false, false, false), false);
+  assert.equal(shouldDismissCommandTimelineForPointerLeave(false, true, false, false), false);
+  assert.equal(shouldDismissCommandTimelineForPointerLeave(false, false, false, false), true);
 });

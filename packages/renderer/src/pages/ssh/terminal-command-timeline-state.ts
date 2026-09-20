@@ -120,3 +120,24 @@ export const shouldShowCommandTimelineEntry = (
  * @returns `true` while the compact pointer target should remain interactive.
  */
 export const shouldAllowCommandTimelineEntryPointerEvents = (historyVisible: boolean): boolean => historyVisible;
+
+/**
+ * Resolves whether pointer-leave handling may dismiss the timeline surface.
+ *
+ * An open row action menu owns the dismissal lifecycle of both Portals. This
+ * prevents a pointer transition that skips the action-menu Portal from
+ * closing the command list before Radix can process the explicit action-menu
+ * close path.
+ *
+ * @param pointerInsideTrigger Whether the pointer is inside the compact rail entry.
+ * @param pointerInsideContent Whether the pointer is inside the command list.
+ * @param actionMenuOpen Whether a row action context menu is open.
+ * @param pointerInsideActionMenu Whether the pointer is inside the row action menu.
+ * @returns `true` when pointer leave should close the timeline surface.
+ */
+export const shouldDismissCommandTimelineForPointerLeave = (
+  pointerInsideTrigger: boolean,
+  pointerInsideContent: boolean,
+  actionMenuOpen: boolean,
+  pointerInsideActionMenu: boolean,
+): boolean => !actionMenuOpen && !pointerInsideTrigger && !pointerInsideContent && !pointerInsideActionMenu;

@@ -22,6 +22,7 @@ import {
   selectCommandTimelineEntryItems,
   selectCommandTimelineMenuItems,
   shouldAllowCommandTimelineEntryPointerEvents,
+  shouldDismissCommandTimelineForPointerLeave,
   shouldShowCommandTimelineEntry,
 } from './terminal-command-timeline-state';
 
@@ -387,13 +388,20 @@ export const TerminalCommandTimeline: React.FC<TerminalCommandTimelineProps> = (
    * @returns Nothing.
    */
   const schedulePointerClose = React.useCallback((): void => {
-    if (pointerCloseTimerRef.current !== null) {
+    if (pointerCloseTimerRef.current !== null || actionMenuOpenRef.current) {
       return;
     }
 
     pointerCloseTimerRef.current = window.setTimeout(() => {
       pointerCloseTimerRef.current = null;
-      if (!pointerInsideTriggerRef.current && !pointerInsideContentRef.current && !pointerInsideActionMenuRef.current) {
+      if (
+        shouldDismissCommandTimelineForPointerLeave(
+          pointerInsideTriggerRef.current,
+          pointerInsideContentRef.current,
+          actionMenuOpenRef.current,
+          pointerInsideActionMenuRef.current,
+        )
+      ) {
         closeMenus(true);
       }
     }, COMMAND_TIMELINE_POINTER_LEAVE_GRACE_MS);
@@ -532,11 +540,12 @@ export const TerminalCommandTimeline: React.FC<TerminalCommandTimelineProps> = (
         return;
       }
 
+      cancelPointerClose();
       actionCommandRef.current = command;
       actionMenuOpenRef.current = true;
       onActivate();
     },
-    [model.items, onActivate],
+    [cancelPointerClose, model.items, onActivate],
   );
 
   /**
@@ -549,14 +558,16 @@ export const TerminalCommandTimeline: React.FC<TerminalCommandTimelineProps> = (
   const handleActionMenuOpenChange = React.useCallback(
     (open: boolean): void => {
       if (open) {
+        cancelPointerClose();
         actionMenuOpenRef.current = true;
         return;
       }
+      cancelPointerClose();
       terminalFocusRequestedRef.current = true;
       closeMenus();
       onFocusTerminal();
     },
-    [closeMenus, onFocusTerminal],
+    [cancelPointerClose, closeMenus, onFocusTerminal],
   );
 
   /**
