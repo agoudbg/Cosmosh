@@ -43,6 +43,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { DEFAULT_TAB_WIDTH, resolveTabWidth } from './tabs-layout';
 
 const DragOverlayTab: React.FC<{ tab: TabItem; width: number; applySshServerVisuals: boolean }> = ({
   tab,
@@ -247,12 +248,10 @@ export const Tabs: React.FC<TabsProps> = ({
   onCloseOtherTabs,
   onReorderTabs,
 }) => {
-  const minTabWidth = 120;
-  const maxTabWidth = 180;
   const topHitAreaHeight = 8;
   const addMenuOpenDelayMs = 500;
   const addMenuCloseDelayMs = 120;
-  const [tabWidth, setTabWidth] = React.useState<number>(maxTabWidth);
+  const [tabWidth, setTabWidth] = React.useState<number>(DEFAULT_TAB_WIDTH);
   const [canScrollLeft, setCanScrollLeft] = React.useState<boolean>(false);
   const [canScrollRight, setCanScrollRight] = React.useState<boolean>(false);
   const [contextTabId, setContextTabId] = React.useState<string | null>(null);
@@ -397,12 +396,9 @@ export const Tabs: React.FC<TabsProps> = ({
       return;
     }
 
-    const availableWidth = el.clientWidth;
-    const targetWidth = Math.floor(availableWidth / tabs.length);
-    const clampedWidth = Math.max(minTabWidth, Math.min(maxTabWidth, targetWidth));
-    setTabWidth(clampedWidth);
+    setTabWidth(resolveTabWidth(el.clientWidth, tabs.length));
     updateScrollState();
-  }, [tabs.length, minTabWidth, maxTabWidth, updateScrollState]);
+  }, [tabs.length, updateScrollState]);
 
   React.useEffect(() => {
     const el = scrollContainerRef.current;
@@ -416,10 +412,7 @@ export const Tabs: React.FC<TabsProps> = ({
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => {
-        const availableWidth = el.clientWidth;
-        const targetWidth = Math.floor(availableWidth / Math.max(tabs.length, 1));
-        const clampedWidth = Math.max(minTabWidth, Math.min(maxTabWidth, targetWidth));
-        setTabWidth(clampedWidth);
+        setTabWidth(resolveTabWidth(el.clientWidth, tabs.length));
         updateScrollState();
       });
       resizeObserver.observe(el);
@@ -429,7 +422,7 @@ export const Tabs: React.FC<TabsProps> = ({
       el.removeEventListener('scroll', handleScroll);
       resizeObserver?.disconnect();
     };
-  }, [tabs.length, minTabWidth, maxTabWidth, updateScrollState]);
+  }, [tabs.length, updateScrollState]);
 
   React.useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
