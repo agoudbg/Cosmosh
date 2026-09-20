@@ -32,6 +32,23 @@ const hasTextPayload = (dragTypes: string[]): boolean => {
   });
 };
 
+/**
+ * Reads the first available text payload from a drag data transfer.
+ *
+ * @param dataTransfer Drag payload exposed by the browser or Electron.
+ * @returns The dropped text, or an empty string when no supported payload is available.
+ */
+const resolveDroppedText = (dataTransfer: Pick<DataTransfer, 'getData'>): string => {
+  for (const type of ['text/plain', 'text', 'Text']) {
+    const value = dataTransfer.getData(type);
+    if (value) {
+      return value;
+    }
+  }
+
+  return '';
+};
+
 const useTerminalTextDropZone = ({
   mode,
   isConnected,
@@ -285,7 +302,7 @@ const useTerminalTextDropZone = ({
       event.stopPropagation();
       hideDropZone();
 
-      const droppedText = event.dataTransfer.getData('text/plain') || event.dataTransfer.getData('text');
+      const droppedText = resolveDroppedText(event.dataTransfer);
       if (!droppedText) {
         return;
       }
@@ -310,4 +327,4 @@ const useTerminalTextDropZone = ({
   };
 };
 
-export { useTerminalTextDropZone };
+export { resolveDroppedText, useTerminalTextDropZone };
