@@ -188,6 +188,7 @@ const SFTP: React.FC<SFTPProps> = ({
   const stagedUploadPathsRef = React.useRef<Set<string>>(new Set());
   const reconnectPromiseRef = React.useRef<Promise<string> | null>(null);
   const directoryLoadGenerationRef = React.useRef(0);
+  const treeDirectoryLoadGenerationRef = React.useRef<Map<string, number>>(new Map());
   const currentDirectoryRefreshPromiseRef = React.useRef<Promise<void> | null>(null);
   const pendingDirectoryRefreshPathsRef = React.useRef<Set<string>>(new Set());
   const previewLoadGenerationRef = React.useRef(0);
@@ -709,6 +710,19 @@ const SFTP: React.FC<SFTPProps> = ({
     });
   }, []);
 
+  /**
+   * Starts the latest tree listing generation for one directory.
+   *
+   * @param directoryPath Remote directory path being loaded.
+   * @returns Predicate that reports whether this listing may update the tree.
+   */
+  const beginTreeDirectoryLoad = React.useCallback((directoryPath: string): (() => boolean) => {
+    const nextGeneration = (treeDirectoryLoadGenerationRef.current.get(directoryPath) ?? 0) + 1;
+    treeDirectoryLoadGenerationRef.current.set(directoryPath, nextGeneration);
+
+    return (): boolean => treeDirectoryLoadGenerationRef.current.get(directoryPath) === nextGeneration;
+  }, []);
+
   const syncAncestorDirectories = React.useCallback(
     async (directoryPath: string, isCancelled?: () => boolean): Promise<void> => {
       const ancestorPaths = resolveAncestorDirectoryPaths(directoryPath);
@@ -718,6 +732,7 @@ const SFTP: React.FC<SFTPProps> = ({
           return;
         }
 
+        const isCurrentLoad = beginTreeDirectoryLoad(ancestorPath);
         const cachedDirectory = directoryCacheRef.current[ancestorPath];
         if (cachedDirectory) {
           setTreeNodes((previous) =>
@@ -738,7 +753,7 @@ const SFTP: React.FC<SFTPProps> = ({
           const response = await runWithSftpReconnect('read', (activeSessionId) =>
             listSftpDirectory(activeSessionId, { path: ancestorPath }),
           );
-          if (isCancelled?.()) {
+          if (isCancelled?.() || !isCurrentLoad()) {
             return;
           }
 
@@ -766,11 +781,13 @@ const SFTP: React.FC<SFTPProps> = ({
             ),
           );
         } catch {
-          setTreeNodeLoading(ancestorPath, false);
+          if (isCurrentLoad()) {
+            setTreeNodeLoading(ancestorPath, false);
+          }
         }
       }
     },
-    [runWithSftpReconnect, setTreeNodeLoading],
+    [beginTreeDirectoryLoad, runWithSftpReconnect, setTreeNodeLoading],
   );
 
   const applyDirectoryCacheEntry = React.useCallback(
@@ -798,10 +815,15 @@ const SFTP: React.FC<SFTPProps> = ({
 
   const invalidateDirectoryCache = React.useCallback((directoryPath?: string): void => {
     if (!directoryPath) {
+      treeDirectoryLoadGenerationRef.current.forEach((generation, path) => {
+        treeDirectoryLoadGenerationRef.current.set(path, generation + 1);
+      });
       directoryCacheRef.current = {};
       return;
     }
 
+    const nextGeneration = (treeDirectoryLoadGenerationRef.current.get(directoryPath) ?? 0) + 1;
+    treeDirectoryLoadGenerationRef.current.set(directoryPath, nextGeneration);
     const nextCache = { ...directoryCacheRef.current };
     delete nextCache[directoryPath];
     directoryCacheRef.current = nextCache;
@@ -912,6 +934,7 @@ const SFTP: React.FC<SFTPProps> = ({
 
   const loadTreeDirectoryChildren = React.useCallback(
     async (directoryPath: string): Promise<void> => {
+      const isCurrentLoad = beginTreeDirectoryLoad(directoryPath);
       const cachedDirectory = directoryCacheRef.current[directoryPath];
       if (cachedDirectory) {
         setTreeNodes((previous) =>
@@ -932,6 +955,10 @@ const SFTP: React.FC<SFTPProps> = ({
         const response = await runWithSftpReconnect('read', (activeSessionId) =>
           listSftpDirectory(activeSessionId, { path: directoryPath }),
         );
+        if (!isCurrentLoad()) {
+          return;
+        }
+
         const sortedEntries = sortSftpEntries(response.data.entries);
         directoryCacheRef.current = {
           ...directoryCacheRef.current,
@@ -956,12 +983,16 @@ const SFTP: React.FC<SFTPProps> = ({
           ),
         );
       } catch (error: unknown) {
+        if (!isCurrentLoad()) {
+          return;
+        }
+
         const message = error instanceof Error ? error.message : t('sftp.loadFailed');
         setTreeNodeLoading(directoryPath, false);
         notifyError(message);
       }
     },
-    [notifyError, runWithSftpReconnect, setTreeNodeLoading],
+    [beginTreeDirectoryLoad, notifyError, runWithSftpReconnect, setTreeNodeLoading],
   );
 
   const createSessionForIntent = React.useCallback(
