@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { insertTabAtRequestedPosition } from './useTabs';
+import { insertTabAtRequestedPosition, orderTabsByRecentUse } from './useTabs';
 
 type TestTab = {
   id: string;
@@ -39,4 +39,16 @@ test('tab insertion appends when anchor is already last', () => {
   const nextTabs = insertTabAtRequestedPosition(baseTabs, { id: 'next' }, { insertAfterTabId: 'c' });
 
   assert.deepEqual(ids(nextTabs), ['a', 'b', 'c', 'next']);
+});
+
+test('recent tab ordering places the most recently used tab first', () => {
+  const orderedTabs = orderTabsByRecentUse(baseTabs, ['b', 'a', 'c']);
+
+  assert.deepEqual(ids(orderedTabs), ['b', 'a', 'c']);
+});
+
+test('recent tab ordering ignores closed history and preserves unseen tab order', () => {
+  const orderedTabs = orderTabsByRecentUse(baseTabs, ['missing', 'c']);
+
+  assert.deepEqual(ids(orderedTabs), ['c', 'a', 'b']);
 });

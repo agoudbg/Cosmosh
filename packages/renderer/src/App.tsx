@@ -95,6 +95,7 @@ const App: React.FC = () => {
 
   const {
     tabs,
+    recentTabs,
     activeTabId,
     addTab,
     updateTab,
@@ -711,6 +712,7 @@ const App: React.FC = () => {
           ref={commandPaletteHostRef}
           activeTabId={activeTabId}
           tabs={tabs}
+          recentTabs={recentTabs}
           addTab={addTab}
           closeTab={closeTab}
           closeRightTabs={closeRightTabs}

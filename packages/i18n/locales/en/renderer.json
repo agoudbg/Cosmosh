@@ -598,6 +598,10 @@
         "description": "Apply the server icon and background colors to open tabs.",
         "title": "Apply Server Icon Colors to Tabs"
       },
+      "tabSwitcherSortOrder": {
+        "description": "Choose whether the tab switcher follows most recently used order or tab-strip order.",
+        "title": "Tab Switcher Order"
+      },
       "terminalAltClickMovesCursor": {
         "description": "Hold Alt (Option on macOS) and click to move the cursor to that position.",
         "title": "Hold Alt/Option and Click to Move Cursor"
@@ -892,6 +896,10 @@
         "active": "Active",
         "off": "Off",
         "passive": "Passive"
+      },
+      "tabSwitcherSortOrder": {
+        "mostRecentlyUsed": "Most Recently Used",
+        "tabOrder": "Tab Strip Order"
       },
       "terminalAutoCompleteAcceptKeys": {
         "enter": "Enter",

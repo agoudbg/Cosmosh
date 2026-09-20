@@ -60,6 +60,7 @@ type AppCommandPaletteContext = {
 type AppCommandPaletteHostProps = Omit<
   AppCommandPaletteContext,
   | 'locale'
+  | 'tabs'
   | 'resources'
   | 'showFullServerAddress'
   | 'isDevBuild'
@@ -67,7 +68,10 @@ type AppCommandPaletteHostProps = Omit<
   | 'userMenuDebugEntryEnabled'
   | 'notifySuccess'
   | 'notifyWarning'
->;
+> & {
+  tabs: ReadonlyArray<TabItem>;
+  recentTabs: ReadonlyArray<TabItem>;
+};
 
 export type AppCommandPaletteHostHandle = {
   open: () => void;
@@ -122,7 +126,7 @@ const normalizeQuickPickFilterToken = (value: string): string => {
  *
  * @param tabs Runtime tab list.
  * @param query Visible quick-pick input value.
- * @returns Matching tabs in current strip order.
+ * @returns Matching tabs in the current switcher order.
  */
 const filterQuickPickTabs = (tabs: ReadonlyArray<TabItem>, query: string): ReadonlyArray<TabItem> => {
   const normalizedQuery = normalizeQuickPickFilterToken(query);
@@ -880,6 +884,7 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
     {
       activeTabId,
       tabs,
+      recentTabs,
       addTab,
       closeTab,
       closeRightTabs,
@@ -894,6 +899,7 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
     const { success: notifySuccess, warning: notifyWarning } = useToast();
     const showFullServerAddress = useSettingsValue('showFullServerAddress');
     const applySshServerVisualStyle = useSettingsValue('sshTabApplyServerVisualStyle');
+    const tabSwitcherSortOrder = useSettingsValue('tabSwitcherSortOrder');
     const devToolsEnabled = useSettingsValue('devToolsEnabled');
     const userMenuDebugEntryEnabled = useSettingsValue('userMenuDebugEntryEnabled');
     const isDevBuild = import.meta.env.DEV;
@@ -910,6 +916,10 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
     const activeIndexRef = React.useRef<number>(0);
     const quickPickMode = React.useMemo<AppQuickPickMode>(() => resolveQuickPickMode(query), [query]);
     const isCommandMode = quickPickMode === 'commands';
+    const tabSwitcherTabs = React.useMemo<ReadonlyArray<TabItem>>(
+      () => (tabSwitcherSortOrder === 'mostRecentlyUsed' ? recentTabs : tabs),
+      [recentTabs, tabSwitcherSortOrder, tabs],
+    );
 
     React.useEffect(() => {
       return onLocaleChange((nextLocale) => {
@@ -969,10 +979,10 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
 
     const openTabSwitcher = React.useCallback((): void => {
       setQuery('');
-      setActiveIndex(resolvePreferredTabActiveIndex(tabs, activeTabId));
+      setActiveIndex(resolvePreferredTabActiveIndex(tabSwitcherTabs, activeTabId));
       setIsHeldTabSwitcher(false);
       setIsOpen(true);
-    }, [activeTabId, tabs]);
+    }, [activeTabId, tabSwitcherTabs]);
 
     React.useImperativeHandle(
       ref,
@@ -987,7 +997,7 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
       () => ({
         locale,
         activeTabId,
-        tabs,
+        tabs: tabSwitcherTabs,
         resources,
         showFullServerAddress,
         addTab,
@@ -1021,7 +1031,7 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
         setActiveTabId,
         showFullServerAddress,
         showSystemMonitorOverlay,
-        tabs,
+        tabSwitcherTabs,
         userMenuDebugEntryEnabled,
       ],
     );
@@ -1067,8 +1077,8 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
     }, [closeCommandPalette, filteredCommandPaletteCommands, locale]);
 
     const filteredTabs = React.useMemo(() => {
-      return filterQuickPickTabs(tabs, query);
-    }, [query, tabs]);
+      return filterQuickPickTabs(tabSwitcherTabs, query);
+    }, [query, tabSwitcherTabs]);
 
     const tabSwitcherItems = React.useMemo<CommandPaletteItem[]>(() => {
       return filteredTabs.map((tab) => {
@@ -1190,7 +1200,7 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
           return;
         }
 
-        if (tabs.length === 0) {
+        if (tabSwitcherTabs.length === 0) {
           return;
         }
 
@@ -1200,7 +1210,7 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
         const direction = event.shiftKey ? -1 : 1;
         if (!isOpen || isCommandMode) {
           setQuery('');
-          setQuickPickActiveIndex(resolveMovedTabIndex(tabs, activeTabId, direction));
+          setQuickPickActiveIndex(resolveMovedTabIndex(tabSwitcherTabs, activeTabId, direction));
           setIsHeldTabSwitcher(true);
           setIsOpen(true);
           return;
@@ -1237,7 +1247,7 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
       isOpen,
       moveTabSwitcherTarget,
       setQuickPickActiveIndex,
-      tabs,
+      tabSwitcherTabs,
     ]);
 
     const handleInputKeyDownCapture = React.useCallback(
@@ -1261,13 +1271,15 @@ const AppCommandPaletteHost = React.forwardRef<AppCommandPaletteHostHandle, AppC
         setIsHeldTabSwitcher(false);
 
         if (previousMode !== nextMode) {
-          setQuickPickActiveIndex(nextMode === 'tabs' ? resolvePreferredTabActiveIndex(tabs, activeTabId) : 0);
+          setQuickPickActiveIndex(
+            nextMode === 'tabs' ? resolvePreferredTabActiveIndex(tabSwitcherTabs, activeTabId) : 0,
+          );
           return;
         }
 
         setQuickPickActiveIndex(0);
       },
-      [activeTabId, query, setQuickPickActiveIndex, tabs],
+      [activeTabId, query, setQuickPickActiveIndex, tabSwitcherTabs],
     );
 
     return (

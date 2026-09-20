@@ -598,6 +598,10 @@
         "description": "将服务器的图标和背景颜色应用到打开的标签页。",
         "title": "将服务器图标配色应用到标签页"
       },
+      "tabSwitcherSortOrder": {
+        "description": "选择标签页切换器按最近使用顺序还是标签栏顺序排列。",
+        "title": "标签页切换器顺序"
+      },
       "terminalAltClickMovesCursor": {
         "description": "按住 Alt（在 macOS 上使用 Option）并点击时，将光标移动到点击位置。",
         "title": "按住 Alt/Option 并点击来移动光标"
@@ -892,6 +896,10 @@
         "active": "主动",
         "off": "关闭",
         "passive": "被动"
+      },
+      "tabSwitcherSortOrder": {
+        "mostRecentlyUsed": "最近使用顺序",
+        "tabOrder": "标签栏顺序"
       },
       "terminalAutoCompleteAcceptKeys": {
         "enter": "Enter",

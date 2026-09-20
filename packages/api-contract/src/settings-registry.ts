@@ -59,6 +59,7 @@ export interface SettingsValues {
   timeFormat: 'HH:mm:ss' | 'HH:mm' | 'h:mm:ss a' | 'h:mm a';
   theme: 'dark' | 'light' | 'auto';
   windowCloseConfirmationEnabled: boolean;
+  tabSwitcherSortOrder: 'mostRecentlyUsed' | 'tabOrder';
   showFullServerAddress: boolean;
   sshTabApplyServerVisualStyle: boolean;
   terminalAltClickMovesCursor: boolean;
@@ -443,6 +444,21 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     path: 'general.window.closeConfirmationEnabled',
     commandActionId: 'settings.general.window.closeConfirmation.toggle',
     searchTerms: ['window', 'close', 'confirmation', 'prompt', 'active session', 'quit'],
+  },
+  {
+    key: 'tabSwitcherSortOrder',
+    valueType: 'string',
+    defaultValue: 'mostRecentlyUsed',
+    nameI18nKey: 'settings.items.tabSwitcherSortOrder.title',
+    descriptionI18nKey: 'settings.items.tabSwitcherSortOrder.description',
+    optionI18nNamespace: 'tabSwitcherSortOrder',
+    category: SETTINGS_CATEGORIES.general,
+    section: SETTINGS_CATEGORIES.general.sections.behavior,
+    control: 'select',
+    path: 'general.tabs.switcherSortOrder',
+    commandActionId: 'settings.general.tabs.switcherSortOrder.set',
+    searchTerms: ['tabs', 'tab switcher', 'ctrl tab', 'recently used', 'mru', 'order'],
+    options: [{ value: 'mostRecentlyUsed' }, { value: 'tabOrder' }],
   },
   {
     key: 'accountSyncEnabled',

@@ -186,6 +186,12 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - Arrow navigation and palette-close shortcuts from non-text-entry descendants must first restore focus to the input, then run the same handler path used by the input.
 - Nested buttons must keep their normal activation semantics; focus handoff should not convert every descendant key into a command selection.
 
+## 7.6.1 Tab Switcher Ordering
+
+- The shared tab switcher, `Ctrl+Tab` flow, and tab-switch commands in the command palette must use one ordering source controlled by `General > Behavior > Tab Switcher Order`.
+- The default `Most Recently Used` mode keeps the active tab first and orders the remaining tabs by the latest activation, matching the `Alt+Tab` interaction model. Holding `Ctrl+Tab` moves forward through that order; `Ctrl+Shift+Tab` moves backward.
+- `Tab Strip Order` remains available for users who prefer the current header order. The setting affects switcher entries only; the draggable header tab strip and runtime page instances retain their existing order and identity.
+
 ## 7.7 Composite Control Accessibility
 
 - Custom command/search controls that render option lists must expose a labeled `combobox` tied to a labeled `listbox` with stable `aria-controls`, `aria-expanded`, `aria-activedescendant`, and per-option `aria-selected`.

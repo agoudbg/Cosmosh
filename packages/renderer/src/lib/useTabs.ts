@@ -46,6 +46,44 @@ export const insertTabAtRequestedPosition = <Tab extends { id: string }>(
 };
 
 /**
+ * Orders tabs by their most recently used ids while retaining any tabs that
+ * are missing from the history in their existing tab-strip order.
+ *
+ * @param tabs Current tabs in display order.
+ * @param recentTabIds Tab ids ordered from most recently used to least recently used.
+ * @returns Tabs ordered for a recent-use switcher.
+ */
+export const orderTabsByRecentUse = <Tab extends { id: string }>(
+  tabs: ReadonlyArray<Tab>,
+  recentTabIds: ReadonlyArray<string>,
+): Tab[] => {
+  const tabsById = new Map(tabs.map((tab) => [tab.id, tab] as const));
+  const orderedTabs: Tab[] = [];
+  const includedTabIds = new Set<string>();
+
+  for (const tabId of recentTabIds) {
+    const tab = tabsById.get(tabId);
+    if (!tab || includedTabIds.has(tabId)) {
+      continue;
+    }
+
+    orderedTabs.push(tab);
+    includedTabIds.add(tabId);
+  }
+
+  for (const tab of tabs) {
+    if (includedTabIds.has(tab.id)) {
+      continue;
+    }
+
+    orderedTabs.push(tab);
+    includedTabIds.add(tab.id);
+  }
+
+  return orderedTabs;
+};
+
+/**
  * Returns the localized title and icon for a logical tab page identifier.
  *
  * @param page The logical page identifier used to resolve translation keys.
@@ -101,7 +139,40 @@ export const useTabs = (options?: UseTabsOptions) => {
   }, []);
 
   const [tabs, setTabs] = React.useState<TabItem[]>(() => [buildTab(initialPage)]);
-  const [activeTabId, setActiveTabId] = React.useState<string>(() => tabs[0]?.id ?? '');
+  const [activeTabId, setActiveTabIdState] = React.useState<string>(() => tabs[0]?.id ?? '');
+  const [recentTabIds, setRecentTabIds] = React.useState<string[]>(() => tabs.map((tab) => tab.id));
+
+  const setActiveTabId = React.useCallback((nextTabId: string): void => {
+    setActiveTabIdState(nextTabId);
+    setRecentTabIds((current) => {
+      if (current[0] === nextTabId) {
+        return current;
+      }
+
+      return [nextTabId, ...current.filter((tabId) => tabId !== nextTabId)];
+    });
+  }, []);
+
+  React.useEffect(() => {
+    const liveTabIds = new Set(tabs.map((tab) => tab.id));
+
+    setRecentTabIds((current) => {
+      const next = current.filter((tabId) => liveTabIds.has(tabId));
+      const nextTabIds = new Set(next);
+
+      for (const tab of tabs) {
+        if (nextTabIds.has(tab.id)) {
+          continue;
+        }
+
+        next.push(tab.id);
+        nextTabIds.add(tab.id);
+      }
+
+      const hasChanged = next.length !== current.length || next.some((tabId, index) => tabId !== current[index]);
+      return hasChanged ? next : current;
+    });
+  }, [tabs]);
 
   React.useEffect(() => {
     if (!tabs.length) {
@@ -112,7 +183,7 @@ export const useTabs = (options?: UseTabsOptions) => {
     if (!isActiveValid) {
       setActiveTabId(tabs[0].id);
     }
-  }, [activeTabId, tabs]);
+  }, [activeTabId, setActiveTabId, tabs]);
 
   const addTab = React.useCallback(
     (page: TabPage, overrides?: Partial<TabItem>, addOptions?: AddTabOptions) => {
@@ -123,7 +194,7 @@ export const useTabs = (options?: UseTabsOptions) => {
       setActiveTabId(nextTab.id);
       return nextTab.id;
     },
-    [buildTab],
+    [buildTab, setActiveTabId],
   );
 
   const updateTab = React.useCallback((id: string, updates: Partial<TabItem>) => {
@@ -173,7 +244,7 @@ export const useTabs = (options?: UseTabsOptions) => {
         return nextTabs;
       });
     },
-    [activeTabId, onLastTabClose],
+    [activeTabId, onLastTabClose, setActiveTabId],
   );
 
   const closeRightTabs = React.useCallback(
@@ -198,20 +269,23 @@ export const useTabs = (options?: UseTabsOptions) => {
         return nextTabs;
       });
     },
-    [activeTabId, onLastTabClose],
+    [activeTabId, onLastTabClose, setActiveTabId],
   );
 
-  const closeOtherTabs = React.useCallback((id: string) => {
-    setTabs((current) => {
-      const target = current.find((tab) => tab.id === id);
-      if (!target) {
-        return current;
-      }
+  const closeOtherTabs = React.useCallback(
+    (id: string) => {
+      setTabs((current) => {
+        const target = current.find((tab) => tab.id === id);
+        if (!target) {
+          return current;
+        }
 
-      setActiveTabId(target.id);
-      return [target];
-    });
-  }, []);
+        setActiveTabId(target.id);
+        return [target];
+      });
+    },
+    [setActiveTabId],
+  );
 
   /**
    * Reorders tabs by id while preserving the latest tab objects from state.
@@ -251,9 +325,11 @@ export const useTabs = (options?: UseTabsOptions) => {
   }, []);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
+  const recentTabs = React.useMemo(() => orderTabsByRecentUse(tabs, recentTabIds), [recentTabIds, tabs]);
 
   return {
     tabs,
+    recentTabs,
     activeTabId,
     activeTab,
     addTab,
