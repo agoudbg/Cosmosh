@@ -195,6 +195,7 @@ const SFTP: React.FC<SFTPProps> = ({
   const previewStateRef = React.useRef<SftpPreviewState | null>(null);
   const treePanelRef = React.useRef<SftpTreePanelHandle | null>(null);
   const directoryPanelRef = React.useRef<SftpDirectoryPanelHandle | null>(null);
+  const getActiveSftpSessionId = React.useCallback((): string => sessionIdRef.current, []);
   const {
     hostFingerprintPrompt,
     deleteConfirmationPrompt,
@@ -680,14 +681,14 @@ const SFTP: React.FC<SFTPProps> = ({
     ): Promise<TResult> {
       return runSftpOperationWithReconnect({
         impact,
-        getActiveSessionId: () => sessionIdRef.current,
+        getActiveSessionId: getActiveSftpSessionId,
         createNoSessionError: () => new Error(t('sftp.noSession')),
         isReconnectableError: (error) => sftpReconnectMode !== 'off' && isSftpSessionNotFoundError(error),
         ensureSession: ensureSftpSessionForOperation,
         operation,
       });
     },
-    [ensureSftpSessionForOperation, sftpReconnectMode],
+    [ensureSftpSessionForOperation, getActiveSftpSessionId, sftpReconnectMode],
   );
 
   const setTreeNodeLoading = React.useCallback((directoryPath: string, isLoading: boolean): void => {
@@ -2540,6 +2541,7 @@ const SFTP: React.FC<SFTPProps> = ({
     canProbeCapabilities: canUseFileActions && activeTaskCount === 0,
     currentPath,
     directoryEntries: entries,
+    getActiveSessionId: getActiveSftpSessionId,
     notifyError,
     onOperationCompleted: handleRefresh,
     runSftpOperation,

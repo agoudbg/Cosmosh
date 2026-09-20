@@ -55,6 +55,8 @@ export type SftpArchiveDestinationPrompt = {
  * Conflict dialog state for one backend archive operation.
  */
 export type SftpArchiveConflictPrompt = {
+  /** SFTP session that owns the archive operation. */
+  sessionId: string;
   operationId: string;
   conflicts: NonNullable<ApiSftpArchiveOperationData['conflicts']>;
 };
@@ -63,6 +65,7 @@ type UseSftpArchiveActionsParams = {
   canProbeCapabilities: boolean;
   currentPath: string;
   directoryEntries: ApiSftpEntry[];
+  getActiveSessionId: () => string;
   notifyError: (message: string) => void;
   onOperationCompleted: () => void;
   runSftpOperation: (options: SftpTaskOptions, operation: (context: SftpTaskContext) => Promise<void>) => void;
@@ -85,6 +88,7 @@ export const useSftpArchiveActions = ({
   canProbeCapabilities,
   currentPath,
   directoryEntries,
+  getActiveSessionId,
   notifyError,
   onOperationCompleted,
   runSftpOperation,
@@ -141,14 +145,18 @@ export const useSftpArchiveActions = ({
 
   /** Polls one backend archive operation until its retained terminal state is observed. */
   const pollOperation = React.useCallback(
-    async (operation: ApiSftpArchiveOperationData, context: SftpTaskContext): Promise<ApiSftpArchiveOperationData> => {
+    async (
+      operation: ApiSftpArchiveOperationData,
+      context: SftpTaskContext,
+      operationSessionId: string,
+    ): Promise<ApiSftpArchiveOperationData> => {
       let current = operation;
       let cancelRequestInFlight = false;
       context.registerCancel(() => {
         if (current.cancelRequested || cancelRequestInFlight) return;
         cancelRequestInFlight = true;
         context.update({ cancelRequested: true, detail: t('sftp.archive.stage.cancelling') });
-        void cancelSftpArchiveOperation(sessionId, current.operationId)
+        void cancelSftpArchiveOperation(operationSessionId, current.operationId)
           .then((response) => {
             current = response.data;
             context.update({
@@ -178,7 +186,11 @@ export const useSftpArchiveActions = ({
           cancelRequested: isCancelling,
         });
         if (isWaiting && current.conflicts?.length) {
-          setConflictPrompt({ operationId: current.operationId, conflicts: current.conflicts });
+          setConflictPrompt({
+            sessionId: operationSessionId,
+            operationId: current.operationId,
+            conflicts: current.conflicts,
+          });
         } else {
           setConflictPrompt((previous) => (previous?.operationId === current.operationId ? null : previous));
         }
@@ -188,10 +200,10 @@ export const useSftpArchiveActions = ({
           throw new Error(current.errorMessage || t('sftp.archive.operationFailed'));
         }
         await new Promise<void>((resolve) => window.setTimeout(resolve, ARCHIVE_POLL_INTERVAL_MS));
-        current = (await getSftpArchiveOperation(sessionId, current.operationId)).data;
+        current = (await getSftpArchiveOperation(operationSessionId, current.operationId)).data;
       }
     },
-    [notifyError, sessionId],
+    [notifyError],
   );
 
   /** Queues one compress operation through the existing tab FIFO. */
@@ -209,7 +221,12 @@ export const useSftpArchiveActions = ({
           executionLane: 'serial',
         },
         async (context) => {
-          const response = await startSftpArchiveOperation(sessionId, {
+          const operationSessionId = getActiveSessionId();
+          if (!operationSessionId) {
+            throw new Error(t('sftp.noSession'));
+          }
+
+          const response = await startSftpArchiveOperation(operationSessionId, {
             type: 'compress',
             sourcePaths: prompt.entries.map((entry) => entry.path),
             targetDirectoryPath: currentPath,
@@ -217,12 +234,20 @@ export const useSftpArchiveActions = ({
             format: input.format,
             compressionLevel: input.compressionLevel,
           });
-          await pollOperation(response.data, context);
+          await pollOperation(response.data, context, operationSessionId);
           if (mountedRef.current) onOperationCompleted();
         },
       );
     },
-    [compressionPrompt, currentPath, onOperationCompleted, pollOperation, runSftpOperation, sessionId],
+    [
+      compressionPrompt,
+      currentPath,
+      getActiveSessionId,
+      onOperationCompleted,
+      pollOperation,
+      runSftpOperation,
+      sessionId,
+    ],
   );
 
   /** Opens the compression form with collision-free defaults. */
@@ -265,19 +290,24 @@ export const useSftpArchiveActions = ({
             executionLane: 'serial',
           },
           async (context) => {
-            const response = await startSftpArchiveOperation(sessionId, {
+            const operationSessionId = getActiveSessionId();
+            if (!operationSessionId) {
+              throw new Error(t('sftp.noSession'));
+            }
+
+            const response = await startSftpArchiveOperation(operationSessionId, {
               type: 'extract',
               archivePath: entry.path,
               targetDirectoryPath,
               destinationMode,
             });
-            await pollOperation(response.data, context);
+            await pollOperation(response.data, context, operationSessionId);
             if (mountedRef.current) onOperationCompleted();
           },
         );
       });
     },
-    [capabilities, onOperationCompleted, pollOperation, runSftpOperation, sessionId],
+    [capabilities, getActiveSessionId, onOperationCompleted, pollOperation, runSftpOperation, sessionId],
   );
 
   /** Queues extraction to the current visible directory. */
@@ -315,15 +345,15 @@ export const useSftpArchiveActions = ({
   const resolveConflict = React.useCallback(
     async (resolution: ApiSftpArchiveConflictResolution): Promise<void> => {
       const prompt = conflictPrompt;
-      if (!prompt || !sessionId) return;
+      if (!prompt) return;
       try {
         setConflictPrompt(null);
-        await resolveSftpArchiveConflict(sessionId, prompt.operationId, { resolution });
+        await resolveSftpArchiveConflict(prompt.sessionId, prompt.operationId, { resolution });
       } catch (error: unknown) {
         notifyError(error instanceof Error ? error.message : t('sftp.archive.conflictResolutionFailed'));
       }
     },
-    [conflictPrompt, notifyError, sessionId],
+    [conflictPrompt, notifyError],
   );
 
   return {

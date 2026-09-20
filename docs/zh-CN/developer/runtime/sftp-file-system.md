@@ -170,6 +170,7 @@ sequenceDiagram
 - 一个绝对 deadline 同时覆盖排队等待与 runner 执行。排队期间超时的任务直接失败且不会调用 runner。运行中任务在 deadline 到达时会立即发布带 `SFTP_TASK_DEADLINE_EXCEEDED` 的 `failed`，但容量 slot 与 path claim 会继续保留，直到其底层 runner 真正结束。超时 mutation 会包含 `outcomeUnknown: true`，因为远端副作用可能已经发生。
 - 公共任务快照仅存在于 backend 内存中，在近期会话关闭后仍可查询，并在 runner 释放后最多保留七天。每个会话最多保留 512 条记录；达到压力上限时会先淘汰最早已释放的终态快照，无法腾出空间时才拒绝更多任务，backend 停止时清除剩余记录。关闭会话的最后一条保留记录和隐藏任务释放后，其空闲 scheduler 与空记录容器也会被移除。Renderer 任务状态独立负责更短的用户注意生命周期。任务集合没有公共取消或续传 route，也没有持久化；归档专用取消继续使用独立的 archive API。
 - SFTP 工作台会通过 Main/preload 提交`create-file`、`create-directory`、`rename`、`upload`、`download`与`batch`descriptor，然后始终使用任务接纳响应中的`sessionId`轮询，即使被动重连改变了标签页当前 session。无关任务会并发启动，实际执行顺序由 backend admission 与 path claim 决定。失败的 batch 会保留按条目的结构化结果，使 renderer 能够同步已成功的 mutation、刷新受影响目录，然后再展示部分失败。
+- 排队中的归档任务会在 renderer 串行任务真正开始时读取标签页最新的 session。归档操作接纳后，轮询、取消与冲突处理始终使用该操作所属的 session，即使被动重连更新了标签页当前 session。
 
 ## 5. 目录列表与文件操作
 
