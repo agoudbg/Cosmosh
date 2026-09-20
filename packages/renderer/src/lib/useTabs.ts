@@ -83,6 +83,36 @@ export const orderTabsByRecentUse = <Tab extends { id: string }>(
   return orderedTabs;
 };
 
+type TabCloseResolution<Tab> = {
+  closingIndex: number;
+  remainingTabs: Tab[];
+};
+
+/**
+ * Resolves a tab close request against the current tab collection.
+ *
+ * Returning `null` for an unknown id keeps stale UI actions from triggering
+ * last-tab behavior or changing the current tab collection.
+ *
+ * @param tabs Current tabs in display order.
+ * @param tabId Requested tab id.
+ * @returns The matched tab index and remaining tabs, or `null` when no tab matches.
+ */
+export const resolveTabClose = <Tab extends { id: string }>(
+  tabs: ReadonlyArray<Tab>,
+  tabId: string,
+): TabCloseResolution<Tab> | null => {
+  const closingIndex = tabs.findIndex((tab) => tab.id === tabId);
+  if (closingIndex === -1) {
+    return null;
+  }
+
+  return {
+    closingIndex,
+    remainingTabs: tabs.filter((tab) => tab.id !== tabId),
+  };
+};
+
 /**
  * Returns the localized title and icon for a logical tab page identifier.
  *
@@ -226,13 +256,17 @@ export const useTabs = (options?: UseTabsOptions) => {
   const closeTab = React.useCallback(
     (id: string) => {
       setTabs((current) => {
-        if (current.length <= 1) {
+        const closeResolution = resolveTabClose(current, id);
+        if (!closeResolution) {
+          return current;
+        }
+
+        if (closeResolution.remainingTabs.length === 0) {
           onLastTabClose?.();
           return current;
         }
 
-        const closingIndex = current.findIndex((tab) => tab.id === id);
-        const nextTabs = current.filter((tab) => tab.id !== id);
+        const { closingIndex, remainingTabs: nextTabs } = closeResolution;
 
         if (activeTabId === id) {
           const nextActive = nextTabs[closingIndex] ?? nextTabs[closingIndex - 1] ?? nextTabs[0];

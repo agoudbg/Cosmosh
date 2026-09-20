@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { insertTabAtRequestedPosition, orderTabsByRecentUse } from './useTabs';
+import { insertTabAtRequestedPosition, orderTabsByRecentUse, resolveTabClose } from './useTabs';
 
 type TestTab = {
   id: string;
@@ -51,4 +51,17 @@ test('recent tab ordering ignores closed history and preserves unseen tab order'
   const orderedTabs = orderTabsByRecentUse(baseTabs, ['missing', 'c']);
 
   assert.deepEqual(ids(orderedTabs), ['c', 'a', 'b']);
+});
+
+test('tab close resolution ignores an unknown id', () => {
+  assert.equal(resolveTabClose([{ id: 'only' }], 'missing'), null);
+});
+
+test('tab close resolution returns the matched index and remaining tabs', () => {
+  const resolution = resolveTabClose(baseTabs, 'b');
+
+  assert.deepEqual(resolution, {
+    closingIndex: 1,
+    remainingTabs: [{ id: 'a' }, { id: 'c' }],
+  });
 });
