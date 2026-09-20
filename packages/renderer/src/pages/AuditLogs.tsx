@@ -19,6 +19,7 @@ import { getAuditEventById, listAuditEvents } from '../lib/backend';
 import { useDateTimeFormatter } from '../lib/date-time-format';
 import { t } from '../lib/i18n';
 import { useToast } from '../lib/toast-context';
+import { isLatestAuditListRequest } from './audit-list-request';
 
 type TimeRangePreset = '24h' | '7d' | '30d' | '180d';
 
@@ -555,12 +556,15 @@ const AuditLogs: React.FC = () => {
   const [loadingDetail, setLoadingDetail] = React.useState<boolean>(false);
   const [detail, setDetail] = React.useState<AuditEventDetailItem | null>(null);
   const selectedEventIdRef = React.useRef<string>('');
+  const latestListRequestIdRef = React.useRef<number>(0);
 
   React.useEffect(() => {
     selectedEventIdRef.current = selectedEventId;
   }, [selectedEventId]);
 
   const refreshList = React.useCallback(async () => {
+    const requestId = latestListRequestIdRef.current + 1;
+    latestListRequestIdRef.current = requestId;
     setLoadingList(true);
 
     try {
@@ -572,6 +576,10 @@ const AuditLogs: React.FC = () => {
         timeRangePreset,
       });
       const response = await listAuditEvents(query);
+      if (!isLatestAuditListRequest(requestId, latestListRequestIdRef.current)) {
+        return;
+      }
+
       setListResponse(response);
 
       const firstEventId = response.data.items[0]?.eventId ?? '';
@@ -580,16 +588,26 @@ const AuditLogs: React.FC = () => {
         setSelectedEventId(firstEventId);
       }
     } catch (error: unknown) {
+      if (!isLatestAuditListRequest(requestId, latestListRequestIdRef.current)) {
+        return;
+      }
+
       notifyWarning(error instanceof Error ? error.message : t('auditLogs.loadFailed'));
       setListResponse(null);
       setSelectedEventId('');
     } finally {
-      setLoadingList(false);
+      if (isLatestAuditListRequest(requestId, latestListRequestIdRef.current)) {
+        setLoadingList(false);
+      }
     }
   }, [categoryFilter, notifyWarning, outcomeFilter, page, searchKeyword, timeRangePreset]);
 
   React.useEffect(() => {
     void refreshList();
+
+    return () => {
+      latestListRequestIdRef.current += 1;
+    };
   }, [refreshList]);
 
   React.useEffect(() => {
