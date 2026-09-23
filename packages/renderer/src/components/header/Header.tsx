@@ -14,7 +14,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { resolveUserMenuAltShortcut } from './header-keyboard-shortcuts';
 import { Tabs } from './Tabs';
+
+/**
+ * Detects keyboard input owned by an xterm surface.
+ *
+ * @param target Native keyboard event target.
+ * @returns `true` when the event target is inside xterm.
+ */
+const isXtermKeyboardTarget = (target: EventTarget | null): boolean => {
+  return target instanceof Element && target.closest('.xterm') !== null;
+};
 
 const Header: React.FC<{
   className?: string;
@@ -118,22 +129,31 @@ const Header: React.FC<{
       return;
     }
 
-    let altPressedWithoutModifiers = false;
+    let altShortcutArmed = false;
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Alt') {
-        return;
-      }
-
-      altPressedWithoutModifiers = !event.metaKey && !event.ctrlKey && !event.shiftKey;
+      const transition = resolveUserMenuAltShortcut(
+        altShortcutArmed,
+        'keydown',
+        event,
+        isXtermKeyboardTarget(event.target),
+      );
+      altShortcutArmed = transition.armed;
     };
 
     const handleKeyUp = (event: KeyboardEvent): void => {
-      if (event.key !== 'Alt' || !altPressedWithoutModifiers) {
+      const transition = resolveUserMenuAltShortcut(
+        altShortcutArmed,
+        'keyup',
+        event,
+        isXtermKeyboardTarget(event.target),
+      );
+      altShortcutArmed = transition.armed;
+
+      if (!transition.shouldFocusUserMenu) {
         return;
       }
 
-      altPressedWithoutModifiers = false;
       event.preventDefault();
       event.stopPropagation();
       userMenuTriggerRef.current?.focus();

@@ -192,6 +192,10 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - The default `Most Recently Used` mode keeps the active tab first and orders the remaining tabs by the latest activation, matching the `Alt+Tab` interaction model. Holding `Ctrl+Tab` moves forward through that order; `Ctrl+Shift+Tab` moves backward.
 - `Tab Strip Order` remains available for users who prefer the current header order. The setting affects switcher entries only; the draggable header tab strip and runtime page instances retain their existing order and identity.
 
+## 7.6.2 Window Chrome Alt Focus
+
+- On Windows and Linux, pressing and releasing Alt outside xterm may move keyboard focus to the user-menu trigger. Keyboard events originating inside xterm remain owned by the terminal and must not move focus into the header. Pressing any non-Alt key while Alt is held cancels the header focus shortcut.
+
 ## 7.7 Composite Control Accessibility
 
 - Custom command/search controls that render option lists must expose a labeled `combobox` tied to a labeled `listbox` with stable `aria-controls`, `aria-expanded`, `aria-activedescendant`, and per-option `aria-selected`.
