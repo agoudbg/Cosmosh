@@ -100,6 +100,7 @@ flowchart TD
 ### 6.4 设置分类导航
 
 - 设置页分类列表使用共享的 `SidebarNav` 组件（`src/components/ui/sidebar-nav.tsx`）：一个带无障碍名称的 `nav` 地标，内部为全宽按钮，当前激活项暴露 `aria-current="page"`。
+- 侧栏导航在未选中且未悬停时使用透明背景，未选中项悬停使用 `color.form.control.hover`，选中项使用 `color.home.chip.active`。选中背景在悬停时保持不变，并在浅色和深色主题下均比未选中项的悬停背景更醒目。
 - 列表采用 roving focus：`Tab` 在当前分类处进入列表一次，`ArrowUp`/`ArrowDown` 通过共享的方向导航 hook 在分类间移动焦点，`Enter`/`Space` 通过原生按钮语义激活聚焦的分类。
 - SSH 服务器编辑器复用 `SplitWorkbenchLayout`、`SplitWorkbenchMainPanel` 和 `SidebarNav`，组织为“信息”“连接”“增强”“高级”四个界面。切换分类时，右侧内容面板复位到顶部，但不替换当前表单草稿。
 - “信息”包含标识与分类控件；“连接”包含主机信息和认证，用户名与钥匙链控件分两行排列；“分类”中的文件夹与标签控件也分两行排列；“增强”包含终端增强和剪贴板权限；“高级”包含代理、主机密钥校验、字符宽度兼容与传输压缩。紧凑编辑器不在内容面板顶部重复显示当前分类标题，左侧导航宽度为 175 px。Dialog 标题与左侧导航项目的前置图标左边缘对齐。

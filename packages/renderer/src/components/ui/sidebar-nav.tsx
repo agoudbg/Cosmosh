@@ -83,9 +83,9 @@ export const SidebarNav = <TId extends string = string>({
           <li key={item.id}>
             <Button
               {...navigation.getItemProps(index)}
-              variant={item.id === activeId ? 'default' : 'ghost'}
+              variant="ghost"
               aria-current={item.id === activeId ? 'page' : undefined}
-              className="w-full !justify-start"
+              className="w-full !justify-start aria-[current=page]:bg-home-chip-active aria-[current=page]:hover:bg-home-chip-active"
               onClick={() => onSelect(item.id)}
             >
               {item.icon}
