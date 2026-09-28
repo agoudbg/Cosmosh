@@ -1,5 +1,5 @@
 /** Current OSC contract version shared by the desktop runtime and remote helper. */
-export const REMOTE_SHELL_PROTOCOL_VERSION = 2;
+export const REMOTE_SHELL_PROTOCOL_VERSION = 3;
 
 /** Shells supported by the Remote Enhancements helper. */
 export const REMOTE_SHELL_NAMES = ['bash', 'zsh', 'fish', 'sh', 'ash'] as const;
@@ -23,6 +23,11 @@ export const REMOTE_SHELL_CAPABILITIES = [
   'foreground-command',
   'prompt-ready',
   'line-state',
+  'input-snapshot',
+  'input-apply',
+  'directory-read',
+  'history-read',
+  'native-completion',
 ] as const;
 
 /** Supported remote login shell name. */
@@ -41,6 +46,7 @@ type RemoteShellEventBase = {
   helperVersion: string;
   protocolVersion: number;
   capabilities: RemoteShellCapability[];
+  shellInstanceId: string;
   timestamp: number;
   cwd?: string;
   command?: string;
@@ -68,6 +74,58 @@ export type RemoteShellEventMessage = RemoteShellEventBase &
     | { event: 'foreground-command'; command: string; commandId: string }
     | { event: 'line-state'; lineLength: number; cursorIndex: number; promptGeneration: number }
   );
+
+/** User permissions are independent of the capabilities installed by a helper. */
+export type ShellPermissions = {
+  cwd: boolean;
+  input: boolean;
+  history: boolean;
+  paths: boolean;
+  nativeCompletion: boolean;
+};
+
+/** Current usability of the original interactive Shell, not a guess from screen text. */
+export type ShellContextStatus = 'unavailable' | 'initializing' | 'ready' | 'busy' | 'paused';
+
+/** Stable reason codes used by capability diagnostics without retaining terminal text. */
+export type ShellContextReason =
+  | 'helper-unavailable'
+  | 'waiting-for-prompt'
+  | 'command-running'
+  | 'input-submitted'
+  | 'foreign-shell'
+  | 'unsupported-editor'
+  | 'permission-disabled'
+  | 'transport-closed';
+
+/** One Shell-confirmed directory report; logical/physical path separation is filled by v3 adapters. */
+export type ShellDirectoryContext = {
+  logical: string;
+  physical: string | null;
+  home: string | null;
+};
+
+/**
+ * Backend-owned state shared by enhancement consumers for one terminal session.
+ * It never contains current input text or credentials. Revision counters invalidate asynchronous work.
+ */
+export type ShellContext = {
+  sessionId: string;
+  shellInstanceId: string | null;
+  shell: RemoteShellName | null;
+  helperVersion: string | null;
+  protocolVersion: number | null;
+  capabilities: RemoteShellCapability[];
+  permissions: ShellPermissions;
+  status: ShellContextStatus;
+  reason: ShellContextReason | null;
+  revision: number;
+  inputGeneration: number;
+  promptGeneration: number | null;
+  cwdGeneration: number;
+  cwd: ShellDirectoryContext | null;
+  lastKnownCwd: ShellDirectoryContext | null;
+};
 
 /** Phase names emitted by Remote Bootstrap orchestration. */
 export type RemoteBootstrapPhase = 'probe' | 'manifest' | 'download' | 'install' | 'verify';
@@ -174,4 +232,8 @@ export type TerminalServerMessage =
 
 /** Complete Backend-to-Renderer message contract for SSH terminal sessions. */
 export type SshTerminalServerMessage =
-  TerminalServerMessage | RemoteBootstrapStatus | RemoteEnhancementRuntimeStatus | RemoteShellEventMessage;
+  | TerminalServerMessage
+  | RemoteBootstrapStatus
+  | RemoteEnhancementRuntimeStatus
+  | RemoteShellEventMessage
+  | { type: 'shell-context'; context: ShellContext };

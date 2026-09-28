@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 
+import { DEFAULT_SETTINGS_VALUES, type ShellContext } from '@cosmosh/api-contract';
 import type { Client, ClientChannel } from 'ssh2';
 
 import type { I18nInstance } from '../i18n-bridge.js';
@@ -221,6 +222,110 @@ const createEnsureContext = (
 });
 
 const translate = ((key: string): string => key) as I18nInstance['t'];
+
+for (const scenario of ['settings-failure', 'disabled-during-connect'] as const) {
+  test('createSession preserves ordinary SSH when ' + scenario, async (t) => {
+    const operations: string[] = [];
+    const contract = {
+      shell: 'bash' as const,
+      helperVersion: 'fixture-v3',
+      protocolVersion: 3,
+      capabilities: ['cwd', 'prompt-ready'] as ['cwd', 'prompt-ready'],
+    };
+    const handshake =
+      '\x1b]777;cosmosh;' +
+      Buffer.from(
+        JSON.stringify({
+          ...contract,
+          shellInstanceId: 'fixture-original',
+          event: 'integration-ready',
+          timestamp: 1,
+        }),
+      ).toString('base64') +
+      '\x07';
+    const client = createPrimaryClient(operations, [], handshake + 'LOGIN_MESSAGE\r\n');
+    type Session = {
+      attachTimeout: NodeJS.Timeout;
+      shellContext: ShellContext;
+      remoteEnhancementsRuntimeState: string;
+      remoteEnhancementsRuntimeCode: string;
+    };
+    const sessions = new Map<string, Session>();
+    t.after(() => {
+      for (const session of sessions.values()) clearTimeout(session.attachTimeout);
+    });
+    const db = {
+      sshServer: {
+        findUnique: async () => ({
+          id: 'server',
+          host: 'fixture',
+          port: 22,
+          strictHostKey: true,
+          enableSshCompression: false,
+          remoteEnhancementsEnabled: true,
+        }),
+      },
+      sshKnownHost: { findMany: async () => [] },
+      sshLoginAudit: { create: async () => ({ id: 'audit' }) },
+      $queryRaw: async () => {
+        if (scenario === 'settings-failure') throw new Error('fixture settings unavailable');
+        return [{ payloadJson: '{}', revision: 1 }];
+      },
+    };
+    const service = Object.assign(
+      Object.create(SshSessionService.prototype) as Pick<
+        SshSessionService,
+        'createSession' | 'applyEnhancementSettings'
+      >,
+      {
+        sessions,
+        enhancementSettingsSnapshot: null,
+        websocketBaseUrl: 'ws://fixture',
+        getDbClient: () => db,
+        auditEventService: { logEvent: async () => undefined },
+        // Periodic scheduling is unrelated to this connection transaction.
+        startSessionTelemetry: () => undefined,
+        scheduleHistorySync: () => undefined,
+        openAuthenticatedClient: async (): Promise<OpenSshClientResult> => ({
+          type: 'ready',
+          client,
+          loginPassword: null,
+          lifecycleMonitor: createLifecycleMonitor(),
+          proxyMetadata: { mode: 'off', protocol: 'direct' },
+        }),
+        remoteBootstrapService: {
+          reportStatus: () => undefined,
+          runForSession: async (): Promise<RemoteBootstrapResult> => {
+            service.applyEnhancementSettings({
+              revision: 2,
+              values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsEnabled: false },
+            });
+            return { state: 'ready', source: 'current', contract };
+          },
+        },
+      },
+    );
+    const result = await service.createSession({
+      serverId: 'server',
+      locale: 'en',
+      cols: 80,
+      rows: 24,
+      term: 'xterm-256color',
+      connectTimeoutSec: 5,
+    });
+    assert.equal(result.type, 'success');
+    assert.deepEqual(operations, ['shell'], 'optional setup failure cannot touch the primary exec channel');
+    const session = [...sessions.values()][0]!;
+    assert.equal(session.remoteEnhancementsRuntimeState, 'disabled');
+    assert.equal(
+      session.remoteEnhancementsRuntimeCode,
+      scenario === 'settings-failure' ? 'SETTINGS_READ_FAILED' : 'PERMISSION_DISABLED',
+    );
+    assert.equal(session.shellContext.status, 'unavailable');
+    assert.equal(session.shellContext.shellInstanceId, null, 'buffered handshake cannot activate the disabled runtime');
+    assert.ok(Object.values(session.shellContext.permissions).every((allowed) => allowed === false));
+  });
+}
 
 test('SshSessionService keeps the primary transport exec-free so Debian MOTD reaches the first shell', async () => {
   const primaryOperations: string[] = [];

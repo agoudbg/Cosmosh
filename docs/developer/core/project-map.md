@@ -83,6 +83,9 @@ flowchart TB
 
 ### `packages/backend`
 
+- `src/terminal/shell-context.ts`: original Shell identity, permission and generation transitions, without current-input or credential storage.
+- `src/terminal/integration/helper-identity.live-test.ts`: real installer/SSH tests for repeated sources, nested Shells, independent terminals and non-interactive silence.
+
 - **Role**: Internal API + session orchestration runtime.
 - **Key folders**:
   - `src/http/routes`: REST endpoints for settings, SSH entities, SFTP session/task operations, port-forwarding rules, and local terminal actions.
@@ -110,7 +113,7 @@ Shared protocol constants, request/response types, OpenAPI source, generated con
 - `src/settings-registry.ts`: **single source of truth** for all settings definitions — types, defaults, constraints, enum sets, UI control metadata, categories, and helper functions. Adding/removing a setting only requires editing this file.
 - `src/settings.ts`: generic, registry-driven validation and normalization helpers (`normalizeSettingsValuesStrict`, `normalizeSettingsValuesWithDefaults`) shared by backend and renderer.
 - `src/sftp.ts`: shared SFTP entry/name ordering helpers consumed by backend session listings and renderer browser/tree views.
-- `src/terminal-protocol.ts`: protocol-v2 terminal WebSocket unions, remote shell event/capability constants, and bootstrap/runtime status types shared by backend and renderer.
+- `src/terminal-protocol.ts`: protocol-v3 terminal WebSocket unions, shared ShellContext/permissions, remote Shell event/capability constants and bootstrap/runtime status types.
 
 ### `packages/i18n`
 

@@ -461,11 +461,11 @@ Backend parsing rules:
 - The parser returns an ordered sequence of visible-output and helper-event frames, and `SshSessionService` forwards those frames without regrouping them by type. Visible bytes before an event, especially the echoed input/newline before `command-start`, must reach xterm first so renderer markers capture valid input/output boundaries.
 - The same ordering contract applies while the WebSocket is detached: visible output and accepted helper events enter one bounded pending-frame queue and are flushed in arrival order after the attach control messages. If runtime trust is disabled before attach, queued helper events are removed while ordinary terminal output remains available for replay.
 - Cosmosh OSC sequences are stripped from visible terminal output and decoded, but events are forwarded and applied only after the backend runtime gate becomes `active`.
-- The gate starts `pending` only after pre-shell status validation. It becomes `active` on a matching `integration-ready`. If no valid handshake arrives within 10 seconds, it changes to `disabled` with `HELPER_HANDSHAKE_TIMEOUT`; any shell, helper-version, protocol-version, or capability mismatch also changes it to `disabled` and clears helper-derived state.
+- The gate starts `pending` after pre-shell validation and a final permission check, then becomes `active` on a matching `integration-ready`. Missing handshakes disable it after 10 seconds. A version/capability mismatch from the original Shell disables its runtime; another Shell instance pauses usability without replacing the original identity.
 - Non-Cosmosh OSC sequences and ordinary ANSI output stream through visibly and unchanged, including sequences split across SSH chunks.
-- Invalid JSON, invalid event shapes, and payloads over 8 KiB are dropped without crashing the session.
+- Invalid JSON, invalid event shapes, noncanonical Base64, decoded JSON over 32 KiB, and encoded OSC over 48 KiB are dropped. Individual cwd and executable fields retain their 4 KiB and 255-byte limits.
 - Split SSH chunks are supported; incomplete OSC data is buffered until a BEL or ST terminator arrives.
-- Protocol constants and the discriminated Backend/Renderer message unions are shared from `packages/api-contract/src/terminal-protocol.ts`. The current helper protocol is v2.
+- Protocol constants and Backend/Renderer unions come from `packages/api-contract/src/terminal-protocol.ts`. The current helper protocol is v3. Existing install/status validation refreshes old helpers; v2 events cannot activate a v3 session.
 
 Server-to-renderer payload:
 
@@ -481,6 +481,7 @@ type RemoteShellEventMessage = {
     | "foreground-command"
     | "line-state";
   shell: "bash" | "zsh" | "fish" | "sh" | "ash";
+  shellInstanceId: string;
   helperVersion: string;
   protocolVersion: number;
   capabilities: string[];
@@ -510,6 +511,11 @@ Current first-phase helper behavior:
 
 Backend state model:
 
+- `terminal/shell-context.ts` owns the authoritative `ShellContext`, published as `{ type: 'shell-context', context }`. It contains session/Shell identity, exact version/capabilities, independent permissions, usability (`unavailable`, `initializing`, `ready`, `busy`, `paused`), reason codes and revision/input/prompt/cwd generations. No current input or credentials enter this model. Renderer retains the latest context per pane outside debug history; older revisions and replayed cwd/prompt events cannot overwrite it.
+- Each interactive Shell gets a Linux UUID. Repeated sourcing preserves identity and hook registration; child processes get new identities, and Fish internal metadata is not exported. Only a newer original-Shell prompt resumes a foreign-shell pause. Sh/Ash keep directory capability with generation-less prompts and advertise no editor capability.
+- Input invalidates asynchronous work before PTY forwarding. Enter, newline, Ctrl+C and Ctrl+D pause usability; command end stays busy until a new prompt. Directory operation boundaries and final results recheck current generations and permissions.
+- Default-scope settings revisions update live sessions. CWD opt-out clears caches and rejects cwd events; input opt-out stops enhancement input tracking, candidate requests and rendered command capture while normal terminal I/O continues. History/path preferences populate separate permissions. Native completion defaults off and requires an implemented advertised provider. Global opt-out disables the runtime; re-enabling requires reconnecting. Settings reads stay inside optional setup's 15-second budget, so failures preserve ordinary SSH.
+- Migration boundary: physical/home directory reports, verified editor snapshots, structured directory reads and native providers are subsequent capability additions. Helpers currently advertise implemented lifecycle/cwd events only. Legacy directory/completion consumers and complete history probe/cache/deletion permission enforcement are replaced separately.
 - Each session owns an explicit `pending`, `active`, or `disabled` enhancement runtime state, the contract validated before PTY creation, and a handshake timer that is cleared on activation, disablement, or session disposal.
 - Each `SshLiveSession` keeps trusted cwd/foreground state plus the latest command id, sanitized executable, exit code, and duration. Unique structured `command-start` events drive command counting and history refresh; raw Enter parsing is the fallback only when that capability is unavailable.
 - `remoteShellCwd` is the preferred path-completion cwd source; existing exec probes and renderer hints remain fallback paths.

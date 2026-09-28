@@ -180,7 +180,8 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
   - `credential-fill-offer`包含`{ token, expiresAt }`或`null`；`credential-fill-result`包含标识与`filled`或`rejected`状态，拒绝原因包括`stale`、`expired`、`disabled`、`unavailable`、`failed`，不返回密码
   - `bootstrap-status`，用于侧通道 Remote Bootstrap 安装/探测状态
   - `remote-enhancement-runtime-status`，包含 backend 持有的状态（`pending`、`active` 或 `disabled`），以及可选 `helperVersion`、`protocolVersion`、`capabilities`、`code` 与 `message`
-  - `remote-shell-event`，用于已安装 helper 通过 OSC 777 发出的运行期 shell 状态；每条事件都必须包含 `helperVersion`、整数 `protocolVersion`、`capabilities`、`shell`、`event` 与 `timestamp`
+  - `shell-context`携带 Backend 最新的 ShellContext 身份、能力、权限、可用状态/原因及代数，不包含输入或凭据。附加连接与重要状态转换时发送，不进入历史事件缓冲。
+  - `remote-shell-event`携带 OSC 777 Shell 状态；每条 v3 事件必须包含`shellInstanceId`、`helperVersion`、整数`protocolVersion`、`capabilities`、`shell`、`event`与`timestamp`
 
 远端 shell event union 规则：
 
@@ -199,7 +200,7 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 
 - 补全消息在 `SshSessionService` 与 `LocalTerminalSessionService` 中处理，输入规范化由 `terminal/shared.ts` 统一，排序引擎由 `terminal/completion/engine.ts` 共享。
 - `remote-enhancement-runtime-status` 与 `remote-shell-event` 仅用于 SSH session，不会出现在 local-terminal session。交互 shell 打开前的 Bootstrap ensure 成功后，运行时以 `pending` 开始；10 秒内到达且匹配的 `integration-ready` 会切换为 `active`。Ensure 失败、`BOOTSTRAP_ENSURE_TIMEOUT`、`HELPER_HANDSHAKE_TIMEOUT` 或 live 契约不匹配都会切换为 `disabled`。Renderer 会把最新运行状态与有界事件历史分别保存，并且只能将其用于诊断，不得据此重建 backend helper 状态。
-- `remote-shell-event` 不得承载密码、secret、完整终端输出、完整命令行、line-buffer 内容或任意大数据。Helper 的动态 cwd/command 字段在 OSC JSON envelope 内使用规范 Base64，解码并校验后才会转发。Backend 将解码后的 OSC payload 限制在 8 KiB，剥离 Cosmosh OSC，并原样流式透传非 Cosmosh OSC。
+- `remote-shell-event`不得携带密码、secret、完整输出、命令行或输入缓冲区。动态 cwd/command 字段在 JSON 内使用规范 Base64，校验后才转发。Backend 将解码 JSON 限制在 32 KiB、编码 OSC 限制在 48 KiB，剥离 Cosmosh OSC，原样传递非 Cosmosh OSC。
 - Renderer 会把完整 server message union 路由到来源 pane 的 runtime/reducer。补全响应、密码提示、状态、telemetry、错误、退出、调试事件、重连与命令 marker 都不得隐式回退到 primary/active pane 状态。
 
 ### 3.5 Main 持有的活动连接契约

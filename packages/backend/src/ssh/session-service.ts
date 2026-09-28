@@ -4,9 +4,11 @@ import type {
   RemoteEnhancementRuntimeStatus,
   RemoteShellCapability,
   RemoteShellEventMessage,
+  ShellContext,
   SshTerminalServerMessage,
   TerminalCredentialFillResult,
 } from '@cosmosh/api-contract';
+import { DEFAULT_SETTINGS_VALUES } from '@cosmosh/api-contract';
 import type { PrismaClient } from '@prisma/client';
 import { type Client, type ClientChannel } from 'ssh2';
 import { type RawData } from 'ws';
@@ -21,7 +23,11 @@ import {
   RemoteBootstrapService,
   type RemoteBootstrapStatus,
 } from '../remote-bootstrap/service.js';
-import { readDefaultSettingsValues } from '../settings/read.js';
+import {
+  type DefaultSettingsSnapshot,
+  readDefaultSettingsSnapshot,
+  readDefaultSettingsValues,
+} from '../settings/read.js';
 import {
   BaseTerminalSessionService,
   TERMINAL_PENDING_OUTPUT_MAX_BYTES,
@@ -46,6 +52,14 @@ import {
   TERMINAL_TELEMETRY_INTERVAL_MS,
   type TerminalClientInboundMessage,
 } from '../terminal/shared.js';
+import {
+  applyShellContextEvent,
+  createShellContext,
+  invalidateShellInput,
+  resolveShellPermissions,
+  suspendShellContext,
+  updateShellPermissions,
+} from '../terminal/shell-context.js';
 import {
   openSshClient,
   type OpenSshClientResult,
@@ -164,6 +178,8 @@ type SshLiveSession = TerminalManagedSessionBase & {
   completionCwdInitializationPromise: Promise<string | null> | null;
   completionPendingCwdCommands: string[];
   credentialFillState: CredentialFillState;
+  shellContext: ShellContext;
+  enhancementsAllowed: boolean;
   loginPassword: string | null;
   remoteShellEventParser: RemoteShellEventOscParser;
   pendingStreamFrames: RemoteShellEventStreamFrame[];
@@ -383,6 +399,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   private readonly credentialEncryptionKey: Buffer;
 
   private readonly remoteBootstrapService: RemoteBootstrapService;
+  private enhancementSettingsSnapshot: DefaultSettingsSnapshot | null = null;
 
   constructor(options: {
     host: string;
@@ -465,6 +482,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       }
     };
     let liveSession: SshLiveSession | null = null;
+    let enhancementSettingsRead = false;
     const shellResult = await this.openShell(server, {
       cols: input.cols,
       rows: input.rows,
@@ -493,6 +511,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
           serverEnabled: remoteEnhancementsEnabled,
           signal,
           sendStatus: (status) => pendingRemoteBootstrapStatuses.push(status),
+          onSettings: (snapshot) => {
+            this.applyEnhancementSettings(snapshot);
+            enhancementSettingsRead = true;
+          },
         }),
       onOutput: (data) => {
         if (liveSession) {
@@ -611,6 +633,15 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       },
     });
 
+    const remoteBootstrapResult: RemoteBootstrapResult =
+      shellResult.remoteBootstrapResult.state === 'ready' &&
+      (!enhancementSettingsRead || !this.enhancementSettingsSnapshot?.values.remoteEnhancementsEnabled)
+        ? {
+            state: 'disabled',
+            code: 'PERMISSION_DISABLED',
+            message: 'remote enhancements disabled before session activation',
+          }
+        : shellResult.remoteBootstrapResult;
     liveSession = {
       sessionId,
       serverId: server.id,
@@ -637,6 +668,15 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       completionCwdInitializationPromise: null,
       completionPendingCwdCommands: [],
       credentialFillState: createCredentialFillState(),
+      enhancementsAllowed: remoteEnhancementsEnabled,
+      shellContext: createShellContext(
+        sessionId,
+        resolveShellPermissions(
+          this.enhancementSettingsSnapshot?.values ?? DEFAULT_SETTINGS_VALUES,
+          remoteEnhancementsEnabled && enhancementSettingsRead,
+        ),
+        remoteBootstrapResult.state === 'ready',
+      ),
       loginPassword: shellResult.loginPassword,
       remoteShellEventParser: new RemoteShellEventOscParser(),
       pendingStreamFrames: [],
@@ -650,13 +690,12 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       lastExitCode: null,
       lastCommandDurationMs: null,
       pendingRemoteBootstrapStatuses,
-      remoteEnhancementsRuntimeState: shellResult.remoteBootstrapResult.state === 'ready' ? 'pending' : 'disabled',
+      remoteEnhancementsRuntimeState: remoteBootstrapResult.state === 'ready' ? 'pending' : 'disabled',
       remoteEnhancementsRuntimeContract:
-        shellResult.remoteBootstrapResult.state === 'ready' ? shellResult.remoteBootstrapResult.contract : null,
-      remoteEnhancementsRuntimeCode:
-        shellResult.remoteBootstrapResult.state === 'disabled' ? shellResult.remoteBootstrapResult.code : null,
+        remoteBootstrapResult.state === 'ready' ? remoteBootstrapResult.contract : null,
+      remoteEnhancementsRuntimeCode: remoteBootstrapResult.state === 'disabled' ? remoteBootstrapResult.code : null,
       remoteEnhancementsRuntimeMessage:
-        shellResult.remoteBootstrapResult.state === 'disabled' ? shellResult.remoteBootstrapResult.message : null,
+        remoteBootstrapResult.state === 'disabled' ? remoteBootstrapResult.message : null,
       remoteEnhancementsHandshakeTimeout: null,
       t: i18n.t,
       socket: null,
@@ -814,6 +853,44 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     return { type: 'success' };
   }
 
+  /**
+   * Applies a persisted default-scope permission update to every live SSH session.
+   * @param snapshot Values and database revision read together by the settings boundary.
+   * @returns Nothing; older asynchronous settings reads are ignored.
+   */
+  public applyEnhancementSettings(snapshot: DefaultSettingsSnapshot): void {
+    if (this.enhancementSettingsSnapshot && snapshot.revision < this.enhancementSettingsSnapshot.revision) return;
+    this.enhancementSettingsSnapshot = snapshot;
+    for (const session of this.sessions.values()) {
+      const previous = session.shellContext;
+      session.shellContext = updateShellPermissions(
+        previous,
+        resolveShellPermissions(snapshot.values, session.enhancementsAllowed),
+      );
+      if (!session.shellContext.permissions.cwd) {
+        session.remoteShellCwd = null;
+        session.completionWorkingDirectory = null;
+        session.completionHomeDirectory = null;
+      }
+      if (!snapshot.values.remoteEnhancementsEnabled && session.remoteEnhancementsRuntimeState !== 'disabled') {
+        this.disableRemoteEnhancementsRuntime(
+          session,
+          'PERMISSION_DISABLED',
+          'remote enhancements disabled by settings',
+        );
+      } else if (session.shellContext !== previous) this.sendShellContext(session);
+    }
+  }
+
+  /**
+   * Publishes only current non-secret context metadata; detached sessions receive it on attach.
+   * @param session Context-owning SSH session.
+   * @returns Nothing.
+   */
+  private sendShellContext(session: SshLiveSession): void {
+    this.sendServerMessage(session, { type: 'shell-context', context: session.shellContext });
+  }
+
   protected onSessionAttached(session: SshLiveSession): void {
     // Control state must establish trust before ordered PTY frames reach the renderer.
     this.sendServerMessage(session, { type: 'ready' });
@@ -824,6 +901,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       }
     }
     this.sendRemoteEnhancementRuntimeStatus(session);
+    this.sendShellContext(session);
     this.flushPendingStreamFrames(session);
     this.sendCredentialFillOffer(session);
   }
@@ -890,7 +968,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       session.completionWorkingDirectory,
       session.completionHomeDirectory,
     );
-    if (promptCwd) {
+    if (promptCwd && session.shellContext.permissions.cwd) {
       this.applyResolvedRemoteCompletionCwd(session, promptCwd);
     }
     this.sendServerMessage(session, {
@@ -912,6 +990,15 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       return;
     }
 
+    if (session.shellContext.shellInstanceId && session.shellContext.shellInstanceId !== event.shellInstanceId) {
+      const next = applyShellContextEvent(session.shellContext, event);
+      if (next !== session.shellContext) {
+        session.shellContext = next;
+        this.sendShellContext(session);
+      }
+      return;
+    }
+
     const contract = session.remoteEnhancementsRuntimeContract;
     if (!contract || !remoteShellEventMatchesContract(event, contract)) {
       this.disableRemoteEnhancementsRuntime(session, 'HELPER_CONTRACT_MISMATCH', 'remote helper contract mismatch');
@@ -930,6 +1017,12 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       this.sendRemoteEnhancementRuntimeStatus(session);
     }
 
+    const previous = session.shellContext;
+    session.shellContext = applyShellContextEvent(previous, event);
+    if (session.shellContext !== previous) this.sendShellContext(session);
+    if (event.event === 'prompt-ready' && session.shellContext === previous) return;
+    if (event.event === 'cwd' && !session.shellContext.permissions.cwd) return;
+    if (event.event === 'line-state' && !session.shellContext.permissions.input) return;
     this.applyRemoteShellEventState(session, event);
 
     this.sendServerMessage(session, event);
@@ -1094,6 +1187,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     signal?: AbortSignal;
     sendStatus: (status: RemoteBootstrapStatus) => void;
     ensureTimeoutMs?: number;
+    onSettings?: (snapshot: DefaultSettingsSnapshot) => void;
   }): Promise<RemoteBootstrapResult> {
     if (!options.serverEnabled) {
       options.sendStatus(remoteBootstrapDisabledStatus());
@@ -1217,11 +1311,12 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     };
 
     try {
-      const settings = await awaitWithAbortSignal(
-        readDefaultSettingsValues(this.getDbClient()),
+      const snapshot = await awaitWithAbortSignal(
+        readDefaultSettingsSnapshot(this.getDbClient()),
         abortController.signal,
       );
-      if (!settings.remoteEnhancementsEnabled) {
+      options.onSettings?.(snapshot);
+      if (!(this.enhancementSettingsSnapshot?.values ?? snapshot.values).remoteEnhancementsEnabled) {
         options.sendStatus(remoteBootstrapDisabledStatus());
         return {
           state: 'disabled',
@@ -1393,6 +1488,12 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns Nothing.
    */
   private disableRemoteEnhancementsRuntime(session: SshLiveSession, code: string, message: string): void {
+    session.shellContext = suspendShellContext(
+      session.shellContext,
+      code === 'PERMISSION_DISABLED' ? 'permission-disabled' : 'helper-unavailable',
+      true,
+    );
+    this.sendShellContext(session);
     this.clearRemoteEnhancementHandshakeTimeout(session);
     session.remoteEnhancementsRuntimeState = 'disabled';
     session.remoteEnhancementsRuntimeCode = code;
@@ -1420,6 +1521,9 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
+      const previousStatus = session.shellContext.status;
+      session.shellContext = invalidateShellInput(session.shellContext, message.data);
+      if (session.shellContext.status !== previousStatus) this.sendShellContext(session);
       // PTY input may belong to a password prompt or another program. Only Shell-owned
       // history is eligible for completion; keystrokes must never be retained as commands.
       const hadCredentialOffer = session.credentialFillState.offer !== null;
@@ -1548,7 +1652,14 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     session: SshLiveSession,
     message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
   ): Promise<void> {
-    if (session.remoteShellForegroundCommand) {
+    const contextRevision = session.shellContext.revision;
+    /** Whether this request still owns permission to start or publish a remote directory operation. */
+    const canReadPaths = (): boolean =>
+      !session.disposed &&
+      session.shellContext.revision === contextRevision &&
+      session.shellContext.permissions.cwd &&
+      session.shellContext.permissions.paths;
+    if (session.remoteShellForegroundCommand || !session.shellContext.permissions.input) {
       this.sendServerMessage(session, {
         type: 'completion-response',
         requestId: message.requestId,
@@ -1566,7 +1677,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         fuzzyMatch: message.fuzzyMatch,
         includeHistory: message.includeHistory,
         includeBuiltInCommands: message.includeBuiltInCommands,
-        includePathSuggestions: message.includePathSuggestions,
+        includePathSuggestions:
+          message.includePathSuggestions !== false &&
+          session.shellContext.permissions.cwd &&
+          session.shellContext.permissions.paths,
         trigger: message.trigger,
       },
       {
@@ -1575,6 +1689,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         typingPathProviderTimeoutMs: SSH_TYPING_PATH_PROVIDER_TIMEOUT_MS,
         pathProvider: createRemotePathProvider({
           resolveCwd: async () => {
+            if (!canReadPaths()) return null;
             if (session.remoteShellCwd) {
               return session.remoteShellCwd;
             }
@@ -1583,6 +1698,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
               session,
               message.workingDirectoryHint,
             );
+            if (!canReadPaths()) return null;
             if (hintedCwd) {
               this.applyResolvedRemoteCompletionCwd(session, hintedCwd);
               return session.completionWorkingDirectory;
@@ -1592,17 +1708,23 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
               await this.ensureRemoteCompletionCwdInitialized(session);
             }
 
-            return session.completionWorkingDirectory;
+            return canReadPaths() ? session.completionWorkingDirectory : null;
           },
           resolveHomeDirectory: async () => {
+            if (!canReadPaths()) return null;
             if (!session.completionHomeDirectory) {
               await this.ensureRemoteCompletionCwdInitialized(session);
             }
 
-            return session.completionHomeDirectory;
+            return canReadPaths() ? session.completionHomeDirectory : null;
           },
-          executeCommand: async (command) =>
-            (await this.executeRemoteCommand(session, command, { timeoutMs: SSH_COMPLETION_EXEC_TIMEOUT_MS })) ?? '',
+          executeCommand: async (command) => {
+            if (!canReadPaths()) return '';
+            const output = await this.executeRemoteCommand(session, command, {
+              timeoutMs: SSH_COMPLETION_EXEC_TIMEOUT_MS,
+            });
+            return canReadPaths() ? (output ?? '') : '';
+          },
         }),
       },
     );
@@ -1611,7 +1733,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       type: 'completion-response',
       requestId: message.requestId,
       replacePrefixLength: completionResult.replacePrefixLength,
-      items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+      items:
+        session.disposed || session.shellContext.revision !== contextRevision
+          ? []
+          : localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
     });
   }
 
@@ -1653,7 +1778,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns Nothing.
    */
   private applyResolvedRemoteCompletionCwd(session: SshLiveSession, cwd: string | null): void {
-    if (!cwd) {
+    if (!cwd || !session.shellContext.permissions.cwd || session.disposed) {
       return;
     }
 
@@ -1668,7 +1793,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns Nothing.
    */
   private applyRemoteCompletionBaseCwd(session: SshLiveSession, baseCwd: string | null): void {
-    if (!baseCwd) {
+    if (!baseCwd || !session.shellContext.permissions.cwd || session.disposed) {
       return;
     }
 
@@ -1688,13 +1813,21 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns resolved working directory, or null when unavailable.
    */
   private async ensureRemoteCompletionCwdInitialized(session: SshLiveSession): Promise<string | null> {
+    if (!session.shellContext.permissions.cwd) return null;
     if (session.completionWorkingDirectory && session.completionHomeDirectory) {
       return session.completionWorkingDirectory;
     }
 
     if (!session.completionCwdInitializationPromise) {
+      const contextRevision = session.shellContext.revision;
       session.completionCwdInitializationPromise = this.resolveRemoteCompletionDirectories(session)
         .then((directories) => {
+          if (
+            session.disposed ||
+            session.shellContext.revision !== contextRevision ||
+            !session.shellContext.permissions.cwd
+          )
+            return null;
           if (directories.homeDirectory) {
             session.completionHomeDirectory = directories.homeDirectory;
           }
@@ -1720,6 +1853,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   ): void {
     this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
       beforeExit: (session, reason) => {
+        session.shellContext = suspendShellContext(session.shellContext, 'transport-closed', true);
         session.loginPassword = null;
         session.credentialFillState = createCredentialFillState();
         this.clearRemoteEnhancementHandshakeTimeout(session);

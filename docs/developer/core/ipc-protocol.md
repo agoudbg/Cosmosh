@@ -180,7 +180,8 @@ Although terminal stream messages are not Electron IPC channels, they are part o
   - `credential-fill-offer` with `{ token, expiresAt }` or `null`, and `credential-fill-result` with the token and `filled` or `rejected` status (`stale`, `expired`, `disabled`, `unavailable`, `failed`); no secret is returned
   - `bootstrap-status` for side-channel Remote Bootstrap install/probe status
   - `remote-enhancement-runtime-status` with backend-owned state (`pending`, `active`, or `disabled`), optional `helperVersion`, `protocolVersion`, `capabilities`, `code`, and `message`
-  - `remote-shell-event` for runtime shell state emitted by the installed helper over OSC 777; every event requires `helperVersion`, integer `protocolVersion`, `capabilities`, `shell`, `event`, and `timestamp`
+  - `shell-context` carries latest backend-owned ShellContext identity, capabilities, permissions, usability/reason and generations, without input or credentials. Sent on attach and meaningful transitions, outside historical event buffering.
+  - `remote-shell-event` carries OSC 777 Shell state; every v3 event requires `shellInstanceId`, `helperVersion`, integer `protocolVersion`, `capabilities`, `shell`, `event`, and `timestamp`
 
 Remote shell event union rules:
 
@@ -200,7 +201,7 @@ Current implementation note:
 
 - Completion messages are handled in `SshSessionService` and `LocalTerminalSessionService` via shared normalization in `terminal/shared.ts` and shared ranking engine in `terminal/completion/engine.ts`.
 - `remote-enhancement-runtime-status` and `remote-shell-event` are SSH-only and never appear on local-terminal sessions. A successful pre-shell Bootstrap ensure starts the runtime as `pending`; a matching `integration-ready` event within 10 seconds changes it to `active`. Ensure failure, `BOOTSTRAP_ENSURE_TIMEOUT`, `HELPER_HANDSHAKE_TIMEOUT`, or any live contract mismatch changes it to `disabled`. Renderer keeps the latest runtime status separately from bounded event history and must treat it as diagnostics, not as authority to reconstruct backend helper state.
-- `remote-shell-event` payloads must not carry passwords, secrets, full terminal output, full command lines, line-buffer contents, or large arbitrary data. Dynamic helper cwd/command fields are canonical Base64 inside the OSC JSON envelope, then decoded and validated before forwarding. Backend caps decoded OSC payloads at 8 KiB, strips Cosmosh OSC, and streams non-Cosmosh OSC unchanged.
+- `remote-shell-event` must not carry passwords, secrets, full output, command lines or input buffers. Dynamic cwd/command fields use canonical Base64 inside JSON and are validated before forwarding. Backend caps decoded JSON at 32 KiB and encoded OSC at 48 KiB, strips Cosmosh OSC, and passes non-Cosmosh OSC unchanged.
 - Renderer routes the complete server message union through the source pane's runtime/reducer. Completion responses, password prompts, status, telemetry, errors, exits, debug events, reconnect, and command markers must never fall back to primary/active pane state implicitly.
 
 ### 3.5 Main-Owned Active Connection Contract

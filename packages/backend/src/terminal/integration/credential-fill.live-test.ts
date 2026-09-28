@@ -26,7 +26,7 @@ test(
     const password = 'fixture 口令🔑 $\\"';
     const harness = createCredentialServiceHarness({ password, stream: terminal.channel });
     harness.session.credentialFillState = createCredentialFillState();
-    terminal.channel.on('data', (data: string) => harness.service.handleVisibleShellOutput(harness.session, data));
+    terminal.channel.on('data', (data: string) => harness.service.handleShellOutput(harness.session, data));
     const prompt = terminal.write(
       "IFS= read -r -s -p 'Password: ' fixture_password; printf '\\nFILLED:%s\\n' \"$fixture_password\"; unset fixture_password\r",
     );

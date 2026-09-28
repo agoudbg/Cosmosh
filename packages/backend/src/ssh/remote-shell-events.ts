@@ -2,6 +2,7 @@ import {
   REMOTE_SHELL_CAPABILITIES,
   REMOTE_SHELL_EVENT_NAMES,
   REMOTE_SHELL_NAMES,
+  REMOTE_SHELL_PROTOCOL_VERSION,
   type RemoteShellCapability,
   type RemoteShellEventMessage,
   type RemoteShellEventName,
@@ -10,7 +11,9 @@ import {
 
 export type { RemoteShellEventMessage } from '@cosmosh/api-contract';
 
-export const REMOTE_SHELL_EVENT_OSC_PAYLOAD_MAX_BYTES = 8 * 1024;
+/** Encoded OSC envelope budget, including Base64 expansion of bounded v3 fields. */
+export const REMOTE_SHELL_EVENT_OSC_PAYLOAD_MAX_BYTES = 48 * 1024;
+const REMOTE_SHELL_EVENT_JSON_MAX_BYTES = 32 * 1024;
 
 const ESCAPE = '\u001b';
 const BELL = '\u0007';
@@ -301,8 +304,8 @@ export class RemoteShellEventOscParser {
  */
 export const parseRemoteShellEventPayload = (payload: string): RemoteShellEventMessage | null => {
   try {
-    const decoded = Buffer.from(payload, 'base64').toString('utf8');
-    if (Buffer.byteLength(decoded, 'utf8') > REMOTE_SHELL_EVENT_OSC_PAYLOAD_MAX_BYTES) {
+    const decoded = decodeBoundedBase64Utf8(payload, REMOTE_SHELL_EVENT_JSON_MAX_BYTES);
+    if (decoded === null) {
       return null;
     }
 
@@ -342,14 +345,14 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
     typeof helperVersion !== 'string' ||
     !REMOTE_SHELL_HELPER_VERSION_PATTERN.test(helperVersion) ||
     typeof protocolVersion !== 'number' ||
-    !Number.isInteger(protocolVersion) ||
-    protocolVersion < 1
+    protocolVersion !== REMOTE_SHELL_PROTOCOL_VERSION
   ) {
     return null;
   }
 
   const capabilities = normalizeCapabilities(value.capabilities);
-  if (!capabilities) {
+  const shellInstanceId = normalizeCommandId(value.shellInstanceId);
+  if (!capabilities || !shellInstanceId) {
     return null;
   }
 
@@ -363,6 +366,7 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
     helperVersion,
     protocolVersion,
     capabilities,
+    shellInstanceId,
     timestamp,
   } as const;
   const eventName = event as RemoteShellEventName;

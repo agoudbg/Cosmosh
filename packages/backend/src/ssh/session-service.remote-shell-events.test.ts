@@ -1,14 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { RemoteShellCapability, SshTerminalServerMessage } from '@cosmosh/api-contract';
+import {
+  DEFAULT_SETTINGS_VALUES,
+  type RemoteShellCapability,
+  type ShellContext,
+  type SshTerminalServerMessage,
+} from '@cosmosh/api-contract';
 
 import type { RemoteBootstrapResult, RemoteBootstrapStatus } from '../remote-bootstrap/service.js';
+import type { DefaultSettingsSnapshot } from '../settings/read.js';
 import {
   createCredentialFillState,
   type CredentialFillState,
   observeCredentialFillOutput,
 } from '../terminal/credential-fill.js';
+import type { TerminalClientInboundMessage } from '../terminal/shared.js';
+import { applyShellContextEvent, createShellContext, resolveShellPermissions } from '../terminal/shell-context.js';
 import type { OpenSshClientResult } from './connect.js';
 import type { RemoteShellEventMessage, RemoteShellEventStreamFrame } from './remote-shell-events.js';
 import {
@@ -18,6 +26,8 @@ import {
 } from './session-service.js';
 
 type RemoteShellEventSessionHarness = {
+  shellContext: ShellContext;
+  enhancementsAllowed: boolean;
   sessionId: string;
   credentialFillState: CredentialFillState;
   loginPassword: string | null;
@@ -96,6 +106,18 @@ type RemoteBootstrapEnsureServiceHarness = {
 const createSessionHarness = (
   overrides: Partial<RemoteShellEventSessionHarness> = {},
 ): RemoteShellEventSessionHarness => ({
+  shellContext:
+    overrides.remoteEnhancementsRuntimeState === 'active'
+      ? applyShellContextEvent(
+          createShellContext('session-1', resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true), true),
+          createRemoteShellEvent({ event: 'integration-ready' }),
+        )
+      : createShellContext(
+          'session-1',
+          resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true),
+          overrides.remoteEnhancementsRuntimeState === 'pending',
+        ),
+  enhancementsAllowed: true,
   sessionId: 'session-1',
   credentialFillState: createCredentialFillState(),
   loginPassword: null,
@@ -103,7 +125,7 @@ const createSessionHarness = (
   remoteEnhancementsRuntimeContract: {
     shell: 'bash',
     helperVersion: '1.2.3',
-    protocolVersion: 2,
+    protocolVersion: 3,
     capabilities: ['cwd', 'command-start', 'command-end', 'foreground-command', 'prompt-ready'],
   },
   remoteEnhancementsRuntimeCode: null,
@@ -140,7 +162,9 @@ const createRemoteShellEvent = (overrides: Partial<RemoteShellEventMessage> = {}
     event: 'cwd',
     shell: 'bash',
     helperVersion: '1.2.3',
-    protocolVersion: 2,
+    protocolVersion: 3,
+    shellInstanceId: 'shell-1',
+    promptGeneration: 1,
     capabilities: ['cwd', 'command-start', 'command-end', 'foreground-command', 'prompt-ready'],
     cwd: '/root',
     timestamp: 1_783_172_312_000,
@@ -154,6 +178,127 @@ test('session request can disable but cannot override a persisted Remote Enhance
   assert.equal(resolveRemoteEnhancementsSessionGate(true, false), false);
   assert.equal(resolveRemoteEnhancementsSessionGate(false, undefined), false);
   assert.equal(resolveRemoteEnhancementsSessionGate(false, true), false);
+});
+
+test('nested mismatched helper cannot disable or replace the original runtime', () => {
+  const service = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;
+  const session = createSessionHarness({ remoteEnhancementsRuntimeState: 'active' });
+  service.handleRemoteShellEvent(session, createRemoteShellEvent({ event: 'prompt-ready', promptGeneration: 1 }));
+  service.handleRemoteShellEvent(
+    session,
+    createRemoteShellEvent({
+      event: 'integration-ready',
+      shell: 'fish',
+      shellInstanceId: 'child',
+      helperVersion: 'different',
+    }),
+  );
+  assert.equal(session.remoteEnhancementsRuntimeState, 'active');
+  assert.equal(session.shellContext.reason, 'foreign-shell');
+  assert.equal(session.shellContext.shellInstanceId, 'shell-1');
+  service.handleRemoteShellEvent(session, createRemoteShellEvent({ event: 'prompt-ready', promptGeneration: 2 }));
+  assert.equal(session.shellContext.status, 'ready');
+});
+
+test('late settings reads cannot restore cleared directory state or resurrect a disabled runtime', () => {
+  const session = createSessionHarness({
+    remoteEnhancementsRuntimeState: 'active',
+    remoteShellCwd: '/old',
+    completionWorkingDirectory: '/old',
+  });
+  const service = Object.assign(
+    Object.create(SshSessionService.prototype) as {
+      applyEnhancementSettings(snapshot: DefaultSettingsSnapshot): void;
+      handleVisibleShellOutput(session: RemoteShellEventSessionHarness, output: string): void;
+    },
+    { sessions: new Map([[session.sessionId, session]]), enhancementSettingsSnapshot: null },
+  );
+  service.applyEnhancementSettings({
+    revision: 2,
+    values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsCwdEnabled: false },
+  });
+  service.applyEnhancementSettings({ revision: 1, values: DEFAULT_SETTINGS_VALUES });
+  assert.equal(session.shellContext.permissions.cwd, false);
+  service.handleVisibleShellOutput(session, 'fixture@host:/wrong$ ');
+  assert.equal(session.completionWorkingDirectory, null);
+  assert.equal(session.remoteShellCwd, null);
+  service.applyEnhancementSettings({
+    revision: 3,
+    values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsEnabled: false },
+  });
+  assert.equal(session.remoteEnhancementsRuntimeState, 'disabled');
+  service.applyEnhancementSettings({ revision: 4, values: DEFAULT_SETTINGS_VALUES });
+  assert.equal(
+    session.remoteEnhancementsRuntimeState,
+    'disabled',
+    'global re-enable requires a new validated connection',
+  );
+});
+
+test('revocation while directory initialization awaits prevents a later scan and discards its cache', async () => {
+  for (const permission of ['cwd', 'paths'] as const) {
+    let releaseProbe: (value: string) => void = () => undefined;
+    let startedProbe: () => void = () => undefined;
+    const probeStarted = new Promise<void>((resolve) => {
+      startedProbe = resolve;
+    });
+    const probe = new Promise<string>((resolve) => {
+      releaseProbe = resolve;
+    });
+    const commands: string[] = [];
+    const messages: SshTerminalServerMessage[] = [];
+    const session = {
+      ...createSessionHarness({ remoteEnhancementsRuntimeState: 'active' }),
+      completionHomeDirectory: null,
+      completionCwdInitializationPromise: null,
+      completionRecentCommands: [],
+      t: (key: string) => key,
+    };
+    const service = Object.assign(
+      Object.create(SshSessionService.prototype) as {
+        handleCompletionRequest(
+          current: typeof session,
+          message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
+        ): Promise<void>;
+        applyEnhancementSettings(snapshot: DefaultSettingsSnapshot): void;
+      },
+      {
+        sessions: new Map([[session.sessionId, session]]),
+        enhancementSettingsSnapshot: null,
+        executeRemoteCommand: async (_session: typeof session, command: string) => {
+          commands.push(command);
+          startedProbe();
+          return await probe;
+        },
+        sendServerMessage: (_session: typeof session, message: SshTerminalServerMessage) => messages.push(message),
+      },
+    );
+    const pending = service.handleCompletionRequest(session, {
+      type: 'completion-request',
+      requestId: 'race',
+      linePrefix: 'cat ~/f',
+      cursorIndex: 7,
+      trigger: 'manual',
+    });
+    await probeStarted;
+    service.applyEnhancementSettings({
+      revision: 1,
+      values: {
+        ...DEFAULT_SETTINGS_VALUES,
+        ...(permission === 'cwd'
+          ? { remoteEnhancementsCwdEnabled: false }
+          : { terminalAutoCompletePathEnabled: false }),
+      },
+    });
+    releaseProbe('/fixture\n/home/fixture\n');
+    await pending;
+    assert.equal(commands.length, 1, 'the pre-existing cwd probe must never be followed by a directory scan');
+    assert.equal(session.completionHomeDirectory, null);
+    assert.deepEqual(
+      messages.filter((message) => message.type === 'completion-response').map((message) => message.items),
+      [[]],
+    );
+  }
 });
 
 test('structured command lifecycle becomes authoritative only after matching capability activation', () => {
@@ -255,9 +400,17 @@ test('SshSessionService preserves detached output and helper event ordering on a
 
   assert.deepEqual(
     sentMessages.map((message) => message.type),
-    ['ready', 'remote-enhancement-runtime-status', 'output', 'remote-shell-event', 'output', 'credential-fill-offer'],
+    [
+      'ready',
+      'remote-enhancement-runtime-status',
+      'shell-context',
+      'output',
+      'remote-shell-event',
+      'output',
+      'credential-fill-offer',
+    ],
   );
-  assert.deepEqual(sentMessages.slice(2, -1), [
+  assert.deepEqual(sentMessages.slice(3, -1), [
     { type: 'output', data: '\r\n' },
     transportedCommandStart,
     { type: 'output', data: 'result\r\n' },

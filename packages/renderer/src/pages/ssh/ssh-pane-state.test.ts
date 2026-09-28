@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { RemoteShellCapability } from '@cosmosh/api-contract';
+import type { RemoteShellCapability, ShellContext } from '@cosmosh/api-contract';
 
 import { createSshPaneState, reduceSshPaneState, type SshPaneStateMap } from './ssh-pane-state';
 import type { ServerInboundMessage } from './ssh-types';
@@ -78,7 +78,8 @@ const REMOTE_EVENT_BASE = {
   type: 'remote-shell-event',
   shell: 'zsh',
   helperVersion: 'test-v2',
-  protocolVersion: 2,
+  protocolVersion: 3,
+  shellInstanceId: 'shell-1',
   capabilities: [
     'cwd',
     'command-start',
@@ -89,6 +90,67 @@ const REMOTE_EVENT_BASE = {
   ] as RemoteShellCapability[],
   timestamp: 100,
 } as const;
+
+test('latest context owns each pane and cannot be overwritten by stale or replayed metadata', () => {
+  const context: ShellContext = {
+    sessionId: 'session-1',
+    shellInstanceId: 'shell-1',
+    shell: 'zsh',
+    helperVersion: 'fixture-v3',
+    protocolVersion: 3,
+    capabilities: ['cwd', 'prompt-ready', 'line-state'],
+    permissions: { cwd: true, input: true, paths: true, history: true, nativeCompletion: false },
+    status: 'ready',
+    reason: null,
+    revision: 5,
+    inputGeneration: 2,
+    promptGeneration: 3,
+    cwdGeneration: 2,
+    cwd: { logical: '/current', physical: null, home: null },
+    lastKnownCwd: { logical: '/current', physical: null, home: null },
+  };
+  let state = reduceSshPaneState(INITIAL_STATE, {
+    type: 'server-message',
+    paneId: 'pane-2',
+    receivedAt: 1,
+    payload: { type: 'shell-context', context },
+  });
+  assert.equal(state['pane-1']!.shellContext, null);
+  assert.equal(state['pane-2']!.trustedCwd, '/current');
+  assert.deepEqual(state['pane-2']!.remoteEnhancementsDebugEvents, []);
+  for (const payload of [
+    { type: 'shell-context' as const, context: { ...context, revision: 4, cwd: null } },
+    { ...REMOTE_EVENT_BASE, event: 'cwd' as const, cwd: '/stale' },
+    { ...REMOTE_EVENT_BASE, event: 'prompt-ready' as const, promptGeneration: 1 },
+    {
+      ...REMOTE_EVENT_BASE,
+      shellInstanceId: 'foreign',
+      event: 'line-state' as const,
+      lineLength: 42,
+      cursorIndex: 42,
+      promptGeneration: 3,
+    },
+  ]) {
+    state = reduceSshPaneState(state, { type: 'server-message', paneId: 'pane-2', receivedAt: 2, payload });
+  }
+  assert.equal(state['pane-2']!.trustedCwd, '/current');
+  assert.equal(state['pane-2']!.promptGeneration, 3);
+  assert.equal(state['pane-2']!.lineState, null);
+  state = reduceSshPaneState(state, {
+    type: 'server-message',
+    paneId: 'pane-2',
+    receivedAt: 3,
+    payload: {
+      type: 'shell-context',
+      context: { ...context, revision: 6, status: 'paused', reason: 'foreign-shell', cwd: null },
+    },
+  });
+  assert.equal(state['pane-2']!.trustedCwd, null);
+  assert.equal(state['pane-2']!.shellContext?.lastKnownCwd?.logical, '/current');
+  state = reduceSshPaneState(state, { type: 'transport-state', paneId: 'pane-2', connectionState: 'failed' });
+  assert.equal(state['pane-2']!.shellContext, null);
+  assert.equal(state['pane-2']!.promptGeneration, null);
+});
 
 test('pane reducer isolates telemetry and transport failures by source pane', () => {
   const withTelemetry = reduceSshPaneState(INITIAL_STATE, {

@@ -91,6 +91,9 @@ export interface SettingsValues {
   terminalSmoothScrollDuration: number;
   terminalTabStopWidth: number;
   remoteEnhancementsEnabled: boolean;
+  remoteEnhancementsCwdEnabled: boolean;
+  remoteEnhancementsInputEnabled: boolean;
+  terminalNativeCompletionEnabled: boolean;
   remoteEnhancementsDebugEnabled: boolean;
   devToolsEnabled: boolean;
   userMenuDebugEntryEnabled: boolean;
@@ -1029,6 +1032,45 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
       'sftp enhancement',
       'command completion',
     ],
+  },
+  {
+    key: 'remoteEnhancementsCwdEnabled',
+    valueType: 'boolean',
+    defaultValue: true,
+    nameI18nKey: 'settings.items.remoteEnhancementsCwdEnabled.title',
+    descriptionI18nKey: 'settings.items.remoteEnhancementsCwdEnabled.description',
+    category: SETTINGS_CATEGORIES.advanced,
+    section: SETTINGS_CATEGORIES.advanced.sections.runtime,
+    control: 'switch',
+    path: 'advanced.runtime.remoteEnhancements.cwdEnabled',
+    commandActionId: 'settings.advanced.runtime.remoteEnhancements.cwdEnabled.toggle',
+    searchTerms: ['current directory', 'cwd', 'shell directory'],
+  },
+  {
+    key: 'remoteEnhancementsInputEnabled',
+    valueType: 'boolean',
+    defaultValue: true,
+    nameI18nKey: 'settings.items.remoteEnhancementsInputEnabled.title',
+    descriptionI18nKey: 'settings.items.remoteEnhancementsInputEnabled.description',
+    category: SETTINGS_CATEGORIES.advanced,
+    section: SETTINGS_CATEGORIES.advanced.sections.runtime,
+    control: 'switch',
+    path: 'advanced.runtime.remoteEnhancements.inputEnabled',
+    commandActionId: 'settings.advanced.runtime.remoteEnhancements.inputEnabled.toggle',
+    searchTerms: ['current command input', 'input snapshot', 'terminal privacy'],
+  },
+  {
+    key: 'terminalNativeCompletionEnabled',
+    valueType: 'boolean',
+    defaultValue: false,
+    nameI18nKey: 'settings.items.terminalNativeCompletionEnabled.title',
+    descriptionI18nKey: 'settings.items.terminalNativeCompletionEnabled.description',
+    category: SETTINGS_CATEGORIES.advanced,
+    section: SETTINGS_CATEGORIES.advanced.sections.runtime,
+    control: 'switch',
+    path: 'advanced.runtime.remoteEnhancements.nativeCompletionEnabled',
+    commandActionId: 'settings.advanced.runtime.remoteEnhancements.nativeCompletionEnabled.toggle',
+    searchTerms: ['native completion', 'fish completion'],
   },
   {
     key: 'remoteEnhancementsDebugEnabled',

@@ -509,13 +509,21 @@
         "description": "仅设置本地终端程序访问本地剪贴板的权限。",
         "title": "允许本地终端访问本地剪贴板"
       },
+      "remoteEnhancementsCwdEnabled": {
+        "description": "允许 Cosmosh 增强功能使用远端 Shell 目录，提供路径建议和文件导航。",
+        "title": "读取 Shell 当前目录"
+      },
       "remoteEnhancementsDebugEnabled": {
-        "description": "在 SSH 终端菜单中显示当前分屏的引导安装与 Shell 集成诊断信息。",
+        "description": "显示远端 Shell 能力与状态诊断，不包含当前输入或凭据。",
         "title": "远端增强调试"
       },
       "remoteEnhancementsEnabled": {
         "description": "允许 Cosmosh 为 SSH 会话安装远端增强帮助程序来增强终端功能。如果关闭远端增强，部分终端功能可能降级或无法使用。",
         "title": "远端增强"
+      },
+      "remoteEnhancementsInputEnabled": {
+        "description": "允许受支持的 Shell 将正在编辑的命令提供给 Cosmosh 生成建议。内容只保留在本机内存中，不记入日志、不保存，也不发送到云端。",
+        "title": "读取当前命令输入"
       },
       "serverProxyMode": {
         "description": "设置 SSH、SFTP 和端口转发的默认代理策略。",
@@ -756,6 +764,10 @@
         "description": "设置终端最小文字对比度。设为 1 可禁用动态对比调整。",
         "placeholder": "1",
         "title": "最小对比度"
+      },
+      "terminalNativeCompletionEnabled": {
+        "description": "允许受支持的 Fish 帮助程序在独立进程中生成原生建议。Shell 补全脚本可能运行命令，默认关闭。",
+        "title": "Fish 原生建议"
       },
       "terminalRightClickAction": {
         "description": "设置终端右键操作。",

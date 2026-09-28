@@ -49,6 +49,7 @@ flowchart LR
 
 ### Backend 进程 (`packages/backend/src/index.ts`)
 
+- 增强消费者共享 Backend 持有的逐会话`ShellContext`，其中不包含输入文本。协议 v3 绑定原始 Shell 身份，分别记录能力和权限，用代数使异步工作失效。默认范围设置按数据库版本传播，可选初始化失败仍保留普通 SSH。Renderer 按分屏保留最新元数据。
 - SSH 与本地 PTY 输入直接转发，不保留用于历史记录或预测目录变化的命令缓冲。补全历史来自 Shell 自身的历史来源，排除解释器和数据库程序的输入记录。
 - 注册幂等的优雅关闭流程，覆盖运行时信号与致命进程事件。
 - 暴露仅由 Main 关闭守卫使用、受内部 token 保护的运行时连接汇总/关闭操作；renderer 不获得批量断开 bridge。
@@ -77,7 +78,7 @@ flowchart LR
 - 填入已保存登录密码是需要明确点击的独立操作。SSH 后端保留登录密码，在有界可见输出中识别密码提示，并校验一次性操作标识、有效期和持久化权限后写入，不追加回车。渲染层只保留操作／结果元数据。私钥口令和补全候选不会参与该操作；共享输入入口拒绝旧 WebSocket 连接的消息。
 - 隐藏 tab 不会启动新的 SSH 连接副作用。重新激活时，可选的切回重连路径会分别检查每个失败 pane；第一次激活始终启动延迟创建的 primary pane。重试或重连任一 pane 时，所有同级 pane runtime 都会保持存活。
 - 替换 SSH 或本地终端 backend PTY 时，pane 会保留原 xterm 对象与 addon，但建立严格的 emulator session 边界。旧 transport 失效并关闭后，renderer 只序列化不含 alternate-buffer 内容与 mode 的 normal-buffer 历史，再在打开替代 session 前执行受 attempt identity 保护、按 parser 顺序完成的本地 xterm reset 与安全历史回放。选区、marker、自动补全 bookkeeping、parser 状态与 VT mode 会被丢弃，而文本/样式 scrollback、终端尺寸、options、addon、WebGL 与 listener 继续保持挂载。
-- Renderer 按 pane 消费 backend 的 `bootstrap-status`、`remote-enhancement-runtime-status` 与可信协议 v2 `remote-shell-event`。调试入口由 `remoteEnhancementsDebugEnabled` 控制，浮层始终展示其来源/活动 pane。
+- Renderer 按分屏消费 Backend 的`bootstrap-status`、`remote-enhancement-runtime-status`、`shell-context`与可信协议 v3 的`remote-shell-event`。调试入口由`remoteEnhancementsDebugEnabled`控制，浮层始终展示其来源/活动分屏。
 
 ## 3. IPC 生命周期（当前）
 
@@ -189,7 +190,7 @@ sequenceDiagram
 - SSH 与本地终端会话使用 WebSocket 数据通道承载终端 I/O。
 - 当 Settings `remoteEnhancementsEnabled`、服务器记录 `remoteEnhancementsEnabled` 与 manifest URL 均允许时，SSH 会话会在主 transport 认证后、PTY 创建前 ensure 用户级远端增强运行时。第一次需要远端命令时才会懒创建独立 bootstrap transport；所有 probe/install/status `exec` channel 都只运行在该 transport，并在 `shell()` 成为主 transport 的第一个 session channel 前启动关闭。这个可选的 shell 打开前路径对设置读取、manifest I/O、bootstrap transport/proxy 建连和 exec 工作共享同一个 15 秒总预算。超时会取消活动工作、销毁临时 client，并以 `BOOTSTRAP_ENSURE_TIMEOUT` 打开普通 PTY。开关关闭时会上报 `REMOTE_ENHANCEMENTS_DISABLED`；缺少 manifest 配置会在创建任何 bootstrap transport 或远端 probe 前作为明确失败状态上报。Backend 会先查询已安装 Go binary；version、manifest asset SHA-256、protocol、helper 与 profile 状态均匹配时跳过下载，状态缺失或属于旧格式时触发重装并在安装后复验。正式 tag release 安装包、`main` 构建产物以及显式启用发布路径的 remote-bootstrap 分支构建，可以通过 packaged `remote-bootstrap/manifest-url.json` 资源提供默认 manifest URL，而 `COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL` 仍是显式 override。未打包开发运行在没有 override 或 packaged resource 时使用 `remote-bootstrap-dev`。普通 PR 与分支构建默认不打入 manifest URL。Go 安装器只写入远端用户 XDG/home 文件与 shell profile hook；模块契约见 `packages/remote-bootstrap/README.md`。
 
-- 远端 helper 数据采用 fail-closed 的 `pending` → `active` / `disabled` 状态机。Ensure 成功后先进入 `pending`，只有 10 秒内到达且匹配的 `integration-ready` 事件才能启用消费，错过 deadline 会得到 `HELPER_HANDSHAKE_TIMEOUT`。协议 v2 事件必须匹配交互 shell 打开前确认的 helper version、protocol version、shell、capability 集合及 capability 专属必填字段。Manifest/安装/设置失败、缺少契约字段的旧事件、缺少握手或任何运行期契约不匹配都不会影响普通 SSH，但会忽略 helper 派生状态，并清除 renderer 的可信 cwd/line 校准。
+- 远端帮助程序使用`pending` → `active` / `disabled`状态机。初始化成功且当前权限允许时进入`pending`；10 秒内收到匹配的`integration-ready`才能启用消费，否则以`HELPER_HANDSHAKE_TIMEOUT`禁用。协议 v3 事件必须匹配已安装版本、原始 Shell 身份和准确的能力集合。其他身份会暂停 ShellContext 可用状态，等待原始提示恢复。Manifest/安装/设置失败或原始帮助程序不匹配时保留普通 SSH，并禁用帮助程序派生状态。
 - Renderer 为每个 pane 分别保存当前 backend 运行状态与最多 200 条诊断历史，因此长会话淘汰旧事件后仍保留权威的当前诊断状态。结构化命令生命周期驱动 backend 命令计数/history 刷新及 pane-local xterm 命令时间线。Backend 命令计数/history 刷新可以保留原始 Enter 解析作为降级路径，但 renderer 时间线没有本地 fallback：只有通过认证且处于 active 状态的 helper 声明 `command-start` 时才显示。
 - SFTP 使用请求/响应式 IPC + backend HTTP route 实现目录浏览、本地文件上传、下载、创建、重命名、复制、删除、批量文件操作与异步远端归档任务。
 - 远端归档任务复用当前 SFTP 标签页已认证的 SSH client，但只执行 backend 生成的固定 POSIX 命令模板。`SftpArchiveService` 探测固定工具集合、为每个会话持有至多一个归档任务、在目标同级暂存输出、创建经过校验的缺失目标目录，并且只通过 HTTP/IPC 暴露结构化状态。解压使用可直接接收信号的远端可执行进程，随后进入可取消且复用 SFTP 目录元数据的暂存树校验阶段。Renderer 输入永远不会成为命令或 flag。

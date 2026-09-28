@@ -1,4 +1,4 @@
-import type { TerminalCredentialFillOffer, TerminalCredentialFillResult } from '@cosmosh/api-contract';
+import type { ShellContext, TerminalCredentialFillOffer, TerminalCredentialFillResult } from '@cosmosh/api-contract';
 
 import type { ServerInboundMessage, SshTelemetryState } from './ssh-types';
 import { DEFAULT_TELEMETRY_STATE } from './ssh-types';
@@ -25,6 +25,7 @@ export type SshPaneCommandLifecycle = {
 
 /** Declarative state owned by one terminal pane. */
 export type SshPaneState = {
+  shellContext: ShellContext | null;
   connectionState: 'connecting' | 'connected' | 'failed';
   connectionError: string;
   credentialFillOffer: TerminalCredentialFillOffer | null;
@@ -69,6 +70,7 @@ export type SshPaneStateAction =
  * @returns Fresh pane state with no shared mutable collections.
  */
 export const createSshPaneState = (): SshPaneState => ({
+  shellContext: null,
   connectionState: 'connecting',
   connectionError: '',
   credentialFillOffer: null,
@@ -146,6 +148,10 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
         ...(action.connectionState === 'connected'
           ? {}
           : {
+              shellContext: null,
+              trustedCwd: null,
+              promptGeneration: null,
+              lineState: null,
               credentialFillOffer: null,
               credentialFillRequestToken: null,
               credentialFillResult: null,
@@ -171,6 +177,23 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
  * @returns Updated pane state.
  */
 const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage, receivedAt: number): SshPaneState => {
+  if (payload.type === 'shell-context') {
+    const previous = state.shellContext;
+    if (previous?.sessionId === payload.context.sessionId && previous.revision >= payload.context.revision)
+      return state;
+    return {
+      ...state,
+      shellContext: payload.context,
+      trustedCwd: payload.context.cwd?.logical ?? null,
+      promptGeneration: payload.context.promptGeneration,
+      lineState:
+        payload.context.status === 'ready' &&
+        payload.context.permissions.input &&
+        previous?.promptGeneration === payload.context.promptGeneration
+          ? state.lineState
+          : null,
+    };
+  }
   if (payload.type === 'credential-fill-offer') {
     return {
       ...state,
@@ -200,6 +223,10 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   if (payload.type === 'error') {
     return {
       ...state,
+      shellContext: null,
+      trustedCwd: null,
+      promptGeneration: null,
+      lineState: null,
       connectionState: 'failed',
       connectionError: payload.message,
       credentialFillOffer: null,
@@ -211,6 +238,10 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   if (payload.type === 'exit') {
     return {
       ...state,
+      shellContext: null,
+      trustedCwd: null,
+      promptGeneration: null,
+      lineState: null,
       connectionState: 'failed',
       connectionError: payload.reason,
       credentialFillOffer: null,
@@ -276,6 +307,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   };
 
   if (payload.event === 'cwd') {
+    if (state.shellContext) return nextState;
     return {
       ...nextState,
       trustedCwd: payload.cwd,
@@ -283,6 +315,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   }
 
   if (payload.event === 'prompt-ready') {
+    if (state.shellContext) return nextState;
     return {
       ...nextState,
       promptGeneration: payload.promptGeneration ?? nextState.promptGeneration,
@@ -291,6 +324,13 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   }
 
   if (payload.event === 'line-state') {
+    if (
+      state.shellContext &&
+      (state.shellContext.status !== 'ready' ||
+        !state.shellContext.permissions.input ||
+        state.shellContext.shellInstanceId !== payload.shellInstanceId)
+    )
+      return nextState;
     if (nextState.promptGeneration !== null && payload.promptGeneration !== nextState.promptGeneration) {
       return nextState;
     }

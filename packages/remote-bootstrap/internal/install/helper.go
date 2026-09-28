@@ -6,7 +6,7 @@ import (
 )
 
 // RemoteShellProtocolVersion identifies the OSC event contract emitted by installed helpers.
-const RemoteShellProtocolVersion = 2
+const RemoteShellProtocolVersion = 3
 
 var fullRemoteShellCapabilities = []string{
 	"cwd",
@@ -54,6 +54,19 @@ func BuildHelper(shell string, version string) (string, error) {
 func buildPosixHelper(shell string, version string) string {
 	capabilities := capabilitiesJSON(HelperCapabilities(shell))
 	header := fmt.Sprintf(`# Cosmosh Remote Enhancements shell integration.
+case "$-" in *i*) ;; *) return 0 ;; esac
+# Identity belongs to this Shell process; repeated sourcing preserves it, child Shells get a new identity.
+if [ "${__COSMOSH_SHELL_OWNER_PID:-}" != "$$" ]; then
+  unset __COSMOSH_SHELL_INSTANCE_ID __COSMOSH_SHELL_OWNER_PID __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED
+  IFS= read -r __COSMOSH_SHELL_INSTANCE_ID < /proc/sys/kernel/random/uuid || return 0
+  __COSMOSH_SHELL_OWNER_PID=$$
+  __COSMOSH_PROMPT_GENERATION=0
+fi
+if [ -n "${BASH_VERSION:-}" ]; then
+  export -n __COSMOSH_SHELL_INSTANCE_ID __COSMOSH_SHELL_OWNER_PID
+elif [ -n "${ZSH_VERSION:-}" ]; then
+  typeset +x __COSMOSH_SHELL_INSTANCE_ID __COSMOSH_SHELL_OWNER_PID
+fi
 export COSMOSH_BOOTSTRAP_READY=1
 __COSMOSH_REMOTE_SHELL=%s
 __COSMOSH_HELPER_VERSION=%s
@@ -123,7 +136,7 @@ __cosmosh_emit_remote_shell_event() {
   __cosmosh_line_length="${7:-}"
   __cosmosh_cursor_index="${8:-}"
   __cosmosh_timestamp="$(__cosmosh_now_ms)" || return 0
-  __cosmosh_json="{\"event\":\"$__cosmosh_event\",\"shell\":\"$__COSMOSH_REMOTE_SHELL\",\"helperVersion\":\"$__COSMOSH_HELPER_VERSION\",\"protocolVersion\":$__COSMOSH_PROTOCOL_VERSION,\"capabilities\":$__COSMOSH_CAPABILITIES_JSON,\"timestamp\":$__cosmosh_timestamp"
+  __cosmosh_json="{\"event\":\"$__cosmosh_event\",\"shell\":\"$__COSMOSH_REMOTE_SHELL\",\"shellInstanceId\":\"$__COSMOSH_SHELL_INSTANCE_ID\",\"helperVersion\":\"$__COSMOSH_HELPER_VERSION\",\"protocolVersion\":$__COSMOSH_PROTOCOL_VERSION,\"capabilities\":$__COSMOSH_CAPABILITIES_JSON,\"timestamp\":$__cosmosh_timestamp"
 
   case "$__cosmosh_event" in
     cwd)
@@ -342,11 +355,21 @@ fi
 func buildFishHelper(version string) string {
 	capabilities := capabilitiesJSON(HelperCapabilities("fish"))
 	header := fmt.Sprintf(`# Cosmosh Remote Enhancements shell integration.
+status is-interactive; or return
+if not set -q __COSMOSH_SHELL_OWNER_PID; or test "$__COSMOSH_SHELL_OWNER_PID" != "$fish_pid"
+  set -gu __COSMOSH_SHELL_INSTANCE_ID (cat /proc/sys/kernel/random/uuid)
+  if not string match -rq '^[a-f0-9-]{36}$' -- "$__COSMOSH_SHELL_INSTANCE_ID"
+    return
+  end
+  set -gu __COSMOSH_SHELL_OWNER_PID $fish_pid
+  set -gu __COSMOSH_PROMPT_GENERATION 0
+  set -eg __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED
+end
 set -gx COSMOSH_BOOTSTRAP_READY 1
-set -gx __COSMOSH_REMOTE_SHELL fish
-set -gx __COSMOSH_HELPER_VERSION %s
-set -gx __COSMOSH_PROTOCOL_VERSION %d
-set -gx __COSMOSH_CAPABILITIES_JSON %s
+set -gu __COSMOSH_REMOTE_SHELL fish
+set -gu __COSMOSH_HELPER_VERSION %s
+set -gu __COSMOSH_PROTOCOL_VERSION %d
+set -gu __COSMOSH_CAPABILITIES_JSON %s
 `, quoteFish(version), RemoteShellProtocolVersion, quoteFish(capabilities))
 
 	return header + fishHelperBody
@@ -414,7 +437,7 @@ function __cosmosh_emit_remote_shell_event
   set -l line_length $argv[7]
   set -l cursor_index $argv[8]
   set -l timestamp (__cosmosh_now_ms)
-  set -l json "{\"event\":\"$event\",\"shell\":\"$__COSMOSH_REMOTE_SHELL\",\"helperVersion\":\"$__COSMOSH_HELPER_VERSION\",\"protocolVersion\":$__COSMOSH_PROTOCOL_VERSION,\"capabilities\":$__COSMOSH_CAPABILITIES_JSON,\"timestamp\":$timestamp"
+  set -l json "{\"event\":\"$event\",\"shell\":\"$__COSMOSH_REMOTE_SHELL\",\"shellInstanceId\":\"$__COSMOSH_SHELL_INSTANCE_ID\",\"helperVersion\":\"$__COSMOSH_HELPER_VERSION\",\"protocolVersion\":$__COSMOSH_PROTOCOL_VERSION,\"capabilities\":$__COSMOSH_CAPABILITIES_JSON,\"timestamp\":$timestamp"
 
   switch $event
     case cwd
@@ -483,7 +506,7 @@ if not set -q __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED
     __cosmosh_emit_remote_shell_event cwd
   end
 
-  set -gx __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED 1
+  set -gu __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED 1
   __cosmosh_emit_remote_shell_event integration-ready
 end
 `

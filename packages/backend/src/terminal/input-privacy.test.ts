@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { DEFAULT_SETTINGS_VALUES, type ShellContext } from '@cosmosh/api-contract';
+
 import { LocalTerminalSessionService } from '../local-terminal/session-service.js';
 import { SshSessionService } from '../ssh/session-service.js';
 import type { CredentialFillState } from './credential-fill.js';
+import { createShellContext, resolveShellPermissions } from './shell-context.js';
 
 /** Input-only session shape; transport writes and timer scheduling are isolated boundaries. */
 type InputSession = {
+  shellContext: ShellContext;
   sessionId: string;
   completionLineBuffer: string;
   completionRecentCommands: string[];
@@ -51,6 +55,11 @@ for (const [name, prototype] of [
           },
         };
         const session: InputSession = {
+          shellContext: createShellContext(
+            'privacy-test',
+            resolveShellPermissions(DEFAULT_SETTINGS_VALUES, false),
+            false,
+          ),
           sessionId: 'privacy-test',
           completionLineBuffer: '',
           completionRecentCommands: ['echo retained-shell-history'],

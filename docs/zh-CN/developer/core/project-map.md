@@ -83,6 +83,9 @@ flowchart TB
 
 ### `packages/backend`
 
+- `src/terminal/shell-context.ts`：原始 Shell 身份、权限与代数状态转换，不存储当前输入或凭据。
+- `src/terminal/integration/helper-identity.live-test.ts`：真实安装器/SSH 测试，覆盖重复 source、嵌套 Shell、独立终端及非交互式运行不输出事件。
+
 - **角色**：内部 API + 会话编排运行时。
 - **关键目录**：
   - `src/http/routes`：设置、SSH 实体、SFTP 会话/任务操作、端口转发规则与本地终端动作 REST 路由。
@@ -110,7 +113,7 @@ flowchart TB
 - `src/settings-registry.ts`：所有设置定义的**唯一来源**——类型、默认值、约束、枚举集、UI 控件元数据、分类与辅助函数。增删设置项仅需编辑此文件。
 - `src/settings.ts`：基于注册表的通用校验与规范化辅助函数（`normalizeSettingsValuesStrict`、`normalizeSettingsValuesWithDefaults`），供 backend 与 renderer 共享。
 - `src/sftp.ts`：SFTP 条目/名称排序共享 helper，供后端会话列表与渲染层浏览器/树视图复用。
-- `src/terminal-protocol.ts`：Backend 与 renderer 共享的协议 v2 终端 WebSocket union、远端 shell event/capability 常量，以及 bootstrap/runtime 状态类型。
+- `src/terminal-protocol.ts`：协议 v3 终端 WebSocket union、共享 ShellContext/权限、远端 Shell 事件/能力常量及 bootstrap/runtime 状态类型。
 
 ### `packages/i18n`
 

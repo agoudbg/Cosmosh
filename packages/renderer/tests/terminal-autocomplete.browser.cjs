@@ -116,6 +116,25 @@ async (page) => {
   check((await page.locator('[data-terminal-autocomplete]').count()) === 0, 'Delayed response reopened list');
   results.push('pending request and stale response');
 
+  await reset();
+  await show();
+  await focus();
+  await page.evaluate(() => window.terminalInteractionFixture.setInputAllowed(false));
+  await page.waitForFunction(() => !document.querySelector('[data-terminal-autocomplete]'));
+  const requestsBeforeOptOutInput = await page.evaluate(() =>
+    window.terminalInteractionFixture.messages.filter((entry) => entry.payload.type === 'completion-request').length);
+  await page.keyboard.type('PRIVATE_INPUT_PERMISSION_TEST');
+  await page.keyboard.press('Control+Shift+Space');
+  await page.keyboard.press('Tab');
+  await page.evaluate(() => window.terminalInteractionFixture.respond());
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  check((await inputs()).join('') === 'PRIVATE_INPUT_PERMISSION_TEST\t', 'Input opt-out changed ordinary PTY input');
+  check((await page.locator('[data-terminal-autocomplete]').count()) === 0, 'Input opt-out admitted stale suggestions');
+  check((await page.evaluate(() =>
+    window.terminalInteractionFixture.messages.filter((entry) => entry.payload.type === 'completion-request').length)) ===
+    requestsBeforeOptOutInput, 'Input opt-out sent a new candidate request');
+  results.push('input permission revocation preserves native input and rejects stale responses');
+
   for (const settings of [{ enabled: false }, { isActive: false }, { connected: false }]) {
     await reset(settings);
     await page.keyboard.press('Tab');

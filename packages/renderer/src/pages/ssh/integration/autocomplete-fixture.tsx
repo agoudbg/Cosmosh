@@ -11,6 +11,7 @@ import type { TerminalPaneRuntime } from '../ssh-types';
 import { useSshAutocomplete } from '../use-ssh-autocomplete';
 
 type FixtureSettings = {
+  inputAllowed: boolean;
   enabled: boolean;
   isActive: boolean;
   connected: boolean;
@@ -19,6 +20,7 @@ type FixtureSettings = {
 type RecordedMessage = { paneId: string; payload: TerminalClientMessage };
 type FixtureController = {
   messages: RecordedMessage[];
+  setInputAllowed: (allowed: boolean) => void;
   transportCallbackChanges: number;
   reset: (settings?: Partial<FixtureSettings>) => Promise<void>;
   show: () => void;
@@ -34,7 +36,13 @@ declare global {
   }
 }
 
-const defaults: FixtureSettings = { enabled: true, isActive: true, connected: true, acceptKeys: 'tab' };
+const defaults: FixtureSettings = {
+  inputAllowed: true,
+  enabled: true,
+  isActive: true,
+  connected: true,
+  acceptKeys: 'tab',
+};
 
 /**
  * Renders the real hook, xterm, and suggestion menu; only WebSocket transport is substituted.
@@ -52,9 +60,10 @@ export const AutocompleteFixture = (): React.ReactNode => {
   const activePaneIdRef = React.useRef('pane-1');
   const paneRuntimeMapRef = React.useRef(new Map<string, Pick<TerminalPaneRuntime, 'terminal' | 'socket'>>());
   const autocomplete = useSshAutocomplete({
+    canReadPaneInput: () => settings.inputAllowed,
     isActive: settings.isActive,
     connectionState: settings.connected ? 'connected' : 'failed',
-    terminalAutoCompleteEnabled: settings.enabled,
+    terminalAutoCompleteEnabled: settings.enabled && settings.inputAllowed,
     terminalAutoCompleteHistoryEnabled: true,
     terminalAutoCompleteBuiltInCommandsEnabled: true,
     terminalAutoCompletePathEnabled: false,
@@ -126,6 +135,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
     focusPane('pane-1');
     window.terminalInteractionFixture = {
       messages,
+      setInputAllowed: (allowed) => setSettings((previous) => ({ ...previous, inputAllowed: allowed })),
       transportCallbackChanges: 0,
       reset: async (next = {}) => {
         for (const paneId of runtimes.keys()) current.current.resetAutocompletePaneState(paneId);

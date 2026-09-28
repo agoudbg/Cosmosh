@@ -77,7 +77,19 @@ export const findSettingsRow = async (
  * @returns Normalized default-scope settings values.
  */
 export const readDefaultSettingsValues = async (db: PrismaClient): Promise<SettingsValues> => {
+  return (await readDefaultSettingsSnapshot(db)).values;
+};
+
+/** Persisted settings revision paired with its normalized values for async race checks. */
+export type DefaultSettingsSnapshot = { values: SettingsValues; revision: number };
+
+/**
+ * Reads values and revision together so a late read cannot restore an earlier permission.
+ * @param db Prisma client used for the read.
+ * @returns Current default-scope settings snapshot.
+ */
+export const readDefaultSettingsSnapshot = async (db: PrismaClient): Promise<DefaultSettingsSnapshot> => {
   const scopeColumns = toSettingsScopeColumns(DEFAULT_SETTINGS_SCOPE);
   const row = await findSettingsRow(db, scopeColumns);
-  return parseStoredSettingsValues(row?.payloadJson);
+  return { values: parseStoredSettingsValues(row?.payloadJson), revision: row?.revision ?? 0 };
 };

@@ -182,7 +182,8 @@ const REMOTE_EVENT_BASE = {
   type: 'remote-shell-event',
   shell: 'bash',
   helperVersion: 'test-v2',
-  protocolVersion: 2,
+  protocolVersion: 3,
+  shellInstanceId: 'shell-1',
   capabilities: ['command-start', 'command-end', 'prompt-ready'] as RemoteShellCapability[],
   timestamp: 100,
 } as const;

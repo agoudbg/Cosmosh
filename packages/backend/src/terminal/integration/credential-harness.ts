@@ -1,14 +1,18 @@
-import type { SshTerminalServerMessage } from '@cosmosh/api-contract';
+import { DEFAULT_SETTINGS_VALUES, type ShellContext, type SshTerminalServerMessage } from '@cosmosh/api-contract';
 
+import { RemoteShellEventOscParser } from '../../ssh/remote-shell-events.js';
 import { SshSessionService } from '../../ssh/session-service.js';
 import {
   createCredentialFillState,
   type CredentialFillState,
   observeCredentialFillOutput,
 } from '../credential-fill.js';
+import { createShellContext, resolveShellPermissions } from '../shell-context.js';
 
 /** Minimal live-session fields touched by the production credential and input handlers. */
 export type CredentialTestSession = {
+  remoteShellEventParser: RemoteShellEventOscParser;
+  shellContext: ShellContext;
   sessionId: string;
   loginPassword: string | null;
   credentialFillState: CredentialFillState;
@@ -26,6 +30,7 @@ type CredentialServiceHarness = {
   sessions: Map<string, CredentialTestSession>;
   fillLoginPassword(session: CredentialTestSession, token: string): Promise<void>;
   handleVisibleShellOutput(session: CredentialTestSession, output: string): void;
+  handleShellOutput(session: CredentialTestSession, output: string): void;
   handleClientMessage(session: CredentialTestSession, payload: Buffer): void;
 };
 
@@ -45,6 +50,12 @@ export const createCredentialServiceHarness = (
   const writes: string[] = [];
   const sent: SshTerminalServerMessage[] = [];
   const session: CredentialTestSession = {
+    remoteShellEventParser: new RemoteShellEventOscParser(),
+    shellContext: createShellContext(
+      'credential-fixture-session',
+      resolveShellPermissions(DEFAULT_SETTINGS_VALUES, false),
+      false,
+    ),
     sessionId: 'credential-fixture-session',
     loginPassword: options.password === undefined ? 'PRIVATE_FIXTURE_PASSWORD_SENTINEL' : options.password,
     credentialFillState: observeCredentialFillOutput(createCredentialFillState(), 'Password: ', Date.now()),

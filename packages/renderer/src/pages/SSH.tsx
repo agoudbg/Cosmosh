@@ -371,6 +371,8 @@ const SSH: React.FC<SSHProps> = ({
   );
 
   const sshCore = useSshCore({
+    remoteEnhancementsInputEnabled:
+      connectionIntent.lastResolvedSnapshot?.type !== 'ssh-server' || settingsValues.remoteEnhancementsInputEnabled,
     tabId,
     isActive,
     connectionIntent,

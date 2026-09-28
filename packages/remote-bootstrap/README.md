@@ -178,7 +178,9 @@ The installed helper is the user-scoped runtime boundary for shell-state events.
 ESC ] 777 ; cosmosh ; <base64-json> BEL
 ```
 
-Current protocol v2 behavior:
+Current protocol v3 behavior:
+
+Each event carries a bounded `shellInstanceId`. Interactive processes generate Linux UUIDs; repeated sourcing preserves the same identity and hook registration. Fish internal state is unexported. Nested Shells get distinct identities, and non-interactive startup stays silent. The backend binds the first validated original Shell, pauses on foreign identities and resumes on a newer original prompt. Only implemented capabilities are advertised. Encoded OSC is bounded to 48 KiB and decoded JSON to 32 KiB.
 
 | Shell | Advertised capabilities |
 | --- | --- |

@@ -43,6 +43,7 @@ type UseSshAutocompleteParams = {
   paneRuntimeMapRef: React.RefObject<Map<string, Pick<TerminalPaneRuntime, 'terminal' | 'socket'>>>;
   getPaneLineState: (paneId: string) => SshPaneLineState | null;
   getPaneTrustedCwd: (paneId: string) => string | null;
+  canReadPaneInput: (paneId: string) => boolean;
 };
 
 type UseSshAutocompleteResult = {
@@ -100,7 +101,12 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
     paneRuntimeMapRef,
     getPaneLineState,
     getPaneTrustedCwd,
+    canReadPaneInput,
   } = params;
+  const canReadPaneInputRef = React.useRef(canReadPaneInput);
+  React.useLayoutEffect(() => {
+    canReadPaneInputRef.current = canReadPaneInput;
+  }, [canReadPaneInput]);
 
   const autocompleteRequestSequenceRef = React.useRef<number>(0);
   const autocompleteRequestTimeoutRef = React.useRef<number | null>(null);
@@ -311,6 +317,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       trigger: 'typing' | 'manual';
       workingDirectoryHint: string | null;
     }): void => {
+      if (!canReadPaneInputRef.current(params.paneId)) return;
       const requestKey = `${params.paneId}:${params.cursorRow}:${params.linePrefix}`;
       if (params.trigger === 'typing' && requestKey === latestAutocompleteRequestKeyRef.current) {
         return;
@@ -370,6 +377,10 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
         return;
       }
 
+      if (!canReadPaneInputRef.current(paneId)) {
+        closeAutocomplete();
+        return;
+      }
       const lineContext = resolveTerminalCurrentLinePrefix(terminal, {
         promptPrefixRegex: compiledPromptPrefixRegex,
       });
@@ -464,6 +475,10 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
   const acceptAutocompleteAtIndex = React.useCallback(
     (index: number) => {
       const paneId = latestAutocompletePaneIdRef.current;
+      if (!canReadPaneInputRef.current(paneId)) {
+        closeAutocomplete();
+        return;
+      }
       const paneRuntime = paneRuntimeMapRef.current.get(paneId);
       const socket = paneRuntime?.socket ?? null;
       if (
@@ -532,6 +547,13 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    */
   const applyAutocompleteInputData = React.useCallback(
     (paneId: string, data: string): { shouldRequest: boolean; shouldClose: boolean } => {
+      if (!canReadPaneInputRef.current(paneId)) {
+        localAutocompleteCommandPrefixByPaneRef.current.delete(paneId);
+        localAutocompletePrefixNeedsRenderedContextByPaneRef.current.delete(paneId);
+        pendingTypingRequestPaneSetRef.current.delete(paneId);
+        closeAutocomplete();
+        return { shouldRequest: false, shouldClose: true };
+      }
       // Any real input invalidates the displayed candidates before an echo or delayed response arrives.
       if (paneId === activePaneIdRef.current) closeAutocomplete();
       let shouldRequest = false;
@@ -766,6 +788,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
     (payload: Extract<ServerInboundMessage, { type: 'completion-response' }>, paneId: string) => {
       // This callback is a transport-effect dependency; changing UI gates must not recreate a PTY.
       const eligibility = responseEligibilityRef.current;
+      if (!canReadPaneInputRef.current(paneId)) return;
       if (
         !eligibility.isActive ||
         !eligibility.terminalAutoCompleteEnabled ||

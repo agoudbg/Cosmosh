@@ -127,6 +127,14 @@ export const registerSettingsRoutes = (app: BackendHttpApp, context: BackendAppC
       return c.json(buildErrorPayload(API_CODES.settingsValidationFailed, t('errors.settings.rowNotPersisted')), 400);
     }
 
+    const defaultScope = toSettingsScopeColumns(DEFAULT_SETTINGS_SCOPE);
+    if (row.scopeAccountId === defaultScope.scopeAccountId && row.scopeDeviceId === defaultScope.scopeDeviceId) {
+      context.sshSessionService.applyEnhancementSettings({
+        values: parseStoredSettingsValues(row.payloadJson),
+        revision: row.revision,
+      });
+    }
+
     const payload: ApiSettingsUpdateResponse = createApiSuccess({
       code: API_CODES.settingsUpdateOk,
       message: t('success.settings.updated'),

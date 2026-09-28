@@ -509,13 +509,21 @@
         "description": "Set clipboard access for local terminal programs only.",
         "title": "Allow Local Terminal Clipboard Access"
       },
+      "remoteEnhancementsCwdEnabled": {
+        "description": "Allow Cosmosh enhancements to use the remote Shell directory for paths and file navigation.",
+        "title": "Read Current Shell Directory"
+      },
       "remoteEnhancementsDebugEnabled": {
-        "description": "Show pane-specific bootstrap and shell integration diagnostics in SSH terminal menus.",
+        "description": "Show diagnostics for remote Shell capabilities and status. Current input and credentials are excluded.",
         "title": "Remote Enhancements Debug"
       },
       "remoteEnhancementsEnabled": {
         "description": "Allow Cosmosh to install remote enhancement helpers for SSH sessions. Turning this off may degrade or disable some terminal features.",
         "title": "Remote Enhancements"
+      },
+      "remoteEnhancementsInputEnabled": {
+        "description": "Allow compatible Shells to share the command being edited with Cosmosh for suggestions. It stays in local memory and is not logged, saved, or sent to a cloud service.",
+        "title": "Read Current Command Input"
       },
       "serverProxyMode": {
         "description": "Set the default proxy policy for SSH, SFTP, and port forwarding.",
@@ -756,6 +764,10 @@
         "description": "Set the terminal minimum text contrast ratio. Use 1 to disable dynamic adjustment.",
         "placeholder": "1",
         "title": "Minimum Contrast Ratio"
+      },
+      "terminalNativeCompletionEnabled": {
+        "description": "Allow a compatible Fish helper to generate native suggestions in a separate worker. Shell completion scripts may run commands; disabled by default.",
+        "title": "Fish Native Suggestions"
       },
       "terminalRightClickAction": {
         "description": "Set the terminal right-click action.",

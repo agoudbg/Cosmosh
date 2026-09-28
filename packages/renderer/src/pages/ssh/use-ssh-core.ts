@@ -201,6 +201,7 @@ export type UseSshCoreParams = {
   terminalInitOptions: ITerminalOptions;
   sshConnectionTimeoutSec: number;
   terminalAutoCompleteEnabled: boolean;
+  remoteEnhancementsInputEnabled: boolean;
   terminalAutoCompleteHistoryEnabled: boolean;
   terminalAutoCompleteBuiltInCommandsEnabled: boolean;
   terminalAutoCompletePathEnabled: boolean;
@@ -466,6 +467,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     sshConnectionTimeoutSec,
     terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteEnabled,
+    remoteEnhancementsInputEnabled,
     terminalAutoCompleteHistoryEnabled,
     terminalAutoCompleteBuiltInCommandsEnabled,
     terminalAutoCompletePathEnabled,
@@ -829,7 +831,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   } = useSshAutocomplete({
     isActive,
     connectionState,
-    terminalAutoCompleteEnabled,
+    terminalAutoCompleteEnabled:
+      terminalAutoCompleteEnabled &&
+      remoteEnhancementsInputEnabled &&
+      activePaneState.shellContext?.permissions.input !== false,
     terminalAutoCompleteHistoryEnabled,
     terminalAutoCompleteBuiltInCommandsEnabled,
     terminalAutoCompletePathEnabled,
@@ -846,6 +851,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     paneRuntimeMapRef,
     getPaneLineState,
     getPaneTrustedCwd,
+    canReadPaneInput: (paneId) =>
+      remoteEnhancementsInputEnabled && paneStateMapRef.current[paneId]?.shellContext?.permissions.input !== false,
   });
 
   /**
@@ -909,6 +916,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
 
       const receivedAt = Date.now();
       const paneRuntime = paneRuntimeMapRef.current.get(paneId);
+      if (payload.type === 'shell-context' && !payload.context.permissions.input) {
+        resetAutocompletePaneState(paneId);
+        if (paneRuntime) clearTerminalCommandMarkers(paneRuntime);
+      }
       if (
         payload.type === 'remote-enhancement-runtime-status' &&
         paneRuntime &&
@@ -921,12 +932,17 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         const timelineIsTrusted = supportsTrustedCommandTimeline(
           paneStateMapRef.current[paneId]?.remoteEnhancementRuntimeStatus,
         );
-        if (paneRuntime && timelineIsTrusted) {
+        if (
+          paneRuntime &&
+          timelineIsTrusted &&
+          paneStateMapRef.current[paneId]?.shellContext?.permissions.input !== false
+        ) {
           // An empty write callback runs after previously queued output parsing,
           // so lifecycle markers observe the cursor row that produced the event.
           terminal.write('', () => {
             if (
               paneRuntimeMapRef.current.get(paneId) !== paneRuntime ||
+              paneStateMapRef.current[paneId]?.shellContext?.permissions.input === false ||
               !supportsTrustedCommandTimeline(paneStateMapRef.current[paneId]?.remoteEnhancementRuntimeStatus)
             ) {
               return;
@@ -944,7 +960,13 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         receivedAt,
       });
     },
-    [dispatchPaneState, handleCompletionResponse, notifyAutocompleteOutputEchoRef, paneRuntimeMapRef],
+    [
+      dispatchPaneState,
+      handleCompletionResponse,
+      notifyAutocompleteOutputEchoRef,
+      paneRuntimeMapRef,
+      resetAutocompletePaneState,
+    ],
   );
 
   /**
@@ -962,7 +984,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       }
 
       const paneState = paneStateMapRef.current[paneId];
-      if (!supportsTrustedCommandTimeline(paneState?.remoteEnhancementRuntimeStatus)) {
+      if (
+        !supportsTrustedCommandTimeline(paneState?.remoteEnhancementRuntimeStatus) ||
+        paneState?.shellContext?.permissions.input === false
+      ) {
         return;
       }
 

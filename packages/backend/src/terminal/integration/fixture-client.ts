@@ -112,6 +112,15 @@ export class FixtureTerminal {
   }
 
   /**
+   * Reads the already bounded fixture-only PTY capture for protocol integration assertions.
+   * @param after Character offset previously consumed by the test parser.
+   * @returns Actual remote output, including untouched OSC framing.
+   */
+  readOutput(after = 0): string {
+    return this.output.slice(after);
+  }
+
+  /**
    * Wait for actual output after a specified input boundary.
    * @param pattern Expected output expression.
    * @param after Capture offset returned by write.

@@ -7,7 +7,8 @@ const ESCAPE = '\u001b';
 const BELL = '\u0007';
 const RUNTIME_CONTRACT = {
   helperVersion: '1.2.3',
-  protocolVersion: 2,
+  protocolVersion: 3,
+  shellInstanceId: 'shell-1',
   capabilities: ['cwd', 'command-start', 'command-end', 'foreground-command', 'prompt-ready'],
 };
 
@@ -29,6 +30,41 @@ const encodeCosmoshOsc = (value: Record<string, unknown>): string => {
   const encoded = Buffer.from(JSON.stringify(value), 'utf8').toString('base64');
   return `${ESCAPE}]777;cosmosh;${encoded}${BELL}`;
 };
+
+test('v3 rejects missing/invalid instance identity and legacy protocol without leaking envelope text', () => {
+  for (const fields of [
+    { shellInstanceId: undefined },
+    { shellInstanceId: '' },
+    { shellInstanceId: 'bad\nid' },
+    { shellInstanceId: 'x'.repeat(257) },
+    { protocolVersion: 2 },
+    { protocolVersion: 4 },
+  ]) {
+    const parser = new RemoteShellEventOscParser();
+    const result = parser.parse(
+      'before' +
+        encodeCosmoshOsc({
+          ...RUNTIME_CONTRACT,
+          event: 'integration-ready',
+          shell: 'bash',
+          timestamp: 1,
+          ...fields,
+        }) +
+        'after',
+    );
+    assert.deepEqual(result, [{ type: 'output', data: 'beforeafter' }]);
+  }
+});
+
+test('v3 bounds decoded JSON separately from the encoded OSC budget and rejects noncanonical Base64', () => {
+  const data = { ...RUNTIME_CONTRACT, event: 'integration-ready', shell: 'bash', timestamp: 1 };
+  const encoded = Buffer.from(JSON.stringify(data)).toString('base64');
+  const whitespace = encoded.slice(0, 4) + '\n' + encoded.slice(4);
+  assert.deepEqual(new RemoteShellEventOscParser().parse(ESCAPE + ']777;cosmosh;' + whitespace + BELL), []);
+  const large = encodeCosmoshOsc({ ...data, padding: 'a'.repeat(33 * 1024) });
+  assert.ok(Buffer.byteLength(large) < REMOTE_SHELL_EVENT_OSC_PAYLOAD_MAX_BYTES);
+  assert.deepEqual(new RemoteShellEventOscParser().parse(large + 'visible'), [{ type: 'output', data: 'visible' }]);
+});
 
 test('parser strips Cosmosh OSC events while preserving their position among visible output', () => {
   const parser = new RemoteShellEventOscParser();

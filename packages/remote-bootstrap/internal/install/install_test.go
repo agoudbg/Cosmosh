@@ -267,8 +267,8 @@ func TestBashHelperPreservesPromptCommandWithTrailingSeparator(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := "PROMPT_COMMAND='history -a;'\nHISTFILE=/dev/null\n" + helper + "\neval \"$PROMPT_COMMAND\"\n"
-	command := exec.Command(bashPath, "--noprofile", "--norc", "-s")
-	command.Stdin = strings.NewReader(script)
+	command := exec.Command(bashPath, "--noprofile", "--norc", "-i", "-s")
+	command.Stdin = strings.NewReader("{\n" + script + "\n}\n")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("expected trailing prompt separator to remain valid: %v\n%s", err, output)
 	}
@@ -287,8 +287,10 @@ func TestBashHelperPreservesPreviousCommandStatusForUserPromptHook(t *testing.T)
 	// Force event emission without a PTY so the test covers Bash dynamic-scope collisions
 	// between the prompt wrapper and the shared event serializer.
 	script := "PROMPT_COMMAND='__observed_status=$?'\n__COSMOSH_CAPTURED_PROMPT_EVENT=1\n" + helper + "\nfalse\neval \"$PROMPT_COMMAND\"\ntest \"$__observed_status\" -eq 1\n"
-	command := exec.Command(bashPath, "--noprofile", "--norc", "-s")
-	command.Stdin = strings.NewReader(script)
+	command := exec.Command(bashPath, "--noprofile", "--norc", "-i", "-s")
+	// One compound command prevents automatic interactive prompts between
+	// false and the explicit prompt-hook assertion, including on WSL launchers.
+	command.Stdin = strings.NewReader("{\n" + script + "\n}\n")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("expected user prompt hook to observe the previous exit status: %v\n%s", err, output)
 	}
@@ -357,9 +359,11 @@ add-zle-hook-widget() {
 ` + helper + `
 test "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1"
 `
-	command := exec.Command(zshPath, "-f", "-s")
-	command.Env = append(os.Environ(), "COSMOSH_ZLE_HOOK_LOG="+logPath)
+	command := exec.Command(zshPath, "-f", "-i", "-c", "source /dev/stdin")
+	// Source the script as startup files are sourced, without interactive
+	// history expansion of the helper's character-class expressions.
 	command.Stdin = strings.NewReader(script)
+	command.Env = append(os.Environ(), "COSMOSH_ZLE_HOOK_LOG="+logPath)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("expected partial Zsh hook registration to fail closed: %v\n%s", err, output)
 	}

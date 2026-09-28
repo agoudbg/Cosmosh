@@ -461,11 +461,11 @@ Backend 解析规则：
 - Parser 会返回按原始顺序排列的可见输出/helper 事件 frame，`SshSessionService` 不得再按类型对它们分组。事件之前的可见字节，尤其是 `command-start` 之前的输入回显与换行，必须先进入 xterm，renderer marker 才能捕获有效的输入/输出边界。
 - WebSocket 未 attach 时同样遵循该顺序契约：可见输出与已接受的 helper 事件进入同一个有界 pending-frame 队列，并在 attach 控制消息之后按到达顺序回放。若运行时信任在 attach 前被禁用，只移除队列中的 helper 事件，普通终端输出仍可回放。
 - Cosmosh OSC 会从可见终端输出中剥离并解码，但只有 backend 运行时 gate 进入 `active` 后，事件才会应用并转发。
-- Gate 只有在交互 shell 打开前 status 校验成功后才以 `pending` 开始；匹配的 `integration-ready` 会将其切换为 `active`。如果 10 秒内没有收到有效握手，则以 `HELPER_HANDSHAKE_TIMEOUT` 切换为 `disabled`；任何 shell、helper version、protocol version 或 capability 不匹配也会切换为 `disabled` 并清空 helper 派生状态。
+- Gate 在交互 Shell 启动前校验成功并再次检查权限后进入`pending`，匹配的`integration-ready`将其切换为`active`。10 秒内没有握手则禁用。原始 Shell 的版本/能力不匹配会禁用运行时；其他 Shell 实例只暂停可用状态，不替换原始身份。
 - 非 Cosmosh OSC 与普通 ANSI 输出会保持可见、原样流式透传，包括跨 SSH chunk 拆分的序列。
-- 非法 JSON、非法事件形状以及超过 8 KiB 的 payload 会被丢弃，不会导致 session 崩溃。
+- 非法 JSON、非法事件形状、不规范的 Base64、超过 32 KiB 的解码 JSON，以及超过 48 KiB 的编码 OSC 会被丢弃。单个 cwd 和可执行命令名仍分别限制为 4 KiB 和 255 字节。
 - 支持 SSH chunk 切分；未完成的 OSC 数据会缓冲到 BEL 或 ST 结束符到来。
-- 协议常量及 Backend/Renderer 使用的 discriminated message union 统一来自 `packages/api-contract/src/terminal-protocol.ts`。当前 helper 协议版本为 v2。
+- 协议常量与 Backend/Renderer 消息类型来自`packages/api-contract/src/terminal-protocol.ts`，当前 helper 协议为 v3。已有安装/status 校验流程会更新旧帮助程序，v2 事件不能激活 v3 会话。
 
 服务端到 renderer payload：
 
@@ -481,6 +481,7 @@ type RemoteShellEventMessage = {
     | "foreground-command"
     | "line-state";
   shell: "bash" | "zsh" | "fish" | "sh" | "ash";
+  shellInstanceId: string;
   helperVersion: string;
   protocolVersion: number;
   capabilities: string[];
@@ -510,6 +511,11 @@ type RemoteShellEventMessage = {
 
 Backend 状态模型：
 
+- `terminal/shell-context.ts`维护权威`ShellContext`，通过`{ type: 'shell-context', context }`发布，包含会话/Shell 身份、准确的版本/能力、独立权限、可用状态（`unavailable`、`initializing`、`ready`、`busy`、`paused`）、原因及 revision/input/prompt/cwd 代数，不包含当前输入或凭据。Renderer 按分屏保留最新状态，不写入调试历史；旧版本状态及回放的 cwd/prompt 事件不能覆盖它。
+- 每个交互 Shell 获取 Linux UUID。重复 source 保留身份与钩子注册，新进程获取独立身份，Fish 内部元数据不再导出。只有原始 Shell 的更新提示能够恢复因其他 Shell 导致的暂停。Sh/Ash 保留不带提示代数的目录能力，不声明编辑器能力。
+- 输入在转发 PTY 前就使异步工作失效。回车、换行、Ctrl+C、Ctrl+D 暂停可用状态；命令结束后仍等待新的提示。目录操作边界与结果发布会重新检查当前代数和权限。
+- 默认范围设置按持久化版本更新实时会话。关闭 CWD 权限会清理缓存并拒绝 cwd 事件；关闭输入权限会停止增强输入跟踪、候选请求和渲染命令捕获，普通终端输入输出继续工作。历史/路径设置各自对应权限。原生补全默认关闭，要求帮助程序声明已实现的能力。关闭全局增强会禁用运行时，再次开启需要重连。设置读取保留在可选初始化的 15 秒预算中，失败时普通 SSH 仍可连接。
+- 迁移边界：真实/主目录报告、可信编辑器快照、结构化目录读取和原生候选来源在后续增加能力。帮助程序当前只声明已实现的生命周期/cwd 事件。旧目录/补全消费者及历史探测、缓存、删除的完整权限约束分别替换。
 - 每个 session 都持有明确的 `pending`、`active` 或 `disabled` 增强运行状态、PTY 创建前校验得到的契约，以及会在激活、禁用或 session 销毁时清理的握手 timer。
 - 每个 `SshLiveSession` 保存可信 cwd/foreground 状态，以及最近的 command id、清洗后可执行命令名、exit code 与 duration。唯一的结构化 `command-start` 驱动命令计数与 history 刷新；只有该 capability 不可用时才以原始 Enter 解析作为 fallback。
 - `remoteShellCwd` 是 path completion 的优先 cwd 来源；现有 exec probe 与 renderer hint 仍作为 fallback。
