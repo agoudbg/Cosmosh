@@ -1,0 +1,14 @@
+Port 22
+HostKey /run/cosmosh-fixture/host_key
+PidFile /run/cosmosh-fixture/sshd.pid
+AuthorizedKeysFile .ssh/authorized_keys
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+PermitEmptyPasswords no
+UsePAM no
+AllowUsers cosmosh-bash cosmosh-zsh cosmosh-fish
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp internal-sftp
+LogLevel ERROR

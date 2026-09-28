@@ -94,6 +94,7 @@ flowchart TB
   - `src/validation-utils.ts`: shared backend HTTP-boundary validation primitives used by route and domain payload parsers.
   - `src/local-terminal`: local PTY session logic (`node-pty`).
   - `src/terminal`: shared terminal session primitives (WebSocket message normalization, history parsing, size clamping, history sync timing helpers).
+  - `src/terminal/integration`: real-SSH PTY test clients and live Shell scenarios; `scripts/terminal-fixture` owns the isolated container, temporary accounts, and lifecycle commands.
   - `src/terminal/completion`: shared terminal auto-complete domain (spec dataset, ranking engine, completion payload shaping) used by both SSH and local-terminal session services.
   - `src/db/prisma.ts`: Prisma lifecycle, runtime migration execution, schema validation, and structured database errors.
   - `src/db/sqlcipher.ts`: production SQLCipher adapter factory, keyed connection verification, legacy plaintext migration, and interrupted-migration recovery.

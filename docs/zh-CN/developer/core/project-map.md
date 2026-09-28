@@ -94,6 +94,7 @@ flowchart TB
   - `src/validation-utils.ts`：后端 HTTP 边界校验共享原语，供路由与领域 payload 解析器复用。
   - `src/local-terminal`：本地 PTY 会话逻辑（`node-pty`）。
   - `src/terminal`：终端会话共享原语（WebSocket 消息规范化、历史命令解析、尺寸收敛、历史同步时序辅助）。
+  - `src/terminal/integration`：真实 SSH PTY 测试客户端与 Shell 场景；`scripts/terminal-fixture`负责隔离容器、临时账户及生命周期命令。
   - `src/terminal/completion`：终端自动补全共享领域模块（规范数据、排序引擎、补全响应组装），由 SSH 与本地终端会话服务共同使用。
   - `src/db/prisma.ts`：Prisma 生命周期、运行时 migration 执行、schema 校验与结构化数据库错误。
   - `src/db/sqlcipher.ts`：生产 SQLCipher adapter factory、keyed connection 校验、旧明文库迁移与迁移中断恢复。

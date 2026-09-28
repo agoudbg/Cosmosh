@@ -1,0 +1,20 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssh-server bash zsh fish python3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /run/sshd \
+    && useradd --create-home --shell /bin/bash cosmosh-bash \
+    && useradd --create-home --shell /bin/zsh cosmosh-zsh \
+    && useradd --create-home --shell /usr/bin/fish cosmosh-fish \
+    && usermod --password '*' cosmosh-bash \
+    && usermod --password '*' cosmosh-zsh \
+    && usermod --password '*' cosmosh-fish
+
+COPY sshd_config /etc/ssh/sshd_config
+COPY entrypoint.sh /usr/local/bin/cosmosh-fixture
+COPY prepare.py /usr/local/lib/cosmosh-fixture-prepare.py
+RUN chmod 755 /usr/local/bin/cosmosh-fixture
+
+EXPOSE 22
+ENTRYPOINT ["/usr/local/bin/cosmosh-fixture"]

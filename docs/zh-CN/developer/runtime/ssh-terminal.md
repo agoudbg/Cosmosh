@@ -357,6 +357,14 @@ flowchart LR
 4. 数据流方向是否完整（`input` 写入与 `output` 回放）。
 5. 会话释放路径是否正确（API close、传输关闭或 SSH 错误触发）。
 
+### 7.1 可重复执行的真实 Shell 测试
+
+`pnpm test:terminal`运行后端共享终端／SSH 与 renderer SSH 单元测试。真实 PTY 行为使用独立入口：先执行`pnpm terminal:fixture start`启动临时 OpenSSH 容器，再运行`pnpm test:terminal:live`，最后通过`pnpm terminal:fixture stop`停止环境。
+
+测试环境使用独立的 Bash、Zsh、Fish 账户、专用生成密钥、固定校验的主机指纹和仅监听本机回环地址的端口。文件样本覆盖空格、引号、Unicode、符号链接和大目录，不挂载宿主机用户目录或生产凭据。Windows 使用 Debian WSL 内的容器运行时；Linux 默认使用 Docker，也可以通过`COSMOSH_FIXTURE_RUNTIME`选择 Podman。生命周期和环境配置见`scripts/terminal-fixture/README.md`。
+
+真实测试入口在环境不可用时明确失败。单元测试通过不能证明真实 Shell、网络延迟或 Electron 交互已得到验证。
+
 ## 8. 远端增强运行时
 
 远端增强是用于主机感知 SSH 能力的可选运行时层，例如 OS/发行版检测、未来 SFTP helper、命令快捷嗅探与补全支持。当前阶段会维护版本化 helper 契约，并提供有界的 cwd/命令生命周期事件；后续能力必须继续挂在相同 gate 之后，并复用同一用户级远端 helper 边界。

@@ -357,6 +357,14 @@ When SSH session behavior is wrong, verify in order:
 4. Stream direction integrity (`input` write and `output` flush).
 5. Session disposal path (API close vs transport close vs SSH error).
 
+### 7.1 Reproducible Real-Shell Tests
+
+`pnpm test:terminal` runs the shared backend terminal/SSH and renderer SSH unit suites. Real PTY behavior has a separate required-fixture entry point: start the disposable OpenSSH container with `pnpm terminal:fixture start`, run `pnpm test:terminal:live`, then stop it with `pnpm terminal:fixture stop`.
+
+The fixture owns temporary Bash, Zsh, and Fish accounts, generated test-only SSH keys, a pinned host fingerprint, and a loopback-only listener. Its files cover spaces, quotes, Unicode, symlinks, and large directories. It does not mount host homes or production credentials. Windows uses the container runtime in Debian WSL; Linux uses Docker, with Podman available through `COSMOSH_FIXTURE_RUNTIME`. See `scripts/terminal-fixture/README.md` for lifecycle and environment options.
+
+The live suite fails explicitly if the fixture is unavailable. Unit test success alone does not establish real Shell, latency, or Electron interaction coverage.
+
 ## 8. Remote Enhancements Runtime
 
 Remote Enhancements are the optional runtime layer for host-aware SSH features such as OS/distribution detection, future SFTP helpers, and command shortcut/completion support. The current phase maintains a versioned helper contract and exposes bounded cwd/command-lifecycle events; later capabilities must attach behind the same gates and reuse the same user-scoped remote helper boundary.
