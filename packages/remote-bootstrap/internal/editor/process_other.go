@@ -14,3 +14,4 @@ func checkPeer(_ *net.UnixConn, _ Target) error   { return errors.New("unsupport
 func secureSocketDirectory() (string, error)      { return "", errors.New("unsupported-platform") }
 func physicalDirectory() *string                  { return nil }
 func notifyEditor(_ Target, _ Notification) error { return errors.New("unsupported-platform") }
+func checkFishInput(_ Target) error               { return errors.New("unsupported-platform") }

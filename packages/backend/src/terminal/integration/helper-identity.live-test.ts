@@ -167,7 +167,7 @@ for (const shell of FIXTURE_SHELLS) {
       assert.equal(original.shell, shell);
       assert.equal(
         original.capabilities.includes('input-snapshot'),
-        shell === 'bash' || shell === 'zsh',
+        true,
         'only implemented editor adapters may advertise snapshot operations',
       );
       assert.equal(firstPrompt.shellInstanceId, original.shellInstanceId);

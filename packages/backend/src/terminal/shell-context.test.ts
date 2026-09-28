@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { DEFAULT_SETTINGS_VALUES, type RemoteShellEventMessage } from '@cosmosh/api-contract';
 
+import { isFishInputBoundaryPending } from './editor-protocol.js';
 import {
   applyShellContextEvent,
   canUseShellCapability,
@@ -206,6 +207,22 @@ test('multiple submission boundaries in one chunk also require editor confirmati
     assert.equal(prompt.cwd, null);
   }
   assert.equal(invalidateShellInput(readyContext(), 'true\r\n').requiresEditorConfirmation, false);
+});
+
+test('Fish prompts cannot acknowledge unknown controls or partial frames queued after an earlier command', () => {
+  for (const input of ['echo ok\r\t', 'echo ok\r\x18q', 'echo ok\r\x1b[', 'echo ok\r\x1b[200~PRIVATE']) {
+    let context = createShellContext('fish-session', resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true), true);
+    context = applyShellContextEvent(context, event({ shell: 'fish' }));
+    context = applyShellContextEvent(context, event({ shell: 'fish', event: 'prompt-ready', promptGeneration: 1 }));
+    context = invalidateShellInput(context, input);
+    const boundary = context.fishInputBoundary;
+    assert.equal(isFishInputBoundaryPending(boundary), true);
+    context = applyShellContextEvent(context, event({ shell: 'fish', event: 'prompt-ready', promptGeneration: 2 }));
+    assert.deepEqual(context.fishInputBoundary, boundary);
+    assert.equal(isFishInputBoundaryPending(context.fishInputBoundary), true);
+    assert.equal('fishInputBoundary' in getShellContextSnapshot(context), false);
+    assert.equal(JSON.stringify(context).includes('PRIVATE'), false);
+  }
 });
 
 test('interleaved nested Shell events cannot release ambiguous submissions to the parent', () => {

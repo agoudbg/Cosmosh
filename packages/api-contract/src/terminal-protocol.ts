@@ -99,8 +99,8 @@ export type ShellEditorTarget = {
   startTime: string;
 };
 
-/** Private notification descriptor identity; contains no command or terminal input. */
-export type ShellEditorNotification = { fd: number; inode: string };
+/** Private Shell wake-up metadata; contains no command or terminal input. */
+export type ShellEditorNotification = { fd: number; inode: string } | { signal: 'URG' };
 
 /** Complete input buffer with a UTF-16 cursor offset; never persisted or included in OSC/debug events. */
 export type ShellEditorBuffer = { text: string; cursor: number };

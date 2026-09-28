@@ -109,6 +109,40 @@ test('cwd reports reject malformed path fields and unavailable physical/home fie
   assert.equal(result[0]?.type === 'event' && result[0].event.homeDirectory, null);
 });
 
+test('Fish editor notifications accept only the fixed harmless signal and no descriptor', () => {
+  const event = {
+    ...RUNTIME_CONTRACT,
+    shell: 'fish',
+    event: 'editor-state',
+    promptGeneration: 1,
+    timestamp: 1,
+    pid: 42,
+    startTime: '1234',
+    available: true,
+    triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+    capabilities: [...RUNTIME_CONTRACT.capabilities, 'editor-state', 'input-snapshot'],
+    notification: { signal: 'URG' },
+  };
+  const frames = new RemoteShellEventOscParser().parse(encodeCosmoshOsc(event));
+  assert.equal(frames.length, 1);
+  assert.ok(frames[0]?.type === 'event' && frames[0].event.event === 'editor-state');
+  if (frames[0]?.type === 'event' && frames[0].event.event === 'editor-state')
+    assert.deepEqual(frames[0].event.notification, { signal: 'URG' });
+  for (const notification of [
+    undefined,
+    null,
+    {},
+    { signal: 'TERM' },
+    { signal: 'USR1' },
+    { signal: 23 },
+    { signal: 'URG', fd: 12 },
+    { fd: 12, inode: '123' },
+  ])
+    assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...event, notification })), []);
+  for (const shell of ['bash', 'zsh', 'sh'])
+    assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...event, shell })), []);
+});
+
 test('v3 rejects missing/invalid instance identity and legacy protocol without leaking envelope text', () => {
   for (const fields of [
     { shellInstanceId: undefined },

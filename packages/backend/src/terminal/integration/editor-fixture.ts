@@ -93,16 +93,24 @@ export class EditorFixture {
     }
     throw new Error('Actual editor epoch did not arrive: ' + JSON.stringify(this.latest));
   }
-  /** @param command Fixture-owned command. @returns Its next editor epoch. */
-  async run(command: string): Promise<EditorEvent> {
+  /** @param command Fixture-owned command. @param paste Bypass test-defined key mappings through real bracketed paste. @returns Its next editor epoch. */
+  async run(command: string, paste = false): Promise<EditorEvent> {
     const generation = this.collect()?.promptGeneration ?? 0;
-    this.terminal.write(command + '\r');
+    this.terminal.write((paste ? '\x1b[200~' + command + '\x1b[201~' : command) + '\r');
     return await this.prompt(generation);
   }
   /** @returns The next real prompt after canceling editing or the foreground program. */
   async cancel(): Promise<EditorEvent> {
     const generation = this.collect()?.promptGeneration ?? 0;
+    // Fish's first Ctrl+C can dismiss a pager; the second clears editing. Send Enter after
+    // cancellation has flushed pending terminal input, so it reaches the new empty reader.
     this.terminal.write('\x03');
+    if (this.shell === 'fish') {
+      await delay(60);
+      this.terminal.write('\x03');
+      await delay(60);
+      this.terminal.write('\r');
+    }
     return await this.prompt(generation);
   }
   /**
@@ -117,7 +125,7 @@ export class EditorFixture {
     options?: Partial<ShellEditorExecOptions>,
   ) {
     const event = await this.prompt();
-    assert.equal(event.available, true, 'real helper must own its editor registration');
+    if (!event.available) return { status: 'unavailable' as const };
     const request: ShellEditorRequest = {
       requestId: randomUUID(),
       target: { instanceId: event.shellInstanceId, shell: this.shell, pid: event.pid, startTime: event.startTime },

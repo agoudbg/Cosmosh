@@ -397,16 +397,28 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
     const promptGeneration = normalizeBoundedInteger(value.promptGeneration, 1, Number.MAX_SAFE_INTEGER);
     const pid = normalizeBoundedInteger(value.pid, 2, 2 ** 31 - 1);
     const rawNotification = value.notification;
-    const notification =
+    const descriptor =
       rawNotification &&
       typeof rawNotification === 'object' &&
       'fd' in rawNotification &&
       'inode' in rawNotification &&
+      Object.keys(rawNotification).length === 2 &&
       normalizeBoundedInteger(rawNotification.fd, 3, 1048575) !== null &&
       typeof rawNotification.inode === 'string' &&
       /^[1-9][0-9]{0,19}$/u.test(rawNotification.inode)
         ? { fd: rawNotification.fd as number, inode: rawNotification.inode }
         : null;
+    const notification =
+      shell === 'zsh'
+        ? descriptor
+        : shell === 'fish' &&
+            rawNotification &&
+            typeof rawNotification === 'object' &&
+            'signal' in rawNotification &&
+            rawNotification.signal === 'URG' &&
+            Object.keys(rawNotification).length === 1
+          ? { signal: 'URG' as const }
+          : null;
     if (
       promptGeneration === null ||
       pid === null ||
@@ -417,8 +429,8 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
       (value.triggerNonce !== '' &&
         !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(value.triggerNonce)) ||
       (value.available && (value.triggerNonce === '' || value.startTime === '')) ||
-      (rawNotification !== undefined && (shell !== 'zsh' || notification === null)) ||
-      (shell === 'zsh' && value.available && notification === null)
+      (rawNotification !== undefined && notification === null) ||
+      ((shell === 'zsh' || shell === 'fish') && value.available && notification === null)
     )
       return null;
     return {

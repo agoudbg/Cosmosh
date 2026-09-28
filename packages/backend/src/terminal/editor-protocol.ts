@@ -5,6 +5,70 @@ export const EDITOR_INPUT_MAX_BYTES = 8192;
 /** Encoded envelope bound includes two buffers and literal directory metadata. */
 export const EDITOR_MESSAGE_MAX_BYTES = 256 * 1024;
 
+/** Framing-only Fish input state. Prefixes contain fixed escape delimiters, never command text. */
+export type FishInputBoundary = { prefix: string; paste: boolean; uncertain: boolean };
+const FISH_COMPLETE_KEYS = [
+  '\x1b[A',
+  '\x1b[B',
+  '\x1b[C',
+  '\x1b[D',
+  '\x1b[H',
+  '\x1b[F',
+  '\x1b[1~',
+  '\x1b[3~',
+  '\x1b[4~',
+  '\x1b[7~',
+  '\x1b[8~',
+];
+const FISH_PASTE_START = '\x1b[200~';
+const FISH_PASTE_END = '\x1b[201~';
+
+/**
+ * Tracks incomplete terminal framing without reconstructing an input line.
+ * Fish does not expose its partial paste/key buffers, so a signal cannot override this boundary.
+ * @param previous Prior framing metadata. @param input Newly forwarded PTY bytes.
+ * @returns Bounded metadata; unknown editing keys stay uncertain for this connection.
+ */
+export const advanceFishInputBoundary = (previous: FishInputBoundary | undefined, input: string): FishInputBoundary => {
+  const next = { prefix: '', paste: false, uncertain: false, ...previous };
+  for (const character of input) {
+    if (next.paste) {
+      const candidate = next.prefix + character;
+      if (candidate === FISH_PASTE_END) {
+        next.paste = false;
+        next.prefix = '';
+      } else if (FISH_PASTE_END.startsWith(candidate)) next.prefix = candidate;
+      else next.prefix = character === '\x1b' ? '\x1b' : '';
+      continue;
+    }
+    if (next.prefix || character === '\x1b') {
+      const candidate = next.prefix + character;
+      if (candidate === FISH_PASTE_START) {
+        next.paste = true;
+        next.prefix = '';
+      } else if (FISH_COMPLETE_KEYS.includes(candidate)) next.prefix = '';
+      else if ([...FISH_COMPLETE_KEYS, FISH_PASTE_START].some((key) => key.startsWith(candidate)))
+        next.prefix = candidate;
+      else {
+        next.uncertain = true;
+        next.prefix = '';
+      }
+      continue;
+    }
+    const code = character.codePointAt(0)!;
+    if (
+      (code < 32 || (code >= 127 && code <= 159)) &&
+      ![1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 19, 20, 21, 23, 25, 26, 31, 127].includes(code)
+    )
+      next.uncertain = true;
+  }
+  return next;
+};
+
+/** @param boundary Framing metadata. @returns Whether a Fish editor query must wait for consumed input. */
+export const isFishInputBoundaryPending = (boundary: FishInputBoundary | undefined): boolean =>
+  Boolean(boundary && (boundary.paste || boundary.prefix || boundary.uncertain));
+
 /**
  * Mirrors the Bash adapter's closed native-key profile. Tab, search, macros, mode changes and
  * unknown escape sequences can run arbitrary Shell code, so they invalidate the current editor.

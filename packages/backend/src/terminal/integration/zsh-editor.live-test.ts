@@ -232,7 +232,8 @@ test(
       t.after(() => terminal.close());
       const fixture = new EditorFixture(terminal, 'zsh');
       const event = await fixture.prompt();
-      const fd = event.notification!.fd;
+      assert.ok(event.notification && 'fd' in event.notification);
+      const fd = event.notification.fd;
       if (failure === 'reused') {
         const boundary = terminal.write(
           'exec {__COSMOSH_EDITOR_NOTIFY_FD}<&-; exec {__fixture_spare_fd}</etc/hostname; exec {__fixture_reused_fd}</etc/hostname; builtin printf "REUSED_FD:%s\\n" "$__fixture_reused_fd"\r',
@@ -407,7 +408,7 @@ test(
     t.after(() => terminal.close());
     const fixture = new EditorFixture(terminal, 'zsh');
     const event = await fixture.prompt();
-    assert.ok(event.notification);
+    assert.ok(event.notification && 'fd' in event.notification);
     terminal.write('echo retained-before-activation');
     const stream = await new Promise<ClientChannel>((resolve, reject) =>
       terminal.client.exec(editorBinaryPath('zsh') + ' editor-request', (error, channel) => {

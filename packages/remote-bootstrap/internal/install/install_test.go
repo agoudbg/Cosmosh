@@ -467,8 +467,8 @@ func TestFishHelperStripsBase64LineWrapping(t *testing.T) {
 	// helper does.
 	helperPath := filepath.Join(configDir, "cosmosh", "bootstrap", "helper.fish")
 	assertFileNotContains(t, helperPath, "string replace -a \\n")
-	assertFileContains(t, helperPath, `printf '%s' "$argv[1]" | base64 | tr -d '\r\n'`)
-	assertFileContains(t, helperPath, `printf '%s' "$json" | base64 | tr -d '\r\n'`)
+	assertFileContains(t, helperPath, `builtin printf '%s' "$argv[1]" | command base64 | command tr -d '\r\n'`)
+	assertFileContains(t, helperPath, `builtin printf '%s' "$json" | command base64 | command tr -d '\r\n'`)
 }
 
 func TestRunInstallsShAshDegradedPromptHooks(t *testing.T) {

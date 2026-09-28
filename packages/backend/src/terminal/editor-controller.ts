@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { ShellEditorBuffer, ShellEditorRequest, ShellEditorSnapshot } from '@cosmosh/api-contract';
 
 import type { ShellEditorExecOptions, ShellEditorResult } from '../ssh/editor-exec.js';
-import { normalizeEditorBuffer } from './editor-protocol.js';
+import { isFishInputBoundaryPending, normalizeEditorBuffer } from './editor-protocol.js';
 import type { ShellContextState } from './shell-context.js';
 
 /** Explicit transport boundary, allowing state-machine tests without replacing the real editor implementation. */
@@ -144,6 +144,7 @@ export class ShellEditorController {
       operation === 'context' && binding?.notification !== undefined && state.status === 'paused';
     if (
       this.inFlight ||
+      (state.shell === 'fish' && isFishInputBoundaryPending(state.fishInputBoundary)) ||
       !binding ||
       !state.shellInstanceId ||
       (state.shell !== 'bash' && state.shell !== 'zsh' && state.shell !== 'fish') ||

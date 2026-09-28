@@ -85,8 +85,8 @@ flowchart TB
 
 - `src/terminal/shell-context.ts`: original Shell identity, permissions, generations and prompt-paired directory state. Unconfirmed reports stay backend-only; transport snapshots expose only usable and display-only last-known metadata. It stores no current input or credentials.
 - `src/terminal/integration/helper-identity.live-test.ts`: real installer/SSH tests for repeated sources, nested Shells, independent terminals and non-interactive silence.
-- `src/terminal/editor-controller.ts` owns one private snapshot and operation per session, plus coalesced context recovery; `editor-protocol.ts` validates input/Unicode/privacy boundaries. `src/ssh/editor-exec.ts` owns bounded stdin/JSON SSH transport. `src/terminal/integration/editor-fixture.ts` shares actual helper setup and observations between `editor-bridge.live-test.ts` (Bash) and `zsh-editor.live-test.ts`.
-- `packages/remote-bootstrap/internal/editor` owns Linux process/notification identity, the private socket and data-only editor protocol; `internal/install/editor_bash.go` and `editor_zsh.go` own the generated Shell adapters.
+- `src/terminal/editor-controller.ts` owns one private snapshot and operation per session, plus coalesced context recovery; `editor-protocol.ts` validates input/Unicode/privacy boundaries and fixed Fish transport framing without retaining typed text. `src/ssh/editor-exec.ts` owns bounded stdin/JSON SSH transport. `src/terminal/integration/editor-fixture.ts` shares actual helper setup and observations between `editor-bridge.live-test.ts` (Bash), `zsh-editor.live-test.ts` and `fish-editor.live-test.ts`.
+- `packages/remote-bootstrap/internal/editor` owns Linux process/notification identity, the private socket and data-only editor protocol; `internal/install/editor_bash.go`, `editor_zsh.go` and `editor_fish.go` own the generated Shell adapters. Fish notifications use pidfd on the distributed Linux amd64/arm64 architectures. `scripts/terminal-fixture/install_fish.py` verifies and installs the pinned official Fish runtime only inside the disposable image.
 
 - **Role**: Internal API + session orchestration runtime.
 - **Key folders**:

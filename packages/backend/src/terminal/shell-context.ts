@@ -9,8 +9,12 @@ import type {
   ShellPermissions,
 } from '@cosmosh/api-contract';
 
+import { advanceFishInputBoundary, type FishInputBoundary } from './editor-protocol.js';
+
 /** Backend-only pending report; a directory becomes usable only at its matching original-Shell prompt. */
 export type ShellContextState = ShellContext & {
+  /** Fixed framing metadata only; prevents querying Fish during an unfinished paste/key sequence. */
+  fishInputBoundary?: FishInputBoundary;
   pendingDirectory?: { directory: ShellDirectoryContext; promptGeneration: number | null } | null;
   /** Typeahead may belong to a running program; only a verified editor exchange can resolve this ambiguity. */
   requiresEditorConfirmation?: boolean;
@@ -34,6 +38,7 @@ export const getShellContextSnapshot = (state: ShellContextState): ShellContext 
   delete context.pendingDirectory;
   delete context.requiresEditorConfirmation;
   delete context.editorBinding;
+  delete context.fishInputBoundary;
   return context;
 };
 
@@ -111,6 +116,9 @@ export const invalidateShellInput = (
     revision: context.revision + 1,
     inputGeneration: context.inputGeneration + 1,
     submissionToken: submitted ? (submissionToken ?? null) : context.submissionToken,
+    ...(context.shell === 'fish'
+      ? { fishInputBoundary: advanceFishInputBoundary(context.fishInputBoundary, input) }
+      : {}),
     requiresEditorConfirmation:
       context.requiresEditorConfirmation ||
       submissionCount > 1 ||
@@ -219,6 +227,14 @@ export const applyShellContextEvent = (
             ...(event.notification ? { notification: event.notification } : {}),
           }
         : null,
+      ...(event.shell === 'fish' && event.available
+        ? {
+            status: 'paused' as const,
+            reason: 'waiting-for-prompt' as const,
+            cwd: null,
+            requiresEditorConfirmation: true,
+          }
+        : {}),
     };
   }
   if (event.event === 'prompt-ready') {
@@ -255,6 +271,8 @@ export const applyShellContextEvent = (
       cwdGeneration: context.cwdGeneration + Number(directoryChanged),
       pendingDirectory: null,
       editorBinding: null,
+      // Fish may still be waiting for input queued after the command that produced this prompt.
+      // A prompt is not a consumption acknowledgement; preserve partial/unknown key metadata.
     };
   }
   if (event.event === 'cwd-invalidated') {

@@ -199,9 +199,22 @@ export class FixtureTerminal {
 /**
  * Authenticate against a pinned, loopback-only fixture and open a real PTY.
  * @param shell Fixture account and Shell to exercise.
+ * @param executable Optional fixed fixture version path, restricted to the dedicated installed Fish runtime.
+ * @param options Explicit fixture configuration, applied before the native reader starts.
  * @returns A session whose owner must close it in test cleanup.
  */
-export async function openFixtureTerminal(shell: FixtureShell): Promise<FixtureTerminal> {
+export async function openFixtureTerminal(
+  shell: FixtureShell,
+  executable?: string,
+  options: { disableFishAutosuggestions?: boolean; initialCommand?: string } = {},
+): Promise<FixtureTerminal> {
+  if ((options.disableFishAutosuggestions || options.initialCommand) && (!executable || shell !== 'fish'))
+    throw new Error('Startup fixture configuration requires a versioned Fish runtime.');
+  if (
+    executable !== undefined &&
+    (shell !== 'fish' || !/^\/opt\/cosmosh-fixture\/fish-[0-9.]+\/runtime\/bin\/fish$/u.test(executable))
+  )
+    throw new Error('Unsupported fixture Shell version path.');
   const connection = readFixtureConnection();
   const client = new Client();
   return await new Promise<FixtureTerminal>((resolve, reject) => {
@@ -216,26 +229,46 @@ export async function openFixtureTerminal(shell: FixtureShell): Promise<FixtureT
     };
     client.once('error', onError);
     client.once('ready', () => {
+      /** @param error Real SSH startup failure. @param stream Opened fixture PTY. @returns Nothing. */
+      const onOpen = (error: Error | undefined, stream: ClientChannel): void => {
+        if (settled) {
+          stream?.destroy();
+          return;
+        }
+        if (error) {
+          onError(error);
+          return;
+        }
+        const terminal = new FixtureTerminal(client, stream);
+        settled = true;
+        client.off('error', onError);
+        clearTimeout(timeout);
+        resolve(terminal);
+      };
+      if (executable) {
+        const commands = [
+          options.disableFishAutosuggestions ? 'set -g fish_autosuggestion_enabled 0' : '',
+          options.initialCommand,
+        ]
+          .filter(Boolean)
+          .join('; ');
+        const initializer = commands ? " --init-command '" + commands.replaceAll("'", "'\\''") + "'" : '';
+        client.exec(
+          executable + ' --interactive' + initializer,
+          {
+            pty: { term: 'xterm-256color', cols: 120, rows: 32 },
+            env: { LANG: 'C.UTF-8', LC_CTYPE: 'C.UTF-8' },
+          },
+          onOpen,
+        );
+        return;
+      }
       client.shell(
         { term: 'xterm-256color', cols: 120, rows: 32 },
         {
           env: { LANG: 'C.UTF-8', LC_CTYPE: 'C.UTF-8' },
         },
-        (error, stream) => {
-          if (settled) {
-            stream?.destroy();
-            return;
-          }
-          if (error) {
-            onError(error);
-            return;
-          }
-          const terminal = new FixtureTerminal(client, stream);
-          settled = true;
-          client.off('error', onError);
-          clearTimeout(timeout);
-          resolve(terminal);
-        },
+        onOpen,
       );
     });
     client.connect({

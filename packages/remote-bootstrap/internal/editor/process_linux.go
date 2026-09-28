@@ -86,6 +86,9 @@ func checkTarget(target Target, foreground bool) error {
 // notifyEditor writes one wake-up byte only to the same user-owned FIFO inode registered by the Shell.
 // Opening with NONBLOCK bounds missing readers; fstat prevents a reused descriptor from receiving data.
 func notifyEditor(target Target, notification Notification) error {
+	if notification.Signal == "URG" {
+		return signalFishEditor(target)
+	}
 	if err := checkTarget(target, true); err != nil {
 		return err
 	}
@@ -142,6 +145,37 @@ func checkTriggerTerminal(pid, terminal int) error {
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(syscall.TCGETS), uintptr(unsafe.Pointer(&attributes)))
 	if errno != 0 || !triggerTerminalSupported(&attributes) {
 		return errors.New("terminal-unavailable")
+	}
+	return nil
+}
+
+// checkFishInput refuses a worker exchange while the PTY still has unread bytes.
+// Fish separately validates its reader and binding mode; this check never consumes terminal input.
+func checkFishInput(target Target) error {
+	identity, err := readProcess(target.PID)
+	if err != nil || identity.start != target.StartTime {
+		return errors.New("target-unavailable")
+	}
+	fd, err := syscall.Open(fmt.Sprintf("/proc/%d/fd/0", target.PID),
+		syscall.O_RDONLY|syscall.O_NOCTTY|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return errors.New("terminal-unavailable")
+	}
+	defer syscall.Close(fd)
+	var stat syscall.Stat_t
+	if syscall.Fstat(fd, &stat) != nil || stat.Mode&syscall.S_IFMT != syscall.S_IFCHR ||
+		stat.Rdev != uint64(uint32(identity.terminal)) {
+		return errors.New("terminal-unavailable")
+	}
+	var attributes syscall.Termios
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(syscall.TCGETS), uintptr(unsafe.Pointer(&attributes)))
+	if errno != 0 || attributes.Lflag&syscall.ICANON != 0 {
+		return errors.New("terminal-unavailable")
+	}
+	var pending int32
+	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(syscall.TIOCINQ), uintptr(unsafe.Pointer(&pending)))
+	if errno != 0 || pending != 0 {
+		return errors.New("input-pending")
 	}
 	return nil
 }

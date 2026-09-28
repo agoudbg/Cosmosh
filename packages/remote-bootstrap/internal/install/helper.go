@@ -19,7 +19,7 @@ var fullRemoteShellCapabilities = []string{
 
 var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "line-state", "editor-state", "input-snapshot", "input-apply")
 var bashRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "editor-state", "input-snapshot", "input-apply")
-var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated")
+var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "editor-state", "input-snapshot", "input-apply")
 
 var degradedRemoteShellCapabilities = []string{
 	"cwd",
@@ -55,7 +55,7 @@ func BuildHelper(shell string, version string, binaryPath string) (string, error
 	}
 
 	if shell == "fish" {
-		return buildFishHelper(version), nil
+		return buildFishHelper(version, binaryPath), nil
 	}
 
 	return buildPosixHelper(shell, version, binaryPath), nil
@@ -416,7 +416,7 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ] && [ -n "${PS1:-}" ]
 fi
 `
 
-func buildFishHelper(version string) string {
+func buildFishHelper(version, binaryPath string) string {
 	capabilities := capabilitiesJSON(HelperCapabilities("fish"))
 	header := fmt.Sprintf(`# Cosmosh Remote Enhancements shell integration.
 status is-interactive; or return
@@ -434,26 +434,27 @@ set -gu __COSMOSH_REMOTE_SHELL fish
 set -gu __COSMOSH_HELPER_VERSION %s
 set -gu __COSMOSH_PROTOCOL_VERSION %d
 set -gu __COSMOSH_CAPABILITIES_JSON %s
-`, quoteFish(version), RemoteShellProtocolVersion, quoteFish(capabilities))
+set -gu __COSMOSH_EDITOR_BINARY %s
+`, quoteFish(version), RemoteShellProtocolVersion, quoteFish(capabilities), quoteFish(binaryPath))
 
-	return header + fishHelperBody
+	return header + fishEditorHooks + fishHelperBody
 }
 
 const fishHelperBody = `
 function __cosmosh_base64_value
-  printf '%s' "$argv[1]" | base64 | tr -d '\r\n'
+  builtin printf '%s' "$argv[1]" | command base64 | command tr -d '\r\n'
 end
 
 function __cosmosh_now_ms
-  set -l value (date +%s%3N 2>/dev/null)
-  if not string match -rq '^[0-9]+$' -- "$value"
-    set value (date +%s 2>/dev/null)
-    if test -z "$value"
-      set value 0
+  builtin set -l value (command date +%s%3N 2>/dev/null)
+  if not builtin string match -rq '^[0-9]+$' -- "$value"
+    builtin set value (command date +%s 2>/dev/null)
+    if builtin test -z "$value"
+      builtin set value 0
     end
-    set value "$value"000
+    builtin set value "$value"000
   end
-  printf '%s' "$value"
+  builtin printf '%s' "$value"
 end
 
 function __cosmosh_command_name_from_line
@@ -486,24 +487,24 @@ end
 
 function __cosmosh_emit_remote_shell_event
   # Prompt functions run inside Fish's output capture; send their metadata to the PTY.
-  set -l prompt_report $argv[9]
-  if test "$prompt_report" != prompt; and not isatty stdout
-    return 0
+  builtin set -l prompt_report $argv[9]
+  if builtin test "$prompt_report" != prompt; and not builtin test -t 1
+    builtin return 0
   end
   if not command -q base64
-    return 0
+    builtin return 0
   end
 
-  set -l event $argv[1]
-  set -l exit_status $argv[2]
-  set -l command_name $argv[3]
-  set -l command_id $argv[4]
-  set -l duration $argv[5]
-  set -l prompt_generation $argv[6]
-  set -l line_length $argv[7]
-  set -l cursor_index $argv[8]
-  set -l timestamp (__cosmosh_now_ms)
-  set -l json "{\"event\":\"$event\",\"shell\":\"$__COSMOSH_REMOTE_SHELL\",\"shellInstanceId\":\"$__COSMOSH_SHELL_INSTANCE_ID\",\"helperVersion\":\"$__COSMOSH_HELPER_VERSION\",\"protocolVersion\":$__COSMOSH_PROTOCOL_VERSION,\"capabilities\":$__COSMOSH_CAPABILITIES_JSON,\"timestamp\":$timestamp"
+  builtin set -l event $argv[1]
+  builtin set -l exit_status $argv[2]
+  builtin set -l command_name $argv[3]
+  builtin set -l command_id $argv[4]
+  builtin set -l duration $argv[5]
+  builtin set -l prompt_generation $argv[6]
+  builtin set -l line_length $argv[7]
+  builtin set -l cursor_index $argv[8]
+  builtin set -l timestamp (__cosmosh_now_ms)
+  builtin set -l json "{\"event\":\"$event\",\"shell\":\"$__COSMOSH_REMOTE_SHELL\",\"shellInstanceId\":\"$__COSMOSH_SHELL_INSTANCE_ID\",\"helperVersion\":\"$__COSMOSH_HELPER_VERSION\",\"protocolVersion\":$__COSMOSH_PROTOCOL_VERSION,\"capabilities\":$__COSMOSH_CAPABILITIES_JSON,\"timestamp\":$timestamp"
 
   switch $event
     case cwd
@@ -523,14 +524,19 @@ function __cosmosh_emit_remote_shell_event
       set json "$json,\"commandBase64\":\"$command_base64\",\"commandId\":\"$command_id\",\"exitCode\":$exit_status,\"durationMs\":$duration"
     case prompt-ready cwd-invalidated
       set json "$json,\"promptGeneration\":$prompt_generation"
+    case editor-state
+      builtin set json "$json,\"promptGeneration\":$__COSMOSH_PROMPT_GENERATION,\"pid\":$fish_pid,\"startTime\":\"$__COSMOSH_EDITOR_START\",\"available\":$__COSMOSH_EDITOR_AVAILABLE,\"triggerNonce\":\"$__COSMOSH_SHELL_INSTANCE_ID\""
+      if builtin test "$__COSMOSH_EDITOR_AVAILABLE" = true
+        builtin set json "$json,\"notification\":{\"signal\":\"URG\"}"
+      end
   end
 
-  set json "$json}"
-  set -l payload (printf '%s' "$json" | base64 | tr -d '\r\n')
-  if test "$prompt_report" = prompt
-    printf '\e]777;cosmosh;%s\a' "$payload" >/dev/tty
+  builtin set json "$json}"
+  builtin set -l payload (builtin printf '%s' "$json" | command base64 | command tr -d '\r\n')
+  if builtin test "$prompt_report" = prompt
+    builtin printf '\e]777;cosmosh;%s\a' "$payload" >/dev/tty
   else
-    printf '\e]777;cosmosh;%s\a' "$payload"
+    builtin printf '\e]777;cosmosh;%s\a' "$payload"
   end
 end
 
@@ -553,6 +559,7 @@ end
 
 if not set -q __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED
   function __cosmosh_on_preexec --on-event fish_preexec
+    set -g __COSMOSH_FISH_EDITING 0
     set -e __COSMOSH_DIRECTORY_REPORTED
     __cosmosh_emit_command_start "$argv[1]"
   end
@@ -564,6 +571,8 @@ if not set -q __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED
     set -g __COSMOSH_PROMPT_GENERATION (math $__COSMOSH_PROMPT_GENERATION + 1)
     __cosmosh_emit_remote_shell_event cwd "" "" "" "" "$__COSMOSH_PROMPT_GENERATION" "" "" prompt
     __cosmosh_emit_remote_shell_event prompt-ready "" "" "" "" "$__COSMOSH_PROMPT_GENERATION" "" "" prompt
+    set -g __COSMOSH_FISH_EDITING 1
+    __cosmosh_fish_editor_prepare
     set -g __COSMOSH_REPORTED_PWD "$PWD"
     set -g __COSMOSH_REPORTED_HOME "$HOME"
     set -g __COSMOSH_DIRECTORY_REPORTED 1

@@ -34,11 +34,12 @@ type Target struct {
 	StartTime  string `json:"startTime"`
 }
 
-// Notification identifies the original Shell's private, close-on-exec notification pipe.
+// Notification identifies a private pipe or a fixed, normally ignored Fish signal.
 // It carries no input; the editor independently decides whether a request can read or edit.
 type Notification struct {
-	FD    int    `json:"fd"`
-	Inode string `json:"inode"`
+	FD     int    `json:"fd,omitempty"`
+	Inode  string `json:"inode,omitempty"`
+	Signal string `json:"signal,omitempty"`
 }
 
 // Buffer contains a complete line and a UTF-16 cursor offset, matching the desktop's string indexes.
@@ -119,13 +120,7 @@ func validRequest(request Request) bool {
 		request.PromptGeneration == 0 || request.PromptGeneration > 9007199254740991 {
 		return false
 	}
-	if request.Notification != nil && (request.Target.Shell != "zsh" ||
-		request.Notification.FD < 3 || request.Notification.FD > 1048575 ||
-		!ticksPattern.MatchString(request.Notification.Inode)) {
-		return false
-	}
-	// ZLE receives notifications without injecting bytes into the user's terminal.
-	if request.Target.Shell == "zsh" && request.Notification == nil {
+	if !validNotification(request.Target.Shell, request.Notification) {
 		return false
 	}
 	switch request.Operation {
@@ -140,6 +135,20 @@ func validRequest(request Request) bool {
 			request.Expected.PromptGeneration == request.PromptGeneration
 	default:
 		return false
+	}
+}
+
+// validNotification prevents either out-of-band adapter from falling back to terminal key injection.
+func validNotification(shell string, notification *Notification) bool {
+	switch shell {
+	case "zsh":
+		return notification != nil && notification.Signal == "" &&
+			notification.FD >= 3 && notification.FD <= 1048575 && ticksPattern.MatchString(notification.Inode)
+	case "fish":
+		return notification != nil && notification.Signal == "URG" &&
+			notification.FD == 0 && notification.Inode == ""
+	default:
+		return notification == nil
 	}
 }
 

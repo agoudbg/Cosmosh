@@ -126,6 +126,27 @@ func TestBufferLimitsAndExactApplyComparison(t *testing.T) {
 	}
 }
 
+func TestFishNotificationCannotSelectArbitrarySignalsOrInjectKeys(t *testing.T) {
+	if validNotification("fish", nil) {
+		t.Fatal("Fish must not fall back to an injected key")
+	}
+	for _, notification := range []Notification{
+		{}, {Signal: "USR1"}, {Signal: "TERM"}, {Signal: "URG", FD: 12},
+		{Signal: "URG", Inode: "123"}, {FD: 12, Inode: "123"},
+	} {
+		if validNotification("fish", &notification) {
+			t.Fatal("unsafe Fish notification accepted")
+		}
+	}
+	if !validNotification("fish", &Notification{Signal: "URG"}) {
+		t.Fatal("fixed Fish notification rejected")
+	}
+	if validNotification("zsh", &Notification{Signal: "URG"}) ||
+		validNotification("bash", &Notification{Signal: "URG"}) {
+		t.Fatal("another Shell accepted a Fish signal")
+	}
+}
+
 func TestContextOnlySnapshotsCannotContainInput(t *testing.T) {
 	directory := &Directory{Logical: "/space \n", Home: nil, Physical: nil}
 	context := Snapshot{PromptGeneration: 1, EditorMode: "emacs", Directory: directory}

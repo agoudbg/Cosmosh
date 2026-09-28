@@ -49,6 +49,14 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 		return errors.New("invalid-widget")
 	}
 	mode := args[6]
+	if args[0] != "reject" && target.Shell == "fish" && checkFishInput(target) != nil {
+		message := widgetMessage{Phase: "reject", Target: target, PromptGeneration: generation}
+		if len(args) >= 8 && uuidPattern.MatchString(args[7]) {
+			message.RequestID = args[7]
+		}
+		_, _ = exchangeWidget(message)
+		return errors.New("unsupported-editor")
+	}
 	if args[0] == "reject" && (len(args) == 7 || (len(args) == 8 && uuidPattern.MatchString(args[7]))) {
 		message := widgetMessage{Phase: "reject", Target: target, PromptGeneration: generation}
 		if len(args) == 8 {
@@ -93,6 +101,14 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 	}
 	snapshot := Snapshot{PromptGeneration: generation, EditorMode: mode}
 	if includeInput {
+		// Fish commandline prints one framing newline; keep any earlier user-authored newline
+		// so the common single-line validator rejects it instead of silently changing the buffer.
+		if target.Shell == "fish" {
+			if !strings.HasSuffix(fields[0], "\n") {
+				return errors.New("invalid-widget")
+			}
+			fields[0] = strings.TrimSuffix(fields[0], "\n")
+		}
 		point, err := strconv.Atoi(fields[1])
 		cursor, valid := CodePointToUTF16(fields[0], point)
 		if err != nil || !valid {
@@ -123,7 +139,13 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 		if !valid {
 			return errors.New("invalid-response")
 		}
-		_, err = fmt.Fprintf(output, "apply\n%s\n%d\n", base64.StdEncoding.EncodeToString([]byte(reply.Replacement.Text)), cursor)
+		encoded := base64.StdEncoding.EncodeToString([]byte(reply.Replacement.Text))
+		// Fish command substitutions drop empty records. A non-base64 sentinel preserves an
+		// intentionally empty replacement without changing Bash/Zsh's existing private frame.
+		if target.Shell == "fish" && encoded == "" {
+			encoded = "-"
+		}
+		_, err = fmt.Fprintf(output, "apply\n%s\n%d\n", encoded, cursor)
 		return err
 	}
 	if reply.Status != "ok" {
