@@ -5,6 +5,7 @@ import type {
   ShellContext,
   ShellContextReason,
   ShellDirectoryContext,
+  ShellEditorNotification,
   ShellPermissions,
 } from '@cosmosh/api-contract';
 
@@ -14,7 +15,13 @@ export type ShellContextState = ShellContext & {
   /** Typeahead may belong to a running program; only a verified editor exchange can resolve this ambiguity. */
   requiresEditorConfirmation?: boolean;
   /** Private verified editor binding; reset at every execution/transport boundary. */
-  editorBinding?: { pid: number; startTime: string; triggerNonce: string; promptGeneration: number } | null;
+  editorBinding?: {
+    pid: number;
+    startTime: string;
+    triggerNonce: string;
+    promptGeneration: number;
+    notification?: ShellEditorNotification;
+  } | null;
 };
 
 /**
@@ -209,6 +216,7 @@ export const applyShellContextEvent = (
             startTime: event.startTime,
             triggerNonce: event.triggerNonce,
             promptGeneration: event.promptGeneration,
+            ...(event.notification ? { notification: event.notification } : {}),
           }
         : null,
     };
@@ -227,6 +235,9 @@ export const applyShellContextEvent = (
         ? context.pendingDirectory.directory
         : null;
     const previous = context.lastKnownCwd;
+    // A ZLE notification confirms directory state after all prompt/plugin callbacks have returned.
+    const requiresEditorConfirmation =
+      context.requiresEditorConfirmation || (event.shell === 'zsh' && context.capabilities.includes('input-snapshot'));
     const directoryChanged =
       directory !== null &&
       (previous?.logical !== directory.logical ||
@@ -235,10 +246,11 @@ export const applyShellContextEvent = (
     return {
       ...context,
       revision: context.revision + 1,
-      status: context.requiresEditorConfirmation ? 'paused' : 'ready',
-      reason: context.requiresEditorConfirmation ? 'input-submitted' : null,
+      status: requiresEditorConfirmation ? 'paused' : 'ready',
+      reason: requiresEditorConfirmation ? 'waiting-for-prompt' : null,
+      requiresEditorConfirmation,
       promptGeneration: event.promptGeneration ?? null,
-      cwd: context.requiresEditorConfirmation ? null : directory,
+      cwd: requiresEditorConfirmation ? null : directory,
       lastKnownCwd: directory ?? context.lastKnownCwd,
       cwdGeneration: context.cwdGeneration + Number(directoryChanged),
       pendingDirectory: null,
@@ -247,7 +259,12 @@ export const applyShellContextEvent = (
   }
   if (event.event === 'cwd-invalidated') {
     if (!context.permissions.cwd || event.promptGeneration !== context.promptGeneration) return context;
-    return suspendShellContext(context, 'waiting-for-prompt');
+    return {
+      ...suspendShellContext(context, 'waiting-for-prompt'),
+      ...(context.editorBinding?.notification
+        ? { editorBinding: context.editorBinding, requiresEditorConfirmation: true }
+        : {}),
+    };
   }
   if (event.event === 'cwd') {
     if (!context.permissions.cwd) return context;
@@ -303,4 +320,23 @@ export const canUseShellCapability = (context: ShellContext, capability: RemoteS
       context.cwd !== null
     );
   return true;
+};
+
+/**
+ * Revokes cached usability while retaining only a safe out-of-band recovery binding.
+ * @param context Current immutable context after input, settings or client ownership changes.
+ * @returns Paused context, or the original value when no idle editor can safely be rechecked.
+ */
+export const requireShellEditorConfirmation = (context: ShellContextState): ShellContextState => {
+  if (!context.editorBinding?.notification || (context.status !== 'ready' && context.status !== 'paused'))
+    return context;
+  return {
+    ...context,
+    revision: context.revision + 1,
+    status: 'paused',
+    reason: 'waiting-for-prompt',
+    cwd: null,
+    pendingDirectory: null,
+    requiresEditorConfirmation: true,
+  };
 };

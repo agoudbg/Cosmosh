@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import {
   DEFAULT_SETTINGS_VALUES,
@@ -17,7 +18,7 @@ import {
   type CredentialFillState,
   observeCredentialFillOutput,
 } from '../terminal/credential-fill.js';
-import type { ShellEditorController } from '../terminal/editor-controller.js';
+import { confirmShellEditorContext, ShellEditorController } from '../terminal/editor-controller.js';
 import type { TerminalClientInboundMessage } from '../terminal/shared.js';
 import {
   applyShellContextEvent,
@@ -38,6 +39,7 @@ import {
 type RemoteShellEventSessionHarness = {
   shellContext: ShellContextState;
   editorController?: ShellEditorController;
+  editorContextTimeout?: NodeJS.Timeout;
   client?: Client;
   stream?: { write(data: string): void };
   enhancementsAllowed: boolean;
@@ -84,6 +86,7 @@ type RemoteShellEventServiceHarness = {
   disableRemoteEnhancementsRuntime(session: RemoteShellEventSessionHarness, code: string, message: string): void;
   handleRemoteShellEvent(session: RemoteShellEventSessionHarness, event: RemoteShellEventMessage): void;
   onSessionAttached(session: RemoteShellEventSessionHarness): void;
+  applyEnhancementSettings(snapshot: DefaultSettingsSnapshot): void;
   sendServerMessage(session: RemoteShellEventSessionHarness, payload: SshTerminalServerMessage): void;
   startRemoteEnhancementHandshakeTimeout(session: RemoteShellEventSessionHarness, timeoutMs?: number): void;
 };
@@ -186,6 +189,138 @@ const createRemoteShellEvent = (overrides: Partial<RemoteShellEventMessage> = {}
     ...overrides,
   } as RemoteShellEventMessage;
 };
+
+test('Zsh input pauses directory operations before forwarding and coalesces context-only recovery', async (t) => {
+  const session = createSessionHarness({ remoteEnhancementsRuntimeState: 'active' });
+  session.remoteEnhancementsRuntimeContract!.binaryPath = '/verified/helper';
+  t.after(() => {
+    if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
+  });
+  session.shellContext = {
+    ...session.shellContext,
+    status: 'ready',
+    reason: null,
+    shell: 'zsh',
+    promptGeneration: 1,
+    capabilities: ['input-snapshot', 'input-apply'],
+    cwd: { logical: '/old', physical: '/old', home: '/home' },
+    editorBinding: {
+      pid: 42,
+      startTime: '100',
+      promptGeneration: 1,
+      triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+      notification: { fd: 19, inode: '100' },
+    },
+  };
+  const writes: string[] = [];
+  const requests: string[] = [];
+  session.stream = {
+    write: (data) => {
+      assert.equal(session.shellContext.status, 'paused');
+      assert.equal(session.shellContext.cwd, null);
+      writes.push(data);
+    },
+  };
+  session.editorController = new ShellEditorController(
+    () => session.shellContext,
+    async (request) => {
+      requests.push(request.operation);
+      return {
+        status: 'ok',
+        snapshot: {
+          promptGeneration: 1,
+          editorMode: 'emacs',
+          directory: { logical: '/new', physical: '/new', home: '/home' },
+        },
+      };
+    },
+    () => assert.fail('Zsh refresh must not inject keyboard input'),
+    (state, snapshot) => {
+      session.shellContext = confirmShellEditorContext(state, snapshot);
+    },
+  );
+  const service = Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness;
+  for (const data of ['a', 'b', 'c'])
+    service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'input', data })));
+  assert.deepEqual(writes, ['a', 'b', 'c']);
+  assert.ok(session.shellContext.editorBinding?.notification);
+  const deadline = Date.now() + 2000;
+  while (requests.length === 0 && Date.now() < deadline) await delay(10);
+  assert.deepEqual(requests, ['context']);
+  assert.equal(session.shellContext.status, 'ready');
+  assert.equal(session.shellContext.cwd?.physical, '/new');
+});
+
+test('Zsh context recovery survives client attachment and permission changes during cleanup', async (t) => {
+  for (const change of ['attach', 'permission'] as const) {
+    const session = createSessionHarness({ remoteEnhancementsRuntimeState: 'active' });
+    t.after(() => {
+      if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
+    });
+    session.remoteEnhancementsRuntimeContract!.binaryPath = '/verified/helper';
+    session.shellContext = {
+      ...session.shellContext,
+      status: 'paused',
+      shell: 'zsh',
+      promptGeneration: 1,
+      capabilities: ['input-snapshot'],
+      requiresEditorConfirmation: true,
+      editorBinding: {
+        pid: 42,
+        startTime: '100',
+        promptGeneration: 1,
+        triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+        notification: { fd: 19, inode: '100' },
+      },
+    };
+    let requests = 0;
+    let finishCancelled: (() => void) | undefined;
+    session.editorController = new ShellEditorController(
+      () => session.shellContext,
+      async () => {
+        requests += 1;
+        if (requests === 1) {
+          await new Promise<void>((resolve) => {
+            finishCancelled = resolve;
+          });
+          return { status: 'unavailable' };
+        }
+        return {
+          status: 'ok',
+          snapshot: {
+            promptGeneration: 1,
+            editorMode: 'emacs',
+            directory: { logical: '/new', physical: '/new', home: '/home' },
+          },
+        };
+      },
+      () => assert.fail('context recovery must not write a key'),
+      (state, snapshot) => {
+        session.shellContext = confirmShellEditorContext(state, snapshot);
+      },
+    );
+    const service = Object.assign(Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness, {
+      sessions: new Map([[session.sessionId, session]]),
+      enhancementSettingsSnapshot: null,
+    });
+    const original = session.editorController.refreshContext();
+    while (!finishCancelled) await delay(1);
+    if (change === 'attach') service.onSessionAttached(session);
+    else
+      service.applyEnhancementSettings({
+        revision: 1,
+        values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsInputEnabled: false },
+      });
+    await delay(180);
+    assert.equal(requests, 1, 'replacement waits for the previous channel cleanup');
+    finishCancelled();
+    await original;
+    assert.equal(requests, 2);
+    assert.equal(session.shellContext.status, 'ready');
+    assert.equal(session.shellContext.cwd?.physical, '/new');
+    if (change === 'permission') assert.equal(session.shellContext.permissions.input, false);
+  }
+});
 
 test('editor replies respect client and permission ownership through final publication', async () => {
   const service = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;

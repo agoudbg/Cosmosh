@@ -77,8 +77,36 @@ func checkTarget(target Target, foreground bool) error {
 	if err != nil || filepath.Base(executable) != target.Shell {
 		return errors.New("target-unavailable")
 	}
-	if foreground && checkTriggerTerminal(target.PID, identity.terminal) != nil {
+	if foreground && target.Shell == "bash" && checkTriggerTerminal(target.PID, identity.terminal) != nil {
 		return errors.New("target-unavailable")
+	}
+	return nil
+}
+
+// notifyEditor writes one wake-up byte only to the same user-owned FIFO inode registered by the Shell.
+// Opening with NONBLOCK bounds missing readers; fstat prevents a reused descriptor from receiving data.
+func notifyEditor(target Target, notification Notification) error {
+	if err := checkTarget(target, true); err != nil {
+		return err
+	}
+	return writeEditorNotification(target.PID, notification)
+}
+
+// writeEditorNotification validates the opened descriptor before writing; a reused regular file stays untouched.
+func writeEditorNotification(pid int, notification Notification) error {
+	fd, err := syscall.Open(fmt.Sprintf("/proc/%d/fd/%d", pid, notification.FD),
+		syscall.O_WRONLY|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return errors.New("notification-unavailable")
+	}
+	defer syscall.Close(fd)
+	var stat syscall.Stat_t
+	if syscall.Fstat(fd, &stat) != nil || stat.Mode&syscall.S_IFMT != syscall.S_IFIFO ||
+		stat.Uid != uint32(os.Getuid()) || strconv.FormatUint(stat.Ino, 10) != notification.Inode {
+		return errors.New("notification-unavailable")
+	}
+	if count, err := syscall.Write(fd, []byte{1}); err != nil || count != 1 {
+		return errors.New("notification-unavailable")
 	}
 	return nil
 }

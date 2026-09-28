@@ -1,117 +1,19 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
 import test, { before } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
 
-import type {
-  RemoteShellEventMessage,
-  ShellEditorBuffer,
-  ShellEditorRequest,
-  ShellEditorSnapshot,
-} from '@cosmosh/api-contract';
+import type { ShellEditorRequest } from '@cosmosh/api-contract';
 import type { ClientChannel } from 'ssh2';
 
 import { executeShellEditorRequest } from '../../ssh/editor-exec.js';
 import { executeBoundedSshCommand } from '../../ssh/exec.js';
-import { RemoteShellEventOscParser } from '../../ssh/remote-shell-events.js';
-import { type FixtureTerminal, openFixtureTerminal } from './fixture-client.js';
+import { EditorFixture, installFixtureEditor } from './editor-fixture.js';
+import { openFixtureTerminal } from './fixture-client.js';
 
-const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
-const binary = path.join(workspace, '.cosmosh/terminal-fixture/cosmosh-bootstrap-linux-amd64');
 const installedBinary = '/home/cosmosh-bash/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap';
-type EditorEvent = Extract<RemoteShellEventMessage, { event: 'editor-state' }>;
 
-before(async () => {
-  execFileSync('go', ['build', '-o', binary, './cmd/cosmosh-bootstrap'], {
-    cwd: path.join(workspace, 'packages/remote-bootstrap'),
-    env: { ...process.env, GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' },
-    timeout: 60_000,
-    stdio: 'pipe',
-  });
-  const terminal = await openFixtureTerminal('bash');
-  try {
-    await new Promise<void>((resolve, reject) =>
-      terminal.client.sftp((error, sftp) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        sftp.fastPut(binary, '/home/cosmosh-bash/fixture-bootstrap', { mode: 0o700 }, (error) => {
-          sftp.end();
-          if (error) reject(error);
-          else resolve();
-        });
-      }),
-    );
-    const result = await executeBoundedSshCommand(
-      terminal.client,
-      '/home/cosmosh-bash/fixture-bootstrap install --shell bash --version fixture-v3',
-    );
-    assert.match(result ?? '', /"state":"(?:ok|skipped)"/u);
-  } finally {
-    terminal.close();
-  }
-});
-
-/** Real helper event observer; it never infers a prompt from rendered screen text. */
-class EditorFixture {
-  private parser = new RemoteShellEventOscParser();
-  private offset = 0;
-  private latest: EditorEvent | null = null;
-  /** @param terminal Actual disposable SSH PTY. */
-  constructor(readonly terminal: FixtureTerminal) {}
-  /** @returns The latest original helper editor epoch. */
-  collect(): EditorEvent | null {
-    const output = this.terminal.readOutput(this.offset);
-    this.offset += output.length;
-    for (const frame of this.parser.parse(output))
-      if (frame.type === 'event' && frame.event.event === 'editor-state') this.latest = frame.event;
-    return this.latest;
-  }
-  /** @param after Previous epoch. @returns A newly observed real editor epoch. */
-  async prompt(after = 0): Promise<EditorEvent> {
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      const event = this.collect();
-      if (event && event.promptGeneration > after) return event;
-      await delay(10);
-    }
-    throw new Error('Actual editor epoch did not arrive: ' + JSON.stringify(this.latest));
-  }
-  /** @param command Fixture-owned command. @returns Its next editor epoch. */
-  async run(command: string): Promise<EditorEvent> {
-    const generation = this.collect()?.promptGeneration ?? 0;
-    this.terminal.write(command + '\r');
-    return await this.prompt(generation);
-  }
-  /** @param operation Requested permission scope. @param expected Exact previous buffer. @param replacement Data-only edit.
-   * @returns A result from the actual Go worker and actual Bash Readline. */
-  async request(
-    operation: 'context' | 'snapshot' | 'apply',
-    expected?: ShellEditorSnapshot,
-    replacement?: ShellEditorBuffer,
-  ) {
-    const event = await this.prompt();
-    assert.equal(event.available, true, 'real helper must own its editor bindings');
-    const request: ShellEditorRequest = {
-      requestId: randomUUID(),
-      target: { instanceId: event.shellInstanceId, shell: 'bash', pid: event.pid, startTime: event.startTime },
-      operation,
-      promptGeneration: event.promptGeneration,
-      includeDirectory: true,
-      ...(expected ? { expected } : {}),
-      ...(replacement ? { replacement } : {}),
-    };
-    return await executeShellEditorRequest(this.terminal.client, installedBinary, request, {
-      signal: new AbortController().signal,
-      isCurrent: () => true,
-      trigger: () => this.terminal.write('\x1b[997;' + event.triggerNonce + '~'),
-    });
-  }
-}
+before(() => installFixtureEditor('bash'));
 
 test(
   'real Bash editor captures Unicode, applies data atomically, and preserves native undo',

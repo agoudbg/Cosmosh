@@ -42,6 +42,37 @@ test('directory invalidation requires an advertised capability and positive prom
   }
 });
 
+test('ZLE editor metadata requires a bounded notification descriptor without any input', () => {
+  const valid = {
+    ...RUNTIME_CONTRACT,
+    shell: 'zsh',
+    event: 'editor-state',
+    promptGeneration: 1,
+    timestamp: 1,
+    pid: 42,
+    startTime: '1234',
+    available: true,
+    triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+    capabilities: [...RUNTIME_CONTRACT.capabilities, 'editor-state', 'input-snapshot'],
+    notification: { fd: 12, inode: '12345' },
+  };
+  const frames = new RemoteShellEventOscParser().parse(encodeCosmoshOsc(valid));
+  assert.equal(frames.length, 1);
+  assert.ok(frames[0]?.type === 'event' && frames[0].event.event === 'editor-state');
+  if (frames[0]?.type === 'event' && frames[0].event.event === 'editor-state')
+    assert.deepEqual(frames[0].event.notification, valid.notification);
+  for (const notification of [
+    undefined,
+    null,
+    { fd: 2, inode: '1' },
+    { fd: '12', inode: '1' },
+    { fd: 1048576, inode: '1' },
+    { fd: 12, inode: '../other' },
+  ])
+    assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...valid, notification })), []);
+  assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...valid, shell: 'bash' })), []);
+});
+
 test('cwd reports reject malformed path fields and unavailable physical/home fields stay explicit', () => {
   const valid = {
     ...RUNTIME_CONTRACT,

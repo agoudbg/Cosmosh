@@ -85,8 +85,8 @@ flowchart TB
 
 - `src/terminal/shell-context.ts`: original Shell identity, permissions, generations and prompt-paired directory state. Unconfirmed reports stay backend-only; transport snapshots expose only usable and display-only last-known metadata. It stores no current input or credentials.
 - `src/terminal/integration/helper-identity.live-test.ts`: real installer/SSH tests for repeated sources, nested Shells, independent terminals and non-interactive silence.
-- `src/terminal/editor-controller.ts` owns one private snapshot and operation per session; `editor-protocol.ts` validates input/Unicode/privacy boundaries. `src/ssh/editor-exec.ts` owns bounded stdin/JSON SSH transport. `src/terminal/integration/editor-bridge.live-test.ts` exercises the actual Go worker and Bash editor.
-- `packages/remote-bootstrap/internal/editor` owns the Linux process identity, private socket and data-only editor protocol; `internal/install/editor_bash.go` owns the generated Bash adapter.
+- `src/terminal/editor-controller.ts` owns one private snapshot and operation per session, plus coalesced context recovery; `editor-protocol.ts` validates input/Unicode/privacy boundaries. `src/ssh/editor-exec.ts` owns bounded stdin/JSON SSH transport. `src/terminal/integration/editor-fixture.ts` shares actual helper setup and observations between `editor-bridge.live-test.ts` (Bash) and `zsh-editor.live-test.ts`.
+- `packages/remote-bootstrap/internal/editor` owns Linux process/notification identity, the private socket and data-only editor protocol; `internal/install/editor_bash.go` and `editor_zsh.go` own the generated Shell adapters.
 
 - **Role**: Internal API + session orchestration runtime.
 - **Key folders**:

@@ -19,7 +19,15 @@ export type EditorSnapshotResult = ShellEditorResult & { snapshotId?: string };
  * Text never enters ShellContext, logging, audit storage or remote-shell-event history.
  */
 export class ShellEditorController {
-  private inFlight: { controller: AbortController; triggered: boolean; epoch: string } | null = null;
+  private inFlight: {
+    controller: AbortController;
+    triggered: boolean;
+    epoch: string;
+    injected: boolean;
+    finished: Promise<void>;
+  } | null = null;
+  private contextRefresh: Promise<boolean> | null = null;
+  private contextRefreshRequested = false;
   private lockedEpoch: string | null = null;
   private expiryTimer: NodeJS.Timeout | null = null;
   private cached: { id: string; snapshot: ShellEditorSnapshot; state: ShellContextState; expiresAt: number } | null =
@@ -46,7 +54,7 @@ export class ShellEditorController {
   invalidate(): void {
     this.clearSnapshot();
     if (this.inFlight) {
-      if (this.inFlight.triggered) this.lockedEpoch = this.inFlight.epoch;
+      if (this.inFlight.triggered && this.inFlight.injected) this.lockedEpoch = this.inFlight.epoch;
       this.inFlight.controller.abort();
     }
   }
@@ -64,13 +72,32 @@ export class ShellEditorController {
     return { ...result, snapshotId };
   }
 
-  /** @returns Whether an already usable editor supplied fresh context without transferring input. */
-  async refreshContext(): Promise<boolean> {
-    const state = this.state();
-    const result = await this.run('context', state);
-    if (result.status !== 'ok' || this.state() !== state) return false;
-    this.confirm(state, result.snapshot);
-    return true;
+  /** @returns Whether the latest requested context was confirmed after any previous exchange finished cleanup. */
+  refreshContext(): Promise<boolean> {
+    this.contextRefreshRequested = true;
+    if (!this.contextRefresh) {
+      const refresh = this.drainContextRefresh();
+      this.contextRefresh = refresh;
+      void refresh.finally(() => {
+        if (this.contextRefresh === refresh) this.contextRefresh = null;
+      });
+    }
+    return this.contextRefresh;
+  }
+
+  /** @returns The final coalesced refresh result; waiting never blocks ordinary PTY forwarding. */
+  private async drainContextRefresh(): Promise<boolean> {
+    let confirmed = false;
+    while (this.contextRefreshRequested) {
+      // EOF cleanup can take longer than the debounce. Read the newest state only after it completes.
+      await this.inFlight?.finished;
+      this.contextRefreshRequested = false;
+      const state = this.state();
+      const result = await this.run('context', state);
+      confirmed = result.status === 'ok' && this.state() === state;
+      if (result.status === 'ok' && confirmed) this.confirm(state, result.snapshot);
+    }
+    return confirmed;
   }
 
   /**
@@ -113,21 +140,33 @@ export class ShellEditorController {
     replacement?: ShellEditorBuffer,
   ): Promise<ShellEditorResult> {
     const binding = state.editorBinding;
+    const canVerifyPausedContext =
+      operation === 'context' && binding?.notification !== undefined && state.status === 'paused';
     if (
       this.inFlight ||
       !binding ||
       !state.shellInstanceId ||
       (state.shell !== 'bash' && state.shell !== 'zsh' && state.shell !== 'fish') ||
       state.promptGeneration !== binding.promptGeneration ||
-      state.status !== 'ready' ||
-      state.requiresEditorConfirmation ||
+      (state.status !== 'ready' && !canVerifyPausedContext) ||
+      (state.requiresEditorConfirmation && !canVerifyPausedContext) ||
       (operation !== 'context' && !state.permissions.input) ||
       (operation === 'context' && !state.permissions.input && !state.permissions.cwd) ||
       !state.capabilities.includes(operation === 'apply' ? 'input-apply' : 'input-snapshot') ||
-      this.lockedEpoch === binding.triggerNonce
+      (!binding.notification && this.lockedEpoch === binding.triggerNonce)
     )
       return { status: 'unavailable' };
-    const active = { controller: new AbortController(), triggered: false, epoch: binding.triggerNonce };
+    let finishOperation = (): void => {};
+    const finished = new Promise<void>((resolve) => {
+      finishOperation = resolve;
+    });
+    const active = {
+      controller: new AbortController(),
+      finished,
+      triggered: false,
+      epoch: binding.triggerNonce,
+      injected: !binding.notification,
+    };
     this.inFlight = active;
     const request: ShellEditorRequest = {
       requestId: randomUUID(),
@@ -135,6 +174,7 @@ export class ShellEditorController {
       promptGeneration: binding.promptGeneration,
       target: { instanceId: state.shellInstanceId, shell: state.shell, pid: binding.pid, startTime: binding.startTime },
       includeDirectory: state.permissions.cwd,
+      ...(binding.notification ? { notification: binding.notification } : {}),
       ...(expected ? { expected } : {}),
       ...(replacement ? { replacement } : {}),
     };
@@ -145,18 +185,19 @@ export class ShellEditorController {
         trigger: () => {
           if (this.state() !== state || active.controller.signal.aborted) return;
           active.triggered = true;
-          this.write('\x1b[997;' + binding.triggerNonce + '~');
+          if (active.injected) this.write('\x1b[997;' + binding.triggerNonce + '~');
         },
       });
-      if (active.triggered && (result.status === 'unavailable' || result.status === 'unknown'))
+      if (active.injected && active.triggered && (result.status === 'unavailable' || result.status === 'unknown'))
         this.lockedEpoch = active.epoch;
       return this.state() !== state && result.status === 'ok' ? { status: 'stale' } : result;
     } catch {
       // A transport implementation must not turn an optional editor failure into an unhandled rejection.
-      if (active.triggered) this.lockedEpoch = active.epoch;
+      if (active.injected && active.triggered) this.lockedEpoch = active.epoch;
       return { status: operation === 'apply' && active.triggered ? 'unknown' : 'unavailable' };
     } finally {
       if (this.inFlight === active) this.inFlight = null;
+      finishOperation();
     }
   }
 }

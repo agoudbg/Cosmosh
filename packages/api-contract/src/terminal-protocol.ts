@@ -87,6 +87,7 @@ export type RemoteShellEventMessage = RemoteShellEventBase &
         startTime: string;
         available: boolean;
         triggerNonce: string;
+        notification?: ShellEditorNotification;
       }
   );
 
@@ -97,6 +98,9 @@ export type ShellEditorTarget = {
   pid: number;
   startTime: string;
 };
+
+/** Private notification descriptor identity; contains no command or terminal input. */
+export type ShellEditorNotification = { fd: number; inode: string };
 
 /** Complete input buffer with a UTF-16 cursor offset; never persisted or included in OSC/debug events. */
 export type ShellEditorBuffer = { text: string; cursor: number };
@@ -116,6 +120,7 @@ export type ShellEditorRequest = {
   operation: 'context' | 'snapshot' | 'apply';
   promptGeneration: number;
   includeDirectory: boolean;
+  notification?: ShellEditorNotification;
   expected?: ShellEditorSnapshot;
   replacement?: ShellEditorBuffer;
 };

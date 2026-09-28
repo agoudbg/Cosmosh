@@ -147,7 +147,24 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 	_ = listener.SetDeadline(deadline)
 	// EOF/cancellation closes the listener immediately. Apply permission stays on stdin rather than argv.
 	authorization := make(chan bool, 1)
+	activationReady := make(chan bool, 1)
 	go func() {
+		if request.Notification != nil {
+			line, err := readFrame(reader)
+			var activation struct {
+				RequestID string `json:"requestId"`
+				Activate  bool   `json:"activate"`
+			}
+			if err != nil || decodeFrame(line, &activation) != nil ||
+				activation.RequestID != request.RequestID || !activation.Activate ||
+				ctx.Err() != nil || notifyEditor(request.Target, *request.Notification) != nil {
+				activationReady <- false
+				authorization <- false
+				cancel()
+				return
+			}
+			activationReady <- true
+		}
 		line, err := readFrame(reader)
 		var decision struct {
 			RequestID string `json:"requestId"`
@@ -157,11 +174,23 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			decision.RequestID == request.RequestID && decision.Apply
 		authorization <- approved
 		if !approved {
-			listener.Close()
+			cancel()
 		}
 	}()
 	if err := emit("ready", "", nil, false); err != nil {
 		return err
+	}
+	// A leftover byte from a canceled notification must not grant a new request's permissions.
+	// Accepting mode/capture waits until this request's desktop activation has been validated.
+	if request.Notification != nil {
+		select {
+		case activated := <-activationReady:
+			if !activated {
+				return finish("unavailable")
+			}
+		case <-ctx.Done():
+			return finish("unavailable")
+		}
 	}
 	phase := "mode"
 	applicationDecided := false
@@ -188,6 +217,16 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 		}
 		line, readErr := readFrame(bufio.NewReaderSize(connection, 4096))
 		var widget widgetMessage
+		if readErr == nil && decodeFrame(line, &widget) == nil &&
+			widget.Target == request.Target && widget.PromptGeneration == request.PromptGeneration &&
+			widget.Phase == "reject" && (phase == "mode" || widget.RequestID == request.RequestID) {
+			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "ok"})
+			connection.Close()
+			if applicationDecided {
+				return finish("unknown")
+			}
+			return finish("unsupported")
+		}
 		if readErr != nil || decodeFrame(line, &widget) != nil || widget.Target != request.Target ||
 			widget.PromptGeneration != request.PromptGeneration || widget.Phase != phase ||
 			(phase != "mode" && widget.RequestID != request.RequestID) {

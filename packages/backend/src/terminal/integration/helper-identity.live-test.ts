@@ -9,14 +9,18 @@ import { fileURLToPath } from 'node:url';
 import type { RemoteShellEventMessage } from '@cosmosh/api-contract';
 import { DEFAULT_SETTINGS_VALUES } from '@cosmosh/api-contract';
 
+import { executeShellEditorRequest } from '../../ssh/editor-exec.js';
 import { executeBoundedSshCommand } from '../../ssh/exec.js';
 import { RemoteShellEventOscParser } from '../../ssh/remote-shell-events.js';
+import { confirmShellEditorContext, ShellEditorController } from '../editor-controller.js';
 import {
   applyShellContextEvent,
   createShellContext,
   invalidateShellInput,
   resolveShellPermissions,
+  type ShellContextState,
 } from '../shell-context.js';
+import { editorBinaryPath } from './editor-fixture.js';
 import { FIXTURE_SHELLS, type FixtureTerminal, openFixtureTerminal } from './fixture-client.js';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
@@ -66,7 +70,28 @@ class ShellEvents {
     this.context = invalidateShellInput(this.context, command + '\r');
     this.terminal.write(command + '\r');
     await this.waitFor((event) => event.event === 'prompt-ready' && event.shellInstanceId === owner, boundary);
+    if (this.context.shell === 'zsh') await this.verifyEditorContext(boundary);
     return this.context.cwd;
+  }
+
+  /** @param after Metadata boundary. @returns Nothing after the actual original ZLE confirms context without input. */
+  async verifyEditorContext(after: number): Promise<void> {
+    await this.waitFor(
+      (event) =>
+        event.event === 'editor-state' &&
+        event.shellInstanceId === this.context.shellInstanceId &&
+        event.promptGeneration === this.context.promptGeneration,
+      after,
+    );
+    const controller = new ShellEditorController(
+      () => this.context,
+      (request, options) => executeShellEditorRequest(this.terminal.client, editorBinaryPath('zsh'), request, options),
+      () => assert.fail('ZLE context must never inject a terminal key'),
+      (expected, snapshot) => {
+        this.context = confirmShellEditorContext(expected, snapshot);
+      },
+    );
+    assert.equal(await controller.refreshContext(), true, 'actual editor must confirm current directory');
   }
 
   /**
@@ -142,7 +167,7 @@ for (const shell of FIXTURE_SHELLS) {
       assert.equal(original.shell, shell);
       assert.equal(
         original.capabilities.includes('input-snapshot'),
-        shell === 'bash',
+        shell === 'bash' || shell === 'zsh',
         'only implemented editor adapters may advertise snapshot operations',
       );
       assert.equal(firstPrompt.shellInstanceId, original.shellInstanceId);
@@ -317,6 +342,11 @@ for (const shell of FIXTURE_SHELLS) {
       );
       assert.equal(events.context.cwd, null, 'unacknowledged typeahead cannot restore directory operations');
       assert.equal(events.context.status, 'paused');
+      if (shell === 'zsh') {
+        await events.verifyEditorContext(batchBoundary);
+        const recovered: ShellContextState = events.context;
+        assert.equal(recovered.cwd?.physical, root, 'idle original ZLE can safely recover after queued commands');
+      }
     },
   );
 }

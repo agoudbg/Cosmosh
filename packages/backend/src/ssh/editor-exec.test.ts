@@ -127,6 +127,35 @@ test('permission loss before ready prevents any private PTY trigger', async () =
   assert.equal(triggers, 0);
 });
 
+test('notification activation is private, permission checked, and suppressed after synchronous cancellation', async () => {
+  for (const cancel of [false, true]) {
+    const channel = new Channel();
+    const controller = new AbortController();
+    const notificationRequest: ShellEditorRequest = {
+      ...request,
+      target: { ...request.target, shell: 'zsh' },
+      notification: { fd: 12, inode: '12345' },
+    };
+    const response = executeShellEditorRequest(clientFor(channel), '/helper', notificationRequest, {
+      signal: controller.signal,
+      isCurrent: () => !controller.signal.aborted,
+      trigger: () => {
+        if (cancel) controller.abort();
+      },
+    });
+    assert.equal(channel.writes.length, 1);
+    channel.reply({ phase: 'ready' });
+    if (cancel) {
+      assert.equal(channel.writes.length, 1, 'EOF cancellation cannot be followed by a new activation');
+      assert.deepEqual(await response, { status: 'unavailable' });
+    } else {
+      assert.deepEqual(JSON.parse(channel.writes[1]!), { requestId: request.requestId, activate: true });
+      channel.reply({ phase: 'done', status: 'ok', snapshot });
+      assert.deepEqual(await response, { status: 'ok', snapshot });
+    }
+  }
+});
+
 test('cancellation waits for remote cleanup after EOF without forcing channel closure', async () => {
   const channel = new Channel();
   channel.end = () => {

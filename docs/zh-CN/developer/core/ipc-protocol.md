@@ -11,9 +11,11 @@ flowchart TB
 
 目录元数据通过现有 SSH `shell-context` WebSocket 消息传输。`cwd`事件携带逻辑目录、可为空的物理目录/HOME 及提示符代数，匹配提示符后才启用。SFTP IPC/HTTP 结构保持一致，远端路径保留空白及`link/..`直到服务器解析，不增加 IPC 通道。
 
-提交终端`input`时可附带不含输入内容的 UUID `submissionToken`。Backend 在`ShellContext`中回显最近收到的标识；Renderer 在匹配且可用的上下文到达前持续停用旧 ready 快照。这只确认 Backend 收到输入。无法确定归属的连续输入保持暂停，等待可信编辑器确认。Fish 的`cwd-invalidated`只携带当前提示符代数，用于停用报告后发生变化的目录。
+提交终端`input`时可附带不含输入内容的 UUID `submissionToken`。Backend 在`ShellContext`中回显最近收到的标识；Renderer 在匹配且可用的上下文到达前持续停用旧 ready 快照。这只确认 Backend 收到输入。无法确定归属的连续输入保持暂停，等待可信编辑器确认。Fish 和 Zsh 的`cwd-invalidated`只携带当前提示符代数，用于停用报告后发生变化的目录。
 
 现有终端 WebSocket 另外接受`editor-snapshot { requestId }`和`editor-apply { requestId, snapshotId, replacement: { text, cursor } }`。独立的`editor-snapshot-result`和`editor-apply-result`回包使输入内容不进入 OSC 调试历史。快照成功时包含不透明标识和获准字段，失败只返回固定状态。填入结果为`applied`、`stale`、`unavailable`、`unsupported`或`unknown`；本地终端返回`unavailable`。替换 WebSocket 会取消旧编辑器操作的归属，过期私有回包不发送给新客户端。不含文本的`editor-state` OSC 事件携带 PID／启动时间、提示符代数、可用性及当前拥有的触发标识，不增加 Electron IPC 通道。
+
+Zsh 编辑器可用时，`editor-state`另外必须包含`notification: { fd, inode }`。它们只是进程内管道标识，不含输入文本。私有 Go 工作进程报告准备完成后，Backend 再检查权限，并通过该进程的 stdin 发送`{ requestId, activate: true }`；之后才允许通知 Shell 或接受其观察结果。通知元数据、激活与私有输入都不增加 Electron IPC 通道。
 
 ## 2. Channel 字典
 

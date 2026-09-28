@@ -11,9 +11,11 @@ flowchart TB
 
 Directory metadata travels through the existing SSH `shell-context` WebSocket message. `cwd` events now carry logical CWD, nullable physical CWD/HOME and prompt generation; only a matched prompt promotes them. SFTP IPC/HTTP shapes are unchanged, but remote paths preserve whitespace and `link/..` until server resolution. No additional IPC channel is introduced.
 
-Submitting terminal `input` may carry an opaque UUID `submissionToken`. Backend echoes its last received token in `ShellContext`; Renderer keeps older ready snapshots unusable until a matching usable context arrives. This acknowledges Backend receipt only. Ambiguous typeahead remains paused pending verified editor confirmation. Fish `cwd-invalidated` carries only the current prompt generation and disables a directory changed after its report.
+Submitting terminal `input` may carry an opaque UUID `submissionToken`. Backend echoes its last received token in `ShellContext`; Renderer keeps older ready snapshots unusable until a matching usable context arrives. This acknowledges Backend receipt only. Ambiguous typeahead remains paused pending verified editor confirmation. Fish and Zsh `cwd-invalidated` carry only the current prompt generation and disable a directory changed after its report.
 
 The existing terminal WebSocket additionally accepts `editor-snapshot { requestId }` and `editor-apply { requestId, snapshotId, replacement: { text, cursor } }`. Separate `editor-snapshot-result` and `editor-apply-result` replies keep input out of OSC debug history. A successful snapshot includes its opaque ID and permitted fields; failure is a fixed status. Apply returns `applied`, `stale`, `unavailable`, `unsupported` or `unknown`. Local terminals return `unavailable`. Replacing a WebSocket cancels previous editor ownership and prevents late private replies from reaching the new client. The text-free `editor-state` OSC event carries PID/start time, prompt generation, availability and an owned trigger nonce. No new Electron IPC channel is needed.
+
+Zsh's `editor-state` additionally requires `notification: { fd, inode }` when the editor is available. These are text-free process-local pipe identifiers. After the private Go worker reports ready, Backend rechecks permission and sends `{ requestId, activate: true }` through that worker's stdin; only then may it notify or accept a Shell observation. Notification metadata, activation and private input are never new Electron IPC channels.
 
 ## 2. Channel Dictionary
 

@@ -316,7 +316,7 @@ func TestRunInstallsZshRemoteShellHelperHooks(t *testing.T) {
 	helperPath := filepath.Join(configDir, "cosmosh", "bootstrap", "helper.sh")
 	assertFileContains(t, filepath.Join(homeDir, ".zshrc"), markerStart)
 	assertFileContains(t, helperPath, "add-zsh-hook precmd __cosmosh_zsh_precmd")
-	assertFileNotContains(t, helperPath, "add-zsh-hook chpwd __cosmosh_zsh_chpwd")
+	assertFileContains(t, helperPath, "add-zsh-hook chpwd __cosmosh_zsh_chpwd")
 	assertFileContains(t, helperPath, "add-zsh-hook preexec __cosmosh_zsh_preexec")
 	assertFileContains(t, helperPath, "command-start")
 	assertFileContains(t, helperPath, "foreground-command")
@@ -329,7 +329,7 @@ func TestRunInstallsZshRemoteShellHelperHooks(t *testing.T) {
 	assertFileContains(t, helperPath, "autoload -Uz +X add-zle-hook-widget")
 	assertFileContains(t, helperPath, "add-zle-hook-widget -d line-pre-redraw __cosmosh_zsh_line_pre_redraw")
 	assertFileContains(t, helperPath, "precmd_functions=(${precmd_functions[@]:#__cosmosh_zsh_precmd})")
-	assertFileContains(t, helperPath, `__COSMOSH_CAPABILITIES_JSON='["cwd","command-start","command-end","foreground-command","prompt-ready","line-state"]'`)
+	assertFileContains(t, helperPath, `__COSMOSH_CAPABILITIES_JSON='["cwd","command-start","command-end","foreground-command","prompt-ready","cwd-invalidated","line-state","editor-state","input-snapshot","input-apply"]'`)
 	assertTextOrder(t, readFileString(t, helperPath), "add-zle-hook-widget line-pre-redraw", "__cosmosh_emit_remote_shell_event integration-ready")
 }
 

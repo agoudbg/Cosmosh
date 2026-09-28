@@ -148,6 +148,13 @@ export const executeShellEditorRequest = (
               ready = true;
               try {
                 options.trigger();
+                if (settled || options.signal.aborted || !options.isCurrent()) {
+                  abort();
+                  return;
+                }
+                if (request.notification) {
+                  stream.write(JSON.stringify({ requestId: request.requestId, activate: true }) + '\n');
+                }
               } catch {
                 abort();
                 return;

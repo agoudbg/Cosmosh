@@ -49,6 +49,14 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 		return errors.New("invalid-widget")
 	}
 	mode := args[6]
+	if args[0] == "reject" && (len(args) == 7 || (len(args) == 8 && uuidPattern.MatchString(args[7]))) {
+		message := widgetMessage{Phase: "reject", Target: target, PromptGeneration: generation}
+		if len(args) == 8 {
+			message.RequestID = args[7]
+		}
+		_, err := exchangeWidget(message)
+		return err
+	}
 	if mode != "emacs" && mode != "vi-insert" {
 		return errors.New("unsupported-editor")
 	}

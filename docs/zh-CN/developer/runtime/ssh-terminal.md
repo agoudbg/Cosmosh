@@ -505,7 +505,7 @@ type RemoteShellEventMessage = {
 当前第一期 helper 行为：
 
 - Bash 5.1 及以上版本把已有字符串或数组形式的`PROMPT_COMMAND`钩子保留为原生数组元素，保持其顺序、原始退出状态和错误行为。Cosmosh 回调成功返回，并受到`errexit`保护；前一条命令状态由 Bash 自己恢复。更早版本保留普通终端行为，不启用这些钩子。帮助程序发送`cwd`、`prompt-ready`，以及带匹配 command id、exit code 和 duration 的`command-end`。受保护的`DEBUG`trap 会在 prompt 设置完成后，为每条已提交命令行发送一次`command-start`与一次`foreground-command`。参见[Bash 交互行为](https://www.gnu.org/software/bash/manual/html_node/Interactive-Shell-Behavior)。
-- Zsh 使用 `precmd`、`preexec` 和提供数值编辑器元数据的 `line-pre-redraw`。必需的钩子全部注册成功后才可用，部分失败会移除已安装的钩子。仅在提示符边界报告 CWD。
+- Zsh 使用`precmd`、`preexec`和提供数值编辑器元数据的`line-pre-redraw`。必需的钩子全部注册成功后才可用，部分失败会移除已安装的钩子。提示符 CWD 暂不启用，等待用户提示符钩子结束后的空闲 ZLE 观察确认。额外添加的`chpwd`钩子会使异步目录变化立即失效；重绘还会检查 PWD/HOME 是否改变。
 - Fish 使用`fish_preexec`、`fish_postexec`和`fish_prompt`事件，保留用户提示符函数原样。Fish 在提示符事件之后调用提示符和标题函数；后续函数改变 PWD/HOME 时，一次`cwd-invalidated`事件会停用当前代数的目录。下一次稳定的目录与提示符配对可恢复。即使 Fish 正在暂存提示符输出，元数据也直接发往 PTY。持续改变目录的提示符函数，需要计划中的可信编辑器交互确认后才能启用目录。
 - Sh/Ash 安装 prompt-capture fallback，并且只声明 `cwd` 与 `prompt-ready`；不声明命令生命周期支持。
 - 所有 shell 都只在其声明的 hook 集合成功安装后发送 `integration-ready`。非交互 shell 不发送 OSC 事件。
@@ -517,9 +517,9 @@ Backend 状态模型：
 - `terminal/shell-context.ts`维护权威`ShellContext`，通过`{ type: 'shell-context', context }`发布，包含会话/Shell 身份、准确的版本/能力、独立权限、可用状态（`unavailable`、`initializing`、`ready`、`busy`、`paused`）、原因及 revision/input/prompt/cwd 代数，不包含当前输入或凭据。Renderer 按分屏保留最新状态，不写入调试历史；旧版本状态及回放的 cwd/prompt 事件不能覆盖它。
 - 每个交互 Shell 获取 Linux UUID。重复 source 保留身份与钩子注册，新进程获取独立身份，Fish 内部元数据不再导出。只有原始 Shell 的更新提示能够恢复因其他 Shell 导致的暂停。Sh/Ash 保留不带提示代数的目录能力，不声明编辑器能力。
 - 输入在转发 PTY 前就使异步工作失效。回车、换行、Ctrl+C、Ctrl+D 暂停可用状态；命令结束后仍等待新的提示。目录操作边界与结果发布会重新检查当前代数和权限。
-- Renderer 在发送提交前立即停用来源分屏的目录。Backend 回显不含文本的`submissionToken`，避免已经在途的旧上下文重新启用目录操作。收到输入不代表 Shell 已处理连续输入：在忙碌、初始化、已有提交或其他 Shell 中再次提交，以及一次消息包含多个提交边界（CRLF 计为一次），都会在后端保留`requiresEditorConfirmation`。仅收到提示符不能恢复。当前迁移限制：此类不明确状态需重连恢复；计划中的编辑器适配（步骤 7–9）必须用可信编辑器交互解除该限制，之后才能发布完整功能。
+- Renderer 在发送提交前立即停用来源分屏的目录。Backend 回显不含文本的`submissionToken`，避免已经在途的旧上下文重新启用目录操作。收到输入不代表 Shell 已处理连续输入：在忙碌、初始化、已有提交或其他 Shell 中再次提交，以及一次消息包含多个提交边界（CRLF 计为一次），都会在后端保留`requiresEditorConfirmation`。仅收到提示符不能恢复。Zsh 现在可通过独立于键盘通道的空闲编辑器观察恢复。发布完整功能之前，Bash/Fish 仍须完成剩余适配和恢复工作。
 - 默认范围设置按持久化版本更新实时会话。关闭 CWD 权限会清理缓存并拒绝 cwd 事件；关闭输入权限会停止增强输入跟踪、候选请求和渲染命令捕获，普通终端输入输出继续工作。历史/路径设置各自对应权限。原生补全默认关闭，要求帮助程序声明已实现的能力。关闭全局增强会禁用运行时，再次开启需要重连。设置读取保留在可选初始化的 15 秒预算中，失败时普通 SSH 仍可连接。
-- 迁移边界：Bash 已声明`editor-state`、`input-snapshot`和`input-apply`。Renderer 补全在接入快照与替换范围流程之前仍使用现有填入方式。Zsh/Fish 编辑器适配、结构化目录读取、原生候选来源及完整的历史权限约束属于后续变更。
+- 迁移边界：Bash 和 Zsh 已声明`editor-state`、`input-snapshot`和`input-apply`。Renderer 补全在接入快照与替换范围流程之前仍使用现有填入方式。Fish 适配、结构化目录读取、原生候选来源及完整的历史权限约束属于后续变更。目录消费者还必须接入使用时确认：Zsh 可异步修改 HOME 而不触发钩子，用户钩子失败或被移除也可能阻止失效通知。步骤 11 和 13 必须在解析路径之前重新读取原始 Shell 的 PWD/HOME（包括终端到 SFTP 操作），复核归属与权限，无法确认时拒绝操作。长期保存的`ready`元数据不能证明目录始终是最新状态。
 - 每个 session 都持有明确的 `pending`、`active` 或 `disabled` 增强运行状态、PTY 创建前校验得到的契约，以及会在激活、禁用或 session 销毁时清理的握手 timer。
 - 每个`SshLiveSession`保存已确认目录／前台状态，以及最近的 command id、清洗后的可执行命令名、exit code 和 duration。唯一的结构化`command-start`驱动命令计数与历史刷新；缺少该能力时，Enter 边界只更新计数并触发 Shell 自有历史刷新，不保留输入文本。
 - `ShellContext.cwd`是唯一可供远端操作使用的目录来源。待确认报告仅保留在后端，在对应`promptGeneration`到达时启用；缺失、过期或被输入打断的配对保持目录不可用。Sh/Ash 每次无代数提示都需要新报告，提交或暂停会清除待确认报告。`lastKnownCwd`仅供显示。逻辑路径用于显示，物理路径和 HOME 用于文件操作。物理目录由继承实际 Shell 工作目录的外部`pwd -P`读取，避免内置命令返回已删除目录的缓存；只移除该程序输出的最后一个换行。未设置或非绝对 HOME、物理目录读取失败均保留 null，不裁剪目录字符。Bash 在用户`PROMPT_COMMAND`之后报告，并保留用户钩子接收到的退出状态。
@@ -564,6 +564,19 @@ sequenceDiagram
 - 敏感内容通过内置命令输出；读取缓冲之前关闭 tracing，并抑制内部操作进入用户 DEBUG 处理链。可选失败在`errexit`环境中也得到显式处理。批准修改之后丢失确认会返回`unknown`，不会声称没有修改，也不会自动重试。
 
 真实 SSH 回归测试位于`src/terminal/integration/editor-bridge.live-test.ts`，最终仍需完成 Electron 和支持版本矩阵的验收。
+
+#### Zsh 私有编辑器交互
+
+Zsh 适配器复用上述有界工作进程、私有 socket、权限检查和快照时限。通知使用原始 Shell 持有的匿名管道，两端均为非阻塞并在执行子程序时关闭，不创建文件系统 FIFO 或常驻进程。Go 打开报告的`/proc/PID/fd/FD`，校验 FIFO 类型、UID、inode、PID 启动代数和前台 PTY，再写入一个不含输入的通知字节。通知及接受观察之前必须得到桌面端激活，因此已取消请求遗留的字节不能授权后续请求。
+
+普通`zle -F`回调读取通知，一次性的回调局部 DEBUG trap 提供只读编辑器参数，返回后恢复用户原有的字符串或函数形式 trap。通过用户 widget 读取会改变 Zsh 原生删除／恢复文字的连续操作记录，即使使用`nolast`也如此。因此快照和仅上下文请求都不调用可写 widget。工作进程确认权限范围之后才读取输入；仅上下文请求完全省略 BUFFER/CURSOR。读取私有数据之前关闭 tracing。
+
+- 支持的观察要求 UTF-8、主提示符 Emacs 编辑模式，且不存在续行、活动选区、递归读取、未完整按键、待处理终端字节或宏按键。原生搜索、补全选择菜单、`vared`和 vi 模式会被拒绝，不修改其按键。用户 widget 函数返回普通编辑状态之后才允许观察。
+- Zsh 输入转发之前暂停目录可用性，包括可能被用户绑定到自定义读取器的可打印字符。恢复在输入停止 120 ms 后进行，只请求上下文，不阻塞 PTY 转发。请求会合并，等待上一工作进程完成 EOF 清理后再读取最新状态。客户端附加或权限变化会重新安排被取消的恢复；关闭输入权限但保留 CWD 权限时仍能恢复目录。回调缺失或编辑状态不受支持时保持暂停。
+- 只有获准填写才临时注册唯一名称的可写 widget。它再次检查输入、光标及排队字节，再赋值 BUFFER/CURSOR，不发送回车或求值。清理始终只移除仍属于自己的 widget。最终确认在 widget 返回之后进行，包含 Zsh 对组合字符光标的调整；不匹配返回`unknown`，不会返回`applied`。调用方必须刷新，不能直接重试结果不确定的填写。
+- 取消不会注入按键或锁定提示符代数。重复 source 保留管道和身份；用户移除的注册不会被静默重新接管。读取回调会先校验描述符、FIFO 类型、inode、UID 和注册归属。失去归属的描述符不被读取或关闭；EOF 或永久错误只移除 Cosmosh 自己的回调，暂时无数据时继续保留。
+
+`src/terminal/integration/zsh-editor.live-test.ts`测试真实 Zsh 5.9、autosuggestions 0.7.0、syntax-highlighting 0.7.1、原生补全与提示符钩子，覆盖私有内容 tracing、连续删除／恢复文字、排队按键、密码读取、取消与激活竞态、异步目录/HOME 及组合字符。Zsh 5.8 和完整 Electron 矩阵仍属于最终验收。API 行为遵循[Zsh 行编辑器文档](https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html)；只读 trap 的差异通过 Zsh 编辑器实现和真实 SSH 测试确认。
 
 ### 8.3 Manifest 与资产契约
 

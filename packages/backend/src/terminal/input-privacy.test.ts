@@ -83,6 +83,7 @@ for (const [name, prototype] of [
           sendCredentialFillOffer: (current: InputSession): void =>
             (SshSessionService.prototype as unknown as InputReceiver).sendCredentialFillOffer.call(context, current),
         };
+        Object.setPrototypeOf(context, prototype);
         for (const chunk of inputCase.chunks) {
           receiver.handleClientMessage.call(
             context,

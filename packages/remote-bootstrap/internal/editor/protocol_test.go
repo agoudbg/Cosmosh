@@ -65,6 +65,31 @@ func TestRequestBoundaryDoesNotExposeRejectedInput(t *testing.T) {
 	}
 }
 
+func TestNotificationRequiresExplicitZshDescriptorIdentity(t *testing.T) {
+	request := Request{
+		RequestID: "01234567-89ab-4def-8123-456789abcdef",
+		Target:    Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "zsh", PID: 23, StartTime: "1234"},
+		Operation: "snapshot", PromptGeneration: 1,
+	}
+	if validRequest(request) {
+		t.Fatal("Zsh must not fall back to injected terminal bytes")
+	}
+	for _, value := range []Notification{{FD: 2, Inode: "1"}, {FD: 1048576, Inode: "1"}, {FD: 12, Inode: "0"}, {FD: 12, Inode: "../other"}} {
+		request.Notification = &value
+		if validRequest(request) {
+			t.Fatal("invalid descriptor metadata was accepted")
+		}
+	}
+	request.Notification = &Notification{FD: 12, Inode: "123456"}
+	if !validRequest(request) {
+		t.Fatal("valid ZLE notification rejected")
+	}
+	request.Target.Shell = "bash"
+	if validRequest(request) {
+		t.Fatal("a Shell without this adapter accepted notification metadata")
+	}
+}
+
 func TestBufferLimitsAndExactApplyComparison(t *testing.T) {
 	for _, buffer := range []Buffer{
 		{Text: "line\nnext"}, {Text: "line\rnext"}, {Text: "line\x00next"}, {Text: "\x1b"},

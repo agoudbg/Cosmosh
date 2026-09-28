@@ -396,6 +396,17 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
   if (eventName === 'editor-state') {
     const promptGeneration = normalizeBoundedInteger(value.promptGeneration, 1, Number.MAX_SAFE_INTEGER);
     const pid = normalizeBoundedInteger(value.pid, 2, 2 ** 31 - 1);
+    const rawNotification = value.notification;
+    const notification =
+      rawNotification &&
+      typeof rawNotification === 'object' &&
+      'fd' in rawNotification &&
+      'inode' in rawNotification &&
+      normalizeBoundedInteger(rawNotification.fd, 3, 1048575) !== null &&
+      typeof rawNotification.inode === 'string' &&
+      /^[1-9][0-9]{0,19}$/u.test(rawNotification.inode)
+        ? { fd: rawNotification.fd as number, inode: rawNotification.inode }
+        : null;
     if (
       promptGeneration === null ||
       pid === null ||
@@ -405,7 +416,9 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
       typeof value.triggerNonce !== 'string' ||
       (value.triggerNonce !== '' &&
         !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(value.triggerNonce)) ||
-      (value.available && (value.triggerNonce === '' || value.startTime === ''))
+      (value.available && (value.triggerNonce === '' || value.startTime === '')) ||
+      (rawNotification !== undefined && (shell !== 'zsh' || notification === null)) ||
+      (shell === 'zsh' && value.available && notification === null)
     )
       return null;
     return {
@@ -416,6 +429,7 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
       startTime: value.startTime,
       available: value.available,
       triggerNonce: value.triggerNonce,
+      ...(notification ? { notification } : {}),
     };
   }
 

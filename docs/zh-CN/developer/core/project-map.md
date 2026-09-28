@@ -85,8 +85,8 @@ flowchart TB
 
 - `src/terminal/shell-context.ts`：原始 Shell 身份、权限、代数与配对提示符的目录状态。未确认报告仅留在后端，传输快照只包含可用目录和仅供显示的上次目录，不存储当前输入或凭据。
 - `src/terminal/integration/helper-identity.live-test.ts`：真实安装器/SSH 测试，覆盖重复 source、嵌套 Shell、独立终端及非交互式运行不输出事件。
-- `src/terminal/editor-controller.ts`负责每会话的单个私有快照和操作；`editor-protocol.ts`校验输入、Unicode 和权限数据边界。`src/ssh/editor-exec.ts`负责有界 stdin/JSON SSH 传输。`src/terminal/integration/editor-bridge.live-test.ts`测试实际 Go 工作进程和 Bash 编辑器。
-- `packages/remote-bootstrap/internal/editor`负责 Linux 进程身份、私有 socket 及仅传递数据的编辑器协议；`internal/install/editor_bash.go`负责生成 Bash 适配器。
+- `src/terminal/editor-controller.ts`负责每会话的单个私有快照、操作和合并后的上下文恢复；`editor-protocol.ts`校验输入、Unicode 和权限数据边界。`src/ssh/editor-exec.ts`负责有界 stdin/JSON SSH 传输。`src/terminal/integration/editor-fixture.ts`为`editor-bridge.live-test.ts`（Bash）和`zsh-editor.live-test.ts`共享实际帮助程序安装与观察。
+- `packages/remote-bootstrap/internal/editor`负责 Linux 进程及通知身份、私有 socket 和仅传递数据的编辑器协议；`internal/install/editor_bash.go`及`editor_zsh.go`负责生成各 Shell 适配器。
 
 - **角色**：内部 API + 会话编排运行时。
 - **关键目录**：

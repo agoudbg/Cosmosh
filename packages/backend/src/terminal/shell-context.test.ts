@@ -155,6 +155,36 @@ test('a post-prompt directory mutation only invalidates the current generation',
   );
 });
 
+test('Zsh prompts await an idle editor directory confirmation and retain only an out-of-band recovery binding', () => {
+  let context = createShellContext('zsh-session', resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true), true);
+  context = applyShellContextEvent(context, event({ shell: 'zsh' }));
+  context = applyShellContextEvent(context, event({ shell: 'zsh', event: 'cwd', cwd: '/early', promptGeneration: 1 }));
+  context = applyShellContextEvent(context, event({ shell: 'zsh', event: 'prompt-ready', promptGeneration: 1 }));
+  assert.equal(context.status, 'paused');
+  assert.equal(context.cwd, null, 'later prompt/plugin hooks can still change directory');
+  context = applyShellContextEvent(
+    context,
+    event({
+      shell: 'zsh',
+      event: 'editor-state',
+      promptGeneration: 1,
+      pid: 42,
+      startTime: '100',
+      triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+      available: true,
+      notification: { fd: 12, inode: '12345' },
+    }),
+  );
+  assert.ok(context.editorBinding?.notification);
+  const invalidated = applyShellContextEvent(
+    context,
+    event({ shell: 'zsh', event: 'cwd-invalidated', promptGeneration: 1 }),
+  );
+  assert.equal(invalidated.editorBinding, context.editorBinding);
+  assert.equal(invalidated.requiresEditorConfirmation, true);
+  assert.equal('editorBinding' in getShellContextSnapshot(invalidated), false);
+});
+
 test('typeahead receipt cannot turn an earlier command prompt into confirmation of later input', () => {
   const first = invalidateShellInput(readyContext(), 'sleep 1\r', 'first');
   const busy = applyShellContextEvent(first, event({ event: 'command-start', command: 'sleep', commandId: 'first' }));

@@ -244,6 +244,81 @@ test('an ambiguous queued prompt cannot authorize a context probe into a later s
   assert.equal(requests, 0);
 });
 
+test('a verified notification adapter can recover paused context without reading input or injecting keys', async () => {
+  let state: ShellContextState = {
+    ...readyState(),
+    shell: 'zsh',
+    status: 'paused',
+    requiresEditorConfirmation: true,
+    editorBinding: { ...readyState().editorBinding!, notification: { fd: 12, inode: '12345' } },
+    permissions: { ...readyState().permissions, input: false },
+  };
+  let attempts = 0;
+  const editor = new ShellEditorController(
+    () => state,
+    async (request, options) => {
+      attempts += 1;
+      assert.equal(request.operation, 'context');
+      assert.deepEqual(request.notification, { fd: 12, inode: '12345' });
+      options.trigger();
+      if (attempts === 1) return { status: 'unavailable' };
+      return { status: 'ok', snapshot: { promptGeneration: 1, editorMode: 'emacs', directory: snapshot.directory } };
+    },
+    () => assert.fail('notification recovery must not inject terminal bytes'),
+    (expected, observed) => {
+      state = confirmShellEditorContext(expected, observed);
+    },
+  );
+  assert.equal(await editor.refreshContext(), false);
+  assert.equal(await editor.refreshContext(), true, 'a canceled notification must not lock the prompt epoch');
+  assert.equal(state.status, 'ready');
+  assert.equal(state.requiresEditorConfirmation, false);
+  assert.deepEqual(state.cwd, snapshot.directory);
+  assert.deepEqual(await editor.snapshot(), { status: 'unavailable' });
+  state = updateShellPermissions(state, { ...state.permissions, cwd: false });
+  assert.equal(await editor.refreshContext(), false);
+  assert.equal(attempts, 2);
+});
+
+test('ZLE context recovery coalesces latest input while an older request waits for channel cleanup', async () => {
+  let state: ShellContextState = {
+    ...readyState(),
+    shell: 'zsh',
+    editorBinding: { ...readyState().editorBinding!, notification: { fd: 12, inode: '12345' } },
+  };
+  let release: (() => void) | null = null;
+  let calls = 0;
+  const controller = new ShellEditorController(
+    () => state,
+    async (_request, options) => {
+      calls += 1;
+      options.trigger();
+      if (calls === 1)
+        return await new Promise((resolve) => {
+          release = () => resolve({ status: 'unavailable' });
+        });
+      return { status: 'ok', snapshot: { promptGeneration: 1, editorMode: 'emacs', directory: snapshot.directory } };
+    },
+    () => assert.fail('ZLE must never inject a key'),
+    (expected, observed) => {
+      state = confirmShellEditorContext(expected, observed);
+    },
+  );
+  const previous = controller.snapshot();
+  controller.invalidate();
+  state = { ...invalidateShellInput(state, 'x'), status: 'paused', requiresEditorConfirmation: true, cwd: null };
+  const refresh = controller.refreshContext();
+  state = invalidateShellInput(state, 'y');
+  assert.equal(controller.refreshContext(), refresh, 'only one pending recovery may wait for cleanup');
+  assert.equal(calls, 1);
+  (release as (() => void) | null)?.();
+  assert.equal((await previous).status, 'unavailable');
+  assert.equal(await refresh, true);
+  assert.equal(calls, 2, 'cleanup must be followed by exactly one request for the latest context');
+  assert.equal(state.status, 'ready');
+  assert.deepEqual(state.cwd, snapshot.directory);
+});
+
 test('input cancellation closes the active request, rejects overlap and releases retained text', async () => {
   const state = readyState();
   let entered: (() => void) | undefined;

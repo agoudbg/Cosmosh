@@ -17,4 +17,6 @@ The container is labeled and named per checkout. Starting an existing healthy fi
 
 Every account contains `~/fixtures/`, with spaces, quotes, Chinese characters, emoji, a leading hyphen, a symbolic directory link, and more than 1,000 entries in `large/`. Tests use actual SSH PTYs and the installed Shell; fake Shell output is not a substitute for this suite.
 
+The Zsh fixture also installs the distribution's `zsh-autosuggestions` and `zsh-syntax-highlighting` packages. The editor suite tests them with `compinit`, native Tab, custom prompt hooks, DEBUG traps, search/menu/recursive editors, partial keys, password readers and combining-character cursor adjustment. Read-only observations must preserve native kill/yank chaining. The development baseline is Zsh 5.9, autosuggestions 0.7.0 and syntax-highlighting 0.7.1; this does not substitute for the final supported-version matrix.
+
 `test:terminal:live` requires a running fixture and fails when it is missing. The ordinary unit suite does not silently count these scenarios as covered.

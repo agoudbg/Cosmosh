@@ -57,6 +57,7 @@ import {
   createShellContext,
   getShellContextSnapshot,
   invalidateShellInput,
+  requireShellEditorConfirmation,
   resolveShellPermissions,
   type ShellContextState,
   suspendShellContext,
@@ -179,6 +180,7 @@ type SshLiveSession = TerminalManagedSessionBase & {
   credentialFillState: CredentialFillState;
   shellContext: ShellContextState;
   editorController?: ShellEditorController;
+  editorContextTimeout?: NodeJS.Timeout;
   enhancementsAllowed: boolean;
   loginPassword: string | null;
   remoteShellEventParser: RemoteShellEventOscParser;
@@ -859,7 +861,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         previous,
         resolveShellPermissions(snapshot.values, session.enhancementsAllowed),
       );
-      if (session.shellContext !== previous) session.editorController?.invalidate();
+      if (session.shellContext !== previous) {
+        session.editorController?.invalidate();
+        session.shellContext = requireShellEditorConfirmation(session.shellContext);
+      }
       if (!snapshot.values.remoteEnhancementsEnabled && session.remoteEnhancementsRuntimeState !== 'disabled') {
         this.disableRemoteEnhancementsRuntime(
           session,
@@ -867,6 +872,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
           'remote enhancements disabled by settings',
         );
       } else if (session.shellContext !== previous) this.sendShellContext(session);
+      this.scheduleEditorContextRefresh(session);
     }
   }
 
@@ -897,6 +903,30 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       },
     );
     return session.editorController;
+  }
+
+  /**
+   * Rechecks paused ZLE context after input settles, without reading the current command.
+   * @param session Original session owning the notification descriptor and permission.
+   * @returns Nothing; ordinary PTY input never waits for this optional operation.
+   */
+  private scheduleEditorContextRefresh(session: SshLiveSession): void {
+    if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
+    session.editorContextTimeout = undefined;
+    const state = session.shellContext;
+    if (
+      session.disposed ||
+      session.remoteEnhancementsRuntimeState !== 'active' ||
+      state.status !== 'paused' ||
+      !state.editorBinding?.notification ||
+      (!state.permissions.cwd && !state.permissions.input)
+    )
+      return;
+    session.editorContextTimeout = setTimeout(() => {
+      session.editorContextTimeout = undefined;
+      void this.getEditorController(session)?.refreshContext();
+    }, 120);
+    session.editorContextTimeout.unref();
   }
 
   /**
@@ -955,6 +985,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   protected onSessionAttached(session: SshLiveSession): void {
     session.editorController?.invalidate();
     session.shellContext = { ...session.shellContext, revision: session.shellContext.revision + 1 };
+    session.shellContext = requireShellEditorConfirmation(session.shellContext);
     // Control state must establish trust before ordered PTY frames reach the renderer.
     this.sendServerMessage(session, { type: 'ready' });
     while (session.pendingRemoteBootstrapStatuses.length > 0) {
@@ -967,6 +998,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.sendShellContext(session);
     this.flushPendingStreamFrames(session);
     this.sendCredentialFillOffer(session);
+    this.scheduleEditorContextRefresh(session);
   }
 
   /**
@@ -1085,6 +1117,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.applyRemoteShellEventState(session, event);
 
     this.sendServerMessage(session, event);
+    this.scheduleEditorContextRefresh(session);
   }
 
   /**
@@ -1578,6 +1611,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       session.editorController?.invalidate();
       const previousStatus = session.shellContext.status;
       session.shellContext = invalidateShellInput(session.shellContext, message.data, message.submissionToken);
+      if (session.remoteEnhancementsRuntimeState === 'active') {
+        // Even self-insert can be a user widget that changes directory or starts a reader.
+        session.shellContext = requireShellEditorConfirmation(session.shellContext);
+      }
       // Native completion/search/macros may execute Shell code or read secrets without Enter.
       // Preserve native keys, but queued prompts cannot prove ownership after an unknown editor action.
       if (
@@ -1608,6 +1645,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         this.scheduleHistorySync(session.sessionId);
       }
       session.stream.write(message.data);
+      this.scheduleEditorContextRefresh(session);
       return;
     }
 
@@ -1792,6 +1830,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   ): void {
     this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
       beforeExit: (session, reason) => {
+        if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
+        session.editorContextTimeout = undefined;
         session.editorController?.invalidate();
         session.shellContext = suspendShellContext(session.shellContext, 'transport-closed', true);
         session.loginPassword = null;

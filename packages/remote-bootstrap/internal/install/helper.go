@@ -17,7 +17,7 @@ var fullRemoteShellCapabilities = []string{
 	"prompt-ready",
 }
 
-var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "line-state")
+var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "line-state", "editor-state", "input-snapshot", "input-apply")
 var bashRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "editor-state", "input-snapshot", "input-apply")
 var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated")
 
@@ -179,8 +179,14 @@ __cosmosh_emit_remote_shell_event() {
     line-state)
       __cosmosh_json="$__cosmosh_json,\"promptGeneration\":$__cosmosh_prompt_generation,\"lineLength\":$__cosmosh_line_length,\"cursorIndex\":$__cosmosh_cursor_index"
       ;;
+    cwd-invalidated)
+      __cosmosh_json="$__cosmosh_json,\"promptGeneration\":$__COSMOSH_PROMPT_GENERATION"
+      ;;
     editor-state)
       __cosmosh_json="$__cosmosh_json,\"promptGeneration\":$__COSMOSH_PROMPT_GENERATION,\"pid\":$__COSMOSH_SHELL_OWNER_PID,\"startTime\":\"$__COSMOSH_EDITOR_START\",\"available\":$__COSMOSH_EDITOR_AVAILABLE,\"triggerNonce\":\"$__COSMOSH_EDITOR_NONCE\""
+      if [ "$__COSMOSH_REMOTE_SHELL" = zsh ] && [ -n "${__COSMOSH_EDITOR_NOTIFY_INODE:-}" ]; then
+        __cosmosh_json="$__cosmosh_json,\"notification\":{\"fd\":$__COSMOSH_EDITOR_NOTIFY_FD,\"inode\":\"$__COSMOSH_EDITOR_NOTIFY_INODE\"}"
+      fi
       ;;
   esac
 
@@ -238,7 +244,7 @@ __cosmosh_prompt_ready_for_ps1() {
 		return header + "\nif (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then return 0; fi\n" + common + bashEditorHooks + bashHelperHooks
 	}
 	if shell == "zsh" {
-		return header + common + zshHelperHooks
+		return header + common + zshEditorHooks + zshHelperHooks
 	}
 
 	return header + common + degradedPosixHelperHooks
@@ -329,11 +335,26 @@ const zshHelperHooks = `
 if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
   __cosmosh_zsh_precmd() {
     __cosmosh_prompt_ready "$?"
+    __COSMOSH_ZSH_REPORTED_PWD="$PWD"
+    __COSMOSH_ZSH_REPORTED_HOME="${HOME-}"
+    __cosmosh_zsh_editor_prepare || :
   }
   __cosmosh_zsh_preexec() {
     __cosmosh_emit_command_start "$1"
   }
+  __cosmosh_zsh_chpwd() {
+    # Invalidate immediately, including asynchronous traps while ZLE is idle.
+    # Publishing a new directory still requires a separate idle editor observation.
+    __COSMOSH_ZSH_REPORTED_PWD="$PWD"
+    __COSMOSH_ZSH_REPORTED_HOME="${HOME-}"
+    __cosmosh_emit_remote_shell_event cwd-invalidated
+    return 0
+  }
   __cosmosh_zsh_line_pre_redraw() {
+    if [ "${__COSMOSH_ZSH_REPORTED_PWD-}" != "$PWD" ] ||
+       [ "${__COSMOSH_ZSH_REPORTED_HOME-}" != "${HOME-}" ]; then
+      __cosmosh_zsh_chpwd
+    fi
     if [ "${__COSMOSH_LAST_LINE_LENGTH:-}" = "${#BUFFER}" ] && [ "${__COSMOSH_LAST_CURSOR_INDEX:-}" = "$CURSOR" ]; then
       return 0
     fi
@@ -347,9 +368,11 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
   if autoload -Uz +X add-zsh-hook 2>/dev/null; then
     add-zsh-hook precmd __cosmosh_zsh_precmd || __cosmosh_zsh_hook_ok=0
     add-zsh-hook preexec __cosmosh_zsh_preexec || __cosmosh_zsh_hook_ok=0
+    add-zsh-hook chpwd __cosmosh_zsh_chpwd || __cosmosh_zsh_hook_ok=0
   else
     precmd_functions=(${precmd_functions[@]} __cosmosh_zsh_precmd)
     preexec_functions=(${preexec_functions[@]} __cosmosh_zsh_preexec)
+    chpwd_functions=(${chpwd_functions[@]} __cosmosh_zsh_chpwd)
   fi
 
   # +X loads the widget helper's definition immediately: plain autoload
@@ -379,6 +402,7 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
     fi
     precmd_functions=(${precmd_functions[@]:#__cosmosh_zsh_precmd})
     preexec_functions=(${preexec_functions[@]:#__cosmosh_zsh_preexec})
+    chpwd_functions=(${chpwd_functions[@]:#__cosmosh_zsh_chpwd})
   fi
 fi
 `

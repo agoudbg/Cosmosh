@@ -34,6 +34,13 @@ type Target struct {
 	StartTime  string `json:"startTime"`
 }
 
+// Notification identifies the original Shell's private, close-on-exec notification pipe.
+// It carries no input; the editor independently decides whether a request can read or edit.
+type Notification struct {
+	FD    int    `json:"fd"`
+	Inode string `json:"inode"`
+}
+
 // Buffer contains a complete line and a UTF-16 cursor offset, matching the desktop's string indexes.
 type Buffer struct {
 	Text   string `json:"text"`
@@ -57,13 +64,14 @@ type Snapshot struct {
 
 // Request is the private SSH-exec stdin protocol. Apply always includes the exact expected observation.
 type Request struct {
-	RequestID        string    `json:"requestId"`
-	Target           Target    `json:"target"`
-	Operation        string    `json:"operation"`
-	PromptGeneration uint64    `json:"promptGeneration"`
-	IncludeDirectory bool      `json:"includeDirectory"`
-	Expected         *Snapshot `json:"expected,omitempty"`
-	Replacement      *Buffer   `json:"replacement,omitempty"`
+	RequestID        string        `json:"requestId"`
+	Target           Target        `json:"target"`
+	Operation        string        `json:"operation"`
+	PromptGeneration uint64        `json:"promptGeneration"`
+	IncludeDirectory bool          `json:"includeDirectory"`
+	Notification     *Notification `json:"notification,omitempty"`
+	Expected         *Snapshot     `json:"expected,omitempty"`
+	Replacement      *Buffer       `json:"replacement,omitempty"`
 }
 
 // Message is one framed helper response. Failure codes never include request text or raw errors.
@@ -109,6 +117,15 @@ func validTarget(target Target) bool {
 func validRequest(request Request) bool {
 	if !uuidPattern.MatchString(request.RequestID) || !validTarget(request.Target) ||
 		request.PromptGeneration == 0 || request.PromptGeneration > 9007199254740991 {
+		return false
+	}
+	if request.Notification != nil && (request.Target.Shell != "zsh" ||
+		request.Notification.FD < 3 || request.Notification.FD > 1048575 ||
+		!ticksPattern.MatchString(request.Notification.Inode)) {
+		return false
+	}
+	// ZLE receives notifications without injecting bytes into the user's terminal.
+	if request.Target.Shell == "zsh" && request.Notification == nil {
 		return false
 	}
 	switch request.Operation {
