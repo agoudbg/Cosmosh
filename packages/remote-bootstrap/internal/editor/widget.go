@@ -1,0 +1,126 @@
+package editor
+
+import (
+	"bufio"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// exchangeWidget sends one authenticated request to the currently owned socket and bounds its response.
+func exchangeWidget(message widgetMessage) (widgetReply, error) {
+	var reply widgetReply
+	address, err := socketAddress(message.Target)
+	if err != nil {
+		return reply, err
+	}
+	connection, err := net.DialTimeout("unix", address, RequestTimeout)
+	if err != nil {
+		return reply, errors.New("request-unavailable")
+	}
+	defer connection.Close()
+	_ = connection.SetDeadline(time.Now().Add(RequestTimeout))
+	if err := json.NewEncoder(connection).Encode(message); err != nil {
+		return reply, errors.New("request-unavailable")
+	}
+	line, err := readFrame(bufio.NewReaderSize(connection, 4096))
+	if err != nil || decodeFrame(line, &reply) != nil {
+		return reply, errors.New("request-unavailable")
+	}
+	return reply, nil
+}
+
+// RunWidget grants mode first, then reads only explicitly permitted fields from the Shell's private stdin.
+// Arguments contain only identity and permission metadata. User input is never passed as an OS argument.
+func RunWidget(args []string, input io.Reader, output io.Writer) error {
+	if len(args) < 7 {
+		return errors.New("invalid-widget")
+	}
+	pid, pidErr := strconv.Atoi(args[3])
+	generation, generationErr := strconv.ParseUint(args[5], 10, 64)
+	target := Target{InstanceID: args[1], Shell: args[2], PID: pid, StartTime: args[4]}
+	if pidErr != nil || generationErr != nil || generation == 0 || !validTarget(target) {
+		return errors.New("invalid-widget")
+	}
+	mode := args[6]
+	if mode != "emacs" && mode != "vi-insert" {
+		return errors.New("unsupported-editor")
+	}
+	message := widgetMessage{Phase: args[0], Target: target, PromptGeneration: generation}
+	if message.Phase == "mode" {
+		if len(args) != 7 {
+			return errors.New("invalid-widget")
+		}
+		reply, err := exchangeWidget(message)
+		if err != nil || reply.Status != "ok" || !uuidPattern.MatchString(reply.RequestID) {
+			return errors.New("request-unavailable")
+		}
+		directory := "0"
+		if reply.IncludeDirectory {
+			directory = "1"
+		}
+		_, err = fmt.Fprintf(output, "%s\n%s\n%s\n", reply.RequestID, reply.Operation, directory)
+		return err
+	}
+	if (message.Phase != "capture" && message.Phase != "confirm") || len(args) != 10 ||
+		!uuidPattern.MatchString(args[7]) || (args[8] != "0" && args[8] != "1") || (args[9] != "0" && args[9] != "1") {
+		return errors.New("invalid-widget")
+	}
+	message.RequestID = args[7]
+	includeInput, includeDirectory := args[8] == "1", args[9] == "1"
+	raw, err := io.ReadAll(io.LimitReader(input, MaxInputBytes+2*MaxPathBytes+128))
+	if err != nil || len(raw) >= MaxInputBytes+2*MaxPathBytes+128 {
+		return errors.New("unsupported-editor")
+	}
+	// A fixed four-field private frame preserves empty values and literal trailing newlines.
+	fields := strings.Split(string(raw), "\x00")
+	if len(fields) != 5 || fields[4] != "" {
+		return errors.New("invalid-widget")
+	}
+	snapshot := Snapshot{PromptGeneration: generation, EditorMode: mode}
+	if includeInput {
+		point, err := strconv.Atoi(fields[1])
+		cursor, valid := CodePointToUTF16(fields[0], point)
+		if err != nil || !valid {
+			return errors.New("unsupported-editor")
+		}
+		snapshot.Buffer = &Buffer{Text: fields[0], Cursor: cursor}
+	} else if fields[0] != "" || fields[1] != "" {
+		return errors.New("invalid-widget")
+	}
+	if includeDirectory {
+		snapshot.Directory = &Directory{Logical: fields[2], Physical: physicalDirectory()}
+		if validPath(fields[3]) {
+			snapshot.Directory.Home = &fields[3]
+		}
+	} else if fields[2] != "" || fields[3] != "" {
+		return errors.New("invalid-widget")
+	}
+	if !validSnapshot(snapshot, includeInput, includeDirectory) {
+		return errors.New("unsupported-editor")
+	}
+	message.Snapshot = &snapshot
+	reply, err := exchangeWidget(message)
+	if err != nil {
+		return err
+	}
+	if reply.Status == "apply" && reply.Replacement != nil && validBuffer(*reply.Replacement) {
+		cursor, valid := UTF16ToCodePoint(reply.Replacement.Text, reply.Replacement.Cursor)
+		if !valid {
+			return errors.New("invalid-response")
+		}
+		_, err = fmt.Fprintf(output, "apply\n%s\n%d\n", base64.StdEncoding.EncodeToString([]byte(reply.Replacement.Text)), cursor)
+		return err
+	}
+	if reply.Status != "ok" {
+		return errors.New("request-unavailable")
+	}
+	_, err = fmt.Fprintln(output, "ok")
+	return err
+}

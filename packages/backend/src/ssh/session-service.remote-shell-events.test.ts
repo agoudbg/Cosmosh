@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import test from 'node:test';
 
 import {
   DEFAULT_SETTINGS_VALUES,
   type RemoteShellCapability,
-  type ShellContext,
   type SshTerminalServerMessage,
 } from '@cosmosh/api-contract';
+import type { Client, ClientChannel } from 'ssh2';
 
 import type { RemoteBootstrapResult, RemoteBootstrapStatus } from '../remote-bootstrap/service.js';
 import type { DefaultSettingsSnapshot } from '../settings/read.js';
@@ -15,8 +17,16 @@ import {
   type CredentialFillState,
   observeCredentialFillOutput,
 } from '../terminal/credential-fill.js';
+import type { ShellEditorController } from '../terminal/editor-controller.js';
 import type { TerminalClientInboundMessage } from '../terminal/shared.js';
-import { applyShellContextEvent, createShellContext, resolveShellPermissions } from '../terminal/shell-context.js';
+import {
+  applyShellContextEvent,
+  createShellContext,
+  resolveShellPermissions,
+  type ShellContextState,
+  suspendShellContext,
+  updateShellPermissions,
+} from '../terminal/shell-context.js';
 import type { OpenSshClientResult } from './connect.js';
 import type { RemoteShellEventMessage, RemoteShellEventStreamFrame } from './remote-shell-events.js';
 import {
@@ -26,7 +36,10 @@ import {
 } from './session-service.js';
 
 type RemoteShellEventSessionHarness = {
-  shellContext: ShellContext;
+  shellContext: ShellContextState;
+  editorController?: ShellEditorController;
+  client?: Client;
+  stream?: { write(data: string): void };
   enhancementsAllowed: boolean;
   sessionId: string;
   credentialFillState: CredentialFillState;
@@ -37,6 +50,7 @@ type RemoteShellEventSessionHarness = {
     helperVersion: string;
     protocolVersion: number;
     capabilities: RemoteShellCapability[];
+    binaryPath?: string;
   } | null;
   remoteEnhancementsRuntimeCode: string | null;
   remoteEnhancementsRuntimeMessage: string | null;
@@ -61,6 +75,11 @@ type RemoteShellEventSessionHarness = {
 };
 
 type RemoteShellEventServiceHarness = {
+  handleClientMessage(session: RemoteShellEventSessionHarness, payload: Buffer): void;
+  handleEditorRequest(
+    session: RemoteShellEventSessionHarness,
+    message: Extract<TerminalClientInboundMessage, { type: 'editor-snapshot' | 'editor-apply' }>,
+  ): Promise<void>;
   applyRemoteShellEventState(session: RemoteShellEventSessionHarness, event: RemoteShellEventMessage): void;
   disableRemoteEnhancementsRuntime(session: RemoteShellEventSessionHarness, code: string, message: string): void;
   handleRemoteShellEvent(session: RemoteShellEventSessionHarness, event: RemoteShellEventMessage): void;
@@ -168,12 +187,195 @@ const createRemoteShellEvent = (overrides: Partial<RemoteShellEventMessage> = {}
   } as RemoteShellEventMessage;
 };
 
+test('editor replies respect client and permission ownership through final publication', async () => {
+  const service = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;
+  const channels: Array<
+    EventEmitter & {
+      stderr: PassThrough;
+      writes: string[];
+      destroyed: boolean;
+      write(data: string): void;
+      end(): void;
+      destroy(): void;
+    }
+  > = [];
+  const oldMessages: SshTerminalServerMessage[] = [];
+  const newMessages: SshTerminalServerMessage[] = [];
+  const oldSocket = {
+    OPEN: 1,
+    readyState: 1,
+    send(payload: string) {
+      oldMessages.push(JSON.parse(payload));
+    },
+  };
+  const newSocket = {
+    OPEN: 1,
+    readyState: 1,
+    send(payload: string) {
+      newMessages.push(JSON.parse(payload));
+    },
+  };
+  const client = {
+    exec(_command: string, callback: (error: undefined, stream: ClientChannel) => void) {
+      const events = new EventEmitter();
+      const channel = Object.assign(events, {
+        stderr: new PassThrough(),
+        writes: [] as string[],
+        destroyed: false,
+        write(data: string) {
+          this.writes.push(data);
+        },
+        end() {
+          this.destroyed = true;
+          events.emit('close');
+        },
+        destroy() {
+          this.destroyed = true;
+          events.emit('close');
+        },
+      });
+      channels.push(channel);
+      callback(undefined, channel as unknown as ClientChannel);
+    },
+  } as unknown as Client;
+  const session = createSessionHarness({
+    remoteEnhancementsRuntimeState: 'active',
+    socket: oldSocket,
+    client,
+    stream: { write() {} },
+  });
+  session.remoteEnhancementsRuntimeContract!.binaryPath = '/verified/helper';
+  session.shellContext = {
+    ...session.shellContext,
+    status: 'ready',
+    reason: null,
+    promptGeneration: 1,
+    shellInstanceId: '01234567-89ab-4def-8123-456789abcdef',
+    capabilities: ['input-snapshot', 'input-apply'],
+    editorBinding: {
+      pid: 42,
+      startTime: '100',
+      triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+      promptGeneration: 1,
+    },
+  };
+  const id = '01234567-89ab-4def-8123-456789abcdef';
+  const observed = {
+    promptGeneration: 1,
+    editorMode: 'emacs',
+    buffer: { text: 'PRIVATE_EDITOR_SENTINEL', cursor: 0 },
+    directory: { logical: '/tmp', physical: '/tmp', home: null },
+  };
+  /** @param index External channel index. @param message Server reply fields. @returns Nothing. */
+  const reply = (index: number, message: Record<string, unknown>): void => {
+    const request = JSON.parse(channels[index]!.writes[0]!) as { requestId: string };
+    channels[index]!.emit(
+      'data',
+      Buffer.from(JSON.stringify({ type: 'editor', requestId: request.requestId, ...message }) + '\n'),
+    );
+  };
+  const first = service.handleEditorRequest(session, { type: 'editor-snapshot', requestId: id });
+  reply(0, { phase: 'ready' });
+  reply(0, { phase: 'done', status: 'ok', snapshot: observed });
+  await first;
+  const snapshot = oldMessages.find((message) => message.type === 'editor-snapshot-result' && message.status === 'ok');
+  assert.ok(snapshot && snapshot.type === 'editor-snapshot-result' && snapshot.status === 'ok');
+  const apply = service.handleEditorRequest(session, {
+    type: 'editor-apply',
+    requestId: id,
+    snapshotId: snapshot.snapshotId,
+    replacement: { text: 'echo new', cursor: 8 },
+  });
+  reply(1, { phase: 'ready' });
+  session.socket = newSocket;
+  service.onSessionAttached(session);
+  reply(1, { phase: 'prepared', snapshot: observed });
+  await apply;
+  assert.equal(channels[1]!.writes.length, 1, 'old peer cannot authorize an edit after replacement');
+  assert.equal(channels[1]!.destroyed, true);
+  assert.equal(
+    newMessages.some((message) => message.type === 'editor-apply-result'),
+    false,
+  );
+  assert.equal(JSON.stringify(newMessages).includes('PRIVATE_EDITOR_SENTINEL'), false);
+  for (const [index, permission] of (['input', 'cwd'] as const).entries()) {
+    session.shellContext = {
+      ...session.shellContext,
+      permissions: { ...session.shellContext.permissions, input: true, cwd: true },
+      editorBinding: { ...session.shellContext.editorBinding!, triggerNonce: id.slice(0, -1) + index },
+    };
+    const pending = service.handleEditorRequest(session, { type: 'editor-snapshot', requestId: id });
+    const channelIndex = channels.length - 1;
+    reply(channelIndex, { phase: 'ready' });
+    reply(channelIndex, { phase: 'done', status: 'ok', snapshot: observed });
+    // Revoke between the controller's resolved result and the service's final publication.
+    queueMicrotask(() =>
+      queueMicrotask(() => {
+        session.shellContext = updateShellPermissions(session.shellContext, {
+          ...session.shellContext.permissions,
+          [permission]: false,
+        });
+        session.editorController!.invalidate();
+      }),
+    );
+    await pending;
+    assert.equal(session.shellContext.permissions[permission], false);
+    assert.equal(JSON.stringify(newMessages).includes('PRIVATE_EDITOR_SENTINEL'), false);
+    assert.deepEqual(newMessages.at(-1), { type: 'editor-snapshot-result', requestId: id, status: 'stale' });
+  }
+});
+
 test('session request can disable but cannot override a persisted Remote Enhancements opt-out', () => {
   assert.equal(resolveRemoteEnhancementsSessionGate(true, undefined), true);
   assert.equal(resolveRemoteEnhancementsSessionGate(true, true), true);
   assert.equal(resolveRemoteEnhancementsSessionGate(true, false), false);
   assert.equal(resolveRemoteEnhancementsSessionGate(false, undefined), false);
   assert.equal(resolveRemoteEnhancementsSessionGate(false, true), false);
+});
+
+test('Bash native extension keys cannot let queued primary prompts restore ambiguous editor ownership', () => {
+  const service = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;
+  for (const input of ['\t', '\x18e']) {
+    const writes: string[] = [];
+    const session = createSessionHarness({
+      remoteEnhancementsRuntimeState: 'active',
+      stream: {
+        write(data) {
+          writes.push(data);
+        },
+      },
+    });
+    session.shellContext = {
+      ...session.shellContext,
+      status: 'ready',
+      reason: null,
+      promptGeneration: 1,
+      editorBinding: { pid: 42, startTime: '100', promptGeneration: 1, triggerNonce: 'epoch' },
+    };
+    service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'input', data: 'echo ok\r' })));
+    service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'input', data: input })));
+    assert.equal(session.shellContext.requiresEditorConfirmation, true);
+    session.shellContext = applyShellContextEvent(
+      session.shellContext,
+      createRemoteShellEvent({
+        event: 'prompt-ready',
+        promptGeneration: 2,
+      }),
+    );
+    assert.equal(session.shellContext.status, 'paused');
+    assert.deepEqual(writes, ['echo ok\r', input], 'native input still reaches the PTY unchanged');
+  }
+});
+
+test('ordinary input preserves disabled and unavailable enhancement reasons', () => {
+  const service = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;
+  for (const reason of ['permission-disabled', 'helper-unavailable'] as const) {
+    const session = createSessionHarness({ stream: { write() {} } });
+    session.shellContext = suspendShellContext({ ...session.shellContext, shell: 'bash' }, reason, true);
+    service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'input', data: 'x\t' })));
+    assert.equal(session.shellContext.status, 'unavailable');
+    assert.equal(session.shellContext.reason, reason);
+  }
 });
 
 test('nested mismatched helper cannot disable or replace the original runtime', () => {

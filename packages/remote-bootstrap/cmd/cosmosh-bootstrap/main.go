@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
 
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/editor"
 	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/install"
 )
 
@@ -20,6 +25,30 @@ func main() {
 		runInstall(os.Args[2:])
 	case "status":
 		runStatus(os.Args[2:])
+	case "editor-request":
+		// SSH channel teardown must allow the worker to clean its owned socket before exiting.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGPIPE)
+		defer stop()
+		if err := editor.RunRequest(ctx, os.Stdin, os.Stdout); err != nil {
+			os.Exit(1)
+		}
+	case "editor-widget":
+		if err := editor.RunWidget(os.Args[2:], os.Stdin, os.Stdout); err != nil {
+			os.Exit(1)
+		}
+	case "editor-identity":
+		if len(os.Args) != 3 {
+			os.Exit(1)
+		}
+		pid, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			os.Exit(1)
+		}
+		start, err := editor.ProcessStart(pid)
+		if err != nil {
+			os.Exit(1)
+		}
+		fmt.Println(start)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)

@@ -24,6 +24,8 @@ export type RemoteBootstrapRuntimeContract = {
   helperVersion: string;
   protocolVersion: number;
   capabilities: RemoteShellCapability[];
+  /** Validated absolute path of the installed request-scoped helper. */
+  binaryPath?: string;
 };
 
 /** Result used by SSH session creation to enable or disable helper event consumption. */
@@ -65,6 +67,7 @@ type RemoteBootstrapInstalledStatus = {
   helperCurrent: boolean;
   profileCurrent: boolean;
   binarySha256: string;
+  binaryPath: string | null;
 };
 
 type RemoteBootstrapServiceOptions = {
@@ -618,6 +621,13 @@ const parseInstalledStatus = (output: string | null): RemoteBootstrapInstalledSt
     helperCurrent: parsed.helperCurrent,
     profileCurrent: parsed.profileCurrent,
     binarySha256: parsed.binarySha256,
+    binaryPath:
+      typeof parsed.binaryPath === 'string' &&
+      parsed.binaryPath.startsWith('/') &&
+      !parsed.binaryPath.includes('\u0000') &&
+      Buffer.byteLength(parsed.binaryPath, 'utf8') <= 4096
+        ? parsed.binaryPath
+        : null,
   };
 };
 
@@ -666,6 +676,7 @@ const readyResult = (
       helperVersion: status.version,
       protocolVersion: status.protocolVersion,
       capabilities: [...status.capabilities],
+      ...(status.binaryPath ? { binaryPath: status.binaryPath } : {}),
     },
   };
 };

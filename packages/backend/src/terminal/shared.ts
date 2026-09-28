@@ -1,6 +1,8 @@
 import type { TerminalClientMessage } from '@cosmosh/api-contract';
 import type { RawData } from 'ws';
 
+import { normalizeEditorBuffer } from './editor-protocol.js';
+
 /**
  * Shared telemetry refresh interval for terminal-like sessions.
  */
@@ -33,6 +35,15 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
   try {
     const text = typeof payload === 'string' ? payload : payload.toString('utf8');
     const parsed = JSON.parse(text) as Record<string, unknown>;
+
+    if (parsed.type === 'editor-snapshot' || parsed.type === 'editor-apply') {
+      if (typeof parsed.requestId !== 'string' || !/^[a-f0-9-]{36}$/u.test(parsed.requestId)) return null;
+      if (parsed.type === 'editor-snapshot') return { type: parsed.type, requestId: parsed.requestId };
+      const replacement = normalizeEditorBuffer(parsed.replacement);
+      if (!replacement || typeof parsed.snapshotId !== 'string' || !/^[a-f0-9-]{36}$/u.test(parsed.snapshotId))
+        return null;
+      return { type: parsed.type, requestId: parsed.requestId, snapshotId: parsed.snapshotId, replacement };
+    }
 
     if (parsed.type === 'input' && typeof parsed.data === 'string') {
       if (

@@ -142,8 +142,8 @@ for (const shell of FIXTURE_SHELLS) {
       assert.equal(original.shell, shell);
       assert.equal(
         original.capabilities.includes('input-snapshot'),
-        false,
-        'unimplemented editor operations must not be advertised',
+        shell === 'bash',
+        'only implemented editor adapters may advertise snapshot operations',
       );
       assert.equal(firstPrompt.shellInstanceId, original.shellInstanceId);
 
@@ -307,16 +307,12 @@ for (const shell of FIXTURE_SHELLS) {
       assert.equal(nonInteractive, 'NONINTERACTIVE_OK', 'non-interactive exec must never emit helper OSC');
 
       const batchBoundary = events.collect();
+      const beforeBatchGeneration = events.context.promptGeneration ?? 0;
       const batch = "true\rcd '" + root + "'\r";
       events.context = invalidateShellInput(events.context, batch, 'fixture-batch');
       terminal.write(batch);
-      await events.waitFor((event) => event.event === 'cwd' && event.physicalCwd === root, batchBoundary);
-      const batchCwd = events.events
-        .slice(batchBoundary)
-        .reverse()
-        .find((event) => event.event === 'cwd');
       await events.waitFor(
-        (event) => event.event === 'prompt-ready' && event.promptGeneration === batchCwd?.promptGeneration,
+        (event) => event.event === 'prompt-ready' && (event.promptGeneration ?? 0) >= beforeBatchGeneration + 2,
         batchBoundary,
       );
       assert.equal(events.context.cwd, null, 'unacknowledged typeahead cannot restore directory operations');

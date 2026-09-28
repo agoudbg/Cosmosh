@@ -182,14 +182,14 @@ Current protocol v3 behavior:
 
 Each event carries a bounded `shellInstanceId`. Interactive processes generate Linux UUIDs; repeated sourcing preserves the same identity and hook registration. Fish internal state is unexported. Nested Shells get distinct identities, and non-interactive startup stays silent. The backend binds the first validated original Shell, pauses on foreign identities and resumes on a newer original prompt. Only implemented capabilities are advertised. Encoded OSC is bounded to 48 KiB and decoded JSON to 32 KiB.
 
-| Shell  | Advertised capabilities                                                     |
-| ------ | --------------------------------------------------------------------------- |
-| Bash   | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready` |
-| Zsh    | Bash capability set plus `line-state`                                       |
-| Fish   | Bash capability set plus `cwd-invalidated`                                  |
-| Sh/Ash | `cwd`, `prompt-ready`                                                       |
+| Shell  | Advertised capabilities                                                                                                      |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Bash   | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `editor-state`, `input-snapshot`, `input-apply` |
+| Zsh    | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `line-state`                                    |
+| Fish   | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `cwd-invalidated`                               |
+| Sh/Ash | `cwd`, `prompt-ready`                                                                                                        |
 
-- Bash preserves existing `PROMPT_COMMAND`, emits prompt/cwd state, and uses a guarded `DEBUG` trap for one command start per submitted line. Command end carries the same `commandId`, exit code, and measured duration.
+- Bash 5.1 or newer preserves existing `PROMPT_COMMAND` entries in a native array, retaining each user's command status, execution order and error behavior. Cosmosh callbacks succeed under `errexit`; older Bash versions keep plain terminal behavior without these hooks. A guarded `DEBUG` trap reports one command start per submitted line. Command end carries the same `commandId`, exit code, and measured duration.
 - Zsh uses `precmd`, `preexec` and `line-pre-redraw`; all required hooks must register before readiness. CWD is emitted only at the prompt boundary.
 - Fish uses `fish_preexec`, `fish_postexec` and `fish_prompt` events without replacing user prompt functions. PWD/HOME changes after reporting emit one `cwd-invalidated` event for the same generation; they cannot restore directory usability. A subsequent stable report/prompt pair recovers it. Functions that continually change directories need verified editor confirmation. Direct PTY metadata output also works inside captured prompt/title functions. The ordering follows Fish's [reader implementation](https://github.com/fish-shell/fish-shell/blob/3.6.4/src/reader.cpp).
 - Prompt-bound CWD reports contain logical PWD, physical output from an external `pwd -P` child, and current absolute HOME. Physical output is Base64-encoded before command substitution, preserving filename newlines; Backend removes exactly the program's final LF. Unavailable physical/HOME values use empty encoded fields and normalize to null. Bash reports after user prompt hooks.
@@ -198,7 +198,7 @@ Each event carries a bounded `shellInstanceId`. Interactive processes generate L
 
 Every event includes `helperVersion`, integer `protocolVersion`, and the helper's bounded `capabilities` list. The backend accepts no helper event until `integration-ready` matches the exact contract returned by `cosmosh-bootstrap status`. Event names must be advertised; command events require a bounded `commandId`, and `command-end` requires exit code and duration. Dynamic cwd and command strings are canonical Base64 fields inside the JSON envelope so valid tabs, newlines, quotes, and backslashes cannot corrupt JSON. Shared desktop types and protocol constants live in `packages/api-contract/src/terminal-protocol.ts`.
 
-The helper must not capture passwords, private keys, terminal line-buffer contents, full screen output, or native shell completion lists. Command events carry only a sanitized executable name, never the submitted arguments. Zsh `line-state` carries only length, cursor index, and prompt generation.
+OSC and command-lifecycle events must never collect or contain terminal input, passwords, private keys, full screen output or native completion lists. Command events carry only a sanitized executable name, never submitted arguments. Zsh `line-state` carries only length, cursor index and prompt generation. A separately authorized private editor request may temporarily read the original Shell's active input buffer; its contents never enter the event stream or diagnostics.
 
 ## Idempotency and Repair Behavior
 
@@ -328,6 +328,15 @@ HOME="$tmp_home" XDG_DATA_HOME="$tmp_home/data" XDG_CONFIG_HOME="$tmp_home/confi
 ```
 
 ## Adding a Remote Enhancement
+
+The `internal/editor` package serves private, request-scoped editor exchanges through
+`editor-request` stdin and owner-checked Unix sockets. Bash widgets use `editor-widget`;
+all input travels through stdin/socket memory rather than argv, OSC, files or logs.
+Requests expire after 1.5 seconds, including incomplete initial stdin. The adapter
+currently enables verified native Emacs editing in UTF-8 Bash and pauses for other
+bindings/modes or ambiguous typeahead. Its complete protocol, privacy rules,
+acknowledgement semantics and outstanding recovery limitation are documented in
+`docs/developer/runtime/ssh-terminal.md` and the synchronized Chinese page.
 
 Use this checklist when expanding the remote helper:
 

@@ -14,6 +14,7 @@ export const REMOTE_SHELL_EVENT_NAMES = [
   'command-end',
   'foreground-command',
   'line-state',
+  'editor-state',
 ] as const;
 
 /** Capabilities that a helper may advertise after installation validation. */
@@ -25,6 +26,7 @@ export const REMOTE_SHELL_CAPABILITIES = [
   'foreground-command',
   'prompt-ready',
   'line-state',
+  'editor-state',
   'input-snapshot',
   'input-apply',
   'directory-read',
@@ -78,7 +80,45 @@ export type RemoteShellEventMessage = RemoteShellEventBase &
     | { event: 'command-end'; command: string; commandId: string; exitCode: number; durationMs: number }
     | { event: 'foreground-command'; command: string; commandId: string }
     | { event: 'line-state'; lineLength: number; cursorIndex: number; promptGeneration: number }
+    | {
+        event: 'editor-state';
+        promptGeneration: number;
+        pid: number;
+        startTime: string;
+        available: boolean;
+        triggerNonce: string;
+      }
   );
+
+/** Metadata identifying one installed original-Shell editor and its currently owned binding epoch. */
+export type ShellEditorTarget = {
+  instanceId: string;
+  shell: 'bash' | 'zsh' | 'fish';
+  pid: number;
+  startTime: string;
+};
+
+/** Complete input buffer with a UTF-16 cursor offset; never persisted or included in OSC/debug events. */
+export type ShellEditorBuffer = { text: string; cursor: number };
+
+/** A requested, editor-owned observation, retained only in session memory. */
+export type ShellEditorSnapshot = {
+  promptGeneration: number;
+  editorMode: 'emacs' | 'vi-insert';
+  buffer?: ShellEditorBuffer;
+  directory?: ShellDirectoryContext;
+};
+
+/** Private stdin request to the bounded remote helper process. */
+export type ShellEditorRequest = {
+  requestId: string;
+  target: ShellEditorTarget;
+  operation: 'context' | 'snapshot' | 'apply';
+  promptGeneration: number;
+  includeDirectory: boolean;
+  expected?: ShellEditorSnapshot;
+  replacement?: ShellEditorBuffer;
+};
 
 /** User permissions are independent of the capabilities installed by a helper. */
 export type ShellPermissions = {
@@ -197,6 +237,8 @@ export type TerminalClientMessage =
   | { type: 'ping' }
   | { type: 'history-delete'; command: string }
   | { type: 'credential-fill'; token: string }
+  | { type: 'editor-snapshot'; requestId: string }
+  | { type: 'editor-apply'; requestId: string; snapshotId: string; replacement: ShellEditorBuffer }
   | {
       type: 'completion-request';
       requestId: string;
@@ -213,6 +255,19 @@ export type TerminalClientMessage =
 
 /** Messages common to local and SSH terminal WebSocket sessions. */
 export type TerminalServerMessage =
+  | {
+      type: 'editor-snapshot-result';
+      requestId: string;
+      status: 'ok';
+      snapshotId: string;
+      snapshot: ShellEditorSnapshot;
+    }
+  | { type: 'editor-snapshot-result'; requestId: string; status: 'stale' | 'unavailable' | 'unsupported' | 'unknown' }
+  | {
+      type: 'editor-apply-result';
+      requestId: string;
+      status: 'applied' | 'stale' | 'unavailable' | 'unsupported' | 'unknown';
+    }
   | { type: 'credential-fill-offer'; offer: TerminalCredentialFillOffer | null }
   | TerminalCredentialFillResult
   | { type: 'ready' }

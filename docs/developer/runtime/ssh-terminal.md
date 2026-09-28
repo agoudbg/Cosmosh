@@ -504,13 +504,13 @@ The shared TypeScript type is a discriminated union rather than the optional-fie
 
 Current first-phase helper behavior:
 
-- Bash uses `PROMPT_COMMAND` to preserve any existing prompt hook and then emit `cwd`, `prompt-ready`, and a `command-end` with matching command id, exit code, and duration. A guarded `DEBUG` trap emits one `command-start` and one `foreground-command` per submitted command line after prompt setup finishes.
+- Bash 5.1 or newer preserves existing string/array `PROMPT_COMMAND` hooks as native array entries, retaining their order, original exit status and error behavior. Cosmosh callbacks return success and are protected from `errexit`; Bash itself restores the previous command status. Older versions retain plain terminal behavior without these hooks. The helper emits `cwd`, `prompt-ready`, and a `command-end` with matching command id, exit code, and duration. A guarded `DEBUG` trap emits one `command-start` and one `foreground-command` per submitted command line after prompt setup finishes. See [Bash interactive behavior](https://www.gnu.org/software/bash/manual/html_node/Interactive-Shell-Behavior).
 - Zsh uses `precmd` and `preexec` hooks plus `line-pre-redraw` for numeric editor metadata. Required registrations must succeed; partial failures remove installed hooks. CWD is reported only at the prompt boundary.
 - Fish uses `fish_preexec`, `fish_postexec` and `fish_prompt` events while leaving user prompt functions intact. Fish calls prompt/title functions after the prompt event; if any later function changes PWD/HOME, one `cwd-invalidated` event disables that generation. The next stable report/prompt pair can recover. Metadata goes directly to the PTY even inside Fish's captured prompt output. Prompt functions that continually change directories require the planned verified editor exchange before their directories can be used.
 - Sh/Ash install a prompt-capture fallback and advertise only `cwd` and `prompt-ready`; they do not claim command lifecycle support.
 - Every shell emits `integration-ready` only after its advertised hook set has installed successfully. Non-interactive shells emit no OSC events.
 - `command-start` and `foreground-command` are emitted for every submitted command that can be reduced to an executable name; they carry only that sanitized executable name (for example `vim`), not the full command line or arguments.
-- The helper intentionally does not emit full command text, line-buffer contents, password input, or native shell completion lists. Zsh `line-state` contains numeric length/cursor metadata only.
+- OSC events never emit full command text, input buffers, passwords, or native completion lists. Zsh `line-state` contains numeric length/cursor metadata only. Requested editor snapshots use the separate private exchange below.
 
 Backend state model:
 
@@ -519,13 +519,51 @@ Backend state model:
 - Input invalidates asynchronous work before PTY forwarding. Enter, newline, Ctrl+C and Ctrl+D pause usability; command end stays busy until a new prompt. Directory operation boundaries and final results recheck current generations and permissions.
 - Renderer invalidates its source pane before sending a submission. An opaque `submissionToken` echoed by Backend prevents already-queued older contexts from reopening directory actions. Receipt does not prove that Shell consumed typeahead: submissions made while busy/initializing/already submitting/in another Shell, or multiple boundaries in one input chunk (CRLF counts once), keep `requiresEditorConfirmation` in Backend-only state. Bare prompt events cannot restore usability. Current migration limitation: this ambiguous state stays paused until reconnect; planned editor adapters (steps 7–9) must replace that limitation with a verified editor exchange before the full feature is released.
 - Default-scope settings revisions update live sessions. CWD opt-out clears caches and rejects cwd events; input opt-out stops enhancement input tracking, candidate requests and rendered command capture while normal terminal I/O continues. History/path preferences populate separate permissions. Native completion defaults off and requires an implemented advertised provider. Global opt-out disables the runtime; re-enabling requires reconnecting. Settings reads stay inside optional setup's 15-second budget, so failures preserve ordinary SSH.
-- Migration boundary: verified editor snapshots, structured directory reads and native providers remain subsequent additions. Helpers currently advertise implemented lifecycle/CWD events only. Editor replacement and complete history probe/cache/deletion permission enforcement are replaced separately.
+- Migration boundary: Bash now advertises `editor-state`, `input-snapshot` and `input-apply`. Renderer completion still uses its existing insertion path until the snapshot/range flow is connected. Zsh/Fish editor adapters, structured directory reads, native providers and complete history permission enforcement remain subsequent changes.
 - Each session owns an explicit `pending`, `active`, or `disabled` enhancement runtime state, the contract validated before PTY creation, and a handshake timer that is cleared on activation, disablement, or session disposal.
 - Each `SshLiveSession` keeps confirmed directory/foreground state plus the latest command id, sanitized executable, exit code, and duration. Unique structured `command-start` events drive command counting and history refresh; without that capability, Enter boundaries update only the counter and schedule Shell-owned history refresh, without retaining input text.
 - `ShellContext.cwd` is the only usable remote directory source. A backend-only pending report is promoted at the matching `promptGeneration`; missing, stale or interrupted pairs leave CWD unavailable. Sh/Ash use one fresh report per generation-less prompt, cleared on submit/pause. `lastKnownCwd` is display-only. Logical paths are for display; physical paths and HOME drive file operations. Physical lookup uses an external `pwd -P` child of the actual Shell, avoiding cached built-in results for deleted directories; only its final output LF is removed. Unset/relative HOME and failed physical lookup remain null. No directory values are trimmed. Bash reports after existing `PROMPT_COMMAND` hooks while preserving their input exit status.
 - When `remoteShellForegroundCommand` is set by `foreground-command`, backend returns an empty completion response until the next `prompt-ready`; `command-end` does not clear suppression early. This covers short commands, long-running foreground processes, and unknown TUI/REPL programs without maintaining a command whitelist.
 - Renderer clears trusted cwd/line calibration immediately whenever backend trust leaves `active`, and applies prompt-generation checks before using `line-state` for completion. Command lifecycle events also maintain pane-local xterm navigation markers.
 - The explicit saved login password action uses bounded output detection in the local backend; Shell hooks never capture password input, and completion has no credential source.
+
+#### Private Bash editor exchange
+
+The installed absolute binary path is retained from validated bootstrap status. Backend launches only that quoted path with the fixed `editor-request` subcommand. Request JSON goes to stdin; input never appears in OS command arguments, OSC events, audit records, files or debug history. The implementation uses existing SSH channels and a request-scoped Go process; it adds no daemon.
+
+```mermaid
+sequenceDiagram
+  participant B as Backend session
+  participant G as Bounded Go worker
+  participant E as Original Bash Readline
+  B->>G: Request identity and permitted fields via stdin
+  G->>G: Verify PID generation, executable and foreground PTY
+  G-->>B: Ready
+  B->>B: Recheck context, permission and client ownership
+  B->>E: Owned private binding for this prompt
+  E->>G: Actual buffer/cursor or context-only observation
+  alt Snapshot
+    G-->>B: Validated observation
+  else Apply
+    G-->>B: Exact current observation
+    B->>G: Authorize only if still current
+    G->>E: Replacement as data
+    E->>G: Assigned-buffer acknowledgement
+    G-->>B: Applied or unknown
+  end
+```
+
+- Each request has a 1.5-second remote lifetime, including its first stdin frame; Backend caps the exchange at three seconds and allows at most another 1.75 seconds for channel cleanup. Cancellation sends stdin EOF before waiting for channel closure. The worker removes its owned endpoint before sending a final result, including SSH termination signals. One operation and one snapshot are retained per session; the snapshot is actively erased after ten seconds. Buffers are limited to 8 KiB of UTF-8; JSON frames to 256 KiB. Line breaks, unsupported control characters and invalid cursor boundaries are rejected.
+- Before triggering a private key, the worker inspects the original Shell's controlling stdin terminal without reading input. Canonical line discipline and special interrupt, suspend or flow-control characters that collide with trigger bytes reject the operation before any key is sent.
+- The owner-only `/tmp/cosmosh-editor-<uid>` directory uses mode 0700; sockets use 0600. The worker validates same-UID peer credentials, ancestry to the original Shell, PID start time and controlling terminal. Existing endpoints are not removed. Cleanup checks inode identity before unlinking its own endpoint.
+- Bash 5.2 Readline character indexes are converted to JavaScript UTF-16 indexes. Applying compares the complete original text, cursor, mode, prompt generation and requested directory metadata before assigning `READLINE_LINE`/`READLINE_POINT`. It sends no Enter and performs no command evaluation. Native undo restores the previous text in one step; Bash may place the restored cursor at line end.
+- A zero-output PS2 prefix marks continuation input unavailable. The adapter preserves the user's suffix, requires `promptvars` and withdraws editor access if the user replaces its marker or binding. Repeated source preserves ownership. Each primary prompt rotates its private binding; the previous binding becomes a no-op, and older owned bindings are removed.
+- Automatic Bash requests currently support a verified native Emacs editing profile. User macros, foreign `bind -x` handlers, unsafe printable-key mappings, vi modes and non-UTF-8 locales disable this adapter. Backend preserves native keys and pauses before forwarding Tab, search/macro/mode shortcuts or unknown escape sequences. This ambiguity remains fenced across subsequent primary prompts; reconnecting currently restores supported editing.
+- Truly ambiguous typeahead remains paused. A fresh prompt event can precede a queued `read -s`, so neither byte counts nor foreground PID prove that an injected key will enter Readline. No automatic context probe is sent into that state. Resolving this limitation with Shell-owned consumption evidence remains required before the complete rescue plan is declared finished; reconnect currently establishes a fresh session.
+- Context-only exchanges omit input entirely; CWD and input permission are checked independently. Input, changed permissions, replacement WebSocket clients, lifecycle events and teardown cancel pending work and erase cached snapshots. A dispatched request that times out or is cancelled locks that prompt's binding epoch; it is never retried there.
+- Sensitive Shell output uses builtin commands, with tracing disabled before buffer access and internal DEBUG chaining suppressed. Optional failures are explicitly handled under `errexit`. Lost acknowledgement after authorization produces `unknown`, never a claim that no edit occurred or an automatic retry.
+
+The real SSH regression is `src/terminal/integration/editor-bridge.live-test.ts`. Its observations supplement, rather than replace, the final Electron and supported-version acceptance matrix.
 
 ### 8.3 Manifest and Asset Contract
 

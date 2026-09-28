@@ -192,7 +192,7 @@ func isCurrentInstallation(options Options, resolvedPaths paths) bool {
 }
 
 func helperMatches(options Options, resolvedPaths paths) bool {
-	expected, err := BuildHelper(options.Shell, options.Version)
+	expected, err := BuildHelper(options.Shell, options.Version, resolvedPaths.binaryPath)
 	if err != nil {
 		return false
 	}
@@ -244,7 +244,7 @@ func installFiles(options Options, resolvedPaths paths) error {
 		return err
 	}
 
-	helper, err := BuildHelper(options.Shell, options.Version)
+	helper, err := BuildHelper(options.Shell, options.Version, resolvedPaths.binaryPath)
 	if err != nil {
 		return err
 	}

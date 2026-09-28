@@ -2,6 +2,7 @@ package install
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -17,6 +18,7 @@ var fullRemoteShellCapabilities = []string{
 }
 
 var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "line-state")
+var bashRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "editor-state", "input-snapshot", "input-apply")
 var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated")
 
 var degradedRemoteShellCapabilities = []string{
@@ -27,6 +29,8 @@ var degradedRemoteShellCapabilities = []string{
 // HelperCapabilities returns only the event capabilities installed reliably for a shell.
 func HelperCapabilities(shell string) []string {
 	switch shell {
+	case "bash":
+		return append([]string(nil), bashRemoteShellCapabilities...)
 	case "sh", "ash":
 		return append([]string(nil), degradedRemoteShellCapabilities...)
 	case "zsh":
@@ -39,22 +43,25 @@ func HelperCapabilities(shell string) []string {
 }
 
 // BuildHelper creates the versioned shell integration owned by the Go bootstrap.
-func BuildHelper(shell string, version string) (string, error) {
+func BuildHelper(shell string, version string, binaryPath string) (string, error) {
 	if err := validateShell(shell); err != nil {
 		return "", err
 	}
 	if version == "" {
 		return "", fmt.Errorf("version is required")
 	}
+	if (!filepath.IsAbs(binaryPath) && !strings.HasPrefix(binaryPath, "/")) || strings.ContainsRune(binaryPath, 0) {
+		return "", fmt.Errorf("absolute bootstrap path is required")
+	}
 
 	if shell == "fish" {
 		return buildFishHelper(version), nil
 	}
 
-	return buildPosixHelper(shell, version), nil
+	return buildPosixHelper(shell, version, binaryPath), nil
 }
 
-func buildPosixHelper(shell string, version string) string {
+func buildPosixHelper(shell string, version string, binaryPath string) string {
 	capabilities := capabilitiesJSON(HelperCapabilities(shell))
 	header := fmt.Sprintf(`# Cosmosh Remote Enhancements shell integration.
 case "$-" in *i*) ;; *) return 0 ;; esac
@@ -75,7 +82,8 @@ __COSMOSH_REMOTE_SHELL=%s
 __COSMOSH_HELPER_VERSION=%s
 __COSMOSH_PROTOCOL_VERSION=%d
 __COSMOSH_CAPABILITIES_JSON=%s
-`, quotePOSIX(shell), quotePOSIX(version), RemoteShellProtocolVersion, quotePOSIX(capabilities))
+__COSMOSH_EDITOR_BINARY=%s
+`, quotePOSIX(shell), quotePOSIX(version), RemoteShellProtocolVersion, quotePOSIX(capabilities), quotePOSIX(binaryPath))
 
 	common := `
 __cosmosh_base64_value() {
@@ -171,6 +179,9 @@ __cosmosh_emit_remote_shell_event() {
     line-state)
       __cosmosh_json="$__cosmosh_json,\"promptGeneration\":$__cosmosh_prompt_generation,\"lineLength\":$__cosmosh_line_length,\"cursorIndex\":$__cosmosh_cursor_index"
       ;;
+    editor-state)
+      __cosmosh_json="$__cosmosh_json,\"promptGeneration\":$__COSMOSH_PROMPT_GENERATION,\"pid\":$__COSMOSH_SHELL_OWNER_PID,\"startTime\":\"$__COSMOSH_EDITOR_START\",\"available\":$__COSMOSH_EDITOR_AVAILABLE,\"triggerNonce\":\"$__COSMOSH_EDITOR_NONCE\""
+      ;;
   esac
 
   __cosmosh_json="$__cosmosh_json}"
@@ -222,7 +233,9 @@ __cosmosh_prompt_ready_for_ps1() {
 `
 
 	if shell == "bash" {
-		return header + common + bashHelperHooks
+		// Native PROMPT_COMMAND arrays preserve the original status for every user hook.
+		// Older Bash versions retain ordinary terminal behavior without installing unsafe prompt wrappers.
+		return header + "\nif (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then return 0; fi\n" + common + bashEditorHooks + bashHelperHooks
 	}
 	if shell == "zsh" {
 		return header + common + zshHelperHooks
@@ -232,32 +245,37 @@ __cosmosh_prompt_ready_for_ps1() {
 }
 
 const bashHelperHooks = `
+__cosmosh_bash_restore_debug_status() { return "$1"; }
+__cosmosh_bash_run_user_debug() { eval "$__COSMOSH_BASH_PREV_DEBUG_CMD"; }
+
 __cosmosh_bash_prompt_command() {
   __COSMOSH_BASH_PROMPT_STATUS=$?
   __COSMOSH_BASH_PREEXEC_READY=0
-  return "$__COSMOSH_BASH_PROMPT_STATUS"
+  __COSMOSH_BASH_PRIMARY=0
+  return 0
 }
 
 __cosmosh_bash_arm_preexec() {
   # Report after existing prompt commands, which may themselves change directory.
   __cosmosh_prompt_ready "$__COSMOSH_BASH_PROMPT_STATUS"
+  __cosmosh_bash_editor_prepare || :
   __COSMOSH_BASH_PREEXEC_READY=1
-  return "$__COSMOSH_BASH_PROMPT_STATUS"
+  __COSMOSH_BASH_PRIMARY=1
+  return 0
 }
 
 if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
   __COSMOSH_BASH_PREEXEC_READY=0
   case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
     declare\ -*a*PROMPT_COMMAND=*)
-      PROMPT_COMMAND=(__cosmosh_bash_prompt_command "${PROMPT_COMMAND[@]}" __cosmosh_bash_arm_preexec)
+      PROMPT_COMMAND=('__cosmosh_bash_prompt_command || :' "${PROMPT_COMMAND[@]}" '__cosmosh_bash_arm_preexec || :')
       ;;
     *)
       if [ -n "${PROMPT_COMMAND:-}" ]; then
-        # Keep user prompt code behind its own evaluation boundary so trailing separators cannot corrupt this command list.
-        __COSMOSH_BASH_PREV_PROMPT_COMMAND="$PROMPT_COMMAND"
-        PROMPT_COMMAND='__cosmosh_bash_prompt_command; eval "$__COSMOSH_BASH_PREV_PROMPT_COMMAND"; __cosmosh_bash_arm_preexec'
+        # Bash restores the previous command status before each array element, including user code.
+        PROMPT_COMMAND=('__cosmosh_bash_prompt_command || :' "$PROMPT_COMMAND" '__cosmosh_bash_arm_preexec || :')
       else
-        PROMPT_COMMAND='__cosmosh_bash_prompt_command; __cosmosh_bash_arm_preexec'
+        PROMPT_COMMAND=('__cosmosh_bash_prompt_command || :' '__cosmosh_bash_arm_preexec || :')
       fi
       ;;
   esac
@@ -265,6 +283,10 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
   __COSMOSH_BASH_PREV_DEBUG_CMD="$(trap -p DEBUG | sed -n "s/^trap -- '\(.*\)' DEBUG$/\1/p")"
   __cosmosh_bash_debug_trap() {
     local __cosmosh_debug_status=$?
+    # Helper internals must never appear as user commands or enter user DEBUG hooks under functrace.
+    # Skip this DEBUG function itself when examining its caller chain.
+    case " ${FUNCNAME[*]:1} " in *" __cosmosh_"*) return 0 ;; esac
+    case "${BASH_COMMAND:-}" in __cosmosh_*) return 0 ;; esac
     local __cosmosh_debug_command="${BASH_COMMAND:-}"
     if [ "${__COSMOSH_BASH_DEBUG_ACTIVE:-0}" != "1" ] && [ "${__COSMOSH_BASH_PREEXEC_READY:-0}" = "1" ]; then
       case "$__cosmosh_debug_command" in
@@ -272,6 +294,7 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
           ;;
         *)
           __COSMOSH_BASH_PREEXEC_READY=0
+          __COSMOSH_BASH_PRIMARY=0
           __COSMOSH_BASH_DEBUG_ACTIVE=1
           __cosmosh_emit_command_start "$__cosmosh_debug_command"
           __COSMOSH_BASH_DEBUG_ACTIVE=0
@@ -280,10 +303,19 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
     fi
     if [ -n "${__COSMOSH_BASH_PREV_DEBUG_CMD:-}" ]; then
       __COSMOSH_BASH_DEBUG_ACTIVE=1
-      eval "$__COSMOSH_BASH_PREV_DEBUG_CMD"
+      # The conditional safely restores $? for user code without making Cosmosh fail under errexit.
+      # A separate function keeps a user's explicit return from bypassing our cleanup.
+      if __cosmosh_bash_restore_debug_status "$__cosmosh_debug_status"; then
+        __cosmosh_bash_run_user_debug
+      else
+        __cosmosh_bash_run_user_debug
+      fi
+      local __cosmosh_user_debug_status=$?
       __COSMOSH_BASH_DEBUG_ACTIVE=0
+      return "$__cosmosh_user_debug_status"
     fi
-    return "$__cosmosh_debug_status"
+    # Bash restores the interrupted command status; a failing DEBUG callback itself can trigger errexit.
+    return 0
   }
 
   if trap '__cosmosh_bash_debug_trap' DEBUG; then

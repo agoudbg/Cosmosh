@@ -13,6 +13,8 @@ export type ShellContextState = ShellContext & {
   pendingDirectory?: { directory: ShellDirectoryContext; promptGeneration: number | null } | null;
   /** Typeahead may belong to a running program; only a verified editor exchange can resolve this ambiguity. */
   requiresEditorConfirmation?: boolean;
+  /** Private verified editor binding; reset at every execution/transport boundary. */
+  editorBinding?: { pid: number; startTime: string; triggerNonce: string; promptGeneration: number } | null;
 };
 
 /**
@@ -24,6 +26,7 @@ export const getShellContextSnapshot = (state: ShellContextState): ShellContext 
   const context = { ...state };
   delete context.pendingDirectory;
   delete context.requiresEditorConfirmation;
+  delete context.editorBinding;
   return context;
 };
 
@@ -134,6 +137,7 @@ export const suspendShellContext = (
   reason,
   cwd: null,
   pendingDirectory: null,
+  editorBinding: null,
   ...(unavailable ? { capabilities: [], promptGeneration: null } : {}),
 });
 
@@ -194,6 +198,21 @@ export const applyShellContextEvent = (
     };
   }
   if (!context.shellInstanceId) return context;
+  if (event.event === 'editor-state') {
+    if (event.promptGeneration !== context.promptGeneration) return context;
+    return {
+      ...context,
+      revision: context.revision + 1,
+      editorBinding: event.available
+        ? {
+            pid: event.pid,
+            startTime: event.startTime,
+            triggerNonce: event.triggerNonce,
+            promptGeneration: event.promptGeneration,
+          }
+        : null,
+    };
+  }
   if (event.event === 'prompt-ready') {
     if (event.promptGeneration === undefined && event.shell !== 'sh' && event.shell !== 'ash')
       return suspendShellContext(context, 'unsupported-editor');
@@ -223,6 +242,7 @@ export const applyShellContextEvent = (
       lastKnownCwd: directory ?? context.lastKnownCwd,
       cwdGeneration: context.cwdGeneration + Number(directoryChanged),
       pendingDirectory: null,
+      editorBinding: null,
     };
   }
   if (event.event === 'cwd-invalidated') {
@@ -256,6 +276,7 @@ export const applyShellContextEvent = (
       reason: 'command-running',
       cwd: null,
       pendingDirectory: null,
+      editorBinding: null,
     };
   }
   return context;

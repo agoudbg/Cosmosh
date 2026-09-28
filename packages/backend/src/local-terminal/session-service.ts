@@ -413,6 +413,15 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       return;
     }
 
+    if (message.type === 'editor-snapshot' || message.type === 'editor-apply') {
+      this.sendServerMessage(session, {
+        type: message.type === 'editor-snapshot' ? 'editor-snapshot-result' : 'editor-apply-result',
+        requestId: message.requestId,
+        status: 'unavailable',
+      });
+      return;
+    }
+
     if (message.type === 'history-delete') {
       const command = message.command.trim();
       if (!command) {

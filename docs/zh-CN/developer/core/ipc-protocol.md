@@ -13,6 +13,8 @@ flowchart TB
 
 提交终端`input`时可附带不含输入内容的 UUID `submissionToken`。Backend 在`ShellContext`中回显最近收到的标识；Renderer 在匹配且可用的上下文到达前持续停用旧 ready 快照。这只确认 Backend 收到输入。无法确定归属的连续输入保持暂停，等待可信编辑器确认。Fish 的`cwd-invalidated`只携带当前提示符代数，用于停用报告后发生变化的目录。
 
+现有终端 WebSocket 另外接受`editor-snapshot { requestId }`和`editor-apply { requestId, snapshotId, replacement: { text, cursor } }`。独立的`editor-snapshot-result`和`editor-apply-result`回包使输入内容不进入 OSC 调试历史。快照成功时包含不透明标识和获准字段，失败只返回固定状态。填入结果为`applied`、`stale`、`unavailable`、`unsupported`或`unknown`；本地终端返回`unavailable`。替换 WebSocket 会取消旧编辑器操作的归属，过期私有回包不发送给新客户端。不含文本的`editor-state` OSC 事件携带 PID／启动时间、提示符代数、可用性及当前拥有的触发标识，不增加 Electron IPC 通道。
+
 ## 2. Channel 字典
 
 | Channel                                    | IPC Type                   | Params                                                                                                                     | Return Schema                                                                                                                                                                                                                                                                                                                                                                                                       | Main Handler Behavior                                                                                                              |

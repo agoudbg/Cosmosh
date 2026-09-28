@@ -238,9 +238,8 @@ func TestRunInstallsBashRemoteShellHelperHooks(t *testing.T) {
 
 	helperPath := filepath.Join(configDir, "cosmosh", "bootstrap", "helper.sh")
 	assertFileContains(t, helperPath, "__cosmosh_emit_remote_shell_event")
-	assertFileContains(t, helperPath, "PROMPT_COMMAND='__cosmosh_bash_prompt_command; __cosmosh_bash_arm_preexec'")
-	assertFileContains(t, helperPath, `__COSMOSH_BASH_PREV_PROMPT_COMMAND="$PROMPT_COMMAND"`)
-	assertFileContains(t, helperPath, `PROMPT_COMMAND='__cosmosh_bash_prompt_command; eval "$__COSMOSH_BASH_PREV_PROMPT_COMMAND"; __cosmosh_bash_arm_preexec'`)
+	assertFileContains(t, helperPath, `PROMPT_COMMAND=('__cosmosh_bash_prompt_command || :' '__cosmosh_bash_arm_preexec || :')`)
+	assertFileContains(t, helperPath, `PROMPT_COMMAND=('__cosmosh_bash_prompt_command || :' "$PROMPT_COMMAND" '__cosmosh_bash_arm_preexec || :')`)
 	assertFileNotContains(t, helperPath, `PROMPT_COMMAND="__cosmosh_bash_prompt_command; ${PROMPT_COMMAND}; __cosmosh_bash_arm_preexec"`)
 	assertFileContains(t, helperPath, "trap '__cosmosh_bash_debug_trap' DEBUG")
 	assertFileContains(t, helperPath, "command-end")
@@ -262,7 +261,7 @@ func TestBashHelperPreservesPromptCommandWithTrailingSeparator(t *testing.T) {
 		t.Skip("bash is unavailable")
 	}
 
-	helper, err := BuildHelper("bash", "1.2.3")
+	helper, err := BuildHelper("bash", "1.2.3", "/tmp/cosmosh-bootstrap")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,17 +279,17 @@ func TestBashHelperPreservesPreviousCommandStatusForUserPromptHook(t *testing.T)
 		t.Skip("bash is unavailable")
 	}
 
-	helper, err := BuildHelper("bash", "1.2.3")
+	helper, err := BuildHelper("bash", "1.2.3", "/tmp/cosmosh-bootstrap")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Force event emission without a PTY so the test covers Bash dynamic-scope collisions
 	// between the prompt wrapper and the shared event serializer.
-	script := "PROMPT_COMMAND='__observed_status=$?'\n__COSMOSH_CAPTURED_PROMPT_EVENT=1\n" + helper + "\nfalse\neval \"$PROMPT_COMMAND\"\ntest \"$__observed_status\" -eq 1\n"
+	script := "PROMPT_COMMAND='__observed_status=$?'\n__COSMOSH_CAPTURED_PROMPT_EVENT=1\n" + helper
 	command := exec.Command(bashPath, "--noprofile", "--norc", "-i", "-s")
-	// One compound command prevents automatic interactive prompts between
-	// false and the explicit prompt-hook assertion, including on WSL launchers.
-	command.Stdin = strings.NewReader("{\n" + script + "\n}\n")
+	// Let Bash execute its actual prompt array after false; manually evaluating element zero
+	// would bypass Bash's per-element restoration of the original command status.
+	command.Stdin = strings.NewReader("{\n" + script + "\n}\nfalse\ntest \"$__observed_status\" -eq 1\n")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("expected user prompt hook to observe the previous exit status: %v\n%s", err, output)
 	}
@@ -340,7 +339,7 @@ func TestZshHelperRemovesZleHookAfterPartialRegistrationFailure(t *testing.T) {
 		t.Skip("zsh is unavailable")
 	}
 
-	helper, err := BuildHelper("zsh", "1.2.3")
+	helper, err := BuildHelper("zsh", "1.2.3", "/tmp/cosmosh-bootstrap")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -393,6 +393,32 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
     return promptGeneration === null ? null : { ...base, event: eventName, promptGeneration };
   }
 
+  if (eventName === 'editor-state') {
+    const promptGeneration = normalizeBoundedInteger(value.promptGeneration, 1, Number.MAX_SAFE_INTEGER);
+    const pid = normalizeBoundedInteger(value.pid, 2, 2 ** 31 - 1);
+    if (
+      promptGeneration === null ||
+      pid === null ||
+      typeof value.startTime !== 'string' ||
+      (value.startTime !== '' && !/^[1-9][0-9]{0,19}$/u.test(value.startTime)) ||
+      typeof value.available !== 'boolean' ||
+      typeof value.triggerNonce !== 'string' ||
+      (value.triggerNonce !== '' &&
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(value.triggerNonce)) ||
+      (value.available && (value.triggerNonce === '' || value.startTime === ''))
+    )
+      return null;
+    return {
+      ...base,
+      event: eventName,
+      promptGeneration,
+      pid,
+      startTime: value.startTime,
+      available: value.available,
+      triggerNonce: value.triggerNonce,
+    };
+  }
+
   if (eventName === 'cwd') {
     const cwd = decodeBoundedBase64Utf8(value.cwdBase64, REMOTE_SHELL_CWD_MAX_BYTES);
     const physicalOutput =

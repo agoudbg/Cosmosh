@@ -41,6 +41,8 @@ import {
   isFillableLoginPassword,
   observeCredentialFillOutput,
 } from '../terminal/credential-fill.js';
+import { confirmShellEditorContext, ShellEditorController } from '../terminal/editor-controller.js';
+import { isSupportedBashEditorInput } from '../terminal/editor-protocol.js';
 import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
@@ -66,6 +68,7 @@ import {
   type SshClientLifecycleMonitor,
   type SshServerWithKeychain,
 } from './connect.js';
+import { executeShellEditorRequest } from './editor-exec.js';
 import { executeBoundedSshCommand } from './exec.js';
 import type { SshProxyMetadata } from './proxy.js';
 import { RemoteShellEventOscParser, type RemoteShellEventStreamFrame } from './remote-shell-events.js';
@@ -175,6 +178,7 @@ type SshLiveSession = TerminalManagedSessionBase & {
   completionRecentCommands: string[];
   credentialFillState: CredentialFillState;
   shellContext: ShellContextState;
+  editorController?: ShellEditorController;
   enhancementsAllowed: boolean;
   loginPassword: string | null;
   remoteShellEventParser: RemoteShellEventOscParser;
@@ -855,6 +859,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         previous,
         resolveShellPermissions(snapshot.values, session.enhancementsAllowed),
       );
+      if (session.shellContext !== previous) session.editorController?.invalidate();
       if (!snapshot.values.remoteEnhancementsEnabled && session.remoteEnhancementsRuntimeState !== 'disabled') {
         this.disableRemoteEnhancementsRuntime(
           session,
@@ -874,7 +879,82 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.sendServerMessage(session, { type: 'shell-context', context: getShellContextSnapshot(session.shellContext) });
   }
 
+  /**
+   * Creates the private per-session editor owner only for an installed, validated helper path.
+   * @param session Owning SSH session. @returns Controller, or null for older/unsupported helpers.
+   */
+  private getEditorController(session: SshLiveSession): ShellEditorController | null {
+    const binaryPath = session.remoteEnhancementsRuntimeContract?.binaryPath;
+    if (!binaryPath || session.disposed || session.remoteEnhancementsRuntimeState !== 'active') return null;
+    session.editorController ??= new ShellEditorController(
+      () => session.shellContext,
+      (request, options) => executeShellEditorRequest(session.client, binaryPath, request, options),
+      (data) => session.stream.write(data),
+      (expected, snapshot) => {
+        if (session.disposed || session.shellContext !== expected) return;
+        session.shellContext = confirmShellEditorContext(expected, snapshot);
+        this.sendShellContext(session);
+      },
+    );
+    return session.editorController;
+  }
+
+  /**
+   * Replies through a private response channel, never the remote-shell-event debug history.
+   * @param session Original Shell session. @param message Explicit snapshot or apply request.
+   * @returns Nothing.
+   */
+  private async handleEditorRequest(
+    session: SshLiveSession,
+    message: Extract<TerminalClientInboundMessage, { type: 'editor-snapshot' | 'editor-apply' }>,
+  ): Promise<void> {
+    const socket = session.socket;
+    const context = session.shellContext;
+    const editor = this.getEditorController(session);
+    if (message.type === 'editor-snapshot') {
+      const result = editor ? await editor.snapshot() : { status: 'unavailable' as const };
+      if (session.disposed || session.socket !== socket) return;
+      if (session.shellContext !== context || !session.shellContext.permissions.input) {
+        editor?.invalidate();
+        this.sendServerMessage(session, {
+          type: 'editor-snapshot-result',
+          requestId: message.requestId,
+          status: 'stale',
+        });
+        return;
+      }
+      this.sendServerMessage(
+        session,
+        result.status === 'ok' && result.snapshotId
+          ? {
+              type: 'editor-snapshot-result',
+              requestId: message.requestId,
+              status: 'ok',
+              snapshotId: result.snapshotId,
+              snapshot: result.snapshot,
+            }
+          : {
+              type: 'editor-snapshot-result',
+              requestId: message.requestId,
+              status: result.status === 'ok' || result.status === 'applied' ? 'unavailable' : result.status,
+            },
+      );
+      return;
+    }
+    const result = editor
+      ? await editor.apply(message.snapshotId, message.replacement)
+      : { status: 'unavailable' as const };
+    if (!session.disposed && session.socket === socket)
+      this.sendServerMessage(session, {
+        type: 'editor-apply-result',
+        requestId: message.requestId,
+        status: result.status === 'ok' ? 'unknown' : result.status,
+      });
+  }
+
   protected onSessionAttached(session: SshLiveSession): void {
+    session.editorController?.invalidate();
+    session.shellContext = { ...session.shellContext, revision: session.shellContext.revision + 1 };
     // Control state must establish trust before ordered PTY frames reach the renderer.
     this.sendServerMessage(session, { type: 'ready' });
     while (session.pendingRemoteBootstrapStatuses.length > 0) {
@@ -968,6 +1048,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     if (session.shellContext.shellInstanceId && session.shellContext.shellInstanceId !== event.shellInstanceId) {
       const next = applyShellContextEvent(session.shellContext, event);
       if (next !== session.shellContext) {
+        session.editorController?.invalidate();
         session.shellContext = next;
         this.sendShellContext(session);
       }
@@ -994,7 +1075,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
 
     const previous = session.shellContext;
     session.shellContext = applyShellContextEvent(previous, event);
-    if (session.shellContext !== previous) this.sendShellContext(session);
+    if (session.shellContext !== previous) {
+      session.editorController?.invalidate();
+      this.sendShellContext(session);
+    }
     if (event.event === 'prompt-ready' && session.shellContext === previous) return;
     if ((event.event === 'cwd' || event.event === 'cwd-invalidated') && !session.shellContext.permissions.cwd) return;
     if (event.event === 'line-state' && !session.shellContext.permissions.input) return;
@@ -1467,6 +1551,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.clearRemoteEnhancementHandshakeTimeout(session);
     session.remoteEnhancementsRuntimeState = 'disabled';
     session.remoteEnhancementsRuntimeCode = code;
+    session.editorController?.invalidate();
     session.remoteEnhancementsRuntimeMessage = message;
     this.discardPendingRemoteShellEventFrames(session);
     session.remoteShellReady = false;
@@ -1490,8 +1575,22 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
+      session.editorController?.invalidate();
       const previousStatus = session.shellContext.status;
       session.shellContext = invalidateShellInput(session.shellContext, message.data, message.submissionToken);
+      // Native completion/search/macros may execute Shell code or read secrets without Enter.
+      // Preserve native keys, but queued prompts cannot prove ownership after an unknown editor action.
+      if (
+        session.remoteEnhancementsRuntimeState === 'active' &&
+        session.shellContext.status !== 'unavailable' &&
+        session.shellContext.shell === 'bash' &&
+        !isSupportedBashEditorInput(message.data)
+      ) {
+        session.shellContext = {
+          ...suspendShellContext(session.shellContext, 'unsupported-editor'),
+          requiresEditorConfirmation: true,
+        };
+      }
       if (session.shellContext.status !== previousStatus || message.submissionToken) this.sendShellContext(session);
       // PTY input may belong to a password prompt or another program. Only Shell-owned
       // history is eligible for completion; keystrokes must never be retained as commands.
@@ -1536,6 +1635,11 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
 
     if (message.type === 'credential-fill') {
       void this.fillLoginPassword(session, message.token);
+      return;
+    }
+
+    if (message.type === 'editor-snapshot' || message.type === 'editor-apply') {
+      void this.handleEditorRequest(session, message);
       return;
     }
 
@@ -1688,6 +1792,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   ): void {
     this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
       beforeExit: (session, reason) => {
+        session.editorController?.invalidate();
         session.shellContext = suspendShellContext(session.shellContext, 'transport-closed', true);
         session.loginPassword = null;
         session.credentialFillState = createCredentialFillState();

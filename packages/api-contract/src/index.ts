@@ -93,6 +93,12 @@ export {
   TERMINAL_CLIPBOARD_ACCESS_OPTIONS,
 } from './terminal-clipboard';
 export type { TerminalClipboardAccess } from './terminal-clipboard';
+export type {
+  ShellEditorTarget,
+  ShellEditorBuffer,
+  ShellEditorSnapshot,
+  ShellEditorRequest,
+} from './terminal-protocol';
 export {
   DEFAULT_TERMINAL_FORCE_SELECTION_MODIFIER,
   DEFAULT_TERMINAL_RIGHT_CLICK_ACTION,
