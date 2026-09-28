@@ -9,6 +9,10 @@ flowchart TB
   M -->|HTTP + internal token| B[backend routes]
 ```
 
+Directory metadata travels through the existing SSH `shell-context` WebSocket message. `cwd` events now carry logical CWD, nullable physical CWD/HOME and prompt generation; only a matched prompt promotes them. SFTP IPC/HTTP shapes are unchanged, but remote paths preserve whitespace and `link/..` until server resolution. No additional IPC channel is introduced.
+
+Submitting terminal `input` may carry an opaque UUID `submissionToken`. Backend echoes its last received token in `ShellContext`; Renderer keeps older ready snapshots unusable until a matching usable context arrives. This acknowledges Backend receipt only. Ambiguous typeahead remains paused pending verified editor confirmation. Fish `cwd-invalidated` carries only the current prompt generation and disables a directory changed after its report.
+
 ## 2. Channel Dictionary
 
 | Channel                                    | IPC Type                   | Params                                                                                                                     | Return Schema                                                                                                                                                                                                                                                                                                                                                                                                       | Main Handler Behavior                                                                                                                                                                        |

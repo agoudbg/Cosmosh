@@ -45,10 +45,7 @@ type RemoteShellEventSessionHarness = {
   pendingStreamFrameBytes: number;
   pendingStreamFrameDropCount: number;
   pendingRemoteBootstrapStatuses: RemoteBootstrapStatus[];
-  completionWorkingDirectory: string | null;
-  completionPendingCwdCommands: string[];
   remoteShellReady: boolean;
-  remoteShellCwd: string | null;
   remoteShellForegroundCommand: string | null;
   lastRemoteCommand: string | null;
   lastRemoteCommandId: string | null;
@@ -135,10 +132,7 @@ const createSessionHarness = (
   pendingStreamFrameBytes: 0,
   pendingStreamFrameDropCount: 0,
   pendingRemoteBootstrapStatuses: [],
-  completionWorkingDirectory: null,
-  completionPendingCwdCommands: [],
   remoteShellReady: false,
-  remoteShellCwd: null,
   remoteShellForegroundCommand: null,
   lastRemoteCommand: null,
   lastRemoteCommandId: null,
@@ -167,6 +161,8 @@ const createRemoteShellEvent = (overrides: Partial<RemoteShellEventMessage> = {}
     promptGeneration: 1,
     capabilities: ['cwd', 'command-start', 'command-end', 'foreground-command', 'prompt-ready'],
     cwd: '/root',
+    physicalCwd: '/root',
+    homeDirectory: '/root',
     timestamp: 1_783_172_312_000,
     ...overrides,
   } as RemoteShellEventMessage;
@@ -203,8 +199,6 @@ test('nested mismatched helper cannot disable or replace the original runtime', 
 test('late settings reads cannot restore cleared directory state or resurrect a disabled runtime', () => {
   const session = createSessionHarness({
     remoteEnhancementsRuntimeState: 'active',
-    remoteShellCwd: '/old',
-    completionWorkingDirectory: '/old',
   });
   const service = Object.assign(
     Object.create(SshSessionService.prototype) as {
@@ -220,8 +214,8 @@ test('late settings reads cannot restore cleared directory state or resurrect a 
   service.applyEnhancementSettings({ revision: 1, values: DEFAULT_SETTINGS_VALUES });
   assert.equal(session.shellContext.permissions.cwd, false);
   service.handleVisibleShellOutput(session, 'fixture@host:/wrong$ ');
-  assert.equal(session.completionWorkingDirectory, null);
-  assert.equal(session.remoteShellCwd, null);
+  assert.equal(session.shellContext.cwd, null);
+  assert.equal(session.shellContext.lastKnownCwd, null);
   service.applyEnhancementSettings({
     revision: 3,
     values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsEnabled: false },
@@ -235,7 +229,7 @@ test('late settings reads cannot restore cleared directory state or resurrect a 
   );
 });
 
-test('revocation while directory initialization awaits prevents a later scan and discards its cache', async () => {
+test('revocation while a directory scan awaits discards its result', async () => {
   for (const permission of ['cwd', 'paths'] as const) {
     let releaseProbe: (value: string) => void = () => undefined;
     let startedProbe: () => void = () => undefined;
@@ -249,11 +243,14 @@ test('revocation while directory initialization awaits prevents a later scan and
     const messages: SshTerminalServerMessage[] = [];
     const session = {
       ...createSessionHarness({ remoteEnhancementsRuntimeState: 'active' }),
-      completionHomeDirectory: null,
-      completionCwdInitializationPromise: null,
       completionRecentCommands: [],
       t: (key: string) => key,
     };
+    session.shellContext = applyShellContextEvent(session.shellContext, createRemoteShellEvent());
+    session.shellContext = applyShellContextEvent(
+      session.shellContext,
+      createRemoteShellEvent({ event: 'prompt-ready' }),
+    );
     const service = Object.assign(
       Object.create(SshSessionService.prototype) as {
         handleCompletionRequest(
@@ -290,10 +287,9 @@ test('revocation while directory initialization awaits prevents a later scan and
           : { terminalAutoCompletePathEnabled: false }),
       },
     });
-    releaseProbe('/fixture\n/home/fixture\n');
+    releaseProbe('F\tfile\n');
     await pending;
-    assert.equal(commands.length, 1, 'the pre-existing cwd probe must never be followed by a directory scan');
-    assert.equal(session.completionHomeDirectory, null);
+    assert.equal(commands.length, 1, 'there is one scan and no independent cwd probe');
     assert.deepEqual(
       messages.filter((message) => message.type === 'completion-response').map((message) => message.items),
       [[]],
@@ -363,7 +359,7 @@ test('SshSessionService ignores remote shell events while the runtime is disable
 
   serviceHarness.handleRemoteShellEvent(session, event);
 
-  assert.equal(session.remoteShellCwd, null);
+  assert.equal(session.shellContext.cwd, null);
   assert.equal(session.remoteShellReady, false);
   assert.deepEqual(session.pendingStreamFrames, []);
 });
@@ -448,7 +444,7 @@ test('SshSessionService activates only after a matching integration-ready handsh
 
   serviceHarness.handleRemoteShellEvent(session, createRemoteShellEvent());
   assert.equal(session.remoteEnhancementsRuntimeState, 'pending');
-  assert.equal(session.remoteShellCwd, null);
+  assert.equal(session.shellContext.cwd, null);
 
   serviceHarness.handleRemoteShellEvent(
     session,
@@ -460,7 +456,9 @@ test('SshSessionService activates only after a matching integration-ready handsh
   assert.equal(session.remoteShellReady, true);
 
   serviceHarness.handleRemoteShellEvent(session, createRemoteShellEvent({ cwd: '/home/dev' }));
-  assert.equal(session.remoteShellCwd, '/home/dev');
+  assert.equal(session.shellContext.cwd, null, 'report is pending until the matching prompt');
+  serviceHarness.handleRemoteShellEvent(session, createRemoteShellEvent({ event: 'prompt-ready' }));
+  assert.deepEqual(session.shellContext.cwd, { logical: '/home/dev', physical: '/root', home: '/root' });
 });
 
 test('SshSessionService disables a pending runtime when the helper handshake times out', async () => {
@@ -505,7 +503,6 @@ test('SshSessionService resets remote shell state when Remote Enhancements runti
     ],
     pendingStreamFrameBytes: 999,
     remoteEnhancementsRuntimeState: 'active',
-    remoteShellCwd: '/tmp',
     remoteShellForegroundCommand: 'vim',
     remoteShellReady: true,
   });
@@ -521,7 +518,7 @@ test('SshSessionService resets remote shell state when Remote Enhancements runti
   ]);
   assert.equal(session.pendingStreamFrameBytes, 11);
   assert.equal(session.remoteShellReady, false);
-  assert.equal(session.remoteShellCwd, null);
+  assert.equal(session.shellContext.cwd, null);
   assert.equal(session.remoteShellForegroundCommand, null);
   assert.equal(session.lastRemoteCommand, null);
   assert.equal(session.lastExitCode, null);

@@ -388,13 +388,38 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
     return promptGeneration === null ? { ...base, event: eventName } : { ...base, event: eventName, promptGeneration };
   }
 
+  if (eventName === 'cwd-invalidated') {
+    const promptGeneration = normalizeBoundedInteger(value.promptGeneration, 1, Number.MAX_SAFE_INTEGER);
+    return promptGeneration === null ? null : { ...base, event: eventName, promptGeneration };
+  }
+
   if (eventName === 'cwd') {
     const cwd = decodeBoundedBase64Utf8(value.cwdBase64, REMOTE_SHELL_CWD_MAX_BYTES);
-    if (!cwd || !cwd.startsWith('/') || cwd.includes('\u0000')) {
+    const physicalOutput =
+      value.physicalCwdOutputBase64 === ''
+        ? null
+        : decodeBoundedBase64Utf8(value.physicalCwdOutputBase64, REMOTE_SHELL_CWD_MAX_BYTES + 1);
+    const physicalCwd = physicalOutput?.endsWith('\n') ? physicalOutput.slice(0, -1) : null;
+    const homeDirectory =
+      value.homeBase64 === '' ? null : decodeBoundedBase64Utf8(value.homeBase64, REMOTE_SHELL_CWD_MAX_BYTES);
+    const promptGeneration = normalizeBoundedInteger(value.promptGeneration, 1, Number.MAX_SAFE_INTEGER);
+    if (
+      !isAbsoluteShellPath(cwd) ||
+      (value.physicalCwdOutputBase64 !== '' && !isAbsoluteShellPath(physicalCwd)) ||
+      (value.homeBase64 !== '' && !isAbsoluteShellPath(homeDirectory)) ||
+      (shell !== 'sh' && shell !== 'ash' && promptGeneration === null)
+    ) {
       return null;
     }
 
-    return { ...base, event: eventName, cwd };
+    return {
+      ...base,
+      event: eventName,
+      cwd,
+      physicalCwd,
+      homeDirectory,
+      ...(promptGeneration === null ? {} : { promptGeneration }),
+    };
   }
 
   if (eventName === 'line-state') {
@@ -426,6 +451,14 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
 
   return { ...base, event: eventName, command, commandId, exitCode, durationMs };
 };
+
+/**
+ * Validates a Linux path without trimming legal whitespace or normalizing symbolic-link components.
+ * @param value Decoded bounded path.
+ * @returns Whether the path is absolute and contains no NUL byte.
+ */
+const isAbsoluteShellPath = (value: string | null): value is string =>
+  value !== null && value.startsWith('/') && !value.includes('\u0000');
 
 /**
  * Validates a bounded, unique helper capability list.

@@ -9,6 +9,7 @@ export const REMOTE_SHELL_EVENT_NAMES = [
   'integration-ready',
   'prompt-ready',
   'cwd',
+  'cwd-invalidated',
   'command-start',
   'command-end',
   'foreground-command',
@@ -18,6 +19,7 @@ export const REMOTE_SHELL_EVENT_NAMES = [
 /** Capabilities that a helper may advertise after installation validation. */
 export const REMOTE_SHELL_CAPABILITIES = [
   'cwd',
+  'cwd-invalidated',
   'command-start',
   'command-end',
   'foreground-command',
@@ -49,6 +51,8 @@ type RemoteShellEventBase = {
   shellInstanceId: string;
   timestamp: number;
   cwd?: string;
+  physicalCwd?: string | null;
+  homeDirectory?: string | null;
   command?: string;
   exitCode?: number;
   durationMs?: number;
@@ -68,7 +72,8 @@ export type RemoteShellEventMessage = RemoteShellEventBase &
   (
     | { event: 'integration-ready' }
     | { event: 'prompt-ready'; promptGeneration?: number }
-    | { event: 'cwd'; cwd: string }
+    | { event: 'cwd'; cwd: string; physicalCwd: string | null; homeDirectory: string | null }
+    | { event: 'cwd-invalidated'; promptGeneration: number }
     | { event: 'command-start'; command: string; commandId: string }
     | { event: 'command-end'; command: string; commandId: string; exitCode: number; durationMs: number }
     | { event: 'foreground-command'; command: string; commandId: string }
@@ -98,7 +103,7 @@ export type ShellContextReason =
   | 'permission-disabled'
   | 'transport-closed';
 
-/** One Shell-confirmed directory report; logical/physical path separation is filled by v3 adapters. */
+/** Original Shell directory metadata: logical for display, physical for file operations, home for tilde expansion. */
 export type ShellDirectoryContext = {
   logical: string;
   physical: string | null;
@@ -121,6 +126,8 @@ export type ShellContext = {
   reason: ShellContextReason | null;
   revision: number;
   inputGeneration: number;
+  /** Opaque identifier of the last submitted input received by Backend; never contains input text. */
+  submissionToken: string | null;
   promptGeneration: number | null;
   cwdGeneration: number;
   cwd: ShellDirectoryContext | null;
@@ -184,7 +191,7 @@ export type TerminalCompletionItem = {
 
 /** Renderer-to-Backend messages supported by interactive terminal sessions. */
 export type TerminalClientMessage =
-  | { type: 'input'; data: string }
+  | { type: 'input'; data: string; submissionToken?: string }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'close' }
   | { type: 'ping' }

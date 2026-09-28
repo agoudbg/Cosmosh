@@ -15,6 +15,7 @@ import {
   escapeSftpShellPath,
   formatSftpPermissionOctal,
   formatSftpPermissions,
+  isMutableSftpEntryPath,
   joinSftpPath,
   normalizeSftpPathInput,
   resolveSftpEntryHiddenState,
@@ -676,7 +677,9 @@ const createUploadableTempFile = async (
 test('normalizeSftpPathInput keeps SFTP paths POSIX-oriented', () => {
   assert.equal(normalizeSftpPathInput(undefined), '.');
   assert.equal(normalizeSftpPathInput(''), '.');
-  assert.equal(normalizeSftpPathInput(' /var/www/../log '), '/var/log');
+  assert.equal(normalizeSftpPathInput('/var/link/../log'), '/var/link/../log');
+  assert.equal(normalizeSftpPathInput('/var/with space '), '/var/with space ');
+  assert.equal(normalizeSftpPathInput('/var/back\\slash'), '/var/back\\slash');
   assert.equal(normalizeSftpPathInput('C:\\tmp\\site'), 'C:/tmp/site');
 });
 
@@ -684,6 +687,11 @@ test('joinSftpPath builds stable remote child paths', () => {
   assert.equal(joinSftpPath('/', 'etc'), '/etc');
   assert.equal(joinSftpPath('/var/www', 'index.html'), '/var/www/index.html');
   assert.equal(joinSftpPath('.', 'relative'), 'relative');
+  assert.equal(joinSftpPath('/var/link/..', 'file '), '/var/link/../file ');
+  for (const directoryMarker of ['', '/', '//', '.', '..', '/dir/..', '/dir/./']) {
+    assert.equal(isMutableSftpEntryPath(directoryMarker), false);
+  }
+  assert.equal(isMutableSftpEntryPath('/dir/link/../file '), true);
 });
 
 test('resolveSftpEntryType maps POSIX file bits', () => {

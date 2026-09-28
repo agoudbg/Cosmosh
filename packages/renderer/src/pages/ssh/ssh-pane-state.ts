@@ -26,6 +26,8 @@ export type SshPaneCommandLifecycle = {
 /** Declarative state owned by one terminal pane. */
 export type SshPaneState = {
   shellContext: ShellContext | null;
+  /** Keeps pre-submit snapshots unusable until Backend acknowledges this submission and returns to a prompt. */
+  pendingSubmissionToken: string | null;
   connectionState: 'connecting' | 'connected' | 'failed';
   connectionError: string;
   credentialFillOffer: TerminalCredentialFillOffer | null;
@@ -52,6 +54,7 @@ export type SshPaneStateMap = Record<string, SshPaneState>;
 
 /** Actions accepted by the pane-state reducer. */
 export type SshPaneStateAction =
+  | { type: 'input-submitted'; paneId: string; token: string }
   | { type: 'credential-fill-requested'; paneId: string; token: string }
   | { type: 'ensure-pane'; paneId: string }
   | { type: 'reset-pane'; paneId: string }
@@ -71,6 +74,7 @@ export type SshPaneStateAction =
  */
 export const createSshPaneState = (): SshPaneState => ({
   shellContext: null,
+  pendingSubmissionToken: null,
   connectionState: 'connecting',
   connectionError: '',
   credentialFillOffer: null,
@@ -97,6 +101,20 @@ export const createSshPaneState = (): SshPaneState => ({
  * @returns Next immutable pane-indexed state.
  */
 export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateAction): SshPaneStateMap => {
+  if (action.type === 'input-submitted') {
+    const pane = state[action.paneId];
+    if (!pane?.shellContext) return state;
+    return {
+      ...state,
+      [action.paneId]: {
+        ...pane,
+        trustedCwd: null,
+        lineState: null,
+        pendingSubmissionToken: action.token,
+        shellContext: { ...pane.shellContext, status: 'paused', reason: 'input-submitted', cwd: null },
+      },
+    };
+  }
   if (action.type === 'remove-pane') {
     if (!state[action.paneId]) {
       return state;
@@ -149,6 +167,7 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
           ? {}
           : {
               shellContext: null,
+              pendingSubmissionToken: null,
               trustedCwd: null,
               promptGeneration: null,
               lineState: null,
@@ -181,14 +200,21 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
     const previous = state.shellContext;
     if (previous?.sessionId === payload.context.sessionId && previous.revision >= payload.context.revision)
       return state;
+    const pendingToken = previous?.sessionId === payload.context.sessionId ? state.pendingSubmissionToken : null;
+    const confirmed = pendingToken !== null && payload.context.submissionToken === pendingToken;
+    const context =
+      pendingToken && !confirmed && payload.context.status === 'ready'
+        ? { ...payload.context, status: 'paused' as const, reason: 'input-submitted' as const, cwd: null }
+        : payload.context;
     return {
       ...state,
-      shellContext: payload.context,
-      trustedCwd: payload.context.cwd?.logical ?? null,
+      shellContext: context,
+      pendingSubmissionToken: confirmed && context.status === 'ready' ? null : pendingToken,
+      trustedCwd: context.status === 'ready' && context.permissions.cwd ? (context.cwd?.physical ?? null) : null,
       promptGeneration: payload.context.promptGeneration,
       lineState:
-        payload.context.status === 'ready' &&
-        payload.context.permissions.input &&
+        context.status === 'ready' &&
+        context.permissions.input &&
         previous?.promptGeneration === payload.context.promptGeneration
           ? state.lineState
           : null,
@@ -224,6 +250,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
     return {
       ...state,
       shellContext: null,
+      pendingSubmissionToken: null,
       trustedCwd: null,
       promptGeneration: null,
       lineState: null,
@@ -239,6 +266,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
     return {
       ...state,
       shellContext: null,
+      pendingSubmissionToken: null,
       trustedCwd: null,
       promptGeneration: null,
       lineState: null,
@@ -307,11 +335,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   };
 
   if (payload.event === 'cwd') {
-    if (state.shellContext) return nextState;
-    return {
-      ...nextState,
-      trustedCwd: payload.cwd,
-    };
+    return nextState;
   }
 
   if (payload.event === 'prompt-ready') {

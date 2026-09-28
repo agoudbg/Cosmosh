@@ -66,7 +66,7 @@ type UseSshPrimarySessionParams = {
   setPaneTransportState: (paneId: string, state: 'connecting' | 'connected' | 'failed', error?: string) => void;
   setSessionTargetReady: (ready: boolean) => void;
   handlePaneServerMessage: (paneId: string, terminal: Terminal, payload: ServerInboundMessage) => void;
-  recordPaneInputCommandMarker: (paneId: string, inputData: string) => void;
+  preparePaneInput: (paneId: string, inputData: string) => string | undefined;
   refreshCommandTimeline: () => void;
   requestHostFingerprintTrust: (prompt: {
     serverId: string;
@@ -125,7 +125,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     setPaneTransportState,
     setSessionTargetReady,
     handlePaneServerMessage,
-    recordPaneInputCommandMarker,
+    preparePaneInput,
     refreshCommandTimeline,
     requestHostFingerprintTrust,
     setActivePane,
@@ -591,7 +591,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
         return;
       }
 
-      recordPaneInputCommandMarker(paneId, data);
+      const submissionToken = preparePaneInput(paneId, data);
       const autocompleteInputState = applyAutocompleteInputData(paneId, data);
       if (autocompleteInputState.shouldClose) {
         closeAutocompleteRef.current();
@@ -601,6 +601,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
         sendClientMessage(socket, {
           type: 'input',
           data,
+          ...(submissionToken ? { submissionToken } : {}),
         });
       }
     });
@@ -731,7 +732,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     primarySerializeAddonRef,
     primaryWebglAddonRuntimeRef,
     paneRuntimeMapRef,
-    recordPaneInputCommandMarker,
+    preparePaneInput,
     refreshCommandTimeline,
     refreshSelectionAnchor,
     resetPaneState,

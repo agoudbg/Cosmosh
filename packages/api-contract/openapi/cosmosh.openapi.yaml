@@ -3293,6 +3293,7 @@ components:
           type: string
         initialPath:
           type: string
+          description: Remote path preserved verbatim, including whitespace and symbolic-link parent components.
         connectTimeoutSec:
           type: integer
           minimum: 5
@@ -3310,6 +3311,7 @@ components:
         path:
           type: string
           minLength: 1
+          description: Remote path preserved verbatim; the server resolves symbolic links and dot components.
     SftpCreateDirectoryRequest:
       allOf:
         - $ref: '#/components/schemas/SftpPathRequest'

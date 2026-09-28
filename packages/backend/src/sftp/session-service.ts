@@ -649,21 +649,16 @@ export const resolveSftpEntryHiddenState = (name: string, stats: Stats): boolean
 };
 
 /**
- * Converts user-provided SFTP paths into POSIX-style paths used by remote SFTP servers.
+ * Preserves remote path bytes so the SFTP server resolves symbolic links and dot components.
  *
  * @param input Raw path input.
- * @returns Normalized POSIX path with root preserved.
+ * @returns Remote path, with only explicit Windows drive notation translated.
  */
 export const normalizeSftpPathInput = (input: string | undefined): string => {
-  const trimmed = input?.trim();
-  if (!trimmed || trimmed === '.') {
+  if (!input) {
     return '.';
   }
-
-  const slashNormalized = trimmed.replace(/\\/g, '/');
-  const normalized = POSIX_PATH.normalize(slashNormalized);
-
-  return normalized === '' ? '.' : normalized;
+  return /^[A-Za-z]:\\/.test(input) ? input.replace(/\\/g, '/') : input;
 };
 
 /**
@@ -674,11 +669,7 @@ export const normalizeSftpPathInput = (input: string | undefined): string => {
  * @returns Normalized child path.
  */
 export const joinSftpPath = (parent: string, name: string): string => {
-  if (parent === '/' || parent === '.') {
-    return POSIX_PATH.normalize(`${parent === '/' ? '' : parent}/${name}`);
-  }
-
-  return POSIX_PATH.normalize(`${parent}/${name}`);
+  return parent === '.' ? name : parent.replace(/\/+$/, '') + '/' + name;
 };
 
 /**
@@ -709,7 +700,8 @@ export const buildSftpCopyTargetCandidate = (targetPath: string, attempt: number
  * @returns True when the path targets a concrete entry instead of the root/current marker.
  */
 export const isMutableSftpEntryPath = (targetPath: string): boolean => {
-  return targetPath !== '' && targetPath !== '.' && targetPath !== '/';
+  const leaf = targetPath.replace(/\/+$/, '').split('/').at(-1);
+  return Boolean(leaf && leaf !== '.' && leaf !== '..' && !targetPath.includes('\u0000'));
 };
 
 /**
@@ -2013,7 +2005,19 @@ export class SftpSessionService {
 
     try {
       const resolvedTargetPath = await this.resolveAvailableCopyPath(session, targetPath);
-      if (this.isSameOrDescendantPath(sourcePath, resolvedTargetPath)) {
+      const [sourceIdentity, targetParentIdentity] = await Promise.all([
+        this.resolveRealPath(session, sourcePath),
+        this.resolveRealPath(session, POSIX_PATH.dirname(resolvedTargetPath)),
+      ]);
+      if (!sourceIdentity || !targetParentIdentity) {
+        throw new Error(session.t('errors.sftp.entryCopyFailedNoReason'));
+      }
+      if (
+        this.isSameOrDescendantPath(
+          sourceIdentity,
+          joinSftpPath(targetParentIdentity, POSIX_PATH.basename(resolvedTargetPath)),
+        )
+      ) {
         throw new Error(session.t('errors.sftp.copyIntoSelfUnsupported'));
       }
 

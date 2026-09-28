@@ -83,7 +83,7 @@ flowchart TB
 
 ### `packages/backend`
 
-- `src/terminal/shell-context.ts`：原始 Shell 身份、权限与代数状态转换，不存储当前输入或凭据。
+- `src/terminal/shell-context.ts`：原始 Shell 身份、权限、代数与配对提示符的目录状态。未确认报告仅留在后端，传输快照只包含可用目录和仅供显示的上次目录，不存储当前输入或凭据。
 - `src/terminal/integration/helper-identity.live-test.ts`：真实安装器/SSH 测试，覆盖重复 source、嵌套 Shell、独立终端及非交互式运行不输出事件。
 
 - **角色**：内部 API + 会话编排运行时。

@@ -164,8 +164,8 @@ Locale behavior:
 - Path completion is provider-based and command-context-aware:
   - built-in path rules currently cover directory-first navigation (`cd`, `pushd`) and common file/path consumers (`cat`, `vim`, `vi`, `nvim`, `nano`, `less`, `more`, `head`, `tail`, `grep`, `rg`, `sed`, `awk`, `find`, `ls`, `touch`, `rm`, `cp`, `mv`, `chmod`, `chown`, `chgrp`, `ln`, `tar`, `unzip`, `zip`, `scp`, `sftp`, `rsync`), plus direct executable-style path prefixes (`./`, `../`, `/`, `~`) at command position,
   - relative-path partial input (for example, `cd ../../c`) is resolved against tracked session working directory and ranked with "prefix first, contains fallback" matching,
-  - SSH home-relative partial input (`~` / `~/...`) expands against the probed remote `$HOME` for directory scanning while preserving the typed `~/` prefix in returned candidates,
-  - SSH sessions initialize completion cwd/home in the background and share that in-flight probe with path requests; input is not retained to predict directory changes,
+  - SSH home-relative input (`~` / `~/...`) expands against the original interactive Shell's confirmed `$HOME`; the typed prefix remains in candidates,
+  - SSH paths require a fresh physical CWD paired with the current prompt. Prompt text, renderer hints and independent exec `$PWD` probes are never directory sources. Dot-parent components remain intact for remote symbolic-link resolution,
   - typing-trigger requests apply a short path-provider timeout budget so command/history/spec candidates are not blocked by slow filesystem probes; manual `Tab` trigger still uses full provider results,
   - SSH path completion uses a larger typing budget than local terminals because remote exec latency is network-bound; this keeps overseas/high-latency servers from returning empty runtime path suggestions merely because the first directory scan exceeded a local-filesystem budget,
   - remote SSH path scans use POSIX parameter expansion (`${p##*/}`) instead of GNU-specific `basename --`, so path completion remains portable across GNU/Linux, BSD/macOS, and BusyBox environments,
@@ -333,7 +333,7 @@ Notes:
 - Search highlight decorations are explicitly cleared when the query becomes empty or the search panel is dismissed, which prevents stale search markers from keeping extra memory alive after search exits.
 - Orbit Bar stays suppressed for the full search lifecycle (including empty query state and ESC close path) so search highlight flows do not re-open selection actions unexpectedly.
 - Orbit Bar and selection-dependent terminal context-menu actions resolve selection geometry from xterm `getSelectionPosition()` first, with DOM selection blocks only as fallback. This keeps `WebglAddon` canvas rendering compatible with Orbit Bar placement and `Search Online` enablement.
-- Orbit Bar and the terminal context menu can hand off a selected remote directory to SFTP. The action is available only for SSH-server sessions and explicit POSIX-like paths (`/path`, `~/path`, `./path`, `../path`, or `file:///path`). Dot-relative paths use only the source pane's trusted helper cwd; without a trusted absolute cwd they retain the previous strict behavior. Bare relative names remain disabled.
+- Orbit Bar and the terminal context menu hand explicit paths to SFTP. `./` and `../` require the source pane's current physical CWD; `~` requires confirmed HOME. Click actions reread that pane by id, even before a pane-activation render completes. Missing metadata disables the dependent action. Absolute paths/file URLs remain available; bare relative names and multiline selections are rejected. Backslashes, filename punctuation and quoted spaces are preserved.
 - Opening a selected directory in SFTP always creates a new SFTP tab with that `initialPath`, even when another SFTP tab for the same server already exists, and does not replace the active SSH terminal tab.
 
 ## 6.3 Command Timeline
@@ -476,6 +476,7 @@ type RemoteShellEventMessage = {
     | "integration-ready"
     | "prompt-ready"
     | "cwd"
+    | "cwd-invalidated"
     | "command-start"
     | "command-end"
     | "foreground-command"
@@ -486,6 +487,8 @@ type RemoteShellEventMessage = {
   protocolVersion: number;
   capabilities: string[];
   cwd?: string;
+  physicalCwd?: string | null;
+  homeDirectory?: string | null;
   command?: string;
   exitCode?: number;
   durationMs?: number;
@@ -502,8 +505,8 @@ The shared TypeScript type is a discriminated union rather than the optional-fie
 Current first-phase helper behavior:
 
 - Bash uses `PROMPT_COMMAND` to preserve any existing prompt hook and then emit `cwd`, `prompt-ready`, and a `command-end` with matching command id, exit code, and duration. A guarded `DEBUG` trap emits one `command-start` and one `foreground-command` per submitted command line after prompt setup finishes.
-- Zsh uses `precmd`, `preexec`, and `chpwd` hooks plus `line-pre-redraw` for line length/cursor calibration. The helper becomes ready only when all required hook registrations succeed; a partial failure removes any successfully registered `line-pre-redraw` widget together with the prompt hooks before leaving the integration disabled.
-- Fish uses `fish_preexec`, `fish_prompt`, `fish_postexec`, and `PWD` variable events.
+- Zsh uses `precmd` and `preexec` hooks plus `line-pre-redraw` for numeric editor metadata. Required registrations must succeed; partial failures remove installed hooks. CWD is reported only at the prompt boundary.
+- Fish uses `fish_preexec`, `fish_postexec` and `fish_prompt` events while leaving user prompt functions intact. Fish calls prompt/title functions after the prompt event; if any later function changes PWD/HOME, one `cwd-invalidated` event disables that generation. The next stable report/prompt pair can recover. Metadata goes directly to the PTY even inside Fish's captured prompt output. Prompt functions that continually change directories require the planned verified editor exchange before their directories can be used.
 - Sh/Ash install a prompt-capture fallback and advertise only `cwd` and `prompt-ready`; they do not claim command lifecycle support.
 - Every shell emits `integration-ready` only after its advertised hook set has installed successfully. Non-interactive shells emit no OSC events.
 - `command-start` and `foreground-command` are emitted for every submitted command that can be reduced to an executable name; they carry only that sanitized executable name (for example `vim`), not the full command line or arguments.
@@ -514,11 +517,12 @@ Backend state model:
 - `terminal/shell-context.ts` owns the authoritative `ShellContext`, published as `{ type: 'shell-context', context }`. It contains session/Shell identity, exact version/capabilities, independent permissions, usability (`unavailable`, `initializing`, `ready`, `busy`, `paused`), reason codes and revision/input/prompt/cwd generations. No current input or credentials enter this model. Renderer retains the latest context per pane outside debug history; older revisions and replayed cwd/prompt events cannot overwrite it.
 - Each interactive Shell gets a Linux UUID. Repeated sourcing preserves identity and hook registration; child processes get new identities, and Fish internal metadata is not exported. Only a newer original-Shell prompt resumes a foreign-shell pause. Sh/Ash keep directory capability with generation-less prompts and advertise no editor capability.
 - Input invalidates asynchronous work before PTY forwarding. Enter, newline, Ctrl+C and Ctrl+D pause usability; command end stays busy until a new prompt. Directory operation boundaries and final results recheck current generations and permissions.
+- Renderer invalidates its source pane before sending a submission. An opaque `submissionToken` echoed by Backend prevents already-queued older contexts from reopening directory actions. Receipt does not prove that Shell consumed typeahead: submissions made while busy/initializing/already submitting/in another Shell, or multiple boundaries in one input chunk (CRLF counts once), keep `requiresEditorConfirmation` in Backend-only state. Bare prompt events cannot restore usability. Current migration limitation: this ambiguous state stays paused until reconnect; planned editor adapters (steps 7–9) must replace that limitation with a verified editor exchange before the full feature is released.
 - Default-scope settings revisions update live sessions. CWD opt-out clears caches and rejects cwd events; input opt-out stops enhancement input tracking, candidate requests and rendered command capture while normal terminal I/O continues. History/path preferences populate separate permissions. Native completion defaults off and requires an implemented advertised provider. Global opt-out disables the runtime; re-enabling requires reconnecting. Settings reads stay inside optional setup's 15-second budget, so failures preserve ordinary SSH.
-- Migration boundary: physical/home directory reports, verified editor snapshots, structured directory reads and native providers are subsequent capability additions. Helpers currently advertise implemented lifecycle/cwd events only. Legacy directory/completion consumers and complete history probe/cache/deletion permission enforcement are replaced separately.
+- Migration boundary: verified editor snapshots, structured directory reads and native providers remain subsequent additions. Helpers currently advertise implemented lifecycle/CWD events only. Editor replacement and complete history probe/cache/deletion permission enforcement are replaced separately.
 - Each session owns an explicit `pending`, `active`, or `disabled` enhancement runtime state, the contract validated before PTY creation, and a handshake timer that is cleared on activation, disablement, or session disposal.
-- Each `SshLiveSession` keeps trusted cwd/foreground state plus the latest command id, sanitized executable, exit code, and duration. Unique structured `command-start` events drive command counting and history refresh; raw Enter parsing is the fallback only when that capability is unavailable.
-- `remoteShellCwd` is the preferred path-completion cwd source; existing exec probes and renderer hints remain fallback paths.
+- Each `SshLiveSession` keeps confirmed directory/foreground state plus the latest command id, sanitized executable, exit code, and duration. Unique structured `command-start` events drive command counting and history refresh; without that capability, Enter boundaries update only the counter and schedule Shell-owned history refresh, without retaining input text.
+- `ShellContext.cwd` is the only usable remote directory source. A backend-only pending report is promoted at the matching `promptGeneration`; missing, stale or interrupted pairs leave CWD unavailable. Sh/Ash use one fresh report per generation-less prompt, cleared on submit/pause. `lastKnownCwd` is display-only. Logical paths are for display; physical paths and HOME drive file operations. Physical lookup uses an external `pwd -P` child of the actual Shell, avoiding cached built-in results for deleted directories; only its final output LF is removed. Unset/relative HOME and failed physical lookup remain null. No directory values are trimmed. Bash reports after existing `PROMPT_COMMAND` hooks while preserving their input exit status.
 - When `remoteShellForegroundCommand` is set by `foreground-command`, backend returns an empty completion response until the next `prompt-ready`; `command-end` does not clear suppression early. This covers short commands, long-running foreground processes, and unknown TUI/REPL programs without maintaining a command whitelist.
 - Renderer clears trusted cwd/line calibration immediately whenever backend trust leaves `active`, and applies prompt-generation checks before using `line-state` for completion. Command lifecycle events also maintain pane-local xterm navigation markers.
 - The explicit saved login password action uses bounded output detection in the local backend; Shell hooks never capture password input, and completion has no credential source.

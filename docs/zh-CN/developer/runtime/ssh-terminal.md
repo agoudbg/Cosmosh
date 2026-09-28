@@ -164,8 +164,8 @@ Locale 行为：
 - 路径补全采用 provider 化并结合命令上下文：
   - 内置路径规则当前覆盖目录优先导航命令（`cd`、`pushd`）与常见文件/路径消费命令（`cat`、`vim`、`vi`、`nvim`、`nano`、`less`、`more`、`head`、`tail`、`grep`、`rg`、`sed`、`awk`、`find`、`ls`、`touch`、`rm`、`cp`、`mv`、`chmod`、`chown`、`chgrp`、`ln`、`tar`、`unzip`、`zip`、`scp`、`sftp`、`rsync`），以及命令位的直接路径前缀（`./`、`../`、`/`、`~`），
   - 相对路径的部分输入（例如 `cd ../../c`）会基于会话跟踪的工作目录解析，并按“前缀优先、包含回退”匹配排序，
-  - SSH 的 home 相对输入（`~` / `~/...`）会基于探测到的远端 `$HOME` 展开后扫描目录，同时在返回候选中保留用户输入的 `~/` 前缀，
-  - SSH 会话会在后台初始化补全 cwd/home，并让路径请求共享这次进行中的探测；不会保留输入来预测目录变化，
+  - SSH 的主目录相对输入（`~` / `~/...`）使用原始交互 Shell 已确认的 `$HOME` 展开，返回候选保留用户输入的前缀，
+  - SSH 路径操作要求与当前提示符配对的新鲜物理目录。提示符文字、前端提示和独立 exec 的 `$PWD` 探测均不作为目录来源。保留父目录路径片段，由远端解析符号链接，
   - 输入触发（typing）的请求会对路径 provider 使用短超时预算，避免慢文件系统探测阻塞命令/历史/规范候选；手动 `Tab` 触发仍使用完整 provider 结果，
   - SSH 路径补全的 typing 预算会大于本地终端，因为远端 exec 延迟受网络影响；这避免香港/海外等高延迟服务器仅因首次目录扫描超过本地文件系统预算就返回空的运行时路径候选，
   - 远程 SSH 路径扫描使用 POSIX 参数展开（`${p##*/}`）替代 GNU 专有 `basename --`，以保证在 GNU/Linux、BSD/macOS 与 BusyBox 环境下都能稳定补全，
@@ -333,7 +333,7 @@ flowchart LR
 - 当搜索词清空或关闭搜索面板时，会主动清理搜索高亮装饰，避免陈旧搜索标记在退出搜索后持续占用额外内存。
 - Orbit Bar 在搜索全流程中保持抑制（包括空搜索词状态和 ESC 关闭路径），避免搜索高亮期间重新弹出选区动作条。
 - Orbit Bar 与依赖选区的终端右键菜单动作会优先通过 xterm `getSelectionPosition()` 解析选区几何，只有不可用时才回退到 DOM selection blocks。这保证 `WebglAddon` canvas 渲染下 Orbit Bar 定位与`联网搜索`启用状态仍然可用。
-- Orbit Bar 与终端右键菜单可以将选中的远程目录交给 SFTP 打开。该动作仅在 SSH 服务器会话中，对显式 POSIX 风格路径（`/path`、`~/path`、`./path`、`../path` 或 `file:///path`）启用。点号相对路径只使用来源 pane 的可信 helper cwd；缺少可信绝对 cwd 时继续采用原有严格规则。裸相对路径仍保持禁用。
+- Orbit Bar 与终端右键菜单可以将显式路径交给 SFTP。`./` 和 `../` 要求来源分屏当前的物理目录，`~` 要求已确认 HOME。点击时按分屏编号重新读取状态，分屏激活后的渲染尚未完成也不会借用其他分屏目录。缺少元数据时禁用依赖它的动作。绝对路径与 file URL 仍可使用；裸相对名称和多行选区会被拒绝。保留反斜杠、文件名标点和引号内空格。
 - 从选区在 SFTP 中打开目录时，即使同一服务器已经存在其他 SFTP 标签页，也始终会用该 `initialPath` 创建新的 SFTP 标签页，且不会替换当前 SSH 终端标签页。
 
 ## 6.3 命令时间线
@@ -476,6 +476,7 @@ type RemoteShellEventMessage = {
     | "integration-ready"
     | "prompt-ready"
     | "cwd"
+    | "cwd-invalidated"
     | "command-start"
     | "command-end"
     | "foreground-command"
@@ -486,6 +487,8 @@ type RemoteShellEventMessage = {
   protocolVersion: number;
   capabilities: string[];
   cwd?: string;
+  physicalCwd?: string | null;
+  homeDirectory?: string | null;
   command?: string;
   exitCode?: number;
   durationMs?: number;
@@ -502,8 +505,8 @@ type RemoteShellEventMessage = {
 当前第一期 helper 行为：
 
 - Bash 使用 `PROMPT_COMMAND` 保留已有 prompt hook，随后发送 `cwd`、`prompt-ready`，以及带匹配 command id、exit code 和 duration 的 `command-end`。受保护的 `DEBUG` trap 会在 prompt 设置完成后，为每条已提交命令行发送一次 `command-start` 与一次 `foreground-command`。
-- Zsh 使用 `precmd`、`preexec` 与 `chpwd` hook，并通过 `line-pre-redraw` 提供 line length/cursor 校准。只有所有必需 hook 都注册成功后 helper 才进入 ready；若出现部分注册失败，会在保持集成禁用前同时移除已成功注册的 `line-pre-redraw` widget 与 prompt hook。
-- Fish 使用 `fish_preexec`、`fish_prompt`、`fish_postexec` 与 `PWD` variable event。
+- Zsh 使用 `precmd`、`preexec` 和提供数值编辑器元数据的 `line-pre-redraw`。必需的钩子全部注册成功后才可用，部分失败会移除已安装的钩子。仅在提示符边界报告 CWD。
+- Fish 使用`fish_preexec`、`fish_postexec`和`fish_prompt`事件，保留用户提示符函数原样。Fish 在提示符事件之后调用提示符和标题函数；后续函数改变 PWD/HOME 时，一次`cwd-invalidated`事件会停用当前代数的目录。下一次稳定的目录与提示符配对可恢复。即使 Fish 正在暂存提示符输出，元数据也直接发往 PTY。持续改变目录的提示符函数，需要计划中的可信编辑器交互确认后才能启用目录。
 - Sh/Ash 安装 prompt-capture fallback，并且只声明 `cwd` 与 `prompt-ready`；不声明命令生命周期支持。
 - 所有 shell 都只在其声明的 hook 集合成功安装后发送 `integration-ready`。非交互 shell 不发送 OSC 事件。
 - 对所有可提取出可执行命令名的已提交命令，helper 都会发送 `command-start` 与 `foreground-command`；事件只携带经过清洗的可执行命令名（例如 `vim`），不携带完整命令行或参数。
@@ -514,11 +517,12 @@ Backend 状态模型：
 - `terminal/shell-context.ts`维护权威`ShellContext`，通过`{ type: 'shell-context', context }`发布，包含会话/Shell 身份、准确的版本/能力、独立权限、可用状态（`unavailable`、`initializing`、`ready`、`busy`、`paused`）、原因及 revision/input/prompt/cwd 代数，不包含当前输入或凭据。Renderer 按分屏保留最新状态，不写入调试历史；旧版本状态及回放的 cwd/prompt 事件不能覆盖它。
 - 每个交互 Shell 获取 Linux UUID。重复 source 保留身份与钩子注册，新进程获取独立身份，Fish 内部元数据不再导出。只有原始 Shell 的更新提示能够恢复因其他 Shell 导致的暂停。Sh/Ash 保留不带提示代数的目录能力，不声明编辑器能力。
 - 输入在转发 PTY 前就使异步工作失效。回车、换行、Ctrl+C、Ctrl+D 暂停可用状态；命令结束后仍等待新的提示。目录操作边界与结果发布会重新检查当前代数和权限。
+- Renderer 在发送提交前立即停用来源分屏的目录。Backend 回显不含文本的`submissionToken`，避免已经在途的旧上下文重新启用目录操作。收到输入不代表 Shell 已处理连续输入：在忙碌、初始化、已有提交或其他 Shell 中再次提交，以及一次消息包含多个提交边界（CRLF 计为一次），都会在后端保留`requiresEditorConfirmation`。仅收到提示符不能恢复。当前迁移限制：此类不明确状态需重连恢复；计划中的编辑器适配（步骤 7–9）必须用可信编辑器交互解除该限制，之后才能发布完整功能。
 - 默认范围设置按持久化版本更新实时会话。关闭 CWD 权限会清理缓存并拒绝 cwd 事件；关闭输入权限会停止增强输入跟踪、候选请求和渲染命令捕获，普通终端输入输出继续工作。历史/路径设置各自对应权限。原生补全默认关闭，要求帮助程序声明已实现的能力。关闭全局增强会禁用运行时，再次开启需要重连。设置读取保留在可选初始化的 15 秒预算中，失败时普通 SSH 仍可连接。
-- 迁移边界：真实/主目录报告、可信编辑器快照、结构化目录读取和原生候选来源在后续增加能力。帮助程序当前只声明已实现的生命周期/cwd 事件。旧目录/补全消费者及历史探测、缓存、删除的完整权限约束分别替换。
+- 迁移边界：可信编辑器快照、结构化目录读取和原生候选来源仍在后续增加。帮助程序当前只声明已实现的生命周期/CWD 事件。编辑器替换及历史探测、缓存、删除的完整权限约束分别替换。
 - 每个 session 都持有明确的 `pending`、`active` 或 `disabled` 增强运行状态、PTY 创建前校验得到的契约，以及会在激活、禁用或 session 销毁时清理的握手 timer。
-- 每个 `SshLiveSession` 保存可信 cwd/foreground 状态，以及最近的 command id、清洗后可执行命令名、exit code 与 duration。唯一的结构化 `command-start` 驱动命令计数与 history 刷新；只有该 capability 不可用时才以原始 Enter 解析作为 fallback。
-- `remoteShellCwd` 是 path completion 的优先 cwd 来源；现有 exec probe 与 renderer hint 仍作为 fallback。
+- 每个`SshLiveSession`保存已确认目录／前台状态，以及最近的 command id、清洗后的可执行命令名、exit code 和 duration。唯一的结构化`command-start`驱动命令计数与历史刷新；缺少该能力时，Enter 边界只更新计数并触发 Shell 自有历史刷新，不保留输入文本。
+- `ShellContext.cwd`是唯一可供远端操作使用的目录来源。待确认报告仅保留在后端，在对应`promptGeneration`到达时启用；缺失、过期或被输入打断的配对保持目录不可用。Sh/Ash 每次无代数提示都需要新报告，提交或暂停会清除待确认报告。`lastKnownCwd`仅供显示。逻辑路径用于显示，物理路径和 HOME 用于文件操作。物理目录由继承实际 Shell 工作目录的外部`pwd -P`读取，避免内置命令返回已删除目录的缓存；只移除该程序输出的最后一个换行。未设置或非绝对 HOME、物理目录读取失败均保留 null，不裁剪目录字符。Bash 在用户`PROMPT_COMMAND`之后报告，并保留用户钩子接收到的退出状态。
 - 收到 `foreground-command` 并设置 `remoteShellForegroundCommand` 后，backend 会返回空 completion response，直到下一个 `prompt-ready`；`command-end` 不会提前清除抑制状态。这能覆盖短命令、长时间前台进程以及未知 TUI/REPL 程序，不需要维护命令白名单。
 - Backend 信任状态离开 `active` 时，renderer 会立即清除可信 cwd/line 校准；使用 `line-state` 校准补全前还会校验 prompt generation。命令生命周期事件同时维护 pane-local xterm 导航 marker。
 - 独立的已保存登录密码操作由本地 backend 基于有界输出检测；Shell hook 永远不捕获密码输入，补全不包含凭据来源。

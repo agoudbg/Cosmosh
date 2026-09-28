@@ -1,3 +1,4 @@
+import type { ShellDirectoryContext } from '@cosmosh/api-contract';
 import type { SerializeAddon } from '@xterm/addon-serialize';
 import type { ITerminalOptions, Terminal } from '@xterm/xterm';
 
@@ -957,36 +958,6 @@ export const resolveTerminalCurrentLinePrefix = (
 };
 
 /**
- * Parses a best-effort absolute cwd hint from shell prompt prefix.
- *
- * @param fullLinePrefix Full terminal line text before cursor.
- * @param commandStartColumn Command start column resolved from prompt tokens.
- * @returns Absolute POSIX-like cwd hint or `null` when unavailable.
- */
-export const resolvePromptWorkingDirectoryHint = (
-  fullLinePrefix: string,
-  commandStartColumn: number,
-): string | null => {
-  const promptSegment = fullLinePrefix.slice(0, Math.max(0, commandStartColumn)).trimEnd();
-  if (!promptSegment) {
-    return null;
-  }
-
-  const hostPromptMatch = /:[\s]*([^\s]+)\s*[#$]$/.exec(promptSegment);
-  const plainPromptMatch = /^([^\s]+)\s*[#$]$/.exec(promptSegment);
-  const candidate = hostPromptMatch?.[1] ?? plainPromptMatch?.[1] ?? '';
-  if (!candidate) {
-    return null;
-  }
-
-  if (candidate === '~' || candidate.startsWith('~/') || candidate.startsWith('/')) {
-    return candidate;
-  }
-
-  return null;
-};
-
-/**
  * Replaces known placeholders in custom search templates.
  *
  * @param template Search template configured by user.
@@ -1074,22 +1045,6 @@ const stripShellPathQuotes = (value: string): string => {
 };
 
 /**
- * Removes punctuation that is commonly included when selecting paths from prose/logs.
- *
- * @param value Candidate path text.
- * @returns Path text without wrapping punctuation.
- */
-const stripSelectionPathBoundaryPunctuation = (value: string): string => {
-  let nextValue = value.trim();
-
-  while (/^[([{<]/.test(nextValue) && /[)\]}>]$/.test(nextValue) && nextValue.length > 1) {
-    nextValue = nextValue.slice(1, -1).trim();
-  }
-
-  return nextValue.replace(/[,:;]+$/g, '').replace(/\.+$/g, '');
-};
-
-/**
  * Decodes URL path text without letting malformed escape sequences break UI render.
  *
  * @param value Encoded path text.
@@ -1109,57 +1064,37 @@ const safeDecodePathComponent = (value: string): string => {
  * This parser intentionally accepts only explicit POSIX-like directory strings:
  * absolute paths, home-relative paths, and dot-relative paths. Bare relative
  * names are excluded. Dot-relative paths are resolved only when the source pane
- * has reported a trusted absolute cwd through Remote Enhancements.
+ * has a usable physical cwd. Dot components remain intact for remote symbolic-link resolution.
  *
  * @param text Raw terminal selection text.
- * @param trustedCwd Optional helper-reported cwd for the source pane.
+ * @param directory Fresh directory metadata belonging to the source pane.
  * @returns Normalized path candidate or `null` when selection is not a safe directory path.
  */
-export const resolveSftpDirectoryPathFromSelection = (text: string, trustedCwd?: string | null): string | null => {
-  const firstLine = text
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
+export const resolveSftpDirectoryPathFromSelection = (
+  text: string,
+  directory?: ShellDirectoryContext | null,
+): string | null => {
+  const firstLine = text.trim();
+  if (/[\r\n]/u.test(firstLine) || firstLine.includes('\u0000')) return null;
   if (!firstLine) {
     return null;
   }
 
   const fileUrlMatch = SHELL_FILE_URL_PATTERN.exec(firstLine);
   const rawCandidate = fileUrlMatch ? safeDecodePathComponent(fileUrlMatch[1] ?? '') : firstLine;
-  const unquotedCandidate = stripShellPathQuotes(stripSelectionPathBoundaryPunctuation(rawCandidate));
-  const slashNormalized = unquotedCandidate.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
-  const withoutTrailingSlash = slashNormalized.length > 1 ? slashNormalized.replace(/\/+$/g, '') : slashNormalized;
+  const unquotedCandidate = stripShellPathQuotes(rawCandidate);
+  if (/[\r\n]/u.test(unquotedCandidate) || unquotedCandidate.includes('\u0000')) return null;
+  const withoutTrailingSlash =
+    unquotedCandidate.length > 1 ? unquotedCandidate.replace(/\/+$/g, '') : unquotedCandidate;
 
   if (!REMOTE_DIRECTORY_PATH_PATTERN.test(withoutTrailingSlash)) {
     return null;
   }
 
-  if (
-    trustedCwd?.startsWith('/') &&
-    (withoutTrailingSlash === '.' ||
-      withoutTrailingSlash === '..' ||
-      withoutTrailingSlash.startsWith('./') ||
-      withoutTrailingSlash.startsWith('../'))
-  ) {
-    const segments = `${trustedCwd}/${withoutTrailingSlash}`.split('/');
-    const normalizedSegments: string[] = [];
-    segments.forEach((segment) => {
-      if (!segment || segment === '.') {
-        return;
-      }
-
-      if (segment === '..') {
-        normalizedSegments.pop();
-        return;
-      }
-
-      normalizedSegments.push(segment);
-    });
-
-    return `/${normalizedSegments.join('/')}`;
-  }
-
-  return withoutTrailingSlash || null;
+  if (withoutTrailingSlash.startsWith('/')) return withoutTrailingSlash;
+  if (withoutTrailingSlash.startsWith('~'))
+    return directory?.home ? directory.home + withoutTrailingSlash.slice(1) : null;
+  return directory?.physical ? directory.physical + '/' + withoutTrailingSlash : null;
 };
 
 /**

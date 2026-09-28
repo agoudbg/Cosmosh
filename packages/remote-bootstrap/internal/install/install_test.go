@@ -317,7 +317,7 @@ func TestRunInstallsZshRemoteShellHelperHooks(t *testing.T) {
 	helperPath := filepath.Join(configDir, "cosmosh", "bootstrap", "helper.sh")
 	assertFileContains(t, filepath.Join(homeDir, ".zshrc"), markerStart)
 	assertFileContains(t, helperPath, "add-zsh-hook precmd __cosmosh_zsh_precmd")
-	assertFileContains(t, helperPath, "add-zsh-hook chpwd __cosmosh_zsh_chpwd")
+	assertFileNotContains(t, helperPath, "add-zsh-hook chpwd __cosmosh_zsh_chpwd")
 	assertFileContains(t, helperPath, "add-zsh-hook preexec __cosmosh_zsh_preexec")
 	assertFileContains(t, helperPath, "command-start")
 	assertFileContains(t, helperPath, "foreground-command")
@@ -407,13 +407,13 @@ func TestRunInstallsFishRemoteShellHelperHooks(t *testing.T) {
 	assertFileContains(t, helperPath, "--on-event fish_prompt")
 	assertFileContains(t, helperPath, "--on-event fish_preexec")
 	assertFileContains(t, helperPath, "--on-event fish_postexec")
-	assertFileContains(t, helperPath, "--on-variable PWD")
+	assertFileContains(t, helperPath, "--on-variable PWD --on-variable HOME")
 	assertFileContains(t, helperPath, "command-start")
 	assertFileContains(t, helperPath, "foreground-command")
 	assertFileContains(t, helperPath, "commandBase64")
 	assertFileContains(t, helperPath, "commandId")
 	assertFileContains(t, helperPath, "durationMs")
-	assertTextOrder(t, readFileString(t, helperPath), "function __cosmosh_on_pwd --on-variable PWD", "__cosmosh_emit_remote_shell_event integration-ready")
+	assertTextOrder(t, readFileString(t, helperPath), "function __cosmosh_report_prompt", "__cosmosh_emit_remote_shell_event integration-ready")
 }
 
 func TestFishHelperNeverAssignsReadOnlyStatusVariable(t *testing.T) {

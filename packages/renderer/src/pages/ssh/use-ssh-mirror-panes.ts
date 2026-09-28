@@ -59,7 +59,7 @@ type UseSshMirrorPanesParams = {
     terminal: TerminalPaneRuntime['terminal'],
     payload: ServerInboundMessage,
   ) => void;
-  recordPaneInputCommandMarker: (paneId: string, inputData: string) => void;
+  preparePaneInput: (paneId: string, inputData: string) => string | undefined;
   refreshCommandTimeline: () => void;
   requestHostFingerprintTrust: (prompt: {
     serverId: string;
@@ -109,7 +109,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     resetPaneState,
     setPaneTransportState,
     handlePaneServerMessage,
-    recordPaneInputCommandMarker,
+    preparePaneInput,
     refreshCommandTimeline,
     requestHostFingerprintTrust,
     notifyWarning,
@@ -240,7 +240,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
           setActivePane(paneId);
         }
 
-        recordPaneInputCommandMarker(paneId, data);
+        const submissionToken = preparePaneInput(paneId, data);
         const autocompleteInputState = applyAutocompleteInputData(paneId, data);
         if (autocompleteInputState.shouldClose) {
           closeAutocompleteRef.current();
@@ -251,6 +251,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
           sendClientMessage(socket, {
             type: 'input',
             data,
+            ...(submissionToken ? { submissionToken } : {}),
           });
         }
       });
@@ -568,7 +569,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
     terminalPaneIds,
     notifyWarning,
     notifyHardwareAccelerationContextLoss,
-    recordPaneInputCommandMarker,
+    preparePaneInput,
     refreshCommandTimeline,
     resetPaneState,
     sessionTargetReady,

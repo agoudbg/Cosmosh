@@ -17,6 +17,7 @@ var fullRemoteShellCapabilities = []string{
 }
 
 var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "line-state")
+var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated")
 
 var degradedRemoteShellCapabilities = []string{
 	"cwd",
@@ -30,6 +31,8 @@ func HelperCapabilities(shell string) []string {
 		return append([]string(nil), degradedRemoteShellCapabilities...)
 	case "zsh":
 		return append([]string(nil), zshRemoteShellCapabilities...)
+	case "fish":
+		return append([]string(nil), fishRemoteShellCapabilities...)
 	default:
 		return append([]string(nil), fullRemoteShellCapabilities...)
 	}
@@ -141,7 +144,16 @@ __cosmosh_emit_remote_shell_event() {
   case "$__cosmosh_event" in
     cwd)
       __cosmosh_cwd_base64="$(__cosmosh_base64_value "$PWD" 2>/dev/null)" || return 0
-      __cosmosh_json="$__cosmosh_json,\"cwdBase64\":\"$__cosmosh_cwd_base64\""
+      # Encode pwd's output before substitution strips newlines. Backend removes only pwd's final LF.
+      __cosmosh_physical_base64="$(command env pwd -P 2>/dev/null | base64 | tr -d '\r\n')" || return 0
+      case "${HOME:-}" in
+        /*) __cosmosh_home_base64="$(__cosmosh_base64_value "$HOME" 2>/dev/null)" || return 0 ;;
+        *) __cosmosh_home_base64= ;;
+      esac
+      __cosmosh_json="$__cosmosh_json,\"cwdBase64\":\"$__cosmosh_cwd_base64\",\"physicalCwdOutputBase64\":\"$__cosmosh_physical_base64\",\"homeBase64\":\"$__cosmosh_home_base64\""
+      if [ -n "$__cosmosh_prompt_generation" ]; then
+        __cosmosh_json="$__cosmosh_json,\"promptGeneration\":$__cosmosh_prompt_generation"
+      fi
       ;;
     command-start|foreground-command)
       __cosmosh_command_base64="$(__cosmosh_base64_value "$__cosmosh_command" 2>/dev/null)" || return 0
@@ -194,7 +206,7 @@ __cosmosh_prompt_ready() {
   __cosmosh_status="$1"
   __cosmosh_finish_active_command "$__cosmosh_status"
   __COSMOSH_PROMPT_GENERATION=$((${__COSMOSH_PROMPT_GENERATION:-0} + 1))
-  __cosmosh_emit_remote_shell_event cwd
+  __cosmosh_emit_remote_shell_event cwd "" "" "" "" "$__COSMOSH_PROMPT_GENERATION"
   __cosmosh_emit_remote_shell_event prompt-ready "" "" "" "" "$__COSMOSH_PROMPT_GENERATION"
 }
 
@@ -221,14 +233,16 @@ __cosmosh_prompt_ready_for_ps1() {
 
 const bashHelperHooks = `
 __cosmosh_bash_prompt_command() {
-  local __cosmosh_bash_prompt_status=$?
+  __COSMOSH_BASH_PROMPT_STATUS=$?
   __COSMOSH_BASH_PREEXEC_READY=0
-  __cosmosh_prompt_ready "$__cosmosh_bash_prompt_status"
-  return "$__cosmosh_bash_prompt_status"
+  return "$__COSMOSH_BASH_PROMPT_STATUS"
 }
 
 __cosmosh_bash_arm_preexec() {
+  # Report after existing prompt commands, which may themselves change directory.
+  __cosmosh_prompt_ready "$__COSMOSH_BASH_PROMPT_STATUS"
   __COSMOSH_BASH_PREEXEC_READY=1
+  return "$__COSMOSH_BASH_PROMPT_STATUS"
 }
 
 if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
@@ -284,9 +298,6 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
   __cosmosh_zsh_precmd() {
     __cosmosh_prompt_ready "$?"
   }
-  __cosmosh_zsh_chpwd() {
-    __cosmosh_emit_remote_shell_event cwd
-  }
   __cosmosh_zsh_preexec() {
     __cosmosh_emit_command_start "$1"
   }
@@ -303,11 +314,9 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
   __cosmosh_zsh_zle_hook_installed=0
   if autoload -Uz +X add-zsh-hook 2>/dev/null; then
     add-zsh-hook precmd __cosmosh_zsh_precmd || __cosmosh_zsh_hook_ok=0
-    add-zsh-hook chpwd __cosmosh_zsh_chpwd || __cosmosh_zsh_hook_ok=0
     add-zsh-hook preexec __cosmosh_zsh_preexec || __cosmosh_zsh_hook_ok=0
   else
     precmd_functions=(${precmd_functions[@]} __cosmosh_zsh_precmd)
-    chpwd_functions=(${chpwd_functions[@]} __cosmosh_zsh_chpwd)
     preexec_functions=(${preexec_functions[@]} __cosmosh_zsh_preexec)
   fi
 
@@ -337,7 +346,6 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
       add-zle-hook-widget -d line-pre-redraw __cosmosh_zsh_line_pre_redraw 2>/dev/null
     fi
     precmd_functions=(${precmd_functions[@]:#__cosmosh_zsh_precmd})
-    chpwd_functions=(${chpwd_functions[@]:#__cosmosh_zsh_chpwd})
     preexec_functions=(${preexec_functions[@]:#__cosmosh_zsh_preexec})
   fi
 fi
@@ -421,7 +429,9 @@ function __cosmosh_command_name_from_line
 end
 
 function __cosmosh_emit_remote_shell_event
-  if not isatty stdout
+  # Prompt functions run inside Fish's output capture; send their metadata to the PTY.
+  set -l prompt_report $argv[9]
+  if test "$prompt_report" != prompt; and not isatty stdout
     return 0
   end
   if not command -q base64
@@ -442,20 +452,30 @@ function __cosmosh_emit_remote_shell_event
   switch $event
     case cwd
       set -l cwd_base64 (__cosmosh_base64_value "$PWD")
-      set json "$json,\"cwdBase64\":\"$cwd_base64\""
+      # Base64 prevents command substitution from splitting or stripping path newlines.
+      set -l physical_base64 (command env pwd -P 2>/dev/null | base64 | tr -d '\r\n')
+      set -l home_base64 ""
+      if string match -rq '^/' -- "$HOME"
+        set home_base64 (__cosmosh_base64_value "$HOME")
+      end
+      set json "$json,\"cwdBase64\":\"$cwd_base64\",\"physicalCwdOutputBase64\":\"$physical_base64\",\"homeBase64\":\"$home_base64\",\"promptGeneration\":$prompt_generation"
     case command-start foreground-command
       set -l command_base64 (__cosmosh_base64_value "$command_name")
       set json "$json,\"commandBase64\":\"$command_base64\",\"commandId\":\"$command_id\""
     case command-end
       set -l command_base64 (__cosmosh_base64_value "$command_name")
       set json "$json,\"commandBase64\":\"$command_base64\",\"commandId\":\"$command_id\",\"exitCode\":$exit_status,\"durationMs\":$duration"
-    case prompt-ready
+    case prompt-ready cwd-invalidated
       set json "$json,\"promptGeneration\":$prompt_generation"
   end
 
   set json "$json}"
   set -l payload (printf '%s' "$json" | base64 | tr -d '\r\n')
-  printf '\e]777;cosmosh;%s\a' "$payload"
+  if test "$prompt_report" = prompt
+    printf '\e]777;cosmosh;%s\a' "$payload" >/dev/tty
+  else
+    printf '\e]777;cosmosh;%s\a' "$payload"
+  end
 end
 
 function __cosmosh_emit_command_start
@@ -477,16 +497,37 @@ end
 
 if not set -q __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED
   function __cosmosh_on_preexec --on-event fish_preexec
+    set -e __COSMOSH_DIRECTORY_REPORTED
     __cosmosh_emit_command_start "$argv[1]"
   end
 
-  function __cosmosh_on_prompt --on-event fish_prompt
+  function __cosmosh_report_prompt
     if not set -q __COSMOSH_PROMPT_GENERATION
       set -g __COSMOSH_PROMPT_GENERATION 0
     end
     set -g __COSMOSH_PROMPT_GENERATION (math $__COSMOSH_PROMPT_GENERATION + 1)
-    __cosmosh_emit_remote_shell_event cwd
-    __cosmosh_emit_remote_shell_event prompt-ready "" "" "" "" "$__COSMOSH_PROMPT_GENERATION"
+    __cosmosh_emit_remote_shell_event cwd "" "" "" "" "$__COSMOSH_PROMPT_GENERATION" "" "" prompt
+    __cosmosh_emit_remote_shell_event prompt-ready "" "" "" "" "$__COSMOSH_PROMPT_GENERATION" "" "" prompt
+    set -g __COSMOSH_REPORTED_PWD "$PWD"
+    set -g __COSMOSH_REPORTED_HOME "$HOME"
+    set -g __COSMOSH_DIRECTORY_REPORTED 1
+  end
+
+  # A title function or later prompt hook may still change the directory after reporting.
+  # Such changes only invalidate this generation; they never announce a new usable prompt.
+  function __cosmosh_invalidate_directory --on-variable PWD --on-variable HOME
+    set -q __COSMOSH_DIRECTORY_REPORTED; or return
+    if test "$PWD" = "$__COSMOSH_REPORTED_PWD"; and test "$HOME" = "$__COSMOSH_REPORTED_HOME"
+      return
+    end
+    set -e __COSMOSH_DIRECTORY_REPORTED
+    __cosmosh_emit_remote_shell_event cwd-invalidated "" "" "" "" "$__COSMOSH_PROMPT_GENERATION" "" "" prompt
+  end
+
+  function __cosmosh_on_prompt --on-event fish_prompt
+    set -e __COSMOSH_DIRECTORY_REPORTED
+    # Leave user prompt functions intact. Later directory changes invalidate this report.
+    __cosmosh_report_prompt
   end
 
   function __cosmosh_on_postexec --on-event fish_postexec
@@ -500,10 +541,6 @@ if not set -q __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED
     set -e __COSMOSH_ACTIVE_COMMAND_ID
     set -e __COSMOSH_ACTIVE_COMMAND_NAME
     set -e __COSMOSH_ACTIVE_COMMAND_START_MS
-  end
-
-  function __cosmosh_on_pwd --on-variable PWD
-    __cosmosh_emit_remote_shell_event cwd
   end
 
   set -gu __COSMOSH_REMOTE_SHELL_HOOK_INSTALLED 1

@@ -593,7 +593,7 @@ const SFTP: React.FC<SFTPProps> = ({
       }
 
       const fallbackPath = connectionIntent.initialPath ?? '.';
-      const candidatePaths = Array.from(new Set([preferredPath.trim() || fallbackPath, fallbackPath]));
+      const candidatePaths = Array.from(new Set([preferredPath || fallbackPath, fallbackPath]));
       const trustRejectedMessage = t('ssh.hostFingerprintNotTrusted');
       const systemProxyRules = await resolveSystemProxyRulesForServerId(connectionIntent.serverId);
 
@@ -1253,12 +1253,11 @@ const SFTP: React.FC<SFTPProps> = ({
 
   const navigateToPath = React.useCallback(
     async (directoryPath: string): Promise<boolean> => {
-      const trimmedPath = directoryPath.trim();
-      if (!hasSftpSession || !trimmedPath) {
+      if (!hasSftpSession || !directoryPath) {
         return false;
       }
 
-      const loadedPath = await loadDirectory(trimmedPath);
+      const loadedPath = await loadDirectory(directoryPath);
       if (!loadedPath) {
         return false;
       }
@@ -1598,7 +1597,7 @@ const SFTP: React.FC<SFTPProps> = ({
         }
 
         const target = detailItem.entry.symlinkTarget;
-        const targetPath = target?.resolvedPath?.trim() ?? '';
+        const targetPath = target?.resolvedPath ?? '';
         if (!target || !targetPath || target.status !== 'exists') {
           notifyError(t('sftp.symlinkTargetLocationUnavailable'));
           return;

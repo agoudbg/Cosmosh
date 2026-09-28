@@ -34,6 +34,22 @@ test('remote path provider avoids non-portable basename flags and returns ranked
   ]);
 });
 
+test('remote lookup preserves symlink parents and whitespace in confirmed directory metadata', async () => {
+  const commands: string[] = [];
+  const provider = createRemotePathProvider({
+    resolveCwd: async () => '/actual/space folder ',
+    resolveHomeDirectory: async () => '/home/custom ',
+    executeCommand: async (command) => {
+      commands.push(command);
+      return 'F\tfile\n';
+    },
+  });
+  await provider({ partialPath: './link/../f', directoriesOnly: false, fuzzyMatch: false, limit: 10 });
+  assert.ok(commands[0]?.includes('/actual/space folder /./link/../'));
+  await provider({ partialPath: '~/f', directoriesOnly: false, fuzzyMatch: false, limit: 10 });
+  assert.ok(commands[1]?.includes('/home/custom /'));
+});
+
 test('remote path provider expands home-relative paths while preserving typed prefix', async () => {
   let capturedCommand = '';
   const provider = createRemotePathProvider({

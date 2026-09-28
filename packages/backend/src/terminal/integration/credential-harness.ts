@@ -21,8 +21,6 @@ export type CredentialTestSession = {
   stream: { destroyed: boolean; write(data: string): void };
   commandCount: number;
   remoteEnhancementsRuntimeState: 'disabled';
-  completionWorkingDirectory: null;
-  completionHomeDirectory: null;
 };
 
 /** Production methods exposed for tests; database, WebSocket and PTY boundaries are isolated. */
@@ -69,8 +67,6 @@ export const createCredentialServiceHarness = (
     },
     commandCount: 0,
     remoteEnhancementsRuntimeState: 'disabled',
-    completionWorkingDirectory: null,
-    completionHomeDirectory: null,
   };
   const service = Object.assign(Object.create(SshSessionService.prototype) as CredentialServiceHarness, {
     sessions: new Map([[session.sessionId, session]]),

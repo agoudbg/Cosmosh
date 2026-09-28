@@ -31,6 +31,53 @@ const encodeCosmoshOsc = (value: Record<string, unknown>): string => {
   return `${ESCAPE}]777;cosmosh;${encoded}${BELL}`;
 };
 
+test('directory invalidation requires an advertised capability and positive prompt generation', () => {
+  const report = { ...RUNTIME_CONTRACT, shell: 'fish', event: 'cwd-invalidated', promptGeneration: 2, timestamp: 1 };
+  assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc(report)), []);
+  const valid = { ...report, capabilities: [...report.capabilities, 'cwd-invalidated'] };
+  const frames = new RemoteShellEventOscParser().parse(encodeCosmoshOsc(valid));
+  assert.equal(frames[0]?.type, 'event');
+  for (const promptGeneration of [undefined, 0, -1, 1.5, '2']) {
+    assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...valid, promptGeneration })), []);
+  }
+});
+
+test('cwd reports reject malformed path fields and unavailable physical/home fields stay explicit', () => {
+  const valid = {
+    ...RUNTIME_CONTRACT,
+    event: 'cwd',
+    shell: 'bash',
+    timestamp: 1,
+    promptGeneration: 1,
+    cwdBase64: encodeField('/logical'),
+    physicalCwdOutputBase64: encodeField('/actual\n'),
+    homeBase64: encodeField('/home'),
+  };
+  for (const fields of [
+    { promptGeneration: undefined },
+    { promptGeneration: 0 },
+    { promptGeneration: -1 },
+    { physicalCwdOutputBase64: undefined },
+    { physicalCwdOutputBase64: encodeField('/missing-final-newline') },
+    { physicalCwdOutputBase64: encodeField('relative\n') },
+    { homeBase64: encodeField('relative') },
+    { cwdBase64: encodeField('/nul\u0000') },
+    { homeBase64: undefined },
+  ]) {
+    assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...valid, ...fields })), []);
+  }
+  const result = new RemoteShellEventOscParser().parse(
+    encodeCosmoshOsc({
+      ...valid,
+      physicalCwdOutputBase64: '',
+      homeBase64: '',
+    }),
+  );
+  assert.equal(result.length, 1);
+  assert.equal(result[0]?.type === 'event' && result[0].event.physicalCwd, null);
+  assert.equal(result[0]?.type === 'event' && result[0].event.homeDirectory, null);
+});
+
 test('v3 rejects missing/invalid instance identity and legacy protocol without leaking envelope text', () => {
   for (const fields of [
     { shellInstanceId: undefined },
@@ -73,6 +120,9 @@ test('parser strips Cosmosh OSC events while preserving their position among vis
     event: 'cwd',
     shell: 'zsh',
     cwdBase64: encodeField('/tmp\tworkspace'),
+    physicalCwdOutputBase64: encodeField('/physical\nfolder\n\n'),
+    homeBase64: encodeField('/home/with space'),
+    promptGeneration: 1,
     timestamp: 1_717_000_000_000,
   };
   const secondEvent = {
@@ -98,6 +148,9 @@ test('parser strips Cosmosh OSC events while preserving their position among vis
         event: 'cwd',
         shell: 'zsh',
         cwd: '/tmp\tworkspace',
+        physicalCwd: '/physical\nfolder\n',
+        homeDirectory: '/home/with space',
+        promptGeneration: 1,
         timestamp: 1_717_000_000_000,
       },
     },

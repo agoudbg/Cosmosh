@@ -4,8 +4,28 @@ import type {
   SettingsValues,
   ShellContext,
   ShellContextReason,
+  ShellDirectoryContext,
   ShellPermissions,
 } from '@cosmosh/api-contract';
+
+/** Backend-only pending report; a directory becomes usable only at its matching original-Shell prompt. */
+export type ShellContextState = ShellContext & {
+  pendingDirectory?: { directory: ShellDirectoryContext; promptGeneration: number | null } | null;
+  /** Typeahead may belong to a running program; only a verified editor exchange can resolve this ambiguity. */
+  requiresEditorConfirmation?: boolean;
+};
+
+/**
+ * Excludes unconfirmed reports from transport snapshots.
+ * @param state Backend-owned state.
+ * @returns Public, confirmed context metadata only.
+ */
+export const getShellContextSnapshot = (state: ShellContextState): ShellContext => {
+  const context = { ...state };
+  delete context.pendingDirectory;
+  delete context.requiresEditorConfirmation;
+  return context;
+};
 
 /**
  * Resolves per-session permission without allowing request flags to override persisted opt-outs.
@@ -35,7 +55,7 @@ export const createShellContext = (
   sessionId: string,
   permissions: ShellPermissions,
   pending: boolean,
-): ShellContext => ({
+): ShellContextState => ({
   sessionId,
   shellInstanceId: null,
   shell: null,
@@ -47,6 +67,7 @@ export const createShellContext = (
   reason: pending ? 'waiting-for-prompt' : 'helper-unavailable',
   revision: 0,
   inputGeneration: 0,
+  submissionToken: null,
   promptGeneration: null,
   cwdGeneration: 0,
   cwd: null,
@@ -57,16 +78,39 @@ export const createShellContext = (
  * Invalidates outstanding editor work before any bytes reach the remote PTY.
  * @param context Current session context.
  * @param input Raw bytes used only for immediate boundary detection, never retained.
+ * @param submissionToken Opaque client submission identifier acknowledged before forwarding the bytes.
  * @returns New generation and, for submit/cancel, a paused context until a fresh Shell prompt.
  */
-export const invalidateShellInput = (context: ShellContext, input: string): ShellContext => {
-  const submitted = ['\r', '\n', '\u0003', '\u0004'].some((boundary) => input.includes(boundary));
+export const invalidateShellInput = (
+  context: ShellContextState,
+  input: string,
+  submissionToken?: string,
+): ShellContextState => {
+  // Count transport boundaries without parsing or retaining command text. CRLF is one boundary.
+  let submissionCount = 0;
+  for (let index = 0; index < input.length && submissionCount < 2; index += 1) {
+    const character = input[index];
+    if (character === '\r' || character === '\n' || character === '\u0003' || character === '\u0004') {
+      submissionCount += 1;
+      if (character === '\r' && input[index + 1] === '\n') index += 1;
+    }
+  }
+  const submitted = submissionCount > 0;
   return {
     ...context,
     revision: context.revision + 1,
     inputGeneration: context.inputGeneration + 1,
+    submissionToken: submitted ? (submissionToken ?? null) : context.submissionToken,
+    requiresEditorConfirmation:
+      context.requiresEditorConfirmation ||
+      submissionCount > 1 ||
+      (submitted &&
+        (context.status === 'busy' ||
+          context.status === 'initializing' ||
+          context.reason === 'input-submitted' ||
+          context.reason === 'foreign-shell')),
     ...(submitted && context.status !== 'unavailable'
-      ? { status: 'paused' as const, reason: 'input-submitted' as const, cwd: null }
+      ? { status: 'paused' as const, reason: 'input-submitted' as const, cwd: null, pendingDirectory: null }
       : {}),
   };
 };
@@ -79,16 +123,17 @@ export const invalidateShellInput = (context: ShellContext, input: string): Shel
  * @returns Context with all outstanding operations invalidated.
  */
 export const suspendShellContext = (
-  context: ShellContext,
+  context: ShellContextState,
   reason: ShellContextReason,
   unavailable = false,
-): ShellContext => ({
+): ShellContextState => ({
   ...context,
   revision: context.revision + 1,
   inputGeneration: context.inputGeneration + 1,
   status: unavailable ? 'unavailable' : 'paused',
   reason,
   cwd: null,
+  pendingDirectory: null,
   ...(unavailable ? { capabilities: [], promptGeneration: null } : {}),
 });
 
@@ -98,7 +143,10 @@ export const suspendShellContext = (
  * @param permissions Newly persisted permissions.
  * @returns Original object when unchanged, otherwise an invalidated context.
  */
-export const updateShellPermissions = (context: ShellContext, permissions: ShellPermissions): ShellContext => {
+export const updateShellPermissions = (
+  context: ShellContextState,
+  permissions: ShellPermissions,
+): ShellContextState => {
   if (
     (Object.keys(permissions) as Array<keyof ShellPermissions>).every(
       (key) => context.permissions[key] === permissions[key],
@@ -110,7 +158,9 @@ export const updateShellPermissions = (context: ShellContext, permissions: Shell
     permissions: { ...permissions },
     revision: context.revision + 1,
     inputGeneration: context.inputGeneration + 1,
-    ...(!permissions.cwd ? { cwd: null, lastKnownCwd: null, cwdGeneration: context.cwdGeneration + 1 } : {}),
+    ...(!permissions.cwd
+      ? { cwd: null, lastKnownCwd: null, pendingDirectory: null, cwdGeneration: context.cwdGeneration + 1 }
+      : {}),
   };
 };
 
@@ -121,7 +171,10 @@ export const updateShellPermissions = (context: ShellContext, permissions: Shell
  * @param event Normalized helper event.
  * @returns Next state, or the original object for a rejected/stale event.
  */
-export const applyShellContextEvent = (context: ShellContext, event: RemoteShellEventMessage): ShellContext => {
+export const applyShellContextEvent = (
+  context: ShellContextState,
+  event: RemoteShellEventMessage,
+): ShellContextState => {
   if (context.status === 'unavailable') return context;
   if (context.shellInstanceId && context.shellInstanceId !== event.shellInstanceId) {
     return context.reason === 'foreign-shell' ? context : suspendShellContext(context, 'foreign-shell');
@@ -150,28 +203,60 @@ export const applyShellContextEvent = (context: ShellContext, event: RemoteShell
       event.promptGeneration <= context.promptGeneration
     )
       return context;
+    const directory =
+      context.permissions.cwd && context.pendingDirectory?.promptGeneration === (event.promptGeneration ?? null)
+        ? context.pendingDirectory.directory
+        : null;
+    const previous = context.lastKnownCwd;
+    const directoryChanged =
+      directory !== null &&
+      (previous?.logical !== directory.logical ||
+        previous.physical !== directory.physical ||
+        previous.home !== directory.home);
     return {
       ...context,
       revision: context.revision + 1,
-      status: 'ready',
-      reason: null,
+      status: context.requiresEditorConfirmation ? 'paused' : 'ready',
+      reason: context.requiresEditorConfirmation ? 'input-submitted' : null,
       promptGeneration: event.promptGeneration ?? null,
-      cwd: context.permissions.cwd ? context.lastKnownCwd : null,
+      cwd: context.requiresEditorConfirmation ? null : directory,
+      lastKnownCwd: directory ?? context.lastKnownCwd,
+      cwdGeneration: context.cwdGeneration + Number(directoryChanged),
+      pendingDirectory: null,
     };
+  }
+  if (event.event === 'cwd-invalidated') {
+    if (!context.permissions.cwd || event.promptGeneration !== context.promptGeneration) return context;
+    return suspendShellContext(context, 'waiting-for-prompt');
   }
   if (event.event === 'cwd') {
     if (!context.permissions.cwd) return context;
-    const directory = { logical: event.cwd, physical: null, home: null };
+    if (
+      (event.promptGeneration === undefined && event.shell !== 'sh' && event.shell !== 'ash') ||
+      (event.promptGeneration !== undefined &&
+        context.promptGeneration !== null &&
+        event.promptGeneration <= context.promptGeneration)
+    )
+      return context;
+    const directory = { logical: event.cwd, physical: event.physicalCwd, home: event.homeDirectory };
     return {
       ...context,
       revision: context.revision + 1,
-      cwdGeneration: context.cwdGeneration + Number(context.lastKnownCwd?.logical !== event.cwd),
-      lastKnownCwd: directory,
-      cwd: context.status === 'ready' ? directory : null,
+      status: 'initializing',
+      reason: 'waiting-for-prompt',
+      cwd: null,
+      pendingDirectory: { directory, promptGeneration: event.promptGeneration ?? null },
     };
   }
   if (event.event === 'command-start' || event.event === 'foreground-command' || event.event === 'command-end') {
-    return { ...context, revision: context.revision + 1, status: 'busy', reason: 'command-running', cwd: null };
+    return {
+      ...context,
+      revision: context.revision + 1,
+      status: 'busy',
+      reason: 'command-running',
+      cwd: null,
+      pendingDirectory: null,
+    };
   }
   return context;
 };

@@ -1234,12 +1234,14 @@ export interface components {
     };
     SftpSessionCreateRequest: {
       serverId: string;
+      /** @description Remote path preserved verbatim, including whitespace and symbolic-link parent components. */
       initialPath?: string;
       connectTimeoutSec?: number;
       strictHostKey?: boolean;
       systemProxyRules?: string;
     };
     SftpPathRequest: {
+      /** @description Remote path preserved verbatim; the server resolves symbolic links and dot components. */
       path: string;
     };
     SftpCreateDirectoryRequest: components['schemas']['SftpPathRequest'];

@@ -1,4 +1,4 @@
-import type { SettingsValues } from '@cosmosh/api-contract';
+import type { SettingsValues, ShellDirectoryContext } from '@cosmosh/api-contract';
 import { type ISearchOptions, type SearchAddon } from '@xterm/addon-search';
 import type { SerializeAddon } from '@xterm/addon-serialize';
 import { type ITerminalOptions, type Terminal } from '@xterm/xterm';
@@ -242,7 +242,7 @@ export type SshCoreState = {
   remoteBootstrapStatus: RemoteBootstrapStatus | null;
   remoteEnhancementRuntimeStatus: RemoteEnhancementRuntimeStatus | null;
   remoteEnhancementsDebugEvents: RemoteEnhancementsDebugEvent[];
-  trustedCwd: string | null;
+  shellDirectory: ShellDirectoryContext | null;
   commandTimelineModels: Record<string, TerminalCommandTimelineModel>;
   hostFingerprintPrompt: HostFingerprintPrompt | null;
   canSplitTerminal: boolean;
@@ -262,6 +262,8 @@ export type SshCoreState = {
  * Declarative operations exposed by `useSshCore`.
  */
 export type SshCoreActions = {
+  /** Reads a source pane's current directory at action time, excluding paused or unconfirmed reports. */
+  getPaneDirectory: (paneId: string) => ShellDirectoryContext | null;
   /**
    * Activates a pane and routes follow-up input/socket interactions to it.
    *
@@ -321,7 +323,7 @@ export type SshCoreActions = {
    *
    * @returns Selection text, or empty string.
    */
-  getSelectionText: () => string;
+  getSelectionText: (paneId?: string) => string;
   /**
    * Returns current terminal selection serialized as HTML from active pane.
    *
@@ -456,6 +458,16 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    */
   const getPaneTrustedCwd = React.useCallback((paneId: string): string | null => {
     return paneStateMapRef.current[paneId]?.trustedCwd ?? null;
+  }, []);
+
+  /**
+   * Reads the source pane immediately, including between activation and React's next render.
+   * @param paneId Pane that owns the selected text.
+   * @returns Confirmed metadata only while the original Shell remains usable.
+   */
+  const getPaneDirectory = React.useCallback((paneId: string): ShellDirectoryContext | null => {
+    const context = paneStateMapRef.current[paneId]?.shellContext;
+    return context?.status === 'ready' && context.permissions.cwd ? context.cwd : null;
   }, []);
 
   const {
@@ -851,8 +863,12 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     paneRuntimeMapRef,
     getPaneLineState,
     getPaneTrustedCwd,
+    beforeInput: (paneId, input) => preparePaneInput(paneId, input),
     canReadPaneInput: (paneId) =>
-      remoteEnhancementsInputEnabled && paneStateMapRef.current[paneId]?.shellContext?.permissions.input !== false,
+      remoteEnhancementsInputEnabled &&
+      (connectionIntent.target?.type === 'local-terminal' ||
+        (paneStateMapRef.current[paneId]?.shellContext?.status === 'ready' &&
+          paneStateMapRef.current[paneId]?.shellContext?.permissions.input === true)),
   });
 
   /**
@@ -916,9 +932,9 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
 
       const receivedAt = Date.now();
       const paneRuntime = paneRuntimeMapRef.current.get(paneId);
-      if (payload.type === 'shell-context' && !payload.context.permissions.input) {
+      if (payload.type === 'shell-context') {
         resetAutocompletePaneState(paneId);
-        if (paneRuntime) clearTerminalCommandMarkers(paneRuntime);
+        if (!payload.context.permissions.input && paneRuntime) clearTerminalCommandMarkers(paneRuntime);
       }
       if (
         payload.type === 'remote-enhancement-runtime-status' &&
@@ -970,17 +986,21 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   );
 
   /**
-   * Records a hidden local Enter marker only while trusted command-start events
-   * can confirm whether it represents a real submitted command.
+   * Invalidates submitted directory context before PTY forwarding and records eligible timeline markers.
    *
    * @param paneId Source pane id.
    * @param inputData Raw xterm input chunk.
-   * @returns Nothing.
+   * @returns An opaque acknowledgement token for submissions, otherwise undefined.
    */
-  const recordPaneInputCommandMarker = React.useCallback(
-    (paneId: string, inputData: string): void => {
+  const preparePaneInput = React.useCallback(
+    (paneId: string, inputData: string): string | undefined => {
+      let submissionToken: string | undefined;
+      if (['\r', '\n', '\u0003', '\u0004'].some((boundary) => inputData.includes(boundary))) {
+        submissionToken = crypto.randomUUID();
+        dispatchPaneState({ type: 'input-submitted', paneId, token: submissionToken });
+      }
       if (!/\r|\n/u.test(inputData)) {
-        return;
+        return submissionToken;
       }
 
       const paneState = paneStateMapRef.current[paneId];
@@ -988,15 +1008,16 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         !supportsTrustedCommandTimeline(paneState?.remoteEnhancementRuntimeStatus) ||
         paneState?.shellContext?.permissions.input === false
       ) {
-        return;
+        return submissionToken;
       }
 
       const paneRuntime = paneRuntimeMapRef.current.get(paneId);
       if (paneRuntime) {
         recordPendingCommandMarker(paneRuntime, Date.now());
       }
+      return submissionToken;
     },
-    [paneRuntimeMapRef],
+    [dispatchPaneState, paneRuntimeMapRef],
   );
 
   const {
@@ -1228,7 +1249,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     setPaneTransportState,
     setSessionTargetReady,
     handlePaneServerMessage,
-    recordPaneInputCommandMarker,
+    preparePaneInput,
     refreshCommandTimeline,
     requestHostFingerprintTrust: requestHostFingerprintTrust ?? requestHostFingerprintTrustInternal,
     setActivePane: activatePane,
@@ -1271,7 +1292,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     resetPaneState,
     setPaneTransportState,
     handlePaneServerMessage,
-    recordPaneInputCommandMarker,
+    preparePaneInput,
     refreshCommandTimeline,
     requestHostFingerprintTrust: requestHostFingerprintTrust ?? requestHostFingerprintTrustInternal,
     notifyWarning,
@@ -1359,15 +1380,16 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         return false;
       }
 
+      const submissionToken = preparePaneInput(activePaneIdRef.current, data);
       sendClientMessage(socket, {
         type: 'input',
         data,
+        ...(submissionToken ? { submissionToken } : {}),
       });
-      recordPaneInputCommandMarker(activePaneIdRef.current, data);
 
       return true;
     },
-    [activePaneIdRef, recordPaneInputCommandMarker, socketRef],
+    [activePaneIdRef, preparePaneInput, socketRef],
   );
 
   /**
@@ -1465,13 +1487,17 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   }, [terminalRef]);
 
   /**
-   * Reads active terminal selected text.
+   * Reads selected text from an explicit source pane or the current active pane.
    *
+   * @param paneId Optional source pane, independent of pending React renders.
    * @returns Current selected text or empty string.
    */
-  const getSelectionText = React.useCallback((): string => {
-    return terminalRef.current?.getSelection() ?? '';
-  }, [terminalRef]);
+  const getSelectionText = React.useCallback(
+    (paneId?: string): string => {
+      return paneRuntimeMapRef.current.get(paneId ?? activePaneIdRef.current)?.terminal.getSelection() ?? '';
+    },
+    [paneRuntimeMapRef, activePaneIdRef],
+  );
 
   /**
    * Serializes active terminal selected text as clipboard-ready HTML.
@@ -1636,7 +1662,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
       remoteEnhancementsDebugEvents,
-      trustedCwd: activePaneState.trustedCwd,
+      shellDirectory: getPaneDirectory(activePaneId),
       commandTimelineModels,
       hostFingerprintPrompt,
       canSplitTerminal: terminalPaneIds.length < MAX_TERMINAL_PANES,
@@ -1652,6 +1678,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       autocompleteAnchor,
     },
     actions: {
+      getPaneDirectory,
       activatePane,
       splitPane,
       closePane,

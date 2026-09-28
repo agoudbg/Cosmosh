@@ -60,10 +60,12 @@ const DEFAULT_PASTE_WARNING_SETTINGS = {
 test('selection directory resolver accepts explicit remote paths', () => {
   assert.equal(resolveSftpDirectoryPathFromSelection('/'), '/');
   assert.equal(resolveSftpDirectoryPathFromSelection('/var/www/'), '/var/www');
-  assert.equal(resolveSftpDirectoryPathFromSelection("'~/projects/site'"), '~/projects/site');
-  assert.equal(resolveSftpDirectoryPathFromSelection('./logs,'), './logs');
+  assert.equal(resolveSftpDirectoryPathFromSelection("'~/projects/site'"), null);
+  assert.equal(resolveSftpDirectoryPathFromSelection('./logs,'), null);
   assert.equal(resolveSftpDirectoryPathFromSelection('file:///opt/app/current'), '/opt/app/current');
   assert.equal(resolveSftpDirectoryPathFromSelection('file:///tmp/%broken'), '/tmp/%broken');
+  assert.equal(resolveSftpDirectoryPathFromSelection('file:///tmp/%00name'), null);
+  assert.equal(resolveSftpDirectoryPathFromSelection('file:///tmp/%0Aname'), null);
 });
 
 test('selection directory resolver rejects ambiguous or unsafe values', () => {
@@ -73,10 +75,19 @@ test('selection directory resolver rejects ambiguous or unsafe values', () => {
 });
 
 test('selection directory resolver resolves dot-relative paths from trusted pane cwd', () => {
-  assert.equal(resolveSftpDirectoryPathFromSelection('./logs', '/srv/app'), '/srv/app/logs');
-  assert.equal(resolveSftpDirectoryPathFromSelection('../shared/cache', '/srv/app/current'), '/srv/app/shared/cache');
-  assert.equal(resolveSftpDirectoryPathFromSelection('../../../../etc', '/srv/app'), '/etc');
-  assert.equal(resolveSftpDirectoryPathFromSelection('relative/path', '/srv/app'), null);
+  const directory = { logical: '/display/link', physical: '/actual/app', home: '/custom home' };
+  assert.equal(resolveSftpDirectoryPathFromSelection('./logs', directory), '/actual/app/./logs');
+  assert.equal(resolveSftpDirectoryPathFromSelection('../shared/cache', directory), '/actual/app/../shared/cache');
+  assert.equal(resolveSftpDirectoryPathFromSelection('./link/../next', directory), '/actual/app/./link/../next');
+  assert.equal(resolveSftpDirectoryPathFromSelection('relative/path', directory), null);
+  assert.equal(resolveSftpDirectoryPathFromSelection('~/folder', directory), '/custom home/folder');
+  assert.equal(resolveSftpDirectoryPathFromSelection('./folder', { ...directory, physical: null }), null);
+  assert.equal(resolveSftpDirectoryPathFromSelection('~/folder', { ...directory, home: null }), null);
+  for (const name of ['/tmp/end.', '/tmp/back\\slash', '/tmp/space folder', '/tmp/with,']) {
+    assert.equal(resolveSftpDirectoryPathFromSelection(name), name);
+  }
+  assert.equal(resolveSftpDirectoryPathFromSelection("'/tmp/trailing '"), '/tmp/trailing ');
+  assert.equal(resolveSftpDirectoryPathFromSelection('/first\n/second'), null);
 });
 
 test('pane close transition promotes a surviving pane without changing its id', () => {

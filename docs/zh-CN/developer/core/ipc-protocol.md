@@ -9,6 +9,10 @@ flowchart TB
   M -->|HTTP + internal token| B[backend routes]
 ```
 
+目录元数据通过现有 SSH `shell-context` WebSocket 消息传输。`cwd`事件携带逻辑目录、可为空的物理目录/HOME 及提示符代数，匹配提示符后才启用。SFTP IPC/HTTP 结构保持一致，远端路径保留空白及`link/..`直到服务器解析，不增加 IPC 通道。
+
+提交终端`input`时可附带不含输入内容的 UUID `submissionToken`。Backend 在`ShellContext`中回显最近收到的标识；Renderer 在匹配且可用的上下文到达前持续停用旧 ready 快照。这只确认 Backend 收到输入。无法确定归属的连续输入保持暂停，等待可信编辑器确认。Fish 的`cwd-invalidated`只携带当前提示符代数，用于停用报告后发生变化的目录。
+
 ## 2. Channel 字典
 
 | Channel                                    | IPC Type                   | Params                                                                                                                     | Return Schema                                                                                                                                                                                                                                                                                                                                                                                                       | Main Handler Behavior                                                                                                              |

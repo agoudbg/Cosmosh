@@ -87,11 +87,11 @@ packages/remote-bootstrap/
 
 The current Remote Bootstrap target matrix supports Linux hosts only:
 
-| Dimension | Supported values |
-| --- | --- |
-| OS | `linux` |
-| Architecture | `amd64`, `arm64` |
-| Shell | `bash`, `zsh`, `fish`, `ash`, `sh` |
+| Dimension    | Supported values                   |
+| ------------ | ---------------------------------- |
+| OS           | `linux`                            |
+| Architecture | `amd64`, `arm64`                   |
+| Shell        | `bash`, `zsh`, `fish`, `ash`, `sh` |
 
 The remote host also needs common bootstrap tools:
 
@@ -141,16 +141,16 @@ The backend selects the first asset whose `os` and `arch` match the remote probe
 
 The installer writes only inside the remote user's home/XDG scope:
 
-| Purpose | Default path |
-| --- | --- |
-| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` or `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap` |
-| Version marker | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` or `~/.local/share/cosmosh/bootstrap/bin/.version` |
-| POSIX helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` or `~/.config/cosmosh/bootstrap/helper.sh` |
-| Fish helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` or `~/.config/cosmosh/bootstrap/helper.fish` |
-| Bash profile hooks | `~/.bashrc` plus the active login profile: `~/.bash_profile`, else `~/.bash_login`, else `~/.profile` |
-| Zsh profile hook | `~/.zshrc` |
-| Sh/Ash profile hook | `~/.profile` |
-| Fish profile hook | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` or `~/.config/fish/conf.d/cosmosh.fish` |
+| Purpose             | Default path                                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Bootstrap binary    | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` or `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap` |
+| Version marker      | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` or `~/.local/share/cosmosh/bootstrap/bin/.version`                   |
+| POSIX helper        | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` or `~/.config/cosmosh/bootstrap/helper.sh`                            |
+| Fish helper         | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` or `~/.config/cosmosh/bootstrap/helper.fish`                        |
+| Bash profile hooks  | `~/.bashrc` plus the active login profile: `~/.bash_profile`, else `~/.bash_login`, else `~/.profile`                |
+| Zsh profile hook    | `~/.zshrc`                                                                                                           |
+| Sh/Ash profile hook | `~/.profile`                                                                                                         |
+| Fish profile hook   | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` or `~/.config/fish/conf.d/cosmosh.fish`                                  |
 
 POSIX shell hooks are kept inside a Cosmosh marker block:
 
@@ -182,16 +182,17 @@ Current protocol v3 behavior:
 
 Each event carries a bounded `shellInstanceId`. Interactive processes generate Linux UUIDs; repeated sourcing preserves the same identity and hook registration. Fish internal state is unexported. Nested Shells get distinct identities, and non-interactive startup stays silent. The backend binds the first validated original Shell, pauses on foreign identities and resumes on a newer original prompt. Only implemented capabilities are advertised. Encoded OSC is bounded to 48 KiB and decoded JSON to 32 KiB.
 
-| Shell | Advertised capabilities |
-| --- | --- |
-| Bash | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready` |
-| Zsh | Bash capability set plus `line-state` |
-| Fish | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready` |
-| Sh/Ash | `cwd`, `prompt-ready` |
+| Shell  | Advertised capabilities                                                     |
+| ------ | --------------------------------------------------------------------------- |
+| Bash   | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready` |
+| Zsh    | Bash capability set plus `line-state`                                       |
+| Fish   | Bash capability set plus `cwd-invalidated`                                  |
+| Sh/Ash | `cwd`, `prompt-ready`                                                       |
 
 - Bash preserves existing `PROMPT_COMMAND`, emits prompt/cwd state, and uses a guarded `DEBUG` trap for one command start per submitted line. Command end carries the same `commandId`, exit code, and measured duration.
-- Zsh uses `precmd`, `preexec`, and `chpwd`, plus `line-pre-redraw` for numeric line-length/cursor calibration. All required hooks must register before the helper announces readiness.
-- Fish uses `fish_preexec`, `fish_prompt`, `fish_postexec`, and `PWD` variable events.
+- Zsh uses `precmd`, `preexec` and `line-pre-redraw`; all required hooks must register before readiness. CWD is emitted only at the prompt boundary.
+- Fish uses `fish_preexec`, `fish_postexec` and `fish_prompt` events without replacing user prompt functions. PWD/HOME changes after reporting emit one `cwd-invalidated` event for the same generation; they cannot restore directory usability. A subsequent stable report/prompt pair recovers it. Functions that continually change directories need verified editor confirmation. Direct PTY metadata output also works inside captured prompt/title functions. The ordering follows Fish's [reader implementation](https://github.com/fish-shell/fish-shell/blob/3.6.4/src/reader.cpp).
+- Prompt-bound CWD reports contain logical PWD, physical output from an external `pwd -P` child, and current absolute HOME. Physical output is Base64-encoded before command substitution, preserving filename newlines; Backend removes exactly the program's final LF. Unavailable physical/HOME values use empty encoded fields and normalize to null. Bash reports after user prompt hooks.
 - Sh/Ash use a prompt-capture fallback and intentionally do not claim command lifecycle events.
 - Every shell emits `integration-ready` only after its advertised hooks are installed, and non-interactive shells emit no OSC events.
 
@@ -228,28 +229,46 @@ Supported phases are `probe`, `manifest`, `download`, `install`, and `verify`. S
 `cosmosh-bootstrap status` emits one separate JSON object describing the installed runtime contract:
 
 ```json
-{"installed":true,"version":"1.2.3","protocolVersion":2,"capabilities":["cwd","command-start","command-end","foreground-command","prompt-ready"],"helperCurrent":true,"profileCurrent":true,"binarySha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","binaryPath":"/home/user/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap","helperPath":"/home/user/.config/cosmosh/bootstrap/helper.sh","profilePath":"/home/user/.bashrc","profilePaths":["/home/user/.bashrc","/home/user/.profile"]}
+{
+  "installed": true,
+  "version": "1.2.3",
+  "protocolVersion": 3,
+  "capabilities": [
+    "cwd",
+    "command-start",
+    "command-end",
+    "foreground-command",
+    "prompt-ready"
+  ],
+  "helperCurrent": true,
+  "profileCurrent": true,
+  "binarySha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "binaryPath": "/home/user/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap",
+  "helperPath": "/home/user/.config/cosmosh/bootstrap/helper.sh",
+  "profilePath": "/home/user/.bashrc",
+  "profilePaths": ["/home/user/.bashrc", "/home/user/.profile"]
+}
 ```
 
 Common failure codes include:
 
-| Code | Meaning |
-| --- | --- |
-| `MANIFEST_URL_NOT_CONFIGURED` | Backend Remote Enhancements are enabled, but no manifest URL is configured. |
-| `MANIFEST_FETCH_FAILED` | Backend could not fetch the manifest. |
-| `MANIFEST_INVALID` | Manifest shape, asset URL, or SHA-256 value failed validation. |
-| `ASSET_NOT_FOUND` | Manifest has no asset for the probed remote platform. |
-| `PROBE_FAILED` | Remote OS, architecture, or shell is unsupported or could not be parsed. |
-| `BASE64_NOT_FOUND` | Remote host cannot decode the injected wrapper payload. |
-| `MKTEMP_NOT_FOUND` | Remote host does not provide `mktemp`. |
-| `DOWNLOADER_NOT_FOUND` | Remote host provides neither `curl` nor `wget`. |
-| `HASH_TOOL_NOT_FOUND` | Remote host provides neither `sha256sum` nor `shasum`. |
-| `CHECKSUM_MISMATCH` | Downloaded binary hash does not match the manifest. |
-| `BOOTSTRAP_ENSURE_TIMEOUT` | Backend's complete optional pre-PTY ensure exceeded 15 seconds and ordinary SSH continued. |
-| `HELPER_HANDSHAKE_TIMEOUT` | The installed helper did not complete a valid runtime handshake within 10 seconds after PTY creation. |
-| `FILE_INSTALL_FAILED` | Installer could not create/copy user-scoped files. |
-| `PROFILE_UPDATE_FAILED` | Installer could not update the target shell profile hook. |
-| `VERSION_WRITE_FAILED` | Installer could not write the final version marker. |
+| Code                          | Meaning                                                                                               |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `MANIFEST_URL_NOT_CONFIGURED` | Backend Remote Enhancements are enabled, but no manifest URL is configured.                           |
+| `MANIFEST_FETCH_FAILED`       | Backend could not fetch the manifest.                                                                 |
+| `MANIFEST_INVALID`            | Manifest shape, asset URL, or SHA-256 value failed validation.                                        |
+| `ASSET_NOT_FOUND`             | Manifest has no asset for the probed remote platform.                                                 |
+| `PROBE_FAILED`                | Remote OS, architecture, or shell is unsupported or could not be parsed.                              |
+| `BASE64_NOT_FOUND`            | Remote host cannot decode the injected wrapper payload.                                               |
+| `MKTEMP_NOT_FOUND`            | Remote host does not provide `mktemp`.                                                                |
+| `DOWNLOADER_NOT_FOUND`        | Remote host provides neither `curl` nor `wget`.                                                       |
+| `HASH_TOOL_NOT_FOUND`         | Remote host provides neither `sha256sum` nor `shasum`.                                                |
+| `CHECKSUM_MISMATCH`           | Downloaded binary hash does not match the manifest.                                                   |
+| `BOOTSTRAP_ENSURE_TIMEOUT`    | Backend's complete optional pre-PTY ensure exceeded 15 seconds and ordinary SSH continued.            |
+| `HELPER_HANDSHAKE_TIMEOUT`    | The installed helper did not complete a valid runtime handshake within 10 seconds after PTY creation. |
+| `FILE_INSTALL_FAILED`         | Installer could not create/copy user-scoped files.                                                    |
+| `PROFILE_UPDATE_FAILED`       | Installer could not update the target shell profile hook.                                             |
+| `VERSION_WRITE_FAILED`        | Installer could not write the final version marker.                                                   |
 
 ## Security Boundaries
 

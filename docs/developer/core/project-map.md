@@ -83,7 +83,7 @@ flowchart TB
 
 ### `packages/backend`
 
-- `src/terminal/shell-context.ts`: original Shell identity, permission and generation transitions, without current-input or credential storage.
+- `src/terminal/shell-context.ts`: original Shell identity, permissions, generations and prompt-paired directory state. Unconfirmed reports stay backend-only; transport snapshots expose only usable and display-only last-known metadata. It stores no current input or credentials.
 - `src/terminal/integration/helper-identity.live-test.ts`: real installer/SSH tests for repeated sources, nested Shells, independent terminals and non-interactive silence.
 
 - **Role**: Internal API + session orchestration runtime.

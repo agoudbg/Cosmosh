@@ -50,6 +50,7 @@ Development and packaging intentionally use different native targets. The Main a
 ### Backend Process (`packages/backend/src/index.ts`)
 
 - Enhancement consumers share a backend-owned, text-free `ShellContext` per SSH session. Protocol v3 binds the original Shell identity, separates capabilities from permissions, and invalidates async work with generations. Default-scope settings propagate by database revision; optional initialization failures preserve ordinary SSH. Renderer retains the latest metadata per pane.
+- CWD reports from the original interactive Shell are paired with prompt generations before use. Logical/physical/HOME fields stay separate; stale last-known metadata is display-only. Completion and terminal-to-SFTP actions consume current physical context, and remote path resolution preserves symbolic-link parent components. No screen-text or independent-login-shell CWD fallback remains.
 - SSH and local PTY input is forwarded without retaining a command-line buffer for history or predicted directory changes. Completion history comes from Shell-owned history sources; interpreter/database input stores are excluded.
 - Registers idempotent graceful-shutdown flow for runtime signals and fatal process events.
 - Exposes internal-token-protected runtime connection summary/close operations used only by Main's close guard; renderer does not receive a bulk-disconnect bridge.

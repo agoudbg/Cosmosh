@@ -205,7 +205,9 @@ const succeed = <T>(value: T): SftpTaskRunOutcome<T> => ({
 });
 
 test('task claim normalization is conservative and segment-aware', () => {
-  assert.equal(normalizeSftpTaskClaimPath(' /foo//bar/../baz/ '), '/foo/baz');
+  assert.equal(normalizeSftpTaskClaimPath(' /foo//bar/../baz/ '), '/');
+  assert.equal(normalizeSftpTaskClaimPath('/foo '), '/foo ');
+  assert.equal(normalizeSftpTaskClaimPath('/foo /child'), '/foo /child');
   assert.equal(normalizeSftpTaskClaimPath('foo/bar'), '/');
   assert.equal(normalizeSftpTaskClaimPath('   '), '/');
   assert.deepEqual(normalizeSftpTaskClaims(['/foo/bar', '/foo', '/foo/baz', '/other']), ['/foo', '/other']);

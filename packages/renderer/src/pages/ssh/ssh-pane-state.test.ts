@@ -89,6 +89,8 @@ const REMOTE_EVENT_BASE = {
     'line-state',
   ] as RemoteShellCapability[],
   timestamp: 100,
+  physicalCwd: '/physical',
+  homeDirectory: '/home/fixture',
 } as const;
 
 test('latest context owns each pane and cannot be overwritten by stale or replayed metadata', () => {
@@ -104,10 +106,11 @@ test('latest context owns each pane and cannot be overwritten by stale or replay
     reason: null,
     revision: 5,
     inputGeneration: 2,
+    submissionToken: null,
     promptGeneration: 3,
     cwdGeneration: 2,
-    cwd: { logical: '/current', physical: null, home: null },
-    lastKnownCwd: { logical: '/current', physical: null, home: null },
+    cwd: { logical: '/display', physical: '/current', home: '/custom home' },
+    lastKnownCwd: { logical: '/display', physical: '/current', home: '/custom home' },
   };
   let state = reduceSshPaneState(INITIAL_STATE, {
     type: 'server-message',
@@ -118,6 +121,63 @@ test('latest context owns each pane and cannot be overwritten by stale or replay
   assert.equal(state['pane-1']!.shellContext, null);
   assert.equal(state['pane-2']!.trustedCwd, '/current');
   assert.deepEqual(state['pane-2']!.remoteEnhancementsDebugEvents, []);
+  const submitted = reduceSshPaneState(state, { type: 'input-submitted', paneId: 'pane-2', token: 'submit-1' });
+  assert.equal(submitted['pane-2']!.shellContext?.cwd, null, 'submission invalidates before the server responds');
+  assert.equal(submitted['pane-2']!.shellContext?.status, 'paused');
+  assert.equal(submitted['pane-1'], state['pane-1'], 'other panes retain their own state');
+  const delayed = reduceSshPaneState(submitted, {
+    type: 'server-message',
+    paneId: 'pane-2',
+    receivedAt: 2,
+    payload: { type: 'shell-context', context: { ...context, revision: 6 } },
+  });
+  assert.equal(delayed['pane-2']!.shellContext?.cwd, null, 'queued old context cannot restore the submitted directory');
+  const resumed = reduceSshPaneState(delayed, {
+    type: 'server-message',
+    paneId: 'pane-2',
+    receivedAt: 3,
+    payload: {
+      type: 'shell-context',
+      context: { ...context, revision: 7, promptGeneration: 4, submissionToken: 'submit-1' },
+    },
+  });
+  assert.equal(resumed['pane-2']!.shellContext?.cwd?.physical, '/current');
+  for (const shell of ['bash', 'sh', 'ash'] as const) {
+    const baseline = { ...context, shell, promptGeneration: shell === 'bash' ? 3 : null };
+    let queued = reduceSshPaneState(INITIAL_STATE, {
+      type: 'server-message',
+      paneId: 'pane-2',
+      receivedAt: 1,
+      payload: { type: 'shell-context', context: baseline },
+    });
+    queued = reduceSshPaneState(queued, { type: 'input-submitted', paneId: 'pane-2', token: 'first' });
+    queued = reduceSshPaneState(queued, { type: 'input-submitted', paneId: 'pane-2', token: 'second' });
+    queued = reduceSshPaneState(queued, {
+      type: 'server-message',
+      paneId: 'pane-2',
+      receivedAt: 2,
+      payload: { type: 'shell-context', context: { ...baseline, revision: 6, submissionToken: 'first' } },
+    });
+    assert.equal(queued['pane-2']!.trustedCwd, null, 'an earlier acknowledgement cannot release the latest submission');
+    queued = reduceSshPaneState(queued, {
+      type: 'server-message',
+      paneId: 'pane-2',
+      receivedAt: 3,
+      payload: {
+        type: 'shell-context',
+        context: { ...baseline, revision: 7, submissionToken: 'second', status: 'paused', cwd: null },
+      },
+    });
+    assert.equal(queued['pane-2']!.pendingSubmissionToken, 'second', 'receipt alone does not confirm a prompt');
+    queued = reduceSshPaneState(queued, {
+      type: 'server-message',
+      paneId: 'pane-2',
+      receivedAt: 4,
+      payload: { type: 'shell-context', context: { ...baseline, revision: 8, submissionToken: 'second' } },
+    });
+    assert.equal(queued['pane-2']!.trustedCwd, '/current');
+    assert.equal(queued['pane-2']!.pendingSubmissionToken, null);
+  }
   for (const payload of [
     { type: 'shell-context' as const, context: { ...context, revision: 4, cwd: null } },
     { ...REMOTE_EVENT_BASE, event: 'cwd' as const, cwd: '/stale' },
@@ -146,7 +206,7 @@ test('latest context owns each pane and cannot be overwritten by stale or replay
     },
   });
   assert.equal(state['pane-2']!.trustedCwd, null);
-  assert.equal(state['pane-2']!.shellContext?.lastKnownCwd?.logical, '/current');
+  assert.equal(state['pane-2']!.shellContext?.lastKnownCwd?.logical, '/display');
   state = reduceSshPaneState(state, { type: 'transport-state', paneId: 'pane-2', connectionState: 'failed' });
   assert.equal(state['pane-2']!.shellContext, null);
   assert.equal(state['pane-2']!.promptGeneration, null);
@@ -181,7 +241,7 @@ test('pane reducer isolates telemetry and transport failures by source pane', ()
   assert.deepEqual(failedPane['pane-2']?.telemetryState.recentCommands, ['pwd']);
 });
 
-test('pane reducer retains trusted cwd and rejects stale line-state generations', () => {
+test('pane reducer ignores unpaired cwd and rejects stale line-state generations', () => {
   const messages: ServerInboundMessage[] = [
     { ...REMOTE_EVENT_BASE, event: 'cwd', cwd: '/srv/app' },
     { ...REMOTE_EVENT_BASE, event: 'prompt-ready', promptGeneration: 4 },
@@ -199,7 +259,7 @@ test('pane reducer retains trusted cwd and rejects stale line-state generations'
     INITIAL_STATE,
   );
 
-  assert.equal(nextState['pane-1']?.trustedCwd, '/srv/app');
+  assert.equal(nextState['pane-1']?.trustedCwd, null);
   assert.deepEqual(nextState['pane-1']?.lineState, {
     promptGeneration: 4,
     lineLength: 8,

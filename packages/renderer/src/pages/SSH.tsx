@@ -416,7 +416,7 @@ const SSH: React.FC<SSHProps> = ({
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
       remoteEnhancementsDebugEvents,
-      trustedCwd,
+      shellDirectory,
       commandTimelineModels,
       hostFingerprintPrompt,
       canSplitTerminal,
@@ -432,6 +432,7 @@ const SSH: React.FC<SSHProps> = ({
       autocompleteAnchor,
     },
     actions: {
+      getPaneDirectory,
       activatePane,
       splitPane,
       closePane,
@@ -725,8 +726,8 @@ const SSH: React.FC<SSHProps> = ({
    * @returns Nothing.
    */
   const openSelectionDirectoryInSftp = React.useCallback(
-    (selectionText: string): void => {
-      const directoryPath = resolveSftpDirectoryPathFromSelection(selectionText, trustedCwd);
+    (selectionText: string, paneId = activePaneId): void => {
+      const directoryPath = resolveSftpDirectoryPathFromSelection(selectionText, getPaneDirectory(paneId));
       const serverSnapshot = connectionIntent.lastResolvedSnapshot;
 
       if (!directoryPath || serverSnapshot?.type !== 'ssh-server' || !onOpenDirectoryInSFTP) {
@@ -737,7 +738,14 @@ const SSH: React.FC<SSHProps> = ({
       onOpenDirectoryInSFTP(serverSnapshot.serverId, serverSnapshot.serverName, directoryPath);
       dismissSelectionBar();
     },
-    [connectionIntent.lastResolvedSnapshot, dismissSelectionBar, notifyWarning, onOpenDirectoryInSFTP, trustedCwd],
+    [
+      activePaneId,
+      connectionIntent.lastResolvedSnapshot,
+      dismissSelectionBar,
+      notifyWarning,
+      onOpenDirectoryInSFTP,
+      getPaneDirectory,
+    ],
   );
 
   // ---------------------------------------------------------------------------
@@ -845,9 +853,12 @@ const SSH: React.FC<SSHProps> = ({
     openSearchForText(selectionText);
   }, [getSelectionText, openExternalTarget, openSearchForText]);
 
-  const handleContextMenuOpenDirectoryInSftp = React.useCallback(() => {
-    openSelectionDirectoryInSftp(getSelectionText());
-  }, [getSelectionText, openSelectionDirectoryInSftp]);
+  const handleContextMenuOpenDirectoryInSftp = React.useCallback(
+    (paneId: string) => {
+      openSelectionDirectoryInSftp(getSelectionText(paneId), paneId);
+    },
+    [getSelectionText, openSelectionDirectoryInSftp],
+  );
 
   /**
    * Opens in-terminal search panel and optionally seeds query text.
@@ -1379,7 +1390,7 @@ const SSH: React.FC<SSHProps> = ({
 
   const selectionText = selectionAnchor?.selectionText ?? '';
   const selectionLink = resolveSelectionLink(selectionText);
-  const selectedSftpDirectoryPath = resolveSftpDirectoryPathFromSelection(selectionText, trustedCwd);
+  const selectedSftpDirectoryPath = resolveSftpDirectoryPathFromSelection(selectionText, shellDirectory);
   const canOpenSelectionDirectoryInSftp =
     Boolean(selectedSftpDirectoryPath) &&
     connectionIntent.lastResolvedSnapshot?.type === 'ssh-server' &&
@@ -1480,7 +1491,7 @@ const SSH: React.FC<SSHProps> = ({
           }}
           onOpenDirectoryInSftp={(paneId) => {
             activatePane(paneId);
-            handleContextMenuOpenDirectoryInSftp();
+            handleContextMenuOpenDirectoryInSftp(paneId);
           }}
           onFind={(paneId) => {
             activatePane(paneId);

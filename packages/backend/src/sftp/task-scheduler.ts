@@ -252,15 +252,11 @@ export class SftpTaskCancelledError extends Error {
  * @returns Canonical absolute POSIX path or the conservative root claim.
  */
 export const normalizeSftpTaskClaimPath = (input: string): string => {
-  const trimmed = input.trim();
-  if (!trimmed) {
+  // Dot-parent paths may cross a symlink into another tree; serialize them until remote resolution.
+  if (!input.startsWith('/') || input.split('/').includes('..')) {
     return '/';
   }
-
-  const normalized = POSIX_PATH.normalize(trimmed.replace(/\\/g, '/'));
-  if (!normalized.startsWith('/')) {
-    return '/';
-  }
+  const normalized = POSIX_PATH.normalize(input);
 
   return normalized === '/' ? normalized : normalized.replace(/\/+$/, '');
 };

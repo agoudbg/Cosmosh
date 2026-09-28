@@ -149,6 +149,32 @@ test('SFTP task start route accepts rename and forwards the normalized descripto
   ]);
 });
 
+test('SFTP paths keep whitespace and symlink parents through the HTTP boundary and reject NUL', async () => {
+  const calls: ApiSftpStartTaskRequest[] = [];
+  const app = createSftpTaskRouteApp({
+    startTask: (_sessionId, request) => {
+      calls.push(request);
+      return { type: 'success', task: RETAINED_TASK };
+    },
+    listTasks: () => [],
+    getTask: () => null,
+  });
+  const sourcePath = '/workspace/link/../space 中文\n ';
+  const targetPath = '/workspace/back\\slash. ';
+  const response = await postJson(app, getTaskCollectionPath(SESSION_ID), {
+    operation: 'rename',
+    payload: { sourcePath, targetPath },
+  });
+  assert.equal(response.status, 202);
+  assert.deepEqual(calls[0], { operation: 'rename', payload: { sourcePath, targetPath } });
+  const invalid = await postJson(app, getTaskCollectionPath(SESSION_ID), {
+    operation: 'rename',
+    payload: { sourcePath: '/nul\u0000', targetPath },
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal(calls.length, 1);
+});
+
 test('SFTP task start route requires transfer ids and forwards authorized local paths', async () => {
   const calls: Array<{ sessionId: string; request: ApiSftpStartTaskRequest }> = [];
   const app = createSftpTaskRouteApp({

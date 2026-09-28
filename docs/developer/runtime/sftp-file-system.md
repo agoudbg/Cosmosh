@@ -7,7 +7,8 @@ Cosmosh implements a tab-scoped SFTP file-system workbench.
 Implemented in v1:
 
 - Home server context menu and file action can open an SFTP tab.
-- SSH terminal Orbit Bar/context-menu selections can open a new SFTP tab for the same server. Absolute/home/file URLs remain explicit; `./` and `../` are resolved only from the source pane's trusted Remote Enhancements cwd, while bare relative paths remain rejected.
+- SSH terminal selections can open a new SFTP tab for the same server. Dot-relative selections require the source pane's live physical CWD; tilde paths require confirmed HOME. Actions reread the source pane at click time. Absolute paths/file URLs are explicit; missing context, bare names and multiline selections are rejected where needed.
+- SFTP navigation and ordinary file-operation HTTP boundaries preserve remote whitespace, backslashes and dot-parent components. The server resolves `link/..`; local string normalization must not change it. Scheduler claims containing `..` conservatively cover root until remote resolution, and mutating entry operations reject terminal `.`/`..` markers. Archive-specific filename policies remain separate.
 - Each SFTP tab creates a backend SFTP session and owns that session lifecycle.
 - Directory listing supports breadcrumb path navigation with editable text fallback, persistent text-address display mode, back/forward history, parent navigation, refresh, current-directory filtering, configurable metadata columns, header sorting, header drag-reorder, loading, empty, expired-session, and operation-failed states.
 - The directory tree and center file list preserve their complete logical collections while virtual scrolling mounts only the viewport, a small overscan window, and interaction-owned pinned rows.
@@ -176,7 +177,9 @@ Lifecycle rules:
 
 The backend treats SFTP paths as POSIX paths regardless of the host OS running Cosmosh.
 
-SSH-to-SFTP handoff accepts only explicit remote directory path selections: absolute paths, home-relative paths, dot-relative paths, and `file://` URLs. The renderer strips simple wrapping quotes and trailing punctuation before passing the path as structured `initialPath`; it does not execute shell commands or infer the terminal's current working directory for bare relative names.
+SSH-to-SFTP handoff accepts explicit absolute, home-relative, dot-relative paths and `file://` URLs. Renderer removes matching wrapping quotes and trailing directory separators, preserves filename punctuation/whitespace/backslashes, and rejects NUL or multiline selections after URL decoding. Dot-relative and home-relative selections use the source pane's confirmed physical CWD and HOME respectively.
+
+Before recursive copying, Backend resolves the source and target parent with remote SFTP `realpath` and checks their canonical identities. Copies into the source or its descendants fail before creating entries, including paths using `./`, `..` or symbolic-link aliases. Remote paths remain intact for the actual operation.
 
 Directory listing steps:
 

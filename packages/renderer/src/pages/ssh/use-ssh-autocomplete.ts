@@ -17,7 +17,6 @@ import {
   calibrateAutocompleteCommandPrefix,
   compilePromptPrefixRegex,
   resolveAutocompleteCommandPrefix,
-  resolvePromptWorkingDirectoryHint,
   resolveTerminalCurrentLinePrefix,
   sendClientMessage,
 } from './ssh-utils';
@@ -44,6 +43,7 @@ type UseSshAutocompleteParams = {
   getPaneLineState: (paneId: string) => SshPaneLineState | null;
   getPaneTrustedCwd: (paneId: string) => string | null;
   canReadPaneInput: (paneId: string) => boolean;
+  beforeInput?: (paneId: string, input: string) => string | undefined;
 };
 
 type UseSshAutocompleteResult = {
@@ -104,9 +104,11 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
     canReadPaneInput,
   } = params;
   const canReadPaneInputRef = React.useRef(canReadPaneInput);
+  const beforeInputRef = React.useRef(params.beforeInput);
   React.useLayoutEffect(() => {
     canReadPaneInputRef.current = canReadPaneInput;
-  }, [canReadPaneInput]);
+    beforeInputRef.current = params.beforeInput;
+  }, [canReadPaneInput, params.beforeInput]);
 
   const autocompleteRequestSequenceRef = React.useRef<number>(0);
   const autocompleteRequestTimeoutRef = React.useRef<number | null>(null);
@@ -413,10 +415,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       latestAutocompleteCommandStartColumnRef.current = lineContext.commandStartColumn;
       latestAutocompleteCursorRowRef.current = lineContext.cursorRow;
 
-      const workingDirectoryHint =
-        getPaneTrustedCwd(paneId) ??
-        resolvePromptWorkingDirectoryHint(lineContext.fullLinePrefix, lineContext.commandPrefixStartOffset) ??
-        null;
+      const workingDirectoryHint = getPaneTrustedCwd(paneId);
       dispatchCompletionRequest({
         socket,
         paneId,
@@ -502,9 +501,11 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       const terminal = paneRuntime?.terminal ?? null;
       const deleteCount = Math.max(0, targetItem.replacePrefixLength ?? autocompleteReplacePrefixLengthRef.current);
       const deletePrefix = '\x7f'.repeat(Math.max(0, deleteCount));
+      const submissionToken = beforeInputRef.current?.(paneId, deletePrefix + targetItem.insertText);
       sendClientMessage(socket, {
         type: 'input',
         data: `${deletePrefix}${targetItem.insertText}`,
+        ...(submissionToken ? { submissionToken } : {}),
       });
       terminal?.focus();
       closeAutocomplete();

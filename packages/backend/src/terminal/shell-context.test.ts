@@ -7,6 +7,7 @@ import {
   applyShellContextEvent,
   canUseShellCapability,
   createShellContext,
+  getShellContextSnapshot,
   invalidateShellInput,
   resolveShellPermissions,
   suspendShellContext,
@@ -24,6 +25,8 @@ const event = (fields: Partial<RemoteShellEventMessage>): RemoteShellEventMessag
     protocolVersion: 3,
     capabilities: ['cwd', 'prompt-ready', 'command-start', 'input-snapshot', 'input-apply'],
     timestamp: 1,
+    physicalCwd: '/physical',
+    homeDirectory: '/home/fixture',
     ...fields,
   }) as RemoteShellEventMessage;
 
@@ -31,7 +34,7 @@ const event = (fields: Partial<RemoteShellEventMessage>): RemoteShellEventMessag
 const readyContext = () => {
   let context = createShellContext('session', resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true), true);
   context = applyShellContextEvent(context, event({}));
-  context = applyShellContextEvent(context, event({ event: 'cwd', cwd: '/fixture' }));
+  context = applyShellContextEvent(context, event({ event: 'cwd', cwd: '/fixture', promptGeneration: 1 }));
   return applyShellContextEvent(context, event({ event: 'prompt-ready', promptGeneration: 1 }));
 };
 
@@ -49,6 +52,49 @@ test('nested Shell events cannot replace identity or directory, and only a newer
   const resumed = applyShellContextEvent(foreign, event({ event: 'prompt-ready', promptGeneration: 2 }));
   assert.equal(resumed.status, 'ready');
   assert.equal(resumed.shellInstanceId, 'original');
+});
+
+test('only a fresh directory report paired with its prompt becomes usable', () => {
+  const before = readyContext();
+  const submitted = invalidateShellInput(before, '\r');
+  const missing = applyShellContextEvent(submitted, event({ event: 'prompt-ready', promptGeneration: 2 }));
+  assert.equal(missing.cwd, null);
+  assert.deepEqual(missing.lastKnownCwd, before.cwd, 'display-only metadata must not be reused by operations');
+  const late = applyShellContextEvent(missing, event({ event: 'cwd', cwd: '/late', promptGeneration: 2 }));
+  assert.equal(late, missing);
+  const report = applyShellContextEvent(
+    missing,
+    event({
+      event: 'cwd',
+      cwd: '/link',
+      physicalCwd: '/actual\n',
+      homeDirectory: '/custom home',
+      promptGeneration: 3,
+    }),
+  );
+  assert.equal(report.cwd, null);
+  assert.equal('pendingDirectory' in getShellContextSnapshot(report), false);
+  assert.equal(applyShellContextEvent(report, event({ event: 'prompt-ready', promptGeneration: 4 })).cwd, null);
+  const ready = applyShellContextEvent(report, event({ event: 'prompt-ready', promptGeneration: 3 }));
+  assert.deepEqual(ready.cwd, { logical: '/link', physical: '/actual\n', home: '/custom home' });
+  assert.ok(ready.cwdGeneration > before.cwdGeneration);
+  const cancelled = invalidateShellInput(report, '\x03');
+  assert.equal(applyShellContextEvent(cancelled, event({ event: 'prompt-ready', promptGeneration: 3 })).cwd, null);
+  const noPhysical = applyShellContextEvent(
+    invalidateShellInput(ready, '\r'),
+    event({
+      event: 'cwd',
+      cwd: '/deleted',
+      physicalCwd: null,
+      homeDirectory: null,
+      promptGeneration: 4,
+    }),
+  );
+  assert.deepEqual(applyShellContextEvent(noPhysical, event({ event: 'prompt-ready', promptGeneration: 4 })).cwd, {
+    logical: '/deleted',
+    physical: null,
+    home: null,
+  });
 });
 
 test('input invalidates pending operations without retaining text and submission requires a fresh prompt', () => {
@@ -93,6 +139,55 @@ test('capability advertisement and each permission independently restrict enhanc
       resolveShellPermissions({ ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsEnabled: false }, true),
     ).every((value) => value === false),
   );
+});
+
+test('a post-prompt directory mutation only invalidates the current generation', () => {
+  const before = readyContext();
+  const changed = applyShellContextEvent(before, event({ event: 'cwd-invalidated', promptGeneration: 1 }));
+  assert.equal(changed.status, 'paused');
+  assert.equal(changed.cwd, null);
+  assert.deepEqual(changed.lastKnownCwd, before.cwd);
+  assert.equal(applyShellContextEvent(before, event({ event: 'cwd-invalidated', promptGeneration: 2 })), before);
+  const report = applyShellContextEvent(changed, event({ event: 'cwd', cwd: '/new', promptGeneration: 2 }));
+  assert.equal(
+    applyShellContextEvent(report, event({ event: 'prompt-ready', promptGeneration: 2 })).cwd?.logical,
+    '/new',
+  );
+});
+
+test('typeahead receipt cannot turn an earlier command prompt into confirmation of later input', () => {
+  const first = invalidateShellInput(readyContext(), 'sleep 1\r', 'first');
+  const busy = applyShellContextEvent(first, event({ event: 'command-start', command: 'sleep', commandId: 'first' }));
+  const queued = invalidateShellInput(busy, 'cd /other\r', 'second');
+  const report = applyShellContextEvent(queued, event({ event: 'cwd', cwd: '/old', promptGeneration: 2 }));
+  const oldPrompt = applyShellContextEvent(report, event({ event: 'prompt-ready', promptGeneration: 2 }));
+  assert.equal(oldPrompt.submissionToken, 'second', 'the token acknowledges Backend receipt only');
+  assert.equal(oldPrompt.cwd, null, 'a verified editor exchange is required after ambiguous typeahead');
+  assert.equal(oldPrompt.status, 'paused');
+  assert.equal('requiresEditorConfirmation' in getShellContextSnapshot(oldPrompt), false);
+});
+
+test('multiple submission boundaries in one chunk also require editor confirmation', () => {
+  for (const input of ['true\rcd /other\r', 'true\ncd /other\n', 'true\r\ncd /other\r\n', '\x03cd /other\r']) {
+    const submitted = invalidateShellInput(readyContext(), input, 'batch');
+    const report = applyShellContextEvent(submitted, event({ event: 'cwd', cwd: '/old', promptGeneration: 2 }));
+    const prompt = applyShellContextEvent(report, event({ event: 'prompt-ready', promptGeneration: 2 }));
+    assert.equal(prompt.status, 'paused');
+    assert.equal(prompt.cwd, null);
+  }
+  assert.equal(invalidateShellInput(readyContext(), 'true\r\n').requiresEditorConfirmation, false);
+});
+
+test('interleaved nested Shell events cannot release ambiguous submissions to the parent', () => {
+  const foreign = event({ shellInstanceId: 'child' });
+  let context = applyShellContextEvent(readyContext(), foreign);
+  context = invalidateShellInput(context, 'exit\r', 'child-exit');
+  context = applyShellContextEvent(context, foreign);
+  context = invalidateShellInput(context, 'cd /other\r', 'parent-command');
+  context = applyShellContextEvent(context, event({ event: 'cwd', cwd: '/old', promptGeneration: 2 }));
+  context = applyShellContextEvent(context, event({ event: 'prompt-ready', promptGeneration: 2 }));
+  assert.equal(context.cwd, null);
+  assert.equal(context.status, 'paused');
 });
 
 test('unavailable runtimes cannot be revived by buffered events and sessions do not share permission objects', () => {

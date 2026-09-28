@@ -61,6 +61,14 @@ import type { BackendAppContext } from '../types.js';
 
 type NormalizedSftpSessionCreateRequest = Omit<CreateSftpSessionInput, 'locale' | 'requestId'>;
 
+/**
+ * Validates a remote filesystem path without trimming meaningful filename bytes.
+ * @param value Untrusted HTTP path value.
+ * @returns The exact nonempty path, or undefined for invalid input.
+ */
+const readRemotePath = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 && !value.includes('\u0000') ? value : undefined;
+
 type NormalizedSftpPathRequest = {
   path: string;
 };
@@ -181,7 +189,9 @@ const parseCreateSftpSessionRequest = (payload: unknown): ValidationResult<Norma
     };
   }
 
-  const initialPath = normalizeOptionalString(payload.initialPath) ?? '.';
+  const initialPath =
+    payload.initialPath === undefined || payload.initialPath === '' ? '.' : readRemotePath(payload.initialPath);
+  if (!initialPath) return { error: buildValidationError('errors.sftp.pathRequired', 'path is required.') };
   const systemProxyRules = normalizeOptionalString(payload.systemProxyRules);
   if (
     payload.systemProxyRules !== undefined &&
@@ -224,7 +234,7 @@ const parseSftpPathRequest = (payload: unknown): ValidationResult<NormalizedSftp
     };
   }
 
-  const requestedPath = normalizeOptionalString(payload.path);
+  const requestedPath = readRemotePath(payload.path);
   if (!requestedPath) {
     return {
       error: buildValidationError('errors.sftp.pathRequired', 'path is required.'),
@@ -251,7 +261,7 @@ const parseSftpDownloadFileRequest = (payload: unknown): ValidationResult<Normal
     };
   }
 
-  const requestedPath = normalizeOptionalString(payload.path);
+  const requestedPath = readRemotePath(payload.path);
   if (!requestedPath) {
     return {
       error: buildValidationError('errors.sftp.pathRequired', 'path is required.'),
@@ -294,7 +304,7 @@ const parseSftpUploadFileRequest = (payload: unknown): ValidationResult<Normaliz
     };
   }
 
-  const requestedPath = normalizeOptionalString(payload.path);
+  const requestedPath = readRemotePath(payload.path);
   if (!requestedPath) {
     return {
       error: buildValidationError('errors.sftp.pathRequired', 'path is required.'),
@@ -374,7 +384,7 @@ const parseSftpWriteFileRequest = (payload: unknown): ValidationResult<Normalize
     };
   }
 
-  const requestedPath = normalizeOptionalString(payload.path);
+  const requestedPath = readRemotePath(payload.path);
   if (!requestedPath) {
     return {
       error: buildValidationError('errors.sftp.pathRequired', 'path is required.'),
@@ -431,8 +441,8 @@ const parseSftpSourceTargetRequest = (payload: unknown): ValidationResult<Normal
     };
   }
 
-  const sourcePath = normalizeOptionalString(payload.sourcePath);
-  const targetPath = normalizeOptionalString(payload.targetPath);
+  const sourcePath = readRemotePath(payload.sourcePath);
+  const targetPath = readRemotePath(payload.targetPath);
   if (!sourcePath || !targetPath) {
     return {
       error: buildValidationError('errors.sftp.sourceTargetRequired', 'sourcePath and targetPath are required.'),
@@ -499,7 +509,7 @@ const parseSftpEntryDetailsRequest = (payload: unknown): ValidationResult<Normal
 
   const paths: string[] = [];
   for (const pathValue of payload.paths) {
-    const entryPath = normalizeOptionalString(pathValue);
+    const entryPath = readRemotePath(pathValue);
     if (!entryPath) {
       return {
         error: buildValidationError('errors.sftp.pathRequired', 'path is required.'),
@@ -552,7 +562,7 @@ const parseSftpBatchOperationRequest = (payload: unknown): ValidationResult<Norm
       };
     }
 
-    const entryPath = normalizeOptionalString(entry.path);
+    const entryPath = readRemotePath(entry.path);
     if (!entryPath) {
       return {
         error: buildValidationError('errors.sftp.pathRequired', 'path is required.'),
@@ -571,7 +581,7 @@ const parseSftpBatchOperationRequest = (payload: unknown): ValidationResult<Norm
     });
   }
 
-  const targetDirectoryPath = normalizeOptionalString(payload.targetDirectoryPath);
+  const targetDirectoryPath = readRemotePath(payload.targetDirectoryPath);
   if (
     (payload.operation === 'copy' || payload.operation === 'move' || payload.operation === 'link') &&
     !targetDirectoryPath

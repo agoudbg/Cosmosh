@@ -1,7 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import pathPosix from 'node:path/posix';
 
 import type { TerminalPathCompletionContext, TerminalPathEntry } from './types.js';
 
@@ -125,8 +124,25 @@ const preparePathLookup = (
   homeDirectory?: string | null,
 ): PreparedPathLookup | null => {
   const normalizedPartialPath = stripWrappingQuotes(partialPath);
-  const modulePath = flavor === 'remote' ? pathPosix : path;
-  const separatorPattern = flavor === 'remote' ? /\// : /[\\/]/;
+  if (flavor === 'remote') {
+    const homeRelative = normalizedPartialPath === '~' || normalizedPartialPath.startsWith('~/');
+    if (homeRelative && !homeDirectory) return null;
+    let expanded = homeRelative ? homeDirectory + normalizedPartialPath.slice(1) : normalizedPartialPath;
+    if (expanded === '.' || expanded === '..') expanded += '/';
+    const separator = expanded.lastIndexOf('/');
+    const directory = separator < 0 ? '' : expanded.slice(0, separator + 1);
+    const fragment = expanded.slice(separator + 1);
+    return {
+      lookupDirectory: directory.startsWith('/') ? directory : baseDirectory + '/' + directory,
+      typedDirectoryPrefix:
+        normalizedPartialPath === '.' || normalizedPartialPath === '..'
+          ? normalizedPartialPath + '/'
+          : normalizedPartialPath.slice(0, normalizedPartialPath.length - fragment.length),
+      fragment,
+    };
+  }
+  const modulePath = path;
+  const separatorPattern = /[\\/]/;
   const normalizedHomeDirectory = (homeDirectory ?? (flavor === 'local' ? os.homedir() : '')).trim();
   const isHomeRelativePath = normalizedPartialPath === '~' || normalizedPartialPath.startsWith('~/');
 
