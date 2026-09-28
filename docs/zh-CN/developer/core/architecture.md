@@ -74,6 +74,7 @@ flowchart LR
 - Renderer 启动优先从本地缓存水合设置，再在后台向 backend 拉取权威值并同步覆盖。
 - 开发态 StrictMode 改为通过 `VITE_ENABLE_STRICT_MODE=true` 显式开启，降低本地性能排查时重复 effect 执行带来的干扰。
 - SSH 页面使用 tab 作用域的连接意图快照与 pane 作用域的运行时。每个 primary/secondary pane 独立持有 xterm、WebSocket/session、transport 状态、telemetry、补全状态、远端增强状态、调试历史与可信命令时间线 marker；所有 inbound message 统一经过 pane-aware reducer。时间线中的完整命令从 xterm 已渲染输入重建，并且只保存在对应 pane runtime 的内存中。
+- 填入已保存登录密码是需要明确点击的独立操作。SSH 后端保留登录密码，在有界可见输出中识别密码提示，并校验一次性操作标识、有效期和持久化权限后写入，不追加回车。渲染层只保留操作／结果元数据。私钥口令和补全候选不会参与该操作；共享输入入口拒绝旧 WebSocket 连接的消息。
 - 隐藏 tab 不会启动新的 SSH 连接副作用。重新激活时，可选的切回重连路径会分别检查每个失败 pane；第一次激活始终启动延迟创建的 primary pane。重试或重连任一 pane 时，所有同级 pane runtime 都会保持存活。
 - 替换 SSH 或本地终端 backend PTY 时，pane 会保留原 xterm 对象与 addon，但建立严格的 emulator session 边界。旧 transport 失效并关闭后，renderer 只序列化不含 alternate-buffer 内容与 mode 的 normal-buffer 历史，再在打开替代 session 前执行受 attempt identity 保护、按 parser 顺序完成的本地 xterm reset 与安全历史回放。选区、marker、自动补全 bookkeeping、parser 状态与 VT mode 会被丢弃，而文本/样式 scrollback、终端尺寸、options、addon、WebGL 与 listener 继续保持挂载。
 - Renderer 按 pane 消费 backend 的 `bootstrap-status`、`remote-enhancement-runtime-status` 与可信协议 v2 `remote-shell-event`。调试入口由 `remoteEnhancementsDebugEnabled` 控制，浮层始终展示其来源/活动 pane。

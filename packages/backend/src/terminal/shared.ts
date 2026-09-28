@@ -54,6 +54,15 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
       return { type: 'ping' };
     }
 
+    if (
+      parsed.type === 'credential-fill' &&
+      typeof parsed.token === 'string' &&
+      parsed.token.length > 0 &&
+      parsed.token.length <= 128
+    ) {
+      return { type: 'credential-fill', token: parsed.token };
+    }
+
     if (parsed.type === 'history-delete' && typeof parsed.command === 'string') {
       return {
         type: 'history-delete',
@@ -72,7 +81,6 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
       (parsed.includeHistory === undefined || typeof parsed.includeHistory === 'boolean') &&
       (parsed.includeBuiltInCommands === undefined || typeof parsed.includeBuiltInCommands === 'boolean') &&
       (parsed.includePathSuggestions === undefined || typeof parsed.includePathSuggestions === 'boolean') &&
-      (parsed.includePasswordSuggestions === undefined || typeof parsed.includePasswordSuggestions === 'boolean') &&
       (parsed.trigger === 'typing' || parsed.trigger === 'manual')
     ) {
       return {
@@ -86,7 +94,6 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
         includeHistory: parsed.includeHistory,
         includeBuiltInCommands: parsed.includeBuiltInCommands,
         includePathSuggestions: parsed.includePathSuggestions,
-        includePasswordSuggestions: parsed.includePasswordSuggestions,
         trigger: parsed.trigger,
       };
     }

@@ -120,6 +120,15 @@ export abstract class BaseTerminalSessionService<
       this.onSessionAttached(session);
 
       socket.on('message', (payload: RawData) => {
+        // A closing, replaced peer can still deliver queued receiver events.
+        if (
+          session.disposed ||
+          this.sessions.get(sessionId) !== session ||
+          session.socket !== socket ||
+          socket.readyState !== socket.OPEN
+        ) {
+          return;
+        }
         this.handleClientMessage(session, payload);
       });
 

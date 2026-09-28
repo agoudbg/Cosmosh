@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import net from 'node:net';
 import test from 'node:test';
 
-import { WebSocket } from 'ws';
+import { type RawData, WebSocket } from 'ws';
 
 import {
   BaseTerminalSessionService,
@@ -23,6 +23,7 @@ type OutboundMessage =
 
 type MockSession = TerminalManagedSessionBase & {
   sent: OutboundMessage[];
+  received: RawData[];
 };
 
 class MockTerminalService extends BaseTerminalSessionService<MockSession, OutboundMessage> {
@@ -49,8 +50,8 @@ class MockTerminalService extends BaseTerminalSessionService<MockSession, Outbou
     return this.sessions.has(sessionId);
   }
 
-  protected handleClientMessage(): void {
-    // No-op for test.
+  protected handleClientMessage(session: MockSession, payload: RawData): void {
+    session.received.push(payload);
   }
 
   protected onSessionAttached(): void {
@@ -158,6 +159,7 @@ const createMockSession = (sessionId: string): MockSession => {
     telemetryInterval: null,
     historySyncTimeout: null,
     sent: [],
+    received: [],
   };
 };
 
@@ -228,6 +230,37 @@ test('replacing a WebSocket does not let the stale close event dispose the sessi
   } finally {
     secondSocket?.close();
     firstSocket.close();
+    await service.stop();
+  }
+});
+
+test('queued messages from replaced or disposed WebSocket peers cannot reach terminal handlers', async () => {
+  const service = new MockTerminalService(await findAvailablePort());
+  const session = createMockSession('session-stale-message');
+  service.addSession(session);
+  const endpoint = `${service.getWebSocketBaseUrl()}/ws/test/session-stale-message?token=token-1`;
+  const first = new WebSocket(endpoint);
+  let second: WebSocket | null = null;
+  try {
+    await waitForSocketOpen(first);
+    const oldPeer = session.socket!;
+    const queuedOldMessage = oldPeer.listeners('message')[0]!;
+    second = new WebSocket(endpoint);
+    await waitForSocketOpen(second);
+    const currentPeer = session.socket!;
+    const queuedCurrentMessage = currentPeer.listeners('message')[0]!;
+    assert.notEqual(oldPeer, currentPeer);
+    const request = Buffer.from('{"type":"credential-fill","token":"fixture"}');
+    queuedOldMessage.call(oldPeer, request, false);
+    assert.equal(session.received.length, 0);
+    queuedCurrentMessage.call(currentPeer, request, false);
+    assert.deepEqual(session.received, [request]);
+    service.closeSession(session.sessionId);
+    queuedCurrentMessage.call(currentPeer, request, false);
+    assert.equal(session.received.length, 1);
+  } finally {
+    first.close();
+    second?.close();
     await service.stop();
   }
 });

@@ -1,6 +1,6 @@
 import type { TerminalCompletionItem } from '@cosmosh/api-contract';
 import classNames from 'classnames';
-import { Clock3, Command, File, Folder, KeyRound, ListTree, ToggleRight } from 'lucide-react';
+import { Clock3, Command, File, Folder, ListTree, ToggleRight } from 'lucide-react';
 import React from 'react';
 
 import { t } from '../../lib/i18n';
@@ -42,10 +42,6 @@ const resolveItemIcon = (item: TerminalAutocompleteItem): React.ReactNode => {
 
   if (item.kind === 'path') {
     return item.insertText.endsWith('/') ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />;
-  }
-
-  if (item.kind === 'secret') {
-    return <KeyRound className="h-4 w-4" />;
   }
 
   if (item.kind === 'subcommand') {

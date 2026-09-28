@@ -17,6 +17,7 @@ type PaneCommandSelectionHandler = (paneId: string, commandId: string) => void;
 type SSHTerminalPaneLayoutProps = {
   terminalPaneIds: string[];
   activePaneId: string;
+  activePaneOverlay?: React.ReactNode;
   hasSelection: boolean;
   canSplitTerminal: boolean;
   copyShortcutLabel: string;
@@ -60,6 +61,7 @@ type SSHTerminalPaneLayoutProps = {
  * @param props Pane structure and pane action callbacks.
  * @param props.terminalPaneIds Ordered pane ids.
  * @param props.activePaneId Current active pane id.
+ * @param props.activePaneOverlay Optional action rendered inside the active connected pane.
  * @param props.hasSelection Whether active pane has selected text.
  * @param props.canSplitTerminal Whether split action is currently allowed.
  * @param props.copyShortcutLabel Platform-resolved copy shortcut label.
@@ -97,6 +99,7 @@ type SSHTerminalPaneLayoutProps = {
 export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   terminalPaneIds,
   activePaneId,
+  activePaneOverlay,
   hasSelection,
   canSplitTerminal,
   copyShortcutLabel,
@@ -195,6 +198,7 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
             />
           </TerminalCommandTimeline>
         </TerminalContextMenu>
+        {paneIsConnected && paneId === activePaneId ? activePaneOverlay : null}
         {!paneIsConnected ? (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-ssh-card-bg-terminal px-4">
             <div className="text-center text-sm text-header-text">

@@ -639,8 +639,8 @@
         "title": "Auto Complete Trigger Length"
       },
       "terminalAutoCompletePasswordEnabled": {
-        "description": "Include interactive password fill suggestions when secure prompts are detected.",
-        "title": "Auto Complete Password Suggestions"
+        "description": "Show a separate action to fill this server's saved login password at a password prompt. You press Enter yourself. Works independently of auto complete.",
+        "title": "Fill Saved Login Password"
       },
       "terminalAutoCompletePathEnabled": {
         "description": "Include file and directory path suggestions in the auto-complete menu.",
@@ -1449,6 +1449,19 @@
     "contextMenuSplitTerminal": "Split Terminal",
     "createServerButton": "Create Server",
     "createTagFailed": "Failed to create tag.",
+    "credentialFill": {
+      "action": "Fill this server's login password",
+      "filled": "Password filled. Press Enter to confirm.",
+      "hint": "Fills the saved login password only. Does not press Enter or use a private-key passphrase.",
+      "pending": "Filling password…",
+      "rejected": {
+        "disabled": "Saved password fill is turned off.",
+        "expired": "This password prompt has expired. Confirm the current prompt before trying again.",
+        "failed": "Could not fill the password. You can continue typing.",
+        "stale": "The terminal prompt changed. The password was not filled.",
+        "unavailable": "No saved login password is available for this prompt."
+      }
+    },
     "credentialsLoadFailed": "Failed to load saved credentials.",
     "disableCharacterWidthCompatibilityMode": "Disable Character Width Compatibility Mode",
     "disableCharacterWidthCompatibilityModeTooltip": "Disable Unicode 11 character-width support for this server. Try this when remote terminal output looks misaligned.",

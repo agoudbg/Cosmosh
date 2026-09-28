@@ -11,7 +11,7 @@ export const FIXTURE_SHELLS = ['bash', 'zsh', 'fish'] as const;
 export type FixtureShell = (typeof FIXTURE_SHELLS)[number];
 
 /** Validated connection data written by the fixture controller. */
-type FixtureConnection = {
+export type FixtureConnection = {
   host: '127.0.0.1';
   port: number;
   privateKey: Buffer;
@@ -22,7 +22,7 @@ type FixtureConnection = {
  * Read fixture credentials only from the ignored, checkout-local descriptor.
  * @returns Validated loopback connection data; missing fixtures fail explicitly.
  */
-function readFixtureConnection(): FixtureConnection {
+export function readFixtureConnection(): FixtureConnection {
   const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
   const configPath = path.join(workspace, '.cosmosh/terminal-fixture/connection.json');
   let raw: unknown;

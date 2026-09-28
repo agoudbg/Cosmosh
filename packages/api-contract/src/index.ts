@@ -118,6 +118,8 @@ export type {
   SshTerminalServerMessage,
   TerminalClientMessage,
   TerminalCompletionItem,
+  TerminalCredentialFillOffer,
+  TerminalCredentialFillResult,
   TerminalServerMessage,
 } from './terminal-protocol';
 export {

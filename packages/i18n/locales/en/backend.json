@@ -7,8 +7,7 @@
       "commandSpec": "Command spec",
       "history": "History",
       "pathDirectory": "Directory",
-      "pathFile": "File",
-      "secretFill": "Fill password"
+      "pathFile": "File"
     }
   },
   "errors": {

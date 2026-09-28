@@ -131,18 +131,18 @@ Locale 行为：
 
 - 渲染层会先在本地输入阶段记录 typing 补全请求，待对应 xterm 输出回显到达后（再经短延迟去抖）才发送 `completion-request`。列表为空时，配置的进入快捷键会立即请求补全；`Tab`保留终端原有行为。
 - 当 xterm 处于 alternate screen buffer（例如 `vim`、`less`、`top`）时，渲染层会门控关闭补全，避免 shell 补全劫持编辑器/TUI 的按键处理。
-- 渲染层默认会抑制“空输入”补全（没有实际命令文本时不请求候选）；仅在明确的密钥提示流程中允许空前缀请求。
+- 渲染层会抑制空输入补全。已保存登录密码通过独立按钮填入，永远不会成为补全候选。
 - 渲染层会基于 xterm 输入事件维护“按 pane 隔离”的本地命令前缀影子状态，使输入触发补全无需等待远端 shell 回显即可计算请求前缀。
-- 补全请求、输出 echo 唤醒、密码提示触发、响应与浮层锚点都携带明确 pane id。来自非活动 pane 或旧 request id 的响应会被丢弃。
+- 补全请求、输出 echo 唤醒、响应与浮层锚点都携带明确 pane id。来自非活动 pane 或旧 request id 的响应会被丢弃。
 - 当可信 `line-state` metadata 可用时，renderer 使用 `lineLength`、`cursorIndex` 与 `promptGeneration` 校准重建出的前缀。只有重建长度与 prompt generation 一致时才采用可信 cursor，否则保留保守的 xterm/本地 shadow 结果。Helper 永远不发送 line buffer 本身。
 - 当用户通过 readline/history 控制序列（例如 `ArrowUp`/`ArrowDown`/`Ctrl+P` 召回历史命令）导航后，渲染层会把下一段本地输入 shadow 视为增量后缀，并在发送补全请求前与 xterm 已渲染的命令行合并。这样继续输入时，`echo 1` 这类已召回命令仍会保留在补全前缀中。
 - 命令起点边界识别不再依赖固定 prompt token 列表。渲染层会先按光标附近 shell 语义解析命令段边界（引号 + `;`、`&&`、`||`、`|` 等分隔符），再执行 prompt 边界裁剪。
 - prompt 解析支持用户配置：`terminalAutoCompletePromptRegex`（设置 > 终端 > 自动补全）。配置后将优先使用该正则覆盖默认 prompt 裁剪；留空或正则无效时回退到内置启发式策略。
-- 渲染层还会在 `completion-request` 中携带来源过滤开关（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`、`includePasswordSuggestions`），其值来自设置项，且默认全部开启。
+- 渲染层还会在`completion-request`中携带来源过滤开关（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`），其值来自设置项，且默认全部开启。
 - 后端补全引擎由 SSH 与本地终端会话服务共享，候选来源合并为：
   - 同步得到的 Shell 历史快照会合并进当前会话的补全历史缓存，
   - 来自 inshellisense/Fig 资源的命令元数据（规范信号，按完整命令路径索引生成，而非仅根命令子集），
-  - 在同一排序流水线中组合的运行时 provider（路径补全 provider 与交互式密钥提示 provider）。
+  - 在同一排序流程中组合的运行时路径 provider。
 - 补全引擎的 token 解析按会话 shell 类型区分：SSH 使用 POSIX 规则；本地 PowerShell/CMD 使用 Windows 友好规则，反斜杠会作为路径字面字符保留，而不是通用转义符。
 - `packages/backend/scripts/generate-inshellisense.mjs` 会生成规范数据与按语言策略处理的补全说明资源：
   - `packages/backend/src/terminal/completion/generated-inshellisense.ts` 会以紧凑 tuple 载荷保留命令结构，并在模块加载时还原；生成条目仅保留 `descriptionI18nKey` 引用（不再冗余内嵌原始英文说明文本）。
@@ -156,7 +156,7 @@ Locale 行为：
   - 内置命令规范候选优先于通用 history 命中，
   - history 候选会在命令结构相关前提下按“距离最近一次执行的距离”动态加权。
 - 候选展示为完整命令路径（例如 `git push --force`）。
-- 设置页运行时分组提供来源级别开关，允许用户独立关闭历史补全、内置命令补全、路径补全或密码补全，同时保留其他来源。
+- 来源开关分别控制历史、内置命令和路径建议。已保存登录密码的填入动作拥有独立开关，关闭自动补全后仍可在设置中找到。
 - 选项解析具备参数语义感知：
   - 支持多选项连续组合输入且保持命令上下文稳定，
   - 对已知“需要参数值”的选项（来自 Fig `args` 元数据）可返回参数值候选，
@@ -171,18 +171,19 @@ Locale 行为：
   - 远程 SSH 路径扫描使用 POSIX 参数展开（`${p##*/}`）替代 GNU 专有 `basename --`，以保证在 GNU/Linux、BSD/macOS 与 BusyBox 环境下都能稳定补全，
   - 输入触发（typing）的 history 评分会限制在“最近历史窗口”内执行，以在远端历史快照较大时保持补全延迟稳定，
   - 当当前 token 以 `-` 开头时，优先保留参数/参数值补全，当前 token 的路径 provider 会被门控关闭。
-- 交互式密钥提示检测基于输出流：
-  - 后端会跟踪近期输出尾部并检测常见提示（`sudo` 密码、`su`/通用密码提示、密钥口令提示），
-  - 当提示处于激活状态且会话存在可复用密钥时，补全会返回运行时 `secret` 动作项（`填充密码`）实现一步填充。
-- 接受 `填充密码` 后，渲染层不会自动再触发下一轮补全；后续候选仅在用户新输入或显式手动触发时出现。
+- **填入已保存的登录密码**是需要明确点击的独立操作。后端在有长度限制的可见输出尾部识别常见英文密码提示；这种识别无法证明请求密码的程序身份。按钮明确说明将填入服务器的登录密码，由用户判断是否适用。本地终端和仅使用私钥的会话没有可填入的登录密码；私钥口令永远不会用于此操作。
+- 后端只发送一次性标识和 45 秒的有效期。任何输入、新提示、可信命令／提示事件或会话释放都会使旧操作失效。清行、光标控制与不完整转义序列会清除保留的提示文本，只有新的可见文本才能再次提供按钮。空格和完整 SGR 样式序列不能延长原操作的有效期。
+- 点击发送`credential-fill { token }`。后端异步读取设置后，再次检查注册会话、当前打开的 WebSocket、PTY、操作标识、有效期、登录密码和持久化权限。共享消息入口会拒绝被替换连接的消息；写入前先消费标识，避免并发点击重复填入。
+- 操作原样写入已保存的登录密码，不追加回车。含控制字符或超过 8 KiB 的值不可填入。渲染层只收到操作／结果元数据；凭据不会进入补全响应、诊断历史或操作日志。填入后由用户手动按回车提交。
+- 为保留已有偏好，持久化字段继续使用`terminalAutoCompletePasswordEnabled`，现在控制独立操作。关闭普通自动补全不影响该操作；无法识别的提示格式不显示按钮。
 - 接受补全时默认仅替换光标前的当前 token 片段（`replacePrefixLength`）；候选项也可携带 `replacePrefixLength` 覆盖值（例如需要替换整段已输入前缀的根命令历史候选）。
 - 对“部分 token 的 history 补全”（例如 `docker e` -> `docker exec`），候选级 `replacePrefixLength` 会按“当前实际输入 token 长度”计算，避免误删前文导致错位或重复。
 - 当在非根 token 位置接受 history 候选时，后端返回“从当前 token 到命令末尾”的后缀插入文本（而非仅单个 token），以便一次接受即可补完整段历史命令续写。
 - `completion-response` 返回基础 `replacePrefixLength` 与候选项（`label`、`insertText`、可选候选级 `replacePrefixLength`、`detail`、`source`、`kind`、`score`）。
-- `detail` 会在后端会话服务发送响应前完成本地化，回退顺序为：翻译后的 `detailI18nKey` → 本地化来源标签（`历史记录` / `命令规范` / 运行时标签，如 `目录`、`文件`、`填充密码`）。
+- `detail`会在后端会话服务发送响应前完成本地化，回退顺序为：翻译后的`detailI18nKey` → 本地化来源标签（`历史记录` / `命令规范` / 运行时标签，如`目录`、`文件`）。
 - 建议默认只展示提示。明确进入列表之前，`Tab`、方向键、`Enter`和`Escape`保持终端原有行为。
 - `terminalAutoCompleteFocusShortcut`配置进入列表的快捷键：默认`Ctrl+Shift+Space`，也可选择`Ctrl+Alt+Space`或`Alt+/`。点击菜单也会进入列表；点击候选会直接填入该候选。
-- 只有进入后的列表会接管不带修饰键的方向键、`Escape`及配置的应用按键（`terminalAutoCompleteAcceptKeys`：`Tab`、`Enter`或两者）。未配置为应用按键的`Enter`保留 Shell 提交行为。候选应用暂时沿用现有插入方式；独立凭据填充和经过校验的编辑器应用属于已批准终端计划的后续步骤。
+- 只有进入后的列表会接管不带修饰键的方向键、`Escape`及配置的应用按键（`terminalAutoCompleteAcceptKeys`：`Tab`、`Enter`或两者）。未配置为应用按键的`Enter`保留 Shell 提交行为。候选应用暂时沿用现有插入方式；经过校验的编辑器应用属于已批准终端计划的后续步骤。
 - 继续输入、修饰组合键、输入法组合输入、切换分屏或标签页、失去焦点、断开连接、关闭补全都会释放列表的按键控制。首个输入事件原样传递，已失效请求的响应不会重新打开旧列表。等待手动请求结果时，也不会接管普通终端按键。
 - 列表通过 xterm 输入框临时设置的组合框无障碍属性关联当前候选。DOM 焦点保留在 xterm，使输入及输入法正常工作；列表关闭时恢复原有属性。
 - 候选面板布局约束：
@@ -364,9 +365,13 @@ flowchart LR
 
 真实测试入口在环境不可用时明确失败。单元测试通过不能证明真实 Shell、网络延迟或 Electron 交互已得到验证。
 
+凭据回归覆盖真实密码输入不会自动提交，以及真实加密私钥登录不会复用口令。测试仅隔离数据库／传输边界，直接使用生产凭据处理器。单元测试包含设置读取延迟、重复点击、新提示／清除提示、过期、连接替换、会话释放与分屏结果隔离。
+
 ### 7.2 浏览器交互检查
 
 运行`pnpm --filter @cosmosh/renderer dev --port 28767`，再使用`playwright-cli open`打开`http://127.0.0.1:28767/tests/terminal-autocomplete.html`。在仓库根目录执行`playwright-cli run-code --filename=packages/renderer/tests/terminal-autocomplete.browser.cjs`。产物保存在已忽略的`.playwright-cli/`目录；检查结束后关闭浏览器并停止 Vite。
+
+独立密码操作使用`/tests/terminal-credential.html`，执行`playwright-cli run-code --filename=packages/renderer/tests/terminal-credential.browser.cjs`。测试使用生产组件、分屏 reducer 和真实 xterm，只替换服务端操作／结果消息及请求捕获边界。检查处理中禁用按钮、保留焦点、不携带密码的请求、手动回车提示、过期、断开连接和窄窗口边界。完整 Electron 会话接线仍需独立验收。
 
 这些检查使用实际的 xterm、补全 Hook 与菜单，覆盖只展示提示时的按键、明确进入列表、组合键、输入法、过时响应、分屏与焦点切换、原生 Tab 输出同步，以及终端会话依赖回调的稳定性。仅替换 WebSocket 传递边界。真实远端编辑器行为及完整 Electron 会话生命周期仍须通过 SSH／Electron 验收。
 
@@ -431,7 +436,7 @@ sequenceDiagram
 
 - 主 SSH transport 会先完成认证，但在 bootstrap 结束前不创建任何 channel。第一次真正需要远端命令时，backend 才会使用相同凭据、host-key 策略、压缩设置与代理策略懒创建第二条已认证 transport。每条使用代理的 transport 都会获得独立 socket。
 - 所有 bootstrap probe/install/status `exec` channel 都只运行在临时 transport。Backend 会在主 client 调用 `client.shell(...)` 前启动其关闭流程，底层 socket 的实际关闭可以异步完成。因此交互 PTY 是主 transport 的第一个 session channel，既能保留 OpenSSH/PAM 登录消息（例如 Debian MOTD），也能让新安装的 profile hook 在同一个首次 shell 中生效。
-- 开关关闭或 manifest 缺失/无效时不会创建临时 transport。其解密得到的 completion secret 会被丢弃，永远不会复制到 session state、状态 payload 或审计 metadata。
+- 开关关闭或 manifest 缺失／无效时不会创建临时 transport。其解密得到的登录密码会被丢弃，永远不会复制到 session state、状态 payload 或审计 metadata。
 - Backend 会在下载前查询已安装 binary。只有 manifest version 与 asset SHA-256、受支持 protocol、helper 内容与 profile hook 均为最新时才跳过下载；旧 binary 缺失新字段时会被视为不兼容并重装。PTY 创建前会再次读取 status 复验安装。
 - 校验成功的 manifest 会缓存五分钟，并由并发 session 共享同一个 in-flight 加载。失败结果不会缓存。取消单个 session 只会停止该 session 的等待，不会取消其它 session 正在等待的共享 manifest 请求。
 - 每条侧通道命令都使用 `ssh2 exec`，并受 `REMOTE_BOOTSTRAP_EXEC_OPTIONS` 限制：60 秒、256 KiB 输出；整个可选的 shell 打开前 ensure 对设置读取、manifest I/O、临时 proxy/SSH 建连与 exec 工作共享更严格的 15 秒总预算。共享 deadline 到期时，backend 会停止等待 proxy 准备、关闭活动 exec channel、销毁临时 client、发送 `BOOTSTRAP_ENSURE_TIMEOUT`，并立即继续创建普通 PTY。取消后才完成的预连接 proxy socket 会在返回时立即销毁。安装器输出按 JSON lines 解析，永远不会写入交互式终端流。
@@ -466,16 +471,16 @@ Backend 解析规则：
 
 ```ts
 type RemoteShellEventMessage = {
-  type: 'remote-shell-event';
+  type: "remote-shell-event";
   event:
-    | 'integration-ready'
-    | 'prompt-ready'
-    | 'cwd'
-    | 'command-start'
-    | 'command-end'
-    | 'foreground-command'
-    | 'line-state';
-  shell: 'bash' | 'zsh' | 'fish' | 'sh' | 'ash';
+    | "integration-ready"
+    | "prompt-ready"
+    | "cwd"
+    | "command-start"
+    | "command-end"
+    | "foreground-command"
+    | "line-state";
+  shell: "bash" | "zsh" | "fish" | "sh" | "ash";
   helperVersion: string;
   protocolVersion: number;
   capabilities: string[];
@@ -510,7 +515,7 @@ Backend 状态模型：
 - `remoteShellCwd` 是 path completion 的优先 cwd 来源；现有 exec probe 与 renderer hint 仍作为 fallback。
 - 收到 `foreground-command` 并设置 `remoteShellForegroundCommand` 后，backend 会返回空 completion response，直到下一个 `prompt-ready`；`command-end` 不会提前清除抑制状态。这能覆盖短命令、长时间前台进程以及未知 TUI/REPL 程序，不需要维护命令白名单。
 - Backend 信任状态离开 `active` 时，renderer 会立即清除可信 cwd/line 校准；使用 `line-state` 校准补全前还会校验 prompt generation。命令生命周期事件同时维护 pane-local xterm 导航 marker。
-- 密码提示与可复用 secret suggestion 继续由本地 backend 基于输出检测；shell hook 永远不捕获密码输入。
+- 独立的已保存登录密码操作由本地 backend 基于有界输出检测；Shell hook 永远不捕获密码输入，补全不包含凭据来源。
 
 ### 8.3 Manifest 与资产契约
 
@@ -548,10 +553,10 @@ Backend 状态模型：
 
 支持的远端主机：
 
-| 维度 | 支持值 |
-| --- | --- |
-| OS | `linux` |
-| 架构 | `amd64`、`arm64` |
+| 维度  | 支持值                             |
+| ----- | ---------------------------------- |
+| OS    | `linux`                            |
+| 架构  | `amd64`、`arm64`                   |
 | Shell | `bash`、`zsh`、`fish`、`ash`、`sh` |
 
 远端需要具备的常见工具：
@@ -564,16 +569,16 @@ Backend 状态模型：
 
 安装文件只落在远端用户作用域：
 
-| 用途 | 默认路径 |
-| --- | --- |
-| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` 或 `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap` |
-| Version marker | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` 或 `~/.local/share/cosmosh/bootstrap/bin/.version` |
-| POSIX helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` 或 `~/.config/cosmosh/bootstrap/helper.sh` |
-| Fish helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` 或 `~/.config/cosmosh/bootstrap/helper.fish` |
-| Bash hooks | `~/.bashrc`，以及当前 login profile（优先 `~/.bash_profile`，其次 `~/.bash_login`，否则 `~/.profile`）内的 Cosmosh marker block |
-| Zsh hook | `~/.zshrc` 内的 Cosmosh marker block |
-| Sh/Ash hook | `~/.profile` 内的 Cosmosh marker block |
-| Fish hook | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` 或 `~/.config/fish/conf.d/cosmosh.fish` |
+| 用途             | 默认路径                                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` 或 `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap`            |
+| Version marker   | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` 或 `~/.local/share/cosmosh/bootstrap/bin/.version`                              |
+| POSIX helper     | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` 或 `~/.config/cosmosh/bootstrap/helper.sh`                                       |
+| Fish helper      | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` 或 `~/.config/cosmosh/bootstrap/helper.fish`                                   |
+| Bash hooks       | `~/.bashrc`，以及当前 login profile（优先 `~/.bash_profile`，其次 `~/.bash_login`，否则 `~/.profile`）内的 Cosmosh marker block |
+| Zsh hook         | `~/.zshrc` 内的 Cosmosh marker block                                                                                            |
+| Sh/Ash hook      | `~/.profile` 内的 Cosmosh marker block                                                                                          |
+| Fish hook        | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` 或 `~/.config/fish/conf.d/cosmosh.fish`                                             |
 
 安装器具备幂等性。只有已安装 version、binary 精确内容、Go 生成的 helper 精确内容与所有必需 shell hook 均为最新时才会发送 `skipped`。Bash login-profile block 会检查 `BASH_VERSION`，因此由 Dash 读取的通用 `.profile` 不会加载 Bash helper。选择 login profile 时会检查 `.bash_profile` 与 `.bash_login` 目录项本身，因此 dotfile manager 创建的悬空符号链接仍是有效的 Bash 候选；安装器会创建其目标，而不会错误回退到 `.profile`。Binary/helper/version/profile 都采用原子替换；已有 profile 权限与符号链接目标会被保留。Version marker 只会在所有文件安装与 profile 更新成功后写入。`status` 同时报告兼容字段 `profilePath` 与完整 `profilePaths` 集合。
 
@@ -588,26 +593,26 @@ Backend 状态模型：
 
 常见状态码：
 
-| Code | 含义 |
-| --- | --- |
+| Code                           | 含义                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `REMOTE_ENHANCEMENTS_DISABLED` | 全局 Settings 或服务器级开关在执行任何远端命令前禁用了 bootstrap；该 session 内的运行期 shell OSC 事件会被忽略。 |
-| `MANIFEST_URL_NOT_CONFIGURED` | 远端增强已启用，但 backend 没有 manifest URL。 |
-| `MANIFEST_FETCH_FAILED` | Backend 无法获取 manifest URL。 |
-| `MANIFEST_INVALID` | Manifest 结构、asset URL 或 SHA-256 校验失败。 |
-| `ASSET_NOT_FOUND` | Manifest 中没有匹配 probe 到的 OS/架构的 asset。 |
-| `PROBE_FAILED` | 远端 OS、架构或 shell 不支持，或解析失败。 |
-| `BASE64_NOT_FOUND` | 远端无法解码注入的 wrapper payload。 |
-| `MKTEMP_NOT_FOUND` | 远端缺少 `mktemp`。 |
-| `DOWNLOADER_NOT_FOUND` | 远端既没有 `curl` 也没有 `wget`。 |
-| `HASH_TOOL_NOT_FOUND` | 远端既没有 `sha256sum` 也没有 `shasum`。 |
-| `CHECKSUM_MISMATCH` | 下载得到的 binary 与 manifest SHA-256 不匹配。 |
-| `BOOTSTRAP_ENSURE_TIMEOUT` | 完整的可选 shell 打开前 ensure 超过 15 秒；活动侧通道工作会被取消，并继续创建普通 PTY。 |
-| `INSTALLATION_NOT_CURRENT` | 安装后 status 与所选 version 或受支持运行时契约不匹配。 |
-| `HELPER_HANDSHAKE_TIMEOUT` | PTY 创建后 10 秒内未收到有效 `integration-ready`；运行期 helper 数据已禁用。 |
-| `HELPER_CONTRACT_MISMATCH` | Live `integration-ready` 或后续 helper 事件与交互 shell 打开前的契约不匹配；运行时数据已禁用。 |
-| `FILE_INSTALL_FAILED` | 安装器无法创建或复制用户级文件。 |
-| `PROFILE_UPDATE_FAILED` | 安装器无法更新目标 shell profile hook。 |
-| `VERSION_WRITE_FAILED` | 安装器无法写入最终 version marker。 |
+| `MANIFEST_URL_NOT_CONFIGURED`  | 远端增强已启用，但 backend 没有 manifest URL。                                                                   |
+| `MANIFEST_FETCH_FAILED`        | Backend 无法获取 manifest URL。                                                                                  |
+| `MANIFEST_INVALID`             | Manifest 结构、asset URL 或 SHA-256 校验失败。                                                                   |
+| `ASSET_NOT_FOUND`              | Manifest 中没有匹配 probe 到的 OS/架构的 asset。                                                                 |
+| `PROBE_FAILED`                 | 远端 OS、架构或 shell 不支持，或解析失败。                                                                       |
+| `BASE64_NOT_FOUND`             | 远端无法解码注入的 wrapper payload。                                                                             |
+| `MKTEMP_NOT_FOUND`             | 远端缺少 `mktemp`。                                                                                              |
+| `DOWNLOADER_NOT_FOUND`         | 远端既没有 `curl` 也没有 `wget`。                                                                                |
+| `HASH_TOOL_NOT_FOUND`          | 远端既没有 `sha256sum` 也没有 `shasum`。                                                                         |
+| `CHECKSUM_MISMATCH`            | 下载得到的 binary 与 manifest SHA-256 不匹配。                                                                   |
+| `BOOTSTRAP_ENSURE_TIMEOUT`     | 完整的可选 shell 打开前 ensure 超过 15 秒；活动侧通道工作会被取消，并继续创建普通 PTY。                          |
+| `INSTALLATION_NOT_CURRENT`     | 安装后 status 与所选 version 或受支持运行时契约不匹配。                                                          |
+| `HELPER_HANDSHAKE_TIMEOUT`     | PTY 创建后 10 秒内未收到有效 `integration-ready`；运行期 helper 数据已禁用。                                     |
+| `HELPER_CONTRACT_MISMATCH`     | Live `integration-ready` 或后续 helper 事件与交互 shell 打开前的契约不匹配；运行时数据已禁用。                   |
+| `FILE_INSTALL_FAILED`          | 安装器无法创建或复制用户级文件。                                                                                 |
+| `PROFILE_UPDATE_FAILED`        | 安装器无法更新目标 shell profile hook。                                                                          |
+| `VERSION_WRITE_FAILED`         | 安装器无法写入最终 version marker。                                                                              |
 
 排查 bootstrap 行为时，先确认是哪一层 gate 停止了执行，再检查 manifest 有效性、远端 probe 支持、远端工具可用性，最后检查用户 profile 写入权限。缺少 manifest URL 时不应出现任何远端 probe 命令。
 

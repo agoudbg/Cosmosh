@@ -77,7 +77,7 @@ flowchart TB
   - `src/components/CloseWindowConfirmationDialog.tsx`与`src/components/EditorCloseConfirmationDialog.tsx`：分别为 Main 持有的活动会话关闭决策与未保存编辑草稿提供共享 Renderer 确认界面。
   - `src/components/ui`：基于 Radix 的原子组件封装、可复用侧边栏导航（`SidebarNav`）、可复用查找/替换面板、CodeMirror 文本右键菜单与样式契约。
   - `src/components/home`：Home/SSH 共享实体模块（卡片/图标渲染、基于 TanStack Virtual 的视觉编辑器、可复用的创建文件夹弹窗）。
-  - `src/components/terminal`：终端交互复合组件（右键菜单、选区工具条、自动补全面板）。
+  - `src/components/terminal`：终端交互复合组件（右键菜单、选区工具条、自动补全面板、独立的已保存登录密码操作）。
   - `src/lib`：后端传输、i18n、设置启动应用（`app-settings.ts`）、renderer 请求 trace 镜像启动逻辑（`backend-request-trace-mirror.ts`）、共享时间显示格式化工具（`date-time-format.ts`）、共享 CodeMirror 语法高亮与查找/替换 adapter，以及工具抽象（含编辑草稿/关闭守卫、共享实体视觉工具、Home 文件夹分组与创建文件夹 Hook）。
   - `theme`：生成 CSS Variables 的令牌源。
 
@@ -97,6 +97,7 @@ flowchart TB
   - `src/terminal`：终端会话共享原语（WebSocket 消息规范化、历史命令解析、尺寸收敛、历史同步时序辅助）。
   - `src/terminal/integration`：真实 SSH PTY 测试客户端与 Shell 场景；`scripts/terminal-fixture`负责隔离容器、临时账户及生命周期命令。
   - `src/terminal/completion`：终端自动补全共享领域模块（规范数据、排序引擎、补全响应组装），由 SSH 与本地终端会话服务共同使用。
+  - `src/terminal/credential-fill.ts`：有界可见密码提示的操作标识与登录密码可用性校验；SSH 会话服务负责权限检查和实际凭据写入，补全不包含凭据。
   - `src/db/prisma.ts`：Prisma 生命周期、运行时 migration 执行、schema 校验与结构化数据库错误。
   - `src/db/sqlcipher.ts`：生产 SQLCipher adapter factory、keyed connection 校验、旧明文库迁移与迁移中断恢复。
 

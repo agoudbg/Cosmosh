@@ -4,6 +4,11 @@ import test from 'node:test';
 import type { RemoteShellCapability, SshTerminalServerMessage } from '@cosmosh/api-contract';
 
 import type { RemoteBootstrapResult, RemoteBootstrapStatus } from '../remote-bootstrap/service.js';
+import {
+  createCredentialFillState,
+  type CredentialFillState,
+  observeCredentialFillOutput,
+} from '../terminal/credential-fill.js';
 import type { OpenSshClientResult } from './connect.js';
 import type { RemoteShellEventMessage, RemoteShellEventStreamFrame } from './remote-shell-events.js';
 import {
@@ -14,6 +19,8 @@ import {
 
 type RemoteShellEventSessionHarness = {
   sessionId: string;
+  credentialFillState: CredentialFillState;
+  loginPassword: string | null;
   remoteEnhancementsRuntimeState: 'pending' | 'active' | 'disabled';
   remoteEnhancementsRuntimeContract: {
     shell: 'bash';
@@ -90,6 +97,8 @@ const createSessionHarness = (
   overrides: Partial<RemoteShellEventSessionHarness> = {},
 ): RemoteShellEventSessionHarness => ({
   sessionId: 'session-1',
+  credentialFillState: createCredentialFillState(),
+  loginPassword: null,
   remoteEnhancementsRuntimeState: 'disabled',
   remoteEnhancementsRuntimeContract: {
     shell: 'bash',
@@ -152,6 +161,21 @@ test('structured command lifecycle becomes authoritative only after matching cap
   assert.equal(usesStructuredRemoteCommandLifecycle('disabled', ['command-start']), false);
   assert.equal(usesStructuredRemoteCommandLifecycle('active', ['cwd', 'prompt-ready']), false);
   assert.equal(usesStructuredRemoteCommandLifecycle('active', ['command-start', 'command-end']), true);
+});
+
+test('a trusted shell prompt clears an outstanding credential offer without visible output', () => {
+  const messages: SshTerminalServerMessage[] = [];
+  const session = createSessionHarness({
+    credentialFillState: observeCredentialFillOutput(createCredentialFillState(), 'Password: ', Date.now()),
+    loginPassword: 'fixture-only',
+  });
+  const service = Object.assign(Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness, {
+    sendServerMessage: (_session: RemoteShellEventSessionHarness, message: SshTerminalServerMessage) =>
+      messages.push(message),
+  });
+  service.applyRemoteShellEventState(session, createRemoteShellEvent({ event: 'prompt-ready', cwd: undefined }));
+  assert.equal(session.credentialFillState.offer, null);
+  assert.deepEqual(messages, [{ type: 'credential-fill-offer', offer: null }]);
 });
 
 test('SshSessionService forwards visible output and helper events in original PTY order', () => {
@@ -231,13 +255,14 @@ test('SshSessionService preserves detached output and helper event ordering on a
 
   assert.deepEqual(
     sentMessages.map((message) => message.type),
-    ['ready', 'remote-enhancement-runtime-status', 'output', 'remote-shell-event', 'output'],
+    ['ready', 'remote-enhancement-runtime-status', 'output', 'remote-shell-event', 'output', 'credential-fill-offer'],
   );
-  assert.deepEqual(sentMessages.slice(2), [
+  assert.deepEqual(sentMessages.slice(2, -1), [
     { type: 'output', data: '\r\n' },
     transportedCommandStart,
     { type: 'output', data: 'result\r\n' },
   ]);
+  assert.deepEqual(sentMessages.at(-1), { type: 'credential-fill-offer', offer: null });
   assert.deepEqual(session.pendingStreamFrames, []);
   assert.equal(session.pendingStreamFrameBytes, 0);
 });

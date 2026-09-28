@@ -1,3 +1,5 @@
+import type { TerminalCredentialFillOffer, TerminalCredentialFillResult } from '@cosmosh/api-contract';
+
 import type { ServerInboundMessage, SshTelemetryState } from './ssh-types';
 import { DEFAULT_TELEMETRY_STATE } from './ssh-types';
 
@@ -25,6 +27,9 @@ export type SshPaneCommandLifecycle = {
 export type SshPaneState = {
   connectionState: 'connecting' | 'connected' | 'failed';
   connectionError: string;
+  credentialFillOffer: TerminalCredentialFillOffer | null;
+  credentialFillRequestToken: string | null;
+  credentialFillResult: { payload: TerminalCredentialFillResult; receivedAt: number } | null;
   telemetryState: SshTelemetryState;
   remoteBootstrapStatus: Extract<ServerInboundMessage, { type: 'bootstrap-status' }> | null;
   remoteEnhancementRuntimeStatus: Extract<ServerInboundMessage, { type: 'remote-enhancement-runtime-status' }> | null;
@@ -46,6 +51,7 @@ export type SshPaneStateMap = Record<string, SshPaneState>;
 
 /** Actions accepted by the pane-state reducer. */
 export type SshPaneStateAction =
+  | { type: 'credential-fill-requested'; paneId: string; token: string }
   | { type: 'ensure-pane'; paneId: string }
   | { type: 'reset-pane'; paneId: string }
   | { type: 'remove-pane'; paneId: string }
@@ -65,6 +71,9 @@ export type SshPaneStateAction =
 export const createSshPaneState = (): SshPaneState => ({
   connectionState: 'connecting',
   connectionError: '',
+  credentialFillOffer: null,
+  credentialFillRequestToken: null,
+  credentialFillResult: null,
   telemetryState: {
     ...DEFAULT_TELEMETRY_STATE,
     recentCommands: [],
@@ -116,12 +125,31 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
   }
 
   const paneState = previousPaneState ?? createSshPaneState();
+  if (action.type === 'credential-fill-requested') {
+    if (
+      paneState.connectionState !== 'connected' ||
+      paneState.credentialFillOffer?.token !== action.token ||
+      paneState.credentialFillRequestToken
+    )
+      return state;
+    return {
+      ...state,
+      [action.paneId]: { ...paneState, credentialFillRequestToken: action.token, credentialFillResult: null },
+    };
+  }
   if (action.type === 'transport-state') {
     return {
       ...state,
       [action.paneId]: {
         ...paneState,
         connectionState: action.connectionState,
+        ...(action.connectionState === 'connected'
+          ? {}
+          : {
+              credentialFillOffer: null,
+              credentialFillRequestToken: null,
+              credentialFillResult: null,
+            }),
         connectionError:
           action.connectionError ?? (action.connectionState === 'failed' ? paneState.connectionError : ''),
       },
@@ -143,6 +171,24 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
  * @returns Updated pane state.
  */
 const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage, receivedAt: number): SshPaneState => {
+  if (payload.type === 'credential-fill-offer') {
+    return {
+      ...state,
+      credentialFillOffer: payload.offer,
+      ...(payload.offer && payload.offer.token !== state.credentialFillOffer?.token
+        ? { credentialFillRequestToken: null, credentialFillResult: null }
+        : {}),
+    };
+  }
+  if (payload.type === 'credential-fill-result') {
+    if (payload.token !== state.credentialFillRequestToken) return state;
+    return {
+      ...state,
+      credentialFillOffer: null,
+      credentialFillRequestToken: null,
+      credentialFillResult: { payload, receivedAt },
+    };
+  }
   if (payload.type === 'ready') {
     return {
       ...state,
@@ -156,6 +202,9 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
       ...state,
       connectionState: 'failed',
       connectionError: payload.message,
+      credentialFillOffer: null,
+      credentialFillRequestToken: null,
+      credentialFillResult: null,
     };
   }
 
@@ -164,6 +213,9 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
       ...state,
       connectionState: 'failed',
       connectionError: payload.reason,
+      credentialFillOffer: null,
+      credentialFillRequestToken: null,
+      credentialFillResult: null,
     };
   }
 

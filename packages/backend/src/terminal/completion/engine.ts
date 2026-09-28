@@ -6,7 +6,6 @@ import type {
   TerminalCompletionResponse,
   TerminalPathCompletionContext,
   TerminalPathEntry,
-  TerminalRuntimePromptState,
 } from './types.js';
 
 const DEFAULT_COMPLETION_LIMIT = 8;
@@ -20,7 +19,6 @@ type CompletionRuntimeOptions = {
   recentCommands: string[];
   pathProvider?: (context: TerminalPathCompletionContext) => Promise<TerminalPathEntry[]>;
   typingPathProviderTimeoutMs?: number;
-  promptState?: TerminalRuntimePromptState;
   tokenizerMode?: TerminalTokenizerMode;
 };
 
@@ -825,28 +823,6 @@ const collectPathItems = (
 };
 
 /**
- * Creates password fill completion entry for active interactive prompts.
- */
-const collectSecretPromptItem = (promptState: TerminalRuntimePromptState | undefined): TerminalCompletionItem[] => {
-  if (!promptState?.shouldSuggestSecret || !promptState.secretValue) {
-    return [];
-  }
-
-  return [
-    {
-      id: 'runtime:secret-fill',
-      label: 'Fill password',
-      insertText: `${promptState.secretValue}\n`,
-      detail: null,
-      detailI18nKey: 'completion.labels.secretFill',
-      source: 'runtime',
-      kind: 'secret',
-      score: 2_400,
-    },
-  ];
-};
-
-/**
  * Resolves terminal completion candidates using session history and command specs.
  */
 export const resolveTerminalCompletions = (
@@ -874,13 +850,12 @@ const resolveTerminalCompletionsAsync = async (
   const includeHistory = request.includeHistory ?? true;
   const includeBuiltInCommands = request.includeBuiltInCommands ?? true;
   const includePathSuggestions = request.includePathSuggestions ?? true;
-  const includePasswordSuggestions = request.includePasswordSuggestions ?? true;
   const completionLimit = Math.max(1, Math.min(MAX_COMPLETION_LIMIT, request.limit ?? DEFAULT_COMPLETION_LIMIT));
 
   if (!query) {
     return {
       replacePrefixLength: 0,
-      items: includePasswordSuggestions ? collectSecretPromptItem(options.promptState) : [],
+      items: [],
     };
   }
 
@@ -979,11 +954,6 @@ const resolveTerminalCompletionsAsync = async (
     }
   }
 
-  if (includePasswordSuggestions) {
-    const secretItems = collectSecretPromptItem(options.promptState);
-    secretItems.forEach((item) => addItemWithBestScore(itemMap, item));
-  }
-
   const rankedItems = Array.from(itemMap.values())
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -1033,9 +1003,7 @@ export const localizeTerminalCompletionItems = (
         : item.source === 'runtime'
           ? item.kind === 'path'
             ? 'completion.labels.pathFile'
-            : item.kind === 'secret'
-              ? 'completion.labels.secretFill'
-              : 'completion.labels.commandSpec'
+            : 'completion.labels.commandSpec'
           : 'completion.labels.commandSpec';
     const fallbackLabel = translate(fallbackLabelKey);
     const safeFallbackLabel =
@@ -1044,11 +1012,9 @@ export const localizeTerminalCompletionItems = (
         : item.source === 'history'
           ? 'History'
           : item.source === 'runtime'
-            ? item.kind === 'secret'
-              ? 'Fill password'
-              : item.kind === 'path'
-                ? 'File'
-                : 'Runtime'
+            ? item.kind === 'path'
+              ? 'File'
+              : 'Runtime'
             : 'Command spec';
 
     return {

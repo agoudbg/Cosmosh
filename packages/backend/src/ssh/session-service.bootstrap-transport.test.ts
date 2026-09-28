@@ -30,7 +30,7 @@ type OpenShellHarness = {
         type: 'ready';
         client: Client;
         stream: ClientChannel;
-        completionSecretValue: string | null;
+        loginPassword: string | null;
         streamLifecycleMonitor: {
           isClosed(): boolean;
           release(): void;
@@ -232,7 +232,7 @@ test('SshSessionService keeps the primary transport exec-free so Debian MOTD rea
     openAuthenticatedClient: async (): Promise<OpenSshClientResult> => ({
       type: 'ready',
       client: primaryClient,
-      completionSecretValue: null,
+      loginPassword: null,
       lifecycleMonitor: createLifecycleMonitor(),
       proxyMetadata: { mode: 'off', protocol: 'direct' },
     }),
@@ -272,7 +272,7 @@ test('SshSessionService captures a shell stream close before session handoff res
     openAuthenticatedClient: async (): Promise<OpenSshClientResult> => ({
       type: 'ready',
       client: primaryClient,
-      completionSecretValue: null,
+      loginPassword: null,
       lifecycleMonitor: createLifecycleMonitor(),
       proxyMetadata: { mode: 'off', protocol: 'direct' },
     }),
@@ -309,7 +309,7 @@ test('SshSessionService fails safely when the primary client errors during lifec
     openAuthenticatedClient: async (): Promise<OpenSshClientResult> => ({
       type: 'ready',
       client: primaryClient,
-      completionSecretValue: null,
+      loginPassword: null,
       lifecycleMonitor: createLifecycleMonitor(handoffError, false, lifecycleCalls),
       proxyMetadata: { mode: 'off', protocol: 'direct' },
     }),
@@ -351,7 +351,7 @@ test('SshSessionService reuses one dedicated bootstrap client for all pre-shell 
       return {
         type: 'ready',
         client: bootstrapClient,
-        completionSecretValue: 'must-not-escape',
+        loginPassword: 'must-not-escape',
         lifecycleMonitor: createLifecycleMonitor(),
         proxyMetadata: { mode: 'off', protocol: 'direct' },
       };
@@ -381,7 +381,7 @@ test('SshSessionService contains dedicated bootstrap client errors and destroys 
     openClient: async (): Promise<OpenSshClientResult> => ({
       type: 'ready',
       client: bootstrapClient,
-      completionSecretValue: null,
+      loginPassword: null,
       lifecycleMonitor: createLifecycleMonitor(),
       proxyMetadata: { mode: 'off', protocol: 'direct' },
     }),
@@ -434,7 +434,7 @@ test('SshSessionService destroys the dedicated bootstrap transport when pre-shel
     openClient: async (): Promise<OpenSshClientResult> => ({
       type: 'ready',
       client: bootstrapClient,
-      completionSecretValue: null,
+      loginPassword: null,
       lifecycleMonitor: createLifecycleMonitor(),
       proxyMetadata: { mode: 'off', protocol: 'direct' },
     }),

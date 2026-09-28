@@ -131,18 +131,18 @@ Locale behavior:
 
 - Renderer queues typing-trigger autocomplete on local input and dispatches `completion-request` only after corresponding xterm output echo arrives (plus a short debounce). The configured focus shortcut triggers an immediate request when the list is empty; native `Tab` is preserved.
 - Renderer gates autocomplete while xterm is in alternate screen buffer (for example `vim`, `less`, `top`) so shell completion does not hijack editor/TUI key handling.
-- Renderer suppresses empty-input completion by default (no real command text), and only allows empty-prefix requests for explicit secret-prompt flow.
+- Renderer suppresses empty-input completion. Saved login password fill uses a separate action and never contributes completion items.
 - Renderer keeps a per-pane local command-prefix shadow from xterm input events, so typing-trigger completion does not wait for remote shell echo before computing request prefix.
-- Completion requests, output-echo wakeups, secret-prompt triggers, responses, and popup anchors carry an explicit pane id. Responses for a non-active pane or an older request id are discarded.
+- Completion requests, output-echo wakeups, responses, and popup anchors carry an explicit pane id. Responses for a non-active pane or an older request id are discarded.
 - When trusted `line-state` metadata is available, renderer calibrates the reconstructed prefix with `lineLength`, `cursorIndex`, and `promptGeneration`. It uses the cursor only when the reconstructed length and prompt generation agree; otherwise it keeps the conservative xterm/local-shadow result. The helper never sends the line buffer itself.
 - After readline/history navigation control sequences (`ArrowUp`/`ArrowDown`/`Ctrl+P` style recall), renderer treats the next local input shadow as a suffix and reconciles it with the rendered xterm command line before sending completion requests. This keeps recalled commands such as `echo 1` in the completion prefix when the user continues typing.
 - Command-start boundary detection no longer depends on a fixed prompt-token list. Renderer first parses shell command segment boundaries around cursor context (quotes + separators such as `;`, `&&`, `||`, `|`) and only then applies prompt-boundary heuristics.
 - Prompt parsing is user-configurable via `terminalAutoCompletePromptRegex` (Settings > Terminal > Auto Complete). When set, this regex is applied as an override for prompt-prefix trimming; when empty or invalid, renderer falls back to built-in heuristics.
-- Renderer also forwards source filter toggles in `completion-request` (`includeHistory`, `includeBuiltInCommands`, `includePathSuggestions`, `includePasswordSuggestions`) based on Settings and defaults each source to enabled.
+- Renderer also forwards source filter toggles in `completion-request` (`includeHistory`, `includeBuiltInCommands`, `includePathSuggestions`) based on Settings and defaults each source to enabled.
 - Backend completion engine is shared by SSH and local-terminal session services and merges:
   - synchronized Shell history snapshots merged into the session's completion history cache,
   - command metadata imported from inshellisense/Fig resources (spec signal), generated from full command-path index rather than root-only subset,
-  - runtime providers (path provider and interactive secret-prompt provider) composed in the same ranking pipeline.
+  - runtime path providers composed in the same ranking pipeline.
 - Token parsing is shell-aware in completion engine: SSH uses POSIX tokenization, local PowerShell/CMD sessions use Windows-friendly tokenization where backslash is preserved as a literal path character instead of generic escape.
 - `packages/backend/scripts/generate-inshellisense.mjs` generates spec dataset plus locale resources with language-specific policy:
   - `packages/backend/src/terminal/completion/generated-inshellisense.ts` keeps command structure as a compact tuple payload and inflates it at module load; generated entries keep `descriptionI18nKey` references only (no duplicated raw description text payload).
@@ -156,7 +156,7 @@ Locale behavior:
   - built-in command-spec candidates are prioritized above generic history matches,
   - history candidates are filtered by command context and receive dynamic recency bonus based on distance from latest run.
 - Suggestions are rendered as full command paths (for example, `git push --force`).
-- Source-specific toggles are available in Settings runtime section so power users can independently disable history fills, built-in command fills, path fills, or password fills while keeping other completion sources active.
+- Source-specific toggles independently control history, built-in command, and path suggestions. The saved login password action has its own setting and remains visible in Settings when autocomplete is disabled.
 - Option parsing is argument-aware:
   - repeated option combinations are supported without losing command context,
   - known value-taking options (from Fig `args` metadata) can surface value suggestions,
@@ -171,18 +171,19 @@ Locale behavior:
   - remote SSH path scans use POSIX parameter expansion (`${p##*/}`) instead of GNU-specific `basename --`, so path completion remains portable across GNU/Linux, BSD/macOS, and BusyBox environments,
   - typing-trigger history scoring is bounded to a recent history window to keep completion latency stable when shell history snapshots are large,
   - when current token starts with `-`, option/value suggestions keep priority and path provider is gated off for that token.
-- Interactive secret prompt detection is output-driven:
-  - backend tracks recent output tail and detects common prompts (`sudo` password, `su`/generic password prompts, key passphrase prompts),
-  - when prompt is active and a reusable session secret exists, completion can emit runtime `secret` action item (`Fill password`) for one-step insertion.
-- After accepting `Fill password`, renderer does not auto-open a follow-up completion cycle; next suggestions only appear on new user input or explicit manual trigger.
+- **Saved login password fill** is a separate explicit action. The backend recognizes common English password prompts in a bounded visible output tail; this heuristic does not establish the requesting program's identity. The button names the saved server login password so the user can decide whether it is appropriate. Local terminals and key-only sessions have no eligible password; a private-key passphrase is never used.
+- The backend emits only an opaque one-use token and a 45-second expiry. Any input, new prompt, trusted command/prompt transition, or disposal invalidates the old offer. Cursor/erase controls and fragmented escapes discard retained prompt text; fresh visible text is required before another offer. Spaces and complete SGR styling cannot extend an existing offer's lifetime.
+- A click sends `credential-fill { token }`. The backend checks the registered session, current open WebSocket, PTY, token, expiry, eligible password, and persisted permission again after awaiting settings. Replaced sockets are rejected at the shared message boundary. The token is consumed before writing, so concurrent clicks cannot fill twice.
+- The action writes the exact saved login password without adding Enter. Values containing control characters or exceeding 8 KiB are ineligible. The renderer receives only offer/result metadata; credentials never enter completion responses, diagnostic history, or action logs. The user presses Enter manually after filling.
+- The persisted key `terminalAutoCompletePasswordEnabled` is retained for compatibility, but now controls this independent action. Ordinary autocomplete may be disabled while the action remains enabled. Unsupported prompt formats simply expose no action.
 - Acceptance replaces the active token segment by default (`replacePrefixLength`), and can optionally use per-item `replacePrefixLength` override (for example root history items that should replace full typed prefix).
 - For partial-token history completion (for example `docker e` -> `docker exec`), item-level `replacePrefixLength` is calculated from current typed token length to avoid over-delete and duplicated command segments.
 - For history candidates accepted at non-root token positions, backend returns the command suffix from current token to end (not only one token), so selection can complete the full historical command continuation in one accept action.
 - `completion-response` contains base `replacePrefixLength` plus items (`label`, `insertText`, optional item `replacePrefixLength`, `detail`, `source`, `kind`, `score`).
-- Completion `detail` is localized in backend session services before response emission, with fallback chain: translated `detailI18nKey` → localized source label (`History` / `Command spec` / runtime labels such as `Directory`, `File`, `Fill password`).
+- Completion `detail` is localized in backend session services before response emission, with fallback chain: translated `detailI18nKey` → localized source label (`History` / `Command spec` / runtime labels such as `Directory`, `File`).
 - Suggestions appear passively. Until explicitly focused, `Tab`, arrows, `Enter`, and `Escape` retain their native terminal behavior.
 - `terminalAutoCompleteFocusShortcut` selects the entry shortcut: `Ctrl+Shift+Space` (default), `Ctrl+Alt+Space`, or `Alt+/`. Clicking the menu also enters it; clicking a candidate fills that candidate.
-- Only the focused list consumes unmodified arrows, `Escape`, and the configured apply keys (`terminalAutoCompleteAcceptKeys`: `Tab`, `Enter`, or both). An unconfigured `Enter` retains Shell submission behavior. Candidate application still uses the existing insertion path; credential separation and verified editor application are follow-up steps of the approved terminal plan.
+- Only the focused list consumes unmodified arrows, `Escape`, and the configured apply keys (`terminalAutoCompleteAcceptKeys`: `Tab`, `Enter`, or both). An unconfigured `Enter` retains Shell submission behavior. Candidate application still uses the existing insertion path; verified editor application is a follow-up step of the approved terminal plan.
 - Typing, modified keys, IME composition, pane/tab changes, blur, disconnect, and disabling autocomplete release list ownership. The first input event is forwarded unchanged, and invalidated request responses cannot reopen an old list. A pending manual request never owns ordinary terminal keys.
 - The list exposes its active option through the xterm input's temporary combobox accessibility attributes. DOM focus remains in xterm so typing and composition continue normally; the original attributes are restored when the list closes.
 - Suggestion panel layout constraints:
@@ -364,9 +365,13 @@ The fixture owns temporary Bash, Zsh, and Fish accounts, generated test-only SSH
 
 The live suite fails explicitly if the fixture is unavailable. Unit test success alone does not establish real Shell, latency, or Electron interaction coverage.
 
+Credential regressions exercise real password input without automatic submission and real encrypted-key authentication without passphrase reuse. Tests isolate only database/transport boundaries and use the production credential handler. Unit coverage includes delayed settings, duplicate clicks, new/erased prompts, expiration, replaced sockets, session disposal, and pane-local results.
+
 ### 7.2 Browser Interaction Checks
 
 Run `pnpm --filter @cosmosh/renderer dev --port 28767`, then open `http://127.0.0.1:28767/tests/terminal-autocomplete.html` with `playwright-cli open`. From the repository root, run `playwright-cli run-code --filename=packages/renderer/tests/terminal-autocomplete.browser.cjs`. Output artifacts live in ignored `.playwright-cli/`; close the browser and stop Vite after testing.
+
+For the independent credential action, open `/tests/terminal-credential.html` and run `playwright-cli run-code --filename=packages/renderer/tests/terminal-credential.browser.cjs`. This uses the production component and pane reducer with real xterm; server offer/result delivery and request capture are the only substituted boundaries. It verifies pending-button behavior, focus preservation, opaque requests, manual-Enter status, expiry, disconnect, and narrow viewport bounds. Full Electron session wiring remains a separate acceptance check.
 
 These checks exercise the production xterm, autocomplete hook and menu for passive keys, explicit focus, modifiers, IME, stale replies, pane/focus changes, native-Tab output reconciliation, and stable transport-effect callbacks. Only WebSocket delivery is replaced. Real remote editor behavior and full Electron session lifecycle still require the SSH/Electron acceptance suite.
 
@@ -431,7 +436,7 @@ sequenceDiagram
 
 - The primary SSH transport authenticates first but opens no channel before bootstrap completes. When the first remote command is required, backend lazily opens a second authenticated transport with the same credentials, host-key policy, compression setting, and proxy policy. Every proxy-backed transport receives its own socket.
 - All bootstrap probe/install/status `exec` channels run only on the temporary transport. Backend begins its teardown before the primary calls `client.shell(...)`; actual socket closure may complete asynchronously. The primary transport's first session channel is therefore the interactive PTY, preserving OpenSSH/PAM login messages such as Debian MOTD while still loading a newly installed profile hook in that same first shell.
-- Disabled gates or missing/invalid manifest data never open the temporary transport. Its decrypted completion secret is discarded and is never copied into session state, status payloads, or audit metadata.
+- Disabled gates or missing/invalid manifest data never open the temporary transport. Its decrypted login password is discarded and is never copied into session state, status payloads, or audit metadata.
 - Backend checks the installed binary before downloading. It skips download only when manifest version and asset SHA-256, supported protocol, helper contents, and profile hook are current. Missing fields from an older binary are incompatible and trigger reinstall. A second status read validates the installation before PTY creation.
 - Successfully validated manifests are cached for five minutes and concurrent sessions share one in-flight load. Failed loads are not cached. Cancelling one session only stops that session from waiting and does not cancel the shared manifest request for other sessions.
 - Each side-channel command uses `ssh2 exec` with `REMOTE_BOOTSTRAP_EXEC_OPTIONS`: 60 seconds and 256 KiB output. The entire optional pre-shell ensure has a stricter shared 15-second budget across settings, manifest I/O, temporary proxy/SSH connection, and exec work. Expiry stops waiting for proxy preparation, closes active exec channels, destroys the temporary client, emits `BOOTSTRAP_ENSURE_TIMEOUT`, and immediately continues to ordinary PTY creation. A preconnected proxy socket that completes after cancellation is destroyed on arrival. Installer output is parsed as JSON lines and never written into the interactive terminal stream.
@@ -466,16 +471,16 @@ Server-to-renderer payload:
 
 ```ts
 type RemoteShellEventMessage = {
-  type: 'remote-shell-event';
+  type: "remote-shell-event";
   event:
-    | 'integration-ready'
-    | 'prompt-ready'
-    | 'cwd'
-    | 'command-start'
-    | 'command-end'
-    | 'foreground-command'
-    | 'line-state';
-  shell: 'bash' | 'zsh' | 'fish' | 'sh' | 'ash';
+    | "integration-ready"
+    | "prompt-ready"
+    | "cwd"
+    | "command-start"
+    | "command-end"
+    | "foreground-command"
+    | "line-state";
+  shell: "bash" | "zsh" | "fish" | "sh" | "ash";
   helperVersion: string;
   protocolVersion: number;
   capabilities: string[];
@@ -510,7 +515,7 @@ Backend state model:
 - `remoteShellCwd` is the preferred path-completion cwd source; existing exec probes and renderer hints remain fallback paths.
 - When `remoteShellForegroundCommand` is set by `foreground-command`, backend returns an empty completion response until the next `prompt-ready`; `command-end` does not clear suppression early. This covers short commands, long-running foreground processes, and unknown TUI/REPL programs without maintaining a command whitelist.
 - Renderer clears trusted cwd/line calibration immediately whenever backend trust leaves `active`, and applies prompt-generation checks before using `line-state` for completion. Command lifecycle events also maintain pane-local xterm navigation markers.
-- Password prompts and reusable secret suggestions remain output-driven local backend behavior; shell hooks never capture password input.
+- The explicit saved login password action uses bounded output detection in the local backend; Shell hooks never capture password input, and completion has no credential source.
 
 ### 8.3 Manifest and Asset Contract
 
@@ -548,11 +553,11 @@ Backend state model:
 
 Supported remote hosts:
 
-| Dimension | Supported values |
-| --- | --- |
-| OS | `linux` |
-| Architecture | `amd64`, `arm64` |
-| Shell | `bash`, `zsh`, `fish`, `ash`, `sh` |
+| Dimension    | Supported values                   |
+| ------------ | ---------------------------------- |
+| OS           | `linux`                            |
+| Architecture | `amd64`, `arm64`                   |
+| Shell        | `bash`, `zsh`, `fish`, `ash`, `sh` |
 
 Required remote tools:
 
@@ -564,16 +569,16 @@ Required remote tools:
 
 Installed files stay under the remote user's scope:
 
-| Purpose | Default path |
-| --- | --- |
-| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` or `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap` |
-| Version marker | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` or `~/.local/share/cosmosh/bootstrap/bin/.version` |
-| POSIX helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` or `~/.config/cosmosh/bootstrap/helper.sh` |
-| Fish helper | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` or `~/.config/cosmosh/bootstrap/helper.fish` |
-| Bash hooks | `~/.bashrc` plus the active login profile (`~/.bash_profile`, else `~/.bash_login`, else `~/.profile`) inside Cosmosh marker blocks |
-| Zsh hook | `~/.zshrc` inside a Cosmosh marker block |
-| Sh/Ash hook | `~/.profile` inside a Cosmosh marker block |
-| Fish hook | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` or `~/.config/fish/conf.d/cosmosh.fish` |
+| Purpose          | Default path                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` or `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap`                |
+| Version marker   | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` or `~/.local/share/cosmosh/bootstrap/bin/.version`                                  |
+| POSIX helper     | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` or `~/.config/cosmosh/bootstrap/helper.sh`                                           |
+| Fish helper      | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` or `~/.config/cosmosh/bootstrap/helper.fish`                                       |
+| Bash hooks       | `~/.bashrc` plus the active login profile (`~/.bash_profile`, else `~/.bash_login`, else `~/.profile`) inside Cosmosh marker blocks |
+| Zsh hook         | `~/.zshrc` inside a Cosmosh marker block                                                                                            |
+| Sh/Ash hook      | `~/.profile` inside a Cosmosh marker block                                                                                          |
+| Fish hook        | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` or `~/.config/fish/conf.d/cosmosh.fish`                                                 |
 
 The installer is idempotent. It emits `skipped` only when the installed version, exact binary contents, exact Go-generated helper contents, and every required shell hook are current. Bash login-profile blocks guard on `BASH_VERSION`, so a generic `.profile` read by Dash does not load the Bash helper. Login-profile selection checks the `.bash_profile` and `.bash_login` directory entries themselves, so a dangling dotfile-manager symlink remains the active Bash candidate and its target is created instead of incorrectly falling back to `.profile`. Binary/helper/version/profile replacement is atomic; existing profile permissions and symlink targets are preserved. The version marker is written only after all file and profile updates succeed. `status` reports both the compatibility `profilePath` and complete `profilePaths` collection.
 
@@ -588,26 +593,26 @@ The installer is idempotent. It emits `skipped` only when the installed version,
 
 Common status codes:
 
-| Code | Meaning |
-| --- | --- |
+| Code                           | Meaning                                                                                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `REMOTE_ENHANCEMENTS_DISABLED` | Global Settings or server-level gate disabled bootstrap before any remote command; runtime shell OSC events are ignored for the session. |
-| `MANIFEST_URL_NOT_CONFIGURED` | Remote Enhancements are enabled, but backend has no manifest URL. |
-| `MANIFEST_FETCH_FAILED` | Backend could not fetch the manifest URL. |
-| `MANIFEST_INVALID` | Manifest shape, asset URL, or SHA-256 failed validation. |
-| `ASSET_NOT_FOUND` | Manifest has no asset for the probed OS/architecture. |
-| `PROBE_FAILED` | Remote OS, architecture, or shell is unsupported or could not be parsed. |
-| `BASE64_NOT_FOUND` | Remote host cannot decode the injected wrapper payload. |
-| `MKTEMP_NOT_FOUND` | Remote host lacks `mktemp`. |
-| `DOWNLOADER_NOT_FOUND` | Remote host has neither `curl` nor `wget`. |
-| `HASH_TOOL_NOT_FOUND` | Remote host has neither `sha256sum` nor `shasum`. |
-| `CHECKSUM_MISMATCH` | Downloaded binary did not match the manifest SHA-256. |
-| `BOOTSTRAP_ENSURE_TIMEOUT` | The complete optional pre-shell ensure exceeded 15 seconds; active side-channel work was cancelled and ordinary PTY creation continued. |
-| `INSTALLATION_NOT_CURRENT` | Post-install status did not match the selected version and supported runtime contract. |
-| `HELPER_HANDSHAKE_TIMEOUT` | No valid `integration-ready` event arrived within 10 seconds after PTY creation; runtime helper data was disabled. |
-| `HELPER_CONTRACT_MISMATCH` | Live `integration-ready` or a later helper event did not match the pre-shell contract; runtime data was disabled. |
-| `FILE_INSTALL_FAILED` | Installer could not create or copy user-scoped files. |
-| `PROFILE_UPDATE_FAILED` | Installer could not update the target shell profile hook. |
-| `VERSION_WRITE_FAILED` | Installer could not write the final version marker. |
+| `MANIFEST_URL_NOT_CONFIGURED`  | Remote Enhancements are enabled, but backend has no manifest URL.                                                                        |
+| `MANIFEST_FETCH_FAILED`        | Backend could not fetch the manifest URL.                                                                                                |
+| `MANIFEST_INVALID`             | Manifest shape, asset URL, or SHA-256 failed validation.                                                                                 |
+| `ASSET_NOT_FOUND`              | Manifest has no asset for the probed OS/architecture.                                                                                    |
+| `PROBE_FAILED`                 | Remote OS, architecture, or shell is unsupported or could not be parsed.                                                                 |
+| `BASE64_NOT_FOUND`             | Remote host cannot decode the injected wrapper payload.                                                                                  |
+| `MKTEMP_NOT_FOUND`             | Remote host lacks `mktemp`.                                                                                                              |
+| `DOWNLOADER_NOT_FOUND`         | Remote host has neither `curl` nor `wget`.                                                                                               |
+| `HASH_TOOL_NOT_FOUND`          | Remote host has neither `sha256sum` nor `shasum`.                                                                                        |
+| `CHECKSUM_MISMATCH`            | Downloaded binary did not match the manifest SHA-256.                                                                                    |
+| `BOOTSTRAP_ENSURE_TIMEOUT`     | The complete optional pre-shell ensure exceeded 15 seconds; active side-channel work was cancelled and ordinary PTY creation continued.  |
+| `INSTALLATION_NOT_CURRENT`     | Post-install status did not match the selected version and supported runtime contract.                                                   |
+| `HELPER_HANDSHAKE_TIMEOUT`     | No valid `integration-ready` event arrived within 10 seconds after PTY creation; runtime helper data was disabled.                       |
+| `HELPER_CONTRACT_MISMATCH`     | Live `integration-ready` or a later helper event did not match the pre-shell contract; runtime data was disabled.                        |
+| `FILE_INSTALL_FAILED`          | Installer could not create or copy user-scoped files.                                                                                    |
+| `PROFILE_UPDATE_FAILED`        | Installer could not update the target shell profile hook.                                                                                |
+| `VERSION_WRITE_FAILED`         | Installer could not write the final version marker.                                                                                      |
 
 When debugging bootstrap behavior, first check which gate stopped the run, then verify manifest validity, remote probe support, remote tool availability, and finally user profile write permissions. A missing manifest URL should produce no remote probe command at all.
 

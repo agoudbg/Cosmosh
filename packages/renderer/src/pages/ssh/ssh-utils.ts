@@ -73,11 +73,6 @@ type AutocompleteCommandPrefixResolveOptions = {
 };
 
 /**
- * Detects common password/passphrase prompt endings in terminal output.
- */
-export const SECRET_PROMPT_PATTERN = /(password(?: for [^:]+)?:|passphrase(?: for [^:]+)?:)\s*$/i;
-
-/**
  * Determines whether a pane should open a new session when its tab becomes active.
  *
  * The first activation starts a deferred primary session independently of the reconnect

@@ -14,11 +14,6 @@ import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import { createLocalPathProvider } from '../terminal/completion/path-providers.js';
 import {
-  type CompletionPromptState,
-  updatePromptStateFromInput,
-  updatePromptStateFromOutput,
-} from '../terminal/completion/runtime-state.js';
-import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
   mergeTerminalRecentCommands,
@@ -96,7 +91,6 @@ type LocalLiveSession = TerminalManagedSessionBase & {
   recentCommands: string[];
   completionRecentCommands: string[];
   completionWorkingDirectory: string;
-  completionPromptState: CompletionPromptState;
 };
 
 /**
@@ -336,18 +330,12 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       recentCommands: [],
       completionRecentCommands: [],
       completionWorkingDirectory: workingDirectory,
-      completionPromptState: {
-        outputTail: '',
-        promptDetectedAtMs: 0,
-        shouldSuggestSecret: false,
-      },
       t: i18n.t,
       socket: null,
       disposed: false,
     };
 
     pty.onData((data) => {
-      session.completionPromptState = updatePromptStateFromOutput(session.completionPromptState, data, Date.now());
       this.sendServerMessage(session, { type: 'output', data });
     });
 
@@ -395,7 +383,6 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
     if (message.type === 'input') {
       // Local PTYs have the same password/program boundary as SSH. Raw input is
       // transport data, never a substitute for the Shell's own command history.
-      session.completionPromptState = updatePromptStateFromInput(session.completionPromptState, message.data);
 
       if (/\r|\n/.test(message.data)) {
         this.scheduleHistorySync(session.sessionId);
@@ -413,6 +400,16 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
 
     if (message.type === 'ping') {
       this.sendServerMessage(session, { type: 'pong' });
+      return;
+    }
+
+    if (message.type === 'credential-fill') {
+      this.sendServerMessage(session, {
+        type: 'credential-fill-result',
+        token: message.token,
+        status: 'rejected',
+        reason: 'unavailable',
+      });
       return;
     }
 
@@ -460,17 +457,12 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
         includeHistory: message.includeHistory,
         includeBuiltInCommands: message.includeBuiltInCommands,
         includePathSuggestions: message.includePathSuggestions,
-        includePasswordSuggestions: message.includePasswordSuggestions,
         trigger: message.trigger,
       },
       {
         recentCommands: session.completionRecentCommands,
         tokenizerMode: resolveCompletionTokenizerMode(session.profileId),
         pathProvider: createLocalPathProvider(completionCwd),
-        promptState: {
-          shouldSuggestSecret: session.completionPromptState.shouldSuggestSecret,
-          secretValue: null,
-        },
       },
     );
 

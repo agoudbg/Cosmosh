@@ -58,7 +58,6 @@ export const AutocompleteFixture = (): React.ReactNode => {
     terminalAutoCompleteHistoryEnabled: true,
     terminalAutoCompleteBuiltInCommandsEnabled: true,
     terminalAutoCompletePathEnabled: false,
-    terminalAutoCompletePasswordEnabled: false,
     terminalAutoCompleteAcceptKeys: settings.acceptKeys,
     terminalAutoCompleteFocusShortcut: 'ctrlShiftSpace',
     terminalAutoCompleteMinChars: 1,

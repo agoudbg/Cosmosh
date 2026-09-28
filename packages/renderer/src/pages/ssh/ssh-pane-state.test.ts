@@ -6,6 +6,69 @@ import type { RemoteShellCapability } from '@cosmosh/api-contract';
 import { createSshPaneState, reduceSshPaneState, type SshPaneStateMap } from './ssh-pane-state';
 import type { ServerInboundMessage } from './ssh-types';
 
+test('credential offers and results remain bound to their pane and one pending token', () => {
+  let state: SshPaneStateMap = { first: createSshPaneState(), second: createSshPaneState() };
+  state = reduceSshPaneState(state, { type: 'transport-state', paneId: 'first', connectionState: 'connected' });
+  state = reduceSshPaneState(state, {
+    type: 'server-message',
+    paneId: 'first',
+    receivedAt: 10,
+    payload: { type: 'credential-fill-offer', offer: { token: 'one', expiresAt: 1000 } },
+  });
+  state = reduceSshPaneState(state, { type: 'credential-fill-requested', paneId: 'first', token: 'one' });
+  assert.equal(state.first.credentialFillRequestToken, 'one');
+  assert.equal(state.second.credentialFillOffer, null);
+  state = reduceSshPaneState(state, {
+    type: 'server-message',
+    paneId: 'first',
+    receivedAt: 11,
+    payload: { type: 'credential-fill-result', token: 'old', status: 'filled' },
+  });
+  assert.equal(state.first.credentialFillResult, null);
+  state = reduceSshPaneState(state, {
+    type: 'server-message',
+    paneId: 'first',
+    receivedAt: 12,
+    payload: { type: 'credential-fill-offer', offer: null },
+  });
+  assert.equal(state.first.credentialFillRequestToken, 'one');
+  state = reduceSshPaneState(state, {
+    type: 'server-message',
+    paneId: 'first',
+    receivedAt: 13,
+    payload: { type: 'credential-fill-result', token: 'one', status: 'filled' },
+  });
+  assert.equal(state.first.credentialFillResult?.payload.status, 'filled');
+  assert.equal(state.first.credentialFillRequestToken, null);
+  assert.deepEqual(state.first.remoteEnhancementsDebugEvents, []);
+});
+
+test('new prompts and disconnects invalidate pending credential actions', () => {
+  let state: SshPaneStateMap = { first: createSshPaneState() };
+  state = reduceSshPaneState(state, { type: 'transport-state', paneId: 'first', connectionState: 'connected' });
+  for (const token of ['one', 'two']) {
+    state = reduceSshPaneState(state, {
+      type: 'server-message',
+      paneId: 'first',
+      receivedAt: 10,
+      payload: { type: 'credential-fill-offer', offer: { token, expiresAt: 1000 } },
+    });
+    assert.equal(state.first.credentialFillRequestToken, null);
+    state = reduceSshPaneState(state, { type: 'credential-fill-requested', paneId: 'first', token });
+    assert.equal(state.first.credentialFillRequestToken, token);
+  }
+  state = reduceSshPaneState(state, { type: 'transport-state', paneId: 'first', connectionState: 'failed' });
+  assert.equal(state.first.credentialFillOffer, null);
+  assert.equal(state.first.credentialFillRequestToken, null);
+  state = reduceSshPaneState(state, {
+    type: 'server-message',
+    paneId: 'first',
+    receivedAt: 12,
+    payload: { type: 'credential-fill-result', token: 'two', status: 'filled' },
+  });
+  assert.equal(state.first.credentialFillResult, null);
+});
+
 const INITIAL_STATE: SshPaneStateMap = {
   'pane-1': createSshPaneState(),
   'pane-2': createSshPaneState(),

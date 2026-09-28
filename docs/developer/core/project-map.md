@@ -77,7 +77,7 @@ flowchart TB
   - `src/components/CloseWindowConfirmationDialog.tsx` and `src/components/EditorCloseConfirmationDialog.tsx`: shared Renderer confirmation presentations for Main-owned active-session close decisions and unsaved editor drafts.
   - `src/components/ui`: Radix-based primitive wrappers, reusable sidebar navigation (`SidebarNav`), reusable search/replace panel, CodeMirror text context menu, and styling contracts.
   - `src/components/home`: home/SSH shared entity modules (card/icon rendering, TanStack Virtual-backed visual picker, reusable folder-creation dialog).
-  - `src/components/terminal`: terminal interaction composites (context menu, selection bar, autocomplete menu).
+  - `src/components/terminal`: terminal interaction composites (context menu, selection bar, autocomplete menu, independent saved-login-password action).
   - `src/lib`: backend transport, i18n, settings bootstrap (`app-settings.ts`), renderer request-trace mirror bootstrap (`backend-request-trace-mirror.ts`), shared date-time display formatting (`date-time-format.ts`), shared CodeMirror syntax highlighting and search/replace adapter, and utility abstractions (including editor draft/close guards, shared entity visual helpers, Home folder grouping, and the folder-dialog hook).
   - `theme`: token source used to generate CSS variable system.
 
@@ -97,6 +97,7 @@ flowchart TB
   - `src/terminal`: shared terminal session primitives (WebSocket message normalization, history parsing, size clamping, history sync timing helpers).
   - `src/terminal/integration`: real-SSH PTY test clients and live Shell scenarios; `scripts/terminal-fixture` owns the isolated container, temporary accounts, and lifecycle commands.
   - `src/terminal/completion`: shared terminal auto-complete domain (spec dataset, ranking engine, completion payload shaping) used by both SSH and local-terminal session services.
+  - `src/terminal/credential-fill.ts`: bounded visible password-prompt offers and login-password eligibility; the SSH session service owns permission checks and the actual secret write. Credentials are excluded from completion.
   - `src/db/prisma.ts`: Prisma lifecycle, runtime migration execution, schema validation, and structured database errors.
   - `src/db/sqlcipher.ts`: production SQLCipher adapter factory, keyed connection verification, legacy plaintext migration, and interrupted-migration recovery.
 

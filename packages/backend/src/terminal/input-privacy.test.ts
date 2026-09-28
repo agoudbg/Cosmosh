@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { LocalTerminalSessionService } from '../local-terminal/session-service.js';
 import { SshSessionService } from '../ssh/session-service.js';
-import type { CompletionPromptState } from './completion/runtime-state.js';
+import type { CredentialFillState } from './credential-fill.js';
 
 /** Input-only session shape; transport writes and timer scheduling are isolated boundaries. */
 type InputSession = {
@@ -12,7 +12,8 @@ type InputSession = {
   completionRecentCommands: string[];
   completionWorkingDirectory: string;
   completionPendingCwdCommands: string[];
-  completionPromptState: CompletionPromptState;
+  credentialFillState: CredentialFillState;
+  loginPassword: string | null;
   remoteEnhancementsRuntimeState: 'active' | 'disabled';
   remoteEnhancementsRuntimeContract: { capabilities: ['command-start'] };
   commandCount: number;
@@ -23,6 +24,7 @@ type InputSession = {
 /** Actual protected receiver exposed only for testing the PTY transport boundary. */
 type InputReceiver = {
   handleClientMessage(session: InputSession, payload: Buffer): void;
+  sendCredentialFillOffer(session: InputSession): void;
 };
 
 const inputCases = [
@@ -54,19 +56,24 @@ for (const [name, prototype] of [
           completionRecentCommands: ['echo retained-shell-history'],
           completionWorkingDirectory: '/fixture',
           completionPendingCwdCommands: [],
-          completionPromptState: {
+          credentialFillState: {
             outputTail: inputCase.passwordPrompt ? '[sudo] password for fixture: ' : '',
-            promptDetectedAtMs: 1,
-            shouldSuggestSecret: inputCase.passwordPrompt,
+            offer: inputCase.passwordPrompt ? { token: 'prompt-token', expiresAt: Date.now() + 45_000 } : null,
           },
+          loginPassword: null,
           remoteEnhancementsRuntimeState: runtimeState,
           remoteEnhancementsRuntimeContract: { capabilities: ['command-start'] },
           commandCount: 0,
           stream: transport,
           pty: transport,
         };
-        const context = { scheduleHistorySync: (): void => {} };
         const receiver = prototype as unknown as InputReceiver;
+        const context = {
+          scheduleHistorySync: (): void => {},
+          sendServerMessage: (): void => {},
+          sendCredentialFillOffer: (current: InputSession): void =>
+            (SshSessionService.prototype as unknown as InputReceiver).sendCredentialFillOffer.call(context, current),
+        };
         for (const chunk of inputCase.chunks) {
           receiver.handleClientMessage.call(
             context,

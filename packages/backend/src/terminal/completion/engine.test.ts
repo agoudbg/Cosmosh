@@ -27,7 +27,6 @@ const runPathCompletion = async (
       includeHistory: false,
       includeBuiltInCommands: false,
       includePathSuggestions: true,
-      includePasswordSuggestions: false,
     },
     {
       recentCommands: [],

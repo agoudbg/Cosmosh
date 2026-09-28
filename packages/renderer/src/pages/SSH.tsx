@@ -7,6 +7,7 @@ import { CaseSensitive, Regex } from 'lucide-react';
 import React from 'react';
 
 import { TerminalAutocompleteMenu } from '../components/terminal/terminal-autocomplete-menu';
+import { TerminalCredentialFill } from '../components/terminal/terminal-credential-fill';
 import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
 import { TerminalTextDropZone } from '../components/terminal/terminal-text-drop-zone';
 import {
@@ -423,6 +424,9 @@ const SSH: React.FC<SSHProps> = ({
       autocompleteItems,
       autocompleteFocused,
       autocompleteInputElement,
+      credentialFillOffer,
+      credentialFillPending,
+      credentialFillResult,
       autocompleteAnchor,
     },
     actions: {
@@ -447,6 +451,7 @@ const SSH: React.FC<SSHProps> = ({
       dismissSelectionBar,
       acceptAutocompleteAtIndex,
       focusAutocomplete,
+      fillLoginPassword,
     },
     refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
   } = sshCore;
@@ -1425,6 +1430,17 @@ const SSH: React.FC<SSHProps> = ({
         <SSHTerminalPaneLayout
           terminalPaneIds={terminalPaneIds}
           activePaneId={activePaneId}
+          activePaneOverlay={
+            isActive && terminalAutoCompletePasswordEnabled ? (
+              <TerminalCredentialFill
+                key={activePaneId}
+                offer={credentialFillOffer}
+                pending={credentialFillPending}
+                result={credentialFillResult}
+                onFill={fillLoginPassword}
+              />
+            ) : null
+          }
           hasSelection={!!selectionAnchor?.selectionText}
           canSplitTerminal={canSplitTerminal}
           copyShortcutLabel={terminalCopyShortcutLabel}

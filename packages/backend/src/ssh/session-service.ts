@@ -5,6 +5,7 @@ import type {
   RemoteShellCapability,
   RemoteShellEventMessage,
   SshTerminalServerMessage,
+  TerminalCredentialFillResult,
 } from '@cosmosh/api-contract';
 import type { PrismaClient } from '@prisma/client';
 import { type Client, type ClientChannel } from 'ssh2';
@@ -29,13 +30,13 @@ import {
 } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import { createRemotePathProvider } from '../terminal/completion/path-providers.js';
+import { replayRemoteCompletionCwdCommands, resolveRemotePromptCwd } from '../terminal/completion/runtime-state.js';
 import {
-  type CompletionPromptState,
-  replayRemoteCompletionCwdCommands,
-  resolveRemotePromptCwd,
-  updatePromptStateFromInput,
-  updatePromptStateFromOutput,
-} from '../terminal/completion/runtime-state.js';
+  createCredentialFillState,
+  type CredentialFillState,
+  isFillableLoginPassword,
+  observeCredentialFillOutput,
+} from '../terminal/credential-fill.js';
 import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
@@ -117,7 +118,7 @@ type OpenShellResult =
       type: 'ready';
       client: Client;
       stream: ClientChannel;
-      completionSecretValue: string | null;
+      loginPassword: string | null;
       lifecycleMonitor: SshClientLifecycleMonitor;
       streamLifecycleMonitor: SshShellStreamLifecycleMonitor;
       proxyMetadata: SshProxyMetadata;
@@ -162,8 +163,8 @@ type SshLiveSession = TerminalManagedSessionBase & {
   completionHomeDirectory: string | null;
   completionCwdInitializationPromise: Promise<string | null> | null;
   completionPendingCwdCommands: string[];
-  completionPromptState: CompletionPromptState;
-  completionSecretValue: string | null;
+  credentialFillState: CredentialFillState;
+  loginPassword: string | null;
   remoteShellEventParser: RemoteShellEventOscParser;
   pendingStreamFrames: RemoteShellEventStreamFrame[];
   pendingStreamFrameBytes: number;
@@ -635,12 +636,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       completionHomeDirectory: null,
       completionCwdInitializationPromise: null,
       completionPendingCwdCommands: [],
-      completionPromptState: {
-        outputTail: '',
-        promptDetectedAtMs: 0,
-        shouldSuggestSecret: false,
-      },
-      completionSecretValue: shellResult.completionSecretValue,
+      credentialFillState: createCredentialFillState(),
+      loginPassword: shellResult.loginPassword,
       remoteShellEventParser: new RemoteShellEventOscParser(),
       pendingStreamFrames: [],
       pendingStreamFrameBytes: 0,
@@ -828,6 +825,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
     this.sendRemoteEnhancementRuntimeStatus(session);
     this.flushPendingStreamFrames(session);
+    this.sendCredentialFillOffer(session);
   }
 
   /**
@@ -885,9 +883,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns Nothing.
    */
   private handleVisibleShellOutput(session: SshLiveSession, data: string): void {
-    session.completionPromptState = updatePromptStateFromOutput(session.completionPromptState, data, Date.now());
+    const previousOffer = session.credentialFillState.offer;
+    session.credentialFillState = observeCredentialFillOutput(session.credentialFillState, data, Date.now());
     const promptCwd = resolveRemotePromptCwd(
-      session.completionPromptState.outputTail,
+      session.credentialFillState.outputTail,
       session.completionWorkingDirectory,
       session.completionHomeDirectory,
     );
@@ -898,6 +897,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       type: 'output',
       data,
     });
+    if (previousOffer !== session.credentialFillState.offer) this.sendCredentialFillOffer(session);
   }
 
   /**
@@ -1028,6 +1028,11 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns Nothing.
    */
   private applyRemoteShellEventState(session: SshLiveSession, event: RemoteShellEventMessage): void {
+    if (event.event === 'prompt-ready' || event.event === 'command-start' || event.event === 'command-end') {
+      const hadOffer = session.credentialFillState.offer !== null;
+      session.credentialFillState = createCredentialFillState();
+      if (hadOffer) this.sendCredentialFillOffer(session);
+    }
     if (event.event === 'integration-ready') {
       session.remoteShellReady = true;
     }
@@ -1417,7 +1422,9 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     if (message.type === 'input') {
       // PTY input may belong to a password prompt or another program. Only Shell-owned
       // history is eligible for completion; keystrokes must never be retained as commands.
-      session.completionPromptState = updatePromptStateFromInput(session.completionPromptState, message.data);
+      const hadCredentialOffer = session.credentialFillState.offer !== null;
+      session.credentialFillState = createCredentialFillState();
+      if (hadCredentialOffer) this.sendCredentialFillOffer(session);
 
       const usesStructuredCommandLifecycle = usesStructuredRemoteCommandLifecycle(
         session.remoteEnhancementsRuntimeState,
@@ -1454,7 +1461,84 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       return;
     }
 
+    if (message.type === 'credential-fill') {
+      void this.fillLoginPassword(session, message.token);
+      return;
+    }
+
     this.disposeSession(session.sessionId, 'ws.clientRequestedClose');
+  }
+
+  /**
+   * Publishes an opaque, expiring action for this session's saved login password.
+   *
+   * @param session Session owning both the prompt and the secret.
+   * @returns Nothing.
+   */
+  private sendCredentialFillOffer(session: SshLiveSession): void {
+    const offer = session.credentialFillState.offer;
+    this.sendServerMessage(session, {
+      type: 'credential-fill-offer',
+      offer: isFillableLoginPassword(session.loginPassword) && offer && offer.expiresAt > Date.now() ? offer : null,
+    });
+  }
+
+  /**
+   * Fills the saved login password after an explicit click, without a trailing Enter.
+   * Settings lookup is asynchronous; every session/socket/token check is repeated immediately before writing.
+   *
+   * @param session Session selected through its authenticated WebSocket.
+   * @param token Opaque prompt token supplied by the clicked action.
+   * @returns Completion after the write is queued or a non-secret rejection is sent.
+   */
+  private async fillLoginPassword(session: SshLiveSession, token: string): Promise<void> {
+    const socket = session.socket;
+    const reject = (reason: Extract<TerminalCredentialFillResult, { status: 'rejected' }>['reason']): void => {
+      this.sendServerMessage(session, { type: 'credential-fill-result', token, status: 'rejected', reason });
+    };
+    const getRejection = (): Extract<TerminalCredentialFillResult, { status: 'rejected' }>['reason'] | null => {
+      if (
+        session.disposed ||
+        this.sessions.get(session.sessionId) !== session ||
+        session.socket !== socket ||
+        !socket ||
+        socket.readyState !== socket.OPEN ||
+        session.stream.destroyed ||
+        session.credentialFillState.offer?.token !== token
+      )
+        return 'stale';
+      if (session.credentialFillState.offer.expiresAt <= Date.now()) return 'expired';
+      if (!isFillableLoginPassword(session.loginPassword)) return 'unavailable';
+      return null;
+    };
+    const initialRejection = getRejection();
+    if (initialRejection) {
+      reject(initialRejection);
+      return;
+    }
+    try {
+      const settings = await readDefaultSettingsValues(this.getDbClient());
+      const rejection = getRejection();
+      if (rejection) {
+        reject(rejection);
+        return;
+      }
+      if (!settings.terminalAutoCompletePasswordEnabled) {
+        reject('disabled');
+        return;
+      }
+      // Consume the token before writing: rapid double clicks cannot fill twice.
+      session.credentialFillState = createCredentialFillState();
+      this.sendCredentialFillOffer(session);
+      session.stream.write(session.loginPassword!);
+      this.sendServerMessage(session, { type: 'credential-fill-result', token, status: 'filled' });
+    } catch (error) {
+      console.warn('[ssh][credential-fill] Could not read permission or write to the active prompt.', {
+        sessionId: session.sessionId,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+      });
+      reject('failed');
+    }
   }
 
   /**
@@ -1483,7 +1567,6 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         includeHistory: message.includeHistory,
         includeBuiltInCommands: message.includeBuiltInCommands,
         includePathSuggestions: message.includePathSuggestions,
-        includePasswordSuggestions: message.includePasswordSuggestions,
         trigger: message.trigger,
       },
       {
@@ -1521,10 +1604,6 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
           executeCommand: async (command) =>
             (await this.executeRemoteCommand(session, command, { timeoutMs: SSH_COMPLETION_EXEC_TIMEOUT_MS })) ?? '',
         }),
-        promptState: {
-          shouldSuggestSecret: session.completionPromptState.shouldSuggestSecret,
-          secretValue: session.completionSecretValue,
-        },
       },
     );
 
@@ -1641,6 +1720,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   ): void {
     this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
       beforeExit: (session, reason) => {
+        session.loginPassword = null;
+        session.credentialFillState = createCredentialFillState();
         this.clearRemoteEnhancementHandshakeTimeout(session);
         // Persist audit metadata before underlying transport is torn down.
         void this.finalizeLoginAudit(session, reason);
@@ -2068,7 +2149,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       return openResult;
     }
 
-    const { client, completionSecretValue, lifecycleMonitor, proxyMetadata } = openResult;
+    const { client, loginPassword, lifecycleMonitor, proxyMetadata } = openResult;
     const bootstrapAbortController = new AbortController();
 
     return await new Promise<OpenShellResult>((resolve) => {
@@ -2167,7 +2248,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
               type: 'ready',
               client,
               stream,
-              completionSecretValue,
+              loginPassword,
               lifecycleMonitor,
               streamLifecycleMonitor,
               proxyMetadata,

@@ -79,7 +79,6 @@ const AUTOCOMPLETE_DEPENDENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>
   'terminalAutoCompleteHistoryEnabled',
   'terminalAutoCompleteBuiltInCommandsEnabled',
   'terminalAutoCompletePathEnabled',
-  'terminalAutoCompletePasswordEnabled',
   'terminalAutoCompleteMinChars',
   'terminalAutoCompleteMaxItems',
   'terminalAutoCompleteFuzzyMatch',

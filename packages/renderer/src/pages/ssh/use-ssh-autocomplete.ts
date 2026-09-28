@@ -30,7 +30,6 @@ type UseSshAutocompleteParams = {
   terminalAutoCompleteHistoryEnabled: boolean;
   terminalAutoCompleteBuiltInCommandsEnabled: boolean;
   terminalAutoCompletePathEnabled: boolean;
-  terminalAutoCompletePasswordEnabled: boolean;
   terminalAutoCompleteAcceptKeys: 'tab' | 'enter' | 'tabEnter';
   terminalAutoCompleteFocusShortcut: SettingsValues['terminalAutoCompleteFocusShortcut'];
   terminalAutoCompleteMinChars: number;
@@ -61,9 +60,7 @@ type UseSshAutocompleteResult = {
   resolveAutocompleteAnchorRef: React.RefObject<
     (commandStartColumn: number, cursorRow: number) => TerminalAutocompleteAnchor | null
   >;
-  scheduleAutocompleteRequestRef: React.RefObject<
-    (paneId: string, trigger: 'typing' | 'manual' | 'secretPrompt') => void
-  >;
+  scheduleAutocompleteRequestRef: React.RefObject<(paneId: string, trigger: 'typing' | 'manual') => void>;
   handleAutocompleteTerminalKeyDownRef: React.RefObject<(event: KeyboardEvent, paneId: string) => void>;
   latestAutocompletePaneIdRef: React.RefObject<string>;
   latestAutocompleteRequestIdRef: React.RefObject<string>;
@@ -90,7 +87,6 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
     terminalAutoCompleteHistoryEnabled,
     terminalAutoCompleteBuiltInCommandsEnabled,
     terminalAutoCompletePathEnabled,
-    terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteAcceptKeys,
     terminalAutoCompleteFocusShortcut,
     terminalAutoCompleteMinChars,
@@ -312,7 +308,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       paneId: string;
       linePrefix: string;
       cursorRow: number;
-      trigger: 'typing' | 'manual' | 'secretPrompt';
+      trigger: 'typing' | 'manual';
       workingDirectoryHint: string | null;
     }): void => {
       const requestKey = `${params.paneId}:${params.cursorRow}:${params.linePrefix}`;
@@ -338,7 +334,6 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
         includeHistory: terminalAutoCompleteHistoryEnabled,
         includeBuiltInCommands: terminalAutoCompleteBuiltInCommandsEnabled,
         includePathSuggestions: terminalAutoCompletePathEnabled,
-        includePasswordSuggestions: terminalAutoCompletePasswordEnabled,
         trigger: params.trigger === 'typing' ? 'typing' : 'manual',
       });
     },
@@ -347,13 +342,12 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       terminalAutoCompleteFuzzyMatch,
       terminalAutoCompleteHistoryEnabled,
       terminalAutoCompleteMaxItems,
-      terminalAutoCompletePasswordEnabled,
       terminalAutoCompletePathEnabled,
     ],
   );
 
   const requestAutocomplete = React.useCallback(
-    (paneId: string, trigger: 'typing' | 'manual' | 'secretPrompt') => {
+    (paneId: string, trigger: 'typing' | 'manual') => {
       const paneRuntime = paneRuntimeMapRef.current.get(paneId);
       const socket = paneRuntime?.socket ?? null;
       const terminal = paneRuntime?.terminal ?? null;
@@ -395,7 +389,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       const lineState = getPaneLineState(paneId);
       const commandPrefix = calibrateAutocompleteCommandPrefix(uncalibratedCommandPrefix, lineState);
       const trimmedCommandPrefix = commandPrefix.trim();
-      if (trimmedCommandPrefix.length === 0 && trigger !== 'secretPrompt') {
+      if (trimmedCommandPrefix.length === 0) {
         closeAutocomplete();
         return;
       }
@@ -445,14 +439,8 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    * @returns Nothing.
    */
   const scheduleAutocompleteRequest = React.useCallback(
-    (paneId: string, trigger: 'typing' | 'manual' | 'secretPrompt') => {
+    (paneId: string, trigger: 'typing' | 'manual') => {
       if (trigger === 'manual') {
-        clearScheduledAutocompleteRequest();
-        requestAutocomplete(paneId, trigger);
-        return;
-      }
-
-      if (trigger === 'secretPrompt') {
         clearScheduledAutocompleteRequest();
         requestAutocomplete(paneId, trigger);
         return;

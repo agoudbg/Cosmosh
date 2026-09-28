@@ -17,6 +17,7 @@ import {
 import {
   createSshPaneState,
   reduceSshPaneState,
+  type SshPaneState,
   type SshPaneStateAction,
   type SshPaneStateMap,
 } from './ssh-pane-state';
@@ -40,7 +41,6 @@ import {
 import {
   compilePromptPrefixRegex,
   resolveTerminalPaneCloseTransition,
-  SECRET_PROMPT_PATTERN,
   sendClientMessage,
   shouldReconnectTerminalPaneOnActivation,
 } from './ssh-utils';
@@ -251,6 +251,9 @@ export type SshCoreState = {
   autocompleteItems: ReturnType<typeof useSshAutocomplete>['autocompleteItems'];
   autocompleteFocused: boolean;
   autocompleteInputElement: HTMLTextAreaElement | null;
+  credentialFillOffer: SshPaneState['credentialFillOffer'];
+  credentialFillPending: boolean;
+  credentialFillResult: SshPaneState['credentialFillResult'];
   autocompleteAnchor: TerminalAutocompleteAnchor | null;
 };
 
@@ -400,6 +403,8 @@ export type SshCoreActions = {
   acceptAutocompleteAtIndex: (index: number) => void;
   /** Gives the suggestion list keyboard ownership without moving DOM focus out of xterm. */
   focusAutocomplete: () => void;
+  /** Requests the selected pane's saved login password using its opaque prompt token. */
+  fillLoginPassword: (token: string) => void;
 };
 
 /**
@@ -459,11 +464,11 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     onConnectionIntentChange,
     terminalInitOptions,
     sshConnectionTimeoutSec,
+    terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteEnabled,
     terminalAutoCompleteHistoryEnabled,
     terminalAutoCompleteBuiltInCommandsEnabled,
     terminalAutoCompletePathEnabled,
-    terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteAcceptKeys,
     terminalAutoCompleteFocusShortcut,
     terminalAutoCompleteMinChars,
@@ -819,7 +824,6 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     resetAutocompletePaneState,
     notifyAutocompleteOutputEchoRef,
     closeAutocompleteRef,
-    scheduleAutocompleteRequestRef,
     handleAutocompleteTerminalKeyDownRef,
     handleCompletionResponse,
   } = useSshAutocomplete({
@@ -829,7 +833,6 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalAutoCompleteHistoryEnabled,
     terminalAutoCompleteBuiltInCommandsEnabled,
     terminalAutoCompletePathEnabled,
-    terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteAcceptKeys,
     terminalAutoCompleteFocusShortcut,
     terminalAutoCompleteMinChars,
@@ -896,12 +899,6 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       if (payload.type === 'output') {
         terminal.write(payload.data);
         notifyAutocompleteOutputEchoRef.current(paneId);
-        // Only the active pane may open the secret-prompt suggestion flow:
-        // a background pane's password prompt must not cancel or close the
-        // autocomplete session the user is interacting with.
-        if (paneId === activePaneIdRef.current && SECRET_PROMPT_PATTERN.test(payload.data.trimEnd())) {
-          scheduleAutocompleteRequestRef.current(paneId, 'secretPrompt');
-        }
         return;
       }
 
@@ -947,14 +944,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         receivedAt,
       });
     },
-    [
-      dispatchPaneState,
-      activePaneIdRef,
-      handleCompletionResponse,
-      notifyAutocompleteOutputEchoRef,
-      paneRuntimeMapRef,
-      scheduleAutocompleteRequestRef,
-    ],
+    [dispatchPaneState, handleCompletionResponse, notifyAutocompleteOutputEchoRef, paneRuntimeMapRef],
   );
 
   /**
@@ -1356,6 +1346,35 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   );
 
   /**
+   * Requests credential fill for the currently visible pane without exposing the password to Renderer.
+   *
+   * @param token Opaque token shown by the current backend prompt offer.
+   * @returns Nothing.
+   */
+  const fillLoginPassword = React.useCallback(
+    (token: string): void => {
+      const paneId = activePaneIdRef.current;
+      const state = paneStateMapRef.current[paneId];
+      const runtime = paneRuntimeMapRef.current.get(paneId);
+      if (
+        !isActive ||
+        !terminalAutoCompletePasswordEnabled ||
+        state?.connectionState !== 'connected' ||
+        state.credentialFillOffer?.token !== token ||
+        state.credentialFillOffer.expiresAt <= Date.now() ||
+        state.credentialFillRequestToken ||
+        !runtime?.socket ||
+        runtime.socket.readyState !== WebSocket.OPEN
+      )
+        return;
+      dispatchPaneState({ type: 'credential-fill-requested', paneId, token });
+      sendClientMessage(runtime.socket, { type: 'credential-fill', token });
+      runtime.terminal.focus();
+    },
+    [activePaneIdRef, dispatchPaneState, isActive, paneRuntimeMapRef, terminalAutoCompletePasswordEnabled],
+  );
+
+  /**
    * Routes pasted payload through xterm paste semantics when enabled.
    *
    * @param text Clipboard or dropped text payload.
@@ -1602,6 +1621,9 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       autocompleteItems,
       autocompleteFocused,
       autocompleteInputElement,
+      credentialFillOffer: activePaneState.credentialFillOffer,
+      credentialFillPending: activePaneState.credentialFillRequestToken !== null,
+      credentialFillResult: activePaneState.credentialFillResult,
       autocompleteAnchor,
     },
     actions: {
@@ -1626,6 +1648,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       dismissSelectionBar,
       acceptAutocompleteAtIndex,
       focusAutocomplete,
+      fillLoginPassword,
     },
     refs: {
       wrapperRef,

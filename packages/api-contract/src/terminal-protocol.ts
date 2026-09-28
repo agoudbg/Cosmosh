@@ -96,6 +96,22 @@ export type RemoteEnhancementRuntimeStatus = {
   message?: string;
 };
 
+/** Opaque, expiring prompt action; the saved login password remains in Backend memory. */
+export type TerminalCredentialFillOffer = {
+  token: string;
+  expiresAt: number;
+};
+
+/** Result of an explicitly requested saved-login-password action; never carries a secret. */
+export type TerminalCredentialFillResult =
+  | { type: 'credential-fill-result'; token: string; status: 'filled' }
+  | {
+      type: 'credential-fill-result';
+      token: string;
+      status: 'rejected';
+      reason: 'stale' | 'expired' | 'disabled' | 'unavailable' | 'failed';
+    };
+
 /** Completion candidate transferred over a terminal WebSocket. */
 export type TerminalCompletionItem = {
   id: string;
@@ -104,7 +120,7 @@ export type TerminalCompletionItem = {
   replacePrefixLength?: number;
   detail: string | null;
   source: 'history' | 'inshellisense' | 'runtime';
-  kind: 'command' | 'subcommand' | 'option' | 'history' | 'path' | 'secret';
+  kind: 'command' | 'subcommand' | 'option' | 'history' | 'path';
   score: number;
 };
 
@@ -115,6 +131,7 @@ export type TerminalClientMessage =
   | { type: 'close' }
   | { type: 'ping' }
   | { type: 'history-delete'; command: string }
+  | { type: 'credential-fill'; token: string }
   | {
       type: 'completion-request';
       requestId: string;
@@ -126,12 +143,13 @@ export type TerminalClientMessage =
       includeHistory?: boolean;
       includeBuiltInCommands?: boolean;
       includePathSuggestions?: boolean;
-      includePasswordSuggestions?: boolean;
       trigger: 'typing' | 'manual';
     };
 
 /** Messages common to local and SSH terminal WebSocket sessions. */
 export type TerminalServerMessage =
+  | { type: 'credential-fill-offer'; offer: TerminalCredentialFillOffer | null }
+  | TerminalCredentialFillResult
   | { type: 'ready' }
   | { type: 'output'; data: string }
   | { type: 'error'; message: string }

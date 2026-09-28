@@ -2,7 +2,7 @@ export type TerminalCompletionTrigger = 'typing' | 'manual';
 
 export type TerminalCompletionSource = 'history' | 'inshellisense' | 'runtime';
 
-export type TerminalCompletionItemKind = 'command' | 'subcommand' | 'option' | 'history' | 'path' | 'secret';
+export type TerminalCompletionItemKind = 'command' | 'subcommand' | 'option' | 'history' | 'path';
 
 export type TerminalPathEntry = {
   name: string;
@@ -14,11 +14,6 @@ export type TerminalPathCompletionContext = {
   directoriesOnly: boolean;
   fuzzyMatch: boolean;
   limit: number;
-};
-
-export type TerminalRuntimePromptState = {
-  shouldSuggestSecret: boolean;
-  secretValue: string | null;
 };
 
 /**
@@ -47,7 +42,6 @@ export type TerminalCompletionRequest = {
   includeHistory?: boolean;
   includeBuiltInCommands?: boolean;
   includePathSuggestions?: boolean;
-  includePasswordSuggestions?: boolean;
   trigger: TerminalCompletionTrigger;
 };
 

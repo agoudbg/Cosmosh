@@ -21,7 +21,7 @@ export type OpenSshClientResult =
   | {
       type: 'ready';
       client: Client;
-      completionSecretValue: string | null;
+      loginPassword: string | null;
       lifecycleMonitor: SshClientLifecycleMonitor;
       proxyMetadata: SshProxyMetadata;
     }
@@ -223,7 +223,7 @@ export const openSshClient = async (
     },
   };
 
-  let completionSecretValue: string | null = null;
+  let loginPassword: string | null = null;
 
   try {
     if (server.keychain.authType === 'password' || server.keychain.authType === 'both') {
@@ -238,7 +238,7 @@ export const openSshClient = async (
         server.keychain.passwordEncrypted,
         options.credentialEncryptionKey,
       );
-      completionSecretValue = typeof connectConfig.password === 'string' ? connectConfig.password : null;
+      loginPassword = typeof connectConfig.password === 'string' ? connectConfig.password : null;
     }
 
     if (server.keychain.authType === 'key' || server.keychain.authType === 'both') {
@@ -259,9 +259,6 @@ export const openSshClient = async (
           server.keychain.privateKeyPassphraseEncrypted,
           options.credentialEncryptionKey,
         );
-        if (!completionSecretValue && typeof connectConfig.passphrase === 'string') {
-          completionSecretValue = connectConfig.passphrase;
-        }
       }
     }
   } catch {
@@ -356,7 +353,7 @@ export const openSshClient = async (
       settle({
         type: 'ready',
         client,
-        completionSecretValue,
+        loginPassword,
         lifecycleMonitor,
         proxyMetadata: proxyTransport.metadata,
       });
