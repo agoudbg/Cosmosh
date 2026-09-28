@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
-import type { ShellEditorBuffer, ShellEditorRequest, ShellEditorSnapshot } from '@cosmosh/api-contract';
+import type {
+  ShellCompletionCandidate,
+  ShellEditorBuffer,
+  ShellEditorRequest,
+  ShellEditorSnapshot,
+} from '@cosmosh/api-contract';
 
 import type { ShellEditorExecOptions, ShellEditorResult } from '../ssh/editor-exec.js';
+import { buildShellCompletionReplacement, type ShellCompletionDraft } from './completion/snapshot-edits.js';
 import { isFishInputBoundaryPending, normalizeEditorBuffer } from './editor-protocol.js';
 import type { ShellContextState } from './shell-context.js';
 
@@ -30,8 +36,13 @@ export class ShellEditorController {
   private contextRefreshRequested = false;
   private lockedEpoch: string | null = null;
   private expiryTimer: NodeJS.Timeout | null = null;
-  private cached: { id: string; snapshot: ShellEditorSnapshot; state: ShellContextState; expiresAt: number } | null =
-    null;
+  private cached: {
+    id: string;
+    snapshot: ShellEditorSnapshot;
+    state: ShellContextState;
+    expiresAt: number;
+    candidates: Map<string, ShellEditorBuffer>;
+  } | null = null;
 
   /**
    * @param state Current authoritative state reader.
@@ -66,10 +77,61 @@ export class ShellEditorController {
     if (result.status !== 'ok' || this.state() !== state) return result;
     const snapshotId = randomUUID();
     this.clearSnapshot();
-    this.cached = { id: snapshotId, snapshot: result.snapshot, state, expiresAt: Date.now() + 10_000 };
+    this.cached = {
+      id: snapshotId,
+      snapshot: result.snapshot,
+      state,
+      expiresAt: Date.now() + 10_000,
+      candidates: new Map(),
+    };
     this.expiryTimer = setTimeout(() => this.clearSnapshot(), 10_000);
     this.expiryTimer.unref();
     return { ...result, snapshotId };
+  }
+
+  /**
+   * Binds provider edits to this exact snapshot without exposing insertion text or ranges to the renderer.
+   * Later sources append within a fixed bound, preserving identifiers already displayed for this snapshot.
+   * @param snapshotId Owning private snapshot. @param drafts Backend provider candidates.
+   * @returns Display-only copies, or null when the snapshot has expired or changed.
+   */
+  bindCandidates(snapshotId: string, drafts: readonly ShellCompletionDraft[]): ShellCompletionCandidate[] | null {
+    const cached = this.cached;
+    if (
+      !cached ||
+      cached.id !== snapshotId ||
+      cached.state !== this.state() ||
+      cached.expiresAt <= Date.now() ||
+      !cached.snapshot.buffer
+    )
+      return null;
+    const candidates: ShellCompletionCandidate[] = [];
+    for (const draft of drafts) {
+      if (cached.candidates.size >= 128) break;
+      const replacement = buildShellCompletionReplacement(cached.snapshot.buffer, draft.edit);
+      if (!replacement) continue;
+      const id = randomUUID();
+      cached.candidates.set(id, replacement);
+      candidates.push({
+        id,
+        label: draft.label,
+        detail: draft.detail,
+        source: draft.source,
+        kind: draft.kind,
+        ...(draft.detailI18nKey ? { detailI18nKey: draft.detailI18nKey } : {}),
+      });
+    }
+    return candidates;
+  }
+
+  /**
+   * @param snapshotId Original private snapshot. @param candidateId Opaque session-owned candidate.
+   * @returns One verified application; identifiers never authorize arbitrary renderer text.
+   */
+  async applyCandidate(snapshotId: string, candidateId: string): Promise<ShellEditorResult> {
+    const replacement = this.cached?.id === snapshotId ? this.cached.candidates.get(candidateId) : undefined;
+    if (!replacement) return { status: 'stale' };
+    return await this.apply(snapshotId, replacement);
   }
 
   /** @returns Whether the latest requested context was confirmed after any previous exchange finished cleanup. */

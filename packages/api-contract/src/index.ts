@@ -96,6 +96,7 @@ export type { TerminalClipboardAccess } from './terminal-clipboard';
 export type {
   ShellEditorTarget,
   ShellEditorNotification,
+  ShellCompletionCandidate,
   ShellEditorBuffer,
   ShellEditorSnapshot,
   ShellEditorRequest,

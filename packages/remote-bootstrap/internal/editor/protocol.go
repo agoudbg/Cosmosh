@@ -42,7 +42,7 @@ type Notification struct {
 	Signal string `json:"signal,omitempty"`
 }
 
-// Buffer contains a complete line and a UTF-16 cursor offset, matching the desktop's string indexes.
+// Buffer contains a complete line and a Unicode codepoint cursor offset shared by all adapters.
 type Buffer struct {
 	Text   string `json:"text"`
 	Cursor int    `json:"cursor"`
@@ -152,27 +152,20 @@ func validNotification(shell string, notification *Notification) bool {
 	}
 }
 
-// validBuffer rejects multiline/control input and cursor offsets inside a surrogate pair.
+// validBuffer rejects multiline/control input and cursor offsets outside the codepoint range.
 // Tab is safe because the Shell assigns the complete buffer as data, not as terminal keystrokes.
 func validBuffer(buffer Buffer) bool {
 	if len(buffer.Text) > MaxInputBytes || !utf8.ValidString(buffer.Text) || buffer.Cursor < 0 {
 		return false
 	}
-	cursorBoundary := buffer.Cursor == 0
 	offset := 0
 	for _, character := range buffer.Text {
 		if (character < 0x20 && character != '\t') || character == 0x7f || (character >= 0x80 && character <= 0x9f) {
 			return false
 		}
 		offset += 1
-		if character > 0xffff {
-			offset += 1
-		}
-		if offset == buffer.Cursor {
-			cursorBoundary = true
-		}
 	}
-	return cursorBoundary
+	return buffer.Cursor <= offset
 }
 
 // validPath accepts exact absolute UTF-8 paths, including filename whitespace and newlines.
@@ -199,47 +192,6 @@ func validSnapshot(snapshot Snapshot, includeInput, includeDirectory bool) bool 
 			(directory.Home == nil || validPath(*directory.Home))
 	}
 	return true
-}
-
-// CodePointToUTF16 converts a Shell editor character position without splitting Unicode characters.
-func CodePointToUTF16(text string, cursor int) (int, bool) {
-	if cursor < 0 || !utf8.ValidString(text) {
-		return 0, false
-	}
-	position, offset := 0, 0
-	for _, character := range text {
-		if position == cursor {
-			return offset, true
-		}
-		position++
-		offset++
-		if character > 0xffff {
-			offset++
-		}
-	}
-	return offset, position == cursor
-}
-
-// UTF16ToCodePoint converts a validated desktop cursor offset to the Shell's character index.
-func UTF16ToCodePoint(text string, cursor int) (int, bool) {
-	if cursor < 0 || !utf8.ValidString(text) {
-		return 0, false
-	}
-	position, offset := 0, 0
-	for _, character := range text {
-		if offset == cursor {
-			return position, true
-		}
-		position++
-		offset++
-		if character > 0xffff {
-			offset++
-		}
-		if offset > cursor {
-			return 0, false
-		}
-	}
-	return position, offset == cursor
 }
 
 // matchesExpected requires the complete original line, cursor, prompt and requested directory identity.

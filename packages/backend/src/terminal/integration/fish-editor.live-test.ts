@@ -115,7 +115,7 @@ test(
     const snapshot = await fixture.request('snapshot');
     assert.equal(snapshot.status, 'ok');
     if (snapshot.status !== 'ok') return;
-    assert.deepEqual(snapshot.snapshot.buffer, { text: 'echo 中文🐟 tail', cursor: 9 });
+    assert.deepEqual(snapshot.snapshot.buffer, { text: 'echo 中文🐟 tail', cursor: 8 });
     const marker = '/tmp/cosmosh-fish-must-not-execute-' + randomUUID();
     const replacement = { text: 'echo (touch ' + marker + ') tail', cursor: 5 };
     assert.deepEqual(await fixture.request('apply', snapshot.snapshot, replacement), { status: 'applied' });

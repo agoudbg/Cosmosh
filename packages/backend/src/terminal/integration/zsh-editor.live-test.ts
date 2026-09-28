@@ -66,6 +66,12 @@ test(
     assert.deepEqual(await fixture.request('apply', after.snapshot, { text: 'echo e\u0301x', cursor: 7 }), {
       status: 'applied',
     });
+    assert.deepEqual(await fixture.request('apply', after.snapshot, { text: 'echo 👩‍💻e\u0301x', cursor: 6 }), {
+      status: 'unknown',
+    });
+    const zwj = await fixture.request('snapshot');
+    assert.equal(zwj.status, 'ok');
+    if (zwj.status === 'ok') assert.deepEqual(zwj.snapshot.buffer, { text: 'echo 👩‍💻e\u0301x', cursor: 7 });
   },
 );
 
@@ -82,7 +88,7 @@ test(
     const snapshot = await fixture.request('snapshot');
     assert.equal(snapshot.status, 'ok');
     if (snapshot.status !== 'ok') return;
-    assert.deepEqual(snapshot.snapshot.buffer, { text: 'echo 中文🐟 tail', cursor: 9 });
+    assert.deepEqual(snapshot.snapshot.buffer, { text: 'echo 中文🐟 tail', cursor: 8 });
     assert.equal(snapshot.snapshot.directory?.logical, '/home/cosmosh-zsh');
     const replacement = { text: 'echo $(touch /tmp/cosmosh-zsh-edit-must-not-execute) tail', cursor: 5 };
     assert.deepEqual(await fixture.request('apply', snapshot.snapshot, replacement), { status: 'applied' });

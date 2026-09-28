@@ -33,13 +33,13 @@ const readyState = (): ShellContextState => ({
 const snapshot: ShellEditorSnapshot = {
   promptGeneration: 1,
   editorMode: 'emacs',
-  buffer: { text: 'echo 中文🐟', cursor: 9 },
+  buffer: { text: 'echo 中文🐟', cursor: 8 },
   directory: { logical: '/link', physical: '/actual', home: '/home/user' },
 };
 
-test('editor buffers reject controls, oversized input, malformed Unicode and split cursor boundaries', () => {
+test('editor buffers count codepoints and reject controls, oversized input, malformed Unicode and invalid cursors', () => {
   for (const buffer of [
-    { text: '🐟', cursor: 1 },
+    { text: '🐟', cursor: 2 },
     { text: '\ud800', cursor: 0 },
     { text: 'echo\nnext', cursor: 0 },
     { text: '\x1b', cursor: 0 },
@@ -49,6 +49,7 @@ test('editor buffers reject controls, oversized input, malformed Unicode and spl
   ])
     assert.equal(normalizeEditorBuffer(buffer), null);
   assert.deepEqual(normalizeEditorBuffer({ text: '中🐟 e\u0301\t', cursor: 3 }), { text: '中🐟 e\u0301\t', cursor: 3 });
+  assert.deepEqual(normalizeEditorBuffer({ text: '🐟', cursor: 1 }), { text: '🐟', cursor: 1 });
   const request = {
     requestId: '01234567-89ab-4def-8123-456789abcdef',
     target: { instanceId: '01234567-89ab-4def-8123-456789abcdef', shell: 'bash' as const, pid: 42, startTime: '100' },
@@ -68,7 +69,7 @@ test('editor buffers reject controls, oversized input, malformed Unicode and spl
   );
   for (const replacement of [
     { text: 'rm -rf /\n', cursor: 0 },
-    { text: '🐟', cursor: 1 },
+    { text: '🐟', cursor: 2 },
   ])
     assert.equal(
       normalizeTerminalClientMessage(
@@ -138,6 +139,81 @@ test('snapshots bind one application to the exact context and are erased by inpu
   assert.deepEqual(operations, ['snapshot', 'snapshot', 'apply']);
   assert.equal(state.inputGeneration, 2);
   assert.equal(JSON.stringify(state).includes('echo'), false);
+});
+
+test('candidate identifiers own immutable edits and expire with their session snapshot', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  let state = readyState();
+  const requests: string[] = [];
+  const editor = new ShellEditorController(
+    () => state,
+    async (request) => {
+      requests.push(request.operation);
+      if (request.operation === 'apply') {
+        assert.deepEqual(request.replacement, { text: "echo '完成🐟'", cursor: 10 });
+        return { status: 'applied' };
+      }
+      return { status: 'ok', snapshot };
+    },
+    () => {},
+    () => {},
+  );
+  const draft = {
+    label: '完成🐟',
+    detail: null,
+    source: 'runtime' as const,
+    kind: 'path' as const,
+    edit: { start: 5, end: 8, text: "'完成🐟'" },
+  };
+  const first = (await editor.snapshot()).snapshotId!;
+  const candidate = editor.bindCandidates(first, [draft])![0];
+  assert.deepEqual(Object.keys(candidate).sort(), ['detail', 'id', 'kind', 'label', 'source']);
+  draft.edit.text = 'mutated';
+  assert.deepEqual(await editor.applyCandidate('another-snapshot', candidate.id), { status: 'stale' });
+  assert.deepEqual(await editor.applyCandidate(first, 'another-candidate'), { status: 'stale' });
+  assert.deepEqual(await editor.applyCandidate(first, candidate.id), { status: 'applied' });
+  assert.deepEqual(await editor.applyCandidate(first, candidate.id), { status: 'stale' });
+  const second = (await editor.snapshot()).snapshotId!;
+  const later = editor.bindCandidates(second, [draft])![0];
+  assert.deepEqual(await editor.applyCandidate(second, candidate.id), { status: 'stale' });
+  state = invalidateShellInput(state, 'x');
+  assert.equal(editor.bindCandidates(second, [draft]), null);
+  assert.deepEqual(await editor.applyCandidate(second, later.id), { status: 'stale' });
+  const third = (await editor.snapshot()).snapshotId!;
+  const expired = editor.bindCandidates(third, [draft])![0];
+  t.mock.timers.tick(10_000);
+  assert.equal(editor.bindCandidates(third, [draft]), null);
+  assert.deepEqual(await editor.applyCandidate(third, expired.id), { status: 'stale' });
+  assert.deepEqual(requests, ['snapshot', 'apply', 'snapshot', 'snapshot']);
+});
+
+test('late sources append within a fixed candidate bound without invalidating already displayed identifiers', async () => {
+  const state = readyState();
+  const editor = new ShellEditorController(
+    () => state,
+    async (request) => (request.operation === 'apply' ? { status: 'applied' } : { status: 'ok', snapshot }),
+    () => {},
+    () => {},
+  );
+  const id = (await editor.snapshot()).snapshotId!;
+  const draft = {
+    label: 'file',
+    detail: null,
+    source: 'runtime' as const,
+    kind: 'path' as const,
+    edit: { start: 5, end: 8, text: "'file'" },
+  };
+  assert.deepEqual(editor.bindCandidates(id, [{ ...draft, edit: { ...draft.edit, end: 9 } }]), []);
+  const first = editor.bindCandidates(id, [draft])![0];
+  assert.equal(
+    editor.bindCandidates(
+      id,
+      Array.from({ length: 200 }, () => draft),
+    )!.length,
+    127,
+  );
+  assert.deepEqual(editor.bindCandidates(id, [draft]), []);
+  assert.deepEqual(await editor.applyCandidate(id, first.id), { status: 'applied' });
 });
 
 test('a timed-out dispatched trigger is not repeated before a new binding epoch', async () => {

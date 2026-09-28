@@ -27,7 +27,7 @@ test(
     const result = await fixture.request('snapshot');
     assert.equal(result.status, 'ok');
     if (result.status !== 'ok') return;
-    assert.deepEqual(result.snapshot.buffer, { text: 'echo 中文🐟 tail', cursor: 9 });
+    assert.deepEqual(result.snapshot.buffer, { text: 'echo 中文🐟 tail', cursor: 8 });
     assert.equal(result.snapshot.directory?.logical, '/home/cosmosh-bash');
     const replaced = await fixture.request('apply', result.snapshot, {
       text: 'echo injected $(touch /tmp/cosmosh-editor-must-not-execute)',

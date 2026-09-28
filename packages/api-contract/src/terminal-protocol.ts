@@ -102,7 +102,7 @@ export type ShellEditorTarget = {
 /** Private Shell wake-up metadata; contains no command or terminal input. */
 export type ShellEditorNotification = { fd: number; inode: string } | { signal: 'URG' };
 
-/** Complete input buffer with a UTF-16 cursor offset; never persisted or included in OSC/debug events. */
+/** Complete input buffer with a Unicode codepoint cursor offset; never persisted or included in OSC/debug events. */
 export type ShellEditorBuffer = { text: string; cursor: number };
 
 /** A requested, editor-owned observation, retained only in session memory. */
@@ -222,7 +222,17 @@ export type TerminalCredentialFillResult =
       reason: 'stale' | 'expired' | 'disabled' | 'unavailable' | 'failed';
     };
 
-/** Completion candidate transferred over a terminal WebSocket. */
+/** Display-only suggestion bound to a private snapshot; edits remain in the owning Backend session. */
+export type ShellCompletionCandidate = {
+  id: string;
+  label: string;
+  detail: string | null;
+  detailI18nKey?: string;
+  source: 'history' | 'inshellisense' | 'runtime' | 'fish';
+  kind: 'command' | 'subcommand' | 'option' | 'history' | 'path';
+};
+
+/** Legacy completion candidate transferred over a terminal WebSocket. */
 export type TerminalCompletionItem = {
   id: string;
   label: string;

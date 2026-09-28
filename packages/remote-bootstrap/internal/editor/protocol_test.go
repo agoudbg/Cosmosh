@@ -23,23 +23,17 @@ func TestDeadlineIncludesIncompleteInitialStdin(t *testing.T) {
 	}
 }
 
-func TestCursorConversionPreservesUnicodeBoundaries(t *testing.T) {
+func TestBufferUsesUnicodeCodePointBoundaries(t *testing.T) {
 	text := "echo 中文🐟 e\u0301"
-	for _, pair := range [][2]int{{0, 0}, {5, 5}, {7, 7}, {8, 9}, {11, 12}} {
-		if got, ok := CodePointToUTF16(text, pair[0]); !ok || got != pair[1] {
-			t.Fatalf("codepoint %d produced %d, %v", pair[0], got, ok)
-		}
-		if got, ok := UTF16ToCodePoint(text, pair[1]); !ok || got != pair[0] {
-			t.Fatalf("UTF-16 %d produced %d, %v", pair[1], got, ok)
+	for cursor := 0; cursor <= 11; cursor++ {
+		if !validBuffer(Buffer{Text: text, Cursor: cursor}) {
+			t.Fatalf("rejected codepoint boundary %d", cursor)
 		}
 	}
-	for _, cursor := range []int{-1, 8, 13} {
-		if _, ok := UTF16ToCodePoint(text, cursor); ok {
-			t.Fatalf("accepted invalid UTF-16 boundary %d", cursor)
+	for _, cursor := range []int{-1, 12, 13} {
+		if validBuffer(Buffer{Text: text, Cursor: cursor}) {
+			t.Fatalf("accepted invalid codepoint boundary %d", cursor)
 		}
-	}
-	if _, ok := CodePointToUTF16(text, 12); ok {
-		t.Fatal("accepted a position beyond the real line")
 	}
 }
 
@@ -93,14 +87,14 @@ func TestNotificationRequiresExplicitZshDescriptorIdentity(t *testing.T) {
 func TestBufferLimitsAndExactApplyComparison(t *testing.T) {
 	for _, buffer := range []Buffer{
 		{Text: "line\nnext"}, {Text: "line\rnext"}, {Text: "line\x00next"}, {Text: "\x1b"},
-		{Text: strings.Repeat("a", MaxInputBytes+1)}, {Text: "🐟", Cursor: 1},
+		{Text: strings.Repeat("a", MaxInputBytes+1)}, {Text: "🐟", Cursor: 2},
 		{Text: "ok", Cursor: 3}, {Text: string([]byte{0xff})},
 	} {
 		if validBuffer(buffer) {
 			t.Fatal("accepted an unsupported editor buffer")
 		}
 	}
-	for _, buffer := range []Buffer{{}, {Text: "\t中🐟", Cursor: 4}, {Text: strings.Repeat("a", MaxInputBytes)}} {
+	for _, buffer := range []Buffer{{}, {Text: "\t中🐟", Cursor: 3}, {Text: "🐟", Cursor: 1}, {Text: strings.Repeat("a", MaxInputBytes)}} {
 		if !validBuffer(buffer) {
 			t.Fatal("rejected supported editor input")
 		}

@@ -11,7 +11,7 @@ import { executeShellEditorRequest } from './editor-exec.js';
 const snapshot: ShellEditorSnapshot = {
   promptGeneration: 1,
   editorMode: 'emacs',
-  buffer: { text: 'echo 中文🐟', cursor: 9 },
+  buffer: { text: 'echo 中文🐟', cursor: 8 },
 };
 const request: ShellEditorRequest = {
   requestId: '01234567-89ab-4def-8123-456789abcdef',

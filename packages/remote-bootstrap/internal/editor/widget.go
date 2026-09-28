@@ -110,11 +110,10 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 			fields[0] = strings.TrimSuffix(fields[0], "\n")
 		}
 		point, err := strconv.Atoi(fields[1])
-		cursor, valid := CodePointToUTF16(fields[0], point)
-		if err != nil || !valid {
+		if err != nil {
 			return errors.New("unsupported-editor")
 		}
-		snapshot.Buffer = &Buffer{Text: fields[0], Cursor: cursor}
+		snapshot.Buffer = &Buffer{Text: fields[0], Cursor: point}
 	} else if fields[0] != "" || fields[1] != "" {
 		return errors.New("invalid-widget")
 	}
@@ -135,17 +134,13 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 		return err
 	}
 	if reply.Status == "apply" && reply.Replacement != nil && validBuffer(*reply.Replacement) {
-		cursor, valid := UTF16ToCodePoint(reply.Replacement.Text, reply.Replacement.Cursor)
-		if !valid {
-			return errors.New("invalid-response")
-		}
 		encoded := base64.StdEncoding.EncodeToString([]byte(reply.Replacement.Text))
 		// Fish command substitutions drop empty records. A non-base64 sentinel preserves an
 		// intentionally empty replacement without changing Bash/Zsh's existing private frame.
 		if target.Shell == "fish" && encoded == "" {
 			encoded = "-"
 		}
-		_, err = fmt.Fprintf(output, "apply\n%s\n%d\n", encoded, cursor)
+		_, err = fmt.Fprintf(output, "apply\n%s\n%d\n", encoded, reply.Replacement.Cursor)
 		return err
 	}
 	if reply.Status != "ok" {

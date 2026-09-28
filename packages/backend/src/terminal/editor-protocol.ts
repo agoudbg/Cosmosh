@@ -96,7 +96,7 @@ export const isEditorRecord = (value: unknown): value is Record<string, unknown>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /**
- * Validates the UTF-16 boundary used by JavaScript and rejects multiline/control input.
+ * Validates the shared Unicode codepoint boundary and rejects multiline/control input.
  * @param value Untrusted buffer. @returns A normalized copy, or null without echoing rejected input.
  */
 export const normalizeEditorBuffer = (value: unknown): ShellEditorBuffer | null => {
@@ -112,11 +112,7 @@ export const normalizeEditorBuffer = (value: unknown): ShellEditorBuffer | null 
     typeof value.cursor !== 'number' ||
     !Number.isSafeInteger(value.cursor) ||
     value.cursor < 0 ||
-    value.cursor > value.text.length ||
-    (value.cursor > 0 &&
-      value.cursor < value.text.length &&
-      /[\uD800-\uDBFF]/u.test(value.text[value.cursor - 1]!) &&
-      /[\uDC00-\uDFFF]/u.test(value.text[value.cursor]!))
+    value.cursor > Array.from(value.text).length
   )
     return null;
   return { text: value.text, cursor: value.cursor };
