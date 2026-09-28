@@ -1,3 +1,4 @@
+import type { SettingsValues } from '@cosmosh/api-contract';
 import { type ISearchOptions, type SearchAddon } from '@xterm/addon-search';
 import type { SerializeAddon } from '@xterm/addon-serialize';
 import { type ITerminalOptions, type Terminal } from '@xterm/xterm';
@@ -205,6 +206,7 @@ export type UseSshCoreParams = {
   terminalAutoCompletePathEnabled: boolean;
   terminalAutoCompletePasswordEnabled: boolean;
   terminalAutoCompleteAcceptKeys: 'tab' | 'enter' | 'tabEnter';
+  terminalAutoCompleteFocusShortcut: SettingsValues['terminalAutoCompleteFocusShortcut'];
   terminalAutoCompleteMinChars: number;
   terminalAutoCompleteMaxItems: number;
   terminalAutoCompleteFuzzyMatch: boolean;
@@ -247,6 +249,8 @@ export type SshCoreState = {
   selectionBarPosition: TerminalSelectionBarPosition | null;
   dismissedSelectionText: string | null;
   autocompleteItems: ReturnType<typeof useSshAutocomplete>['autocompleteItems'];
+  autocompleteFocused: boolean;
+  autocompleteInputElement: HTMLTextAreaElement | null;
   autocompleteAnchor: TerminalAutocompleteAnchor | null;
 };
 
@@ -394,6 +398,8 @@ export type SshCoreActions = {
    * @returns Nothing.
    */
   acceptAutocompleteAtIndex: (index: number) => void;
+  /** Gives the suggestion list keyboard ownership without moving DOM focus out of xterm. */
+  focusAutocomplete: () => void;
 };
 
 /**
@@ -459,6 +465,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalAutoCompletePathEnabled,
     terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteAcceptKeys,
+    terminalAutoCompleteFocusShortcut,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
@@ -802,6 +809,9 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
 
   const {
     autocompleteItems,
+    autocompleteFocused,
+    autocompleteInputElement,
+    focusAutocomplete,
     autocompleteAnchor,
     autocompleteMenuRef,
     acceptAutocompleteAtIndex,
@@ -813,6 +823,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     handleAutocompleteTerminalKeyDownRef,
     handleCompletionResponse,
   } = useSshAutocomplete({
+    isActive,
     connectionState,
     terminalAutoCompleteEnabled,
     terminalAutoCompleteHistoryEnabled,
@@ -820,6 +831,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalAutoCompletePathEnabled,
     terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteAcceptKeys,
+    terminalAutoCompleteFocusShortcut,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
@@ -1588,6 +1600,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       selectionBarPosition,
       dismissedSelectionText,
       autocompleteItems,
+      autocompleteFocused,
+      autocompleteInputElement,
       autocompleteAnchor,
     },
     actions: {
@@ -1611,6 +1625,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       resolveHostFingerprintPrompt,
       dismissSelectionBar,
       acceptAutocompleteAtIndex,
+      focusAutocomplete,
     },
     refs: {
       wrapperRef,

@@ -129,7 +129,7 @@ Locale 行为：
 
 ### 3.2 自动补全模型
 
-- 渲染层会先在本地输入阶段记录 typing 补全请求，待对应 xterm 输出回显到达后（再经短延迟去抖）才发送 `completion-request`，从而保证弹层锚点始终基于已渲染光标几何。用户手动按下 `Tab` 仍会立即触发一次请求。
+- 渲染层会先在本地输入阶段记录 typing 补全请求，待对应 xterm 输出回显到达后（再经短延迟去抖）才发送 `completion-request`。列表为空时，配置的进入快捷键会立即请求补全；`Tab`保留终端原有行为。
 - 当 xterm 处于 alternate screen buffer（例如 `vim`、`less`、`top`）时，渲染层会门控关闭补全，避免 shell 补全劫持编辑器/TUI 的按键处理。
 - 渲染层默认会抑制“空输入”补全（没有实际命令文本时不请求候选）；仅在明确的密钥提示流程中允许空前缀请求。
 - 渲染层会基于 xterm 输入事件维护“按 pane 隔离”的本地命令前缀影子状态，使输入触发补全无需等待远端 shell 回显即可计算请求前缀。
@@ -180,14 +180,13 @@ Locale 行为：
 - 当在非根 token 位置接受 history 候选时，后端返回“从当前 token 到命令末尾”的后缀插入文本（而非仅单个 token），以便一次接受即可补完整段历史命令续写。
 - `completion-response` 返回基础 `replacePrefixLength` 与候选项（`label`、`insertText`、可选候选级 `replacePrefixLength`、`detail`、`source`、`kind`、`score`）。
 - `detail` 会在后端会话服务发送响应前完成本地化，回退顺序为：翻译后的 `detailI18nKey` → 本地化来源标签（`历史记录` / `命令规范` / 运行时标签，如 `目录`、`文件`、`填充密码`）。
-- 候选可见时的键盘规则：
-  - `ArrowUp/ArrowDown` 切换当前候选，并由补全导航独占消费，
-  - 候选应用快捷键可在设置中通过 `terminalAutoCompleteAcceptKeys` 配置为 `Tab`（默认/当前方案）、`Enter` 或两者皆可，
-  - 当启用 `Tab` 且当前没有候选时，按下 `Tab` 会立即触发一次手动补全请求，
-  - `Escape` 关闭候选面板，
-  - 当未将 `Enter` 作为应用快捷键时，`Enter` 仍保持 shell 提交语义。
+- 建议默认只展示提示。明确进入列表之前，`Tab`、方向键、`Enter`和`Escape`保持终端原有行为。
+- `terminalAutoCompleteFocusShortcut`配置进入列表的快捷键：默认`Ctrl+Shift+Space`，也可选择`Ctrl+Alt+Space`或`Alt+/`。点击菜单也会进入列表；点击候选会直接填入该候选。
+- 只有进入后的列表会接管不带修饰键的方向键、`Escape`及配置的应用按键（`terminalAutoCompleteAcceptKeys`：`Tab`、`Enter`或两者）。未配置为应用按键的`Enter`保留 Shell 提交行为。候选应用暂时沿用现有插入方式；独立凭据填充和经过校验的编辑器应用属于已批准终端计划的后续步骤。
+- 继续输入、修饰组合键、输入法组合输入、切换分屏或标签页、失去焦点、断开连接、关闭补全都会释放列表的按键控制。首个输入事件原样传递，已失效请求的响应不会重新打开旧列表。等待手动请求结果时，也不会接管普通终端按键。
+- 列表通过 xterm 输入框临时设置的组合框无障碍属性关联当前候选。DOM 焦点保留在 xterm，使输入及输入法正常工作；列表关闭时恢复原有属性。
 - 候选面板布局约束：
-  - 面板锚点会在终端可视区域内进行夹取，
+  - 面板锚点会在终端可视区域内进行夹取，外层容器或分屏尺寸变化时会重新计算，
   - 面板宽度会按当前 pane 可用空间动态计算（并受桌面目标宽度上限约束），锚点夹取也按该实际宽度计算，避免横向溢出，
   - 面板内容区使用最大高度与纵向滚动（`max-h`）保证长候选列表可完整访问，
   - 长命令与说明文本使用截断，避免横向溢出。
@@ -364,6 +363,12 @@ flowchart LR
 测试环境使用独立的 Bash、Zsh、Fish 账户、专用生成密钥、固定校验的主机指纹和仅监听本机回环地址的端口。文件样本覆盖空格、引号、Unicode、符号链接和大目录，不挂载宿主机用户目录或生产凭据。Windows 使用 Debian WSL 内的容器运行时；Linux 默认使用 Docker，也可以通过`COSMOSH_FIXTURE_RUNTIME`选择 Podman。生命周期和环境配置见`scripts/terminal-fixture/README.md`。
 
 真实测试入口在环境不可用时明确失败。单元测试通过不能证明真实 Shell、网络延迟或 Electron 交互已得到验证。
+
+### 7.2 浏览器交互检查
+
+运行`pnpm --filter @cosmosh/renderer dev --port 28767`，再使用`playwright-cli open`打开`http://127.0.0.1:28767/tests/terminal-autocomplete.html`。在仓库根目录执行`playwright-cli run-code --filename=packages/renderer/tests/terminal-autocomplete.browser.cjs`。产物保存在已忽略的`.playwright-cli/`目录；检查结束后关闭浏览器并停止 Vite。
+
+这些检查使用实际的 xterm、补全 Hook 与菜单，覆盖只展示提示时的按键、明确进入列表、组合键、输入法、过时响应、分屏与焦点切换、原生 Tab 输出同步，以及终端会话依赖回调的稳定性。仅替换 WebSocket 传递边界。真实远端编辑器行为及完整 Electron 会话生命周期仍须通过 SSH／Electron 验收。
 
 ## 8. 远端增强运行时
 

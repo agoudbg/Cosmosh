@@ -142,6 +142,7 @@ packages/main/release-*/
 packages/remote-bootstrap/dist/
 .pnpm-store/
 **/.cosmosh/
+/.playwright-cli/
 
 # Auto-generated NSIS installer string defines (built from i18n locale JSON files)
 packages/main/resources/installer-strings.nsh

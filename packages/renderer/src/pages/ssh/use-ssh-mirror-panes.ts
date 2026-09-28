@@ -49,7 +49,7 @@ type UseSshMirrorPanesParams = {
   setActivePane: (paneId: string) => void;
   refreshSelectionAnchor: () => string | null;
   onTerminalSelectionChange: (selectionText: string) => void;
-  handleAutocompleteTerminalKeyDownRef: React.RefObject<(event: KeyboardEvent) => void>;
+  handleAutocompleteTerminalKeyDownRef: React.RefObject<(event: KeyboardEvent, paneId: string) => void>;
   applyAutocompleteInputData: (paneId: string, data: string) => { shouldRequest: boolean; shouldClose: boolean };
   closeAutocompleteRef: React.RefObject<() => void>;
   resetPaneState: (paneId: string) => void;
@@ -228,7 +228,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
       };
 
       const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {
-        handleAutocompleteTerminalKeyDownRef.current(event);
+        handleAutocompleteTerminalKeyDownRef.current(event, paneId);
       };
 
       const handleSetActivePane = (): void => {

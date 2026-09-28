@@ -607,7 +607,7 @@
         "title": "按住 Alt/Option 并点击来移动光标"
       },
       "terminalAutoCompleteAcceptKeys": {
-        "description": "设置用于应用当前高亮自动补全候选的按键。",
+        "description": "进入建议列表后，用这个按键应用选中的建议。",
         "title": "自动补全应用快捷键"
       },
       "terminalAutoCompleteBuiltInCommandsEnabled": {
@@ -617,6 +617,10 @@
       "terminalAutoCompleteEnabled": {
         "description": "在终端输入时启用命令自动补全建议。",
         "title": "终端自动补全"
+      },
+      "terminalAutoCompleteFocusShortcut": {
+        "description": "进入建议列表来选择补全。在此之前，Tab 和方向键保持终端原有行为。",
+        "title": "选择自动补全建议"
       },
       "terminalAutoCompleteFuzzyMatch": {
         "description": "除前缀匹配外，额外启用模糊匹配。",
@@ -905,6 +909,11 @@
         "enter": "Enter",
         "tab": "Tab",
         "tabEnter": "Tab/Enter"
+      },
+      "terminalAutoCompleteFocusShortcut": {
+        "altSlash": "Alt+/",
+        "ctrlAltSpace": "Ctrl+Alt+Space",
+        "ctrlShiftSpace": "Ctrl+Shift+Space"
       },
       "terminalClipboardAccess": {
         "askAlways": "始终询问",
@@ -1394,6 +1403,13 @@
     "authTypeKey": "私钥",
     "authTypePassword": "密码",
     "authTypePlaceholder": "选择认证方式",
+    "autocomplete": {
+      "command": "命令",
+      "focusedHint": "↑ ↓ 选择 · Esc 返回输入",
+      "focusHint": "{shortcut} 选择建议",
+      "history": "历史记录",
+      "label": "终端建议"
+    },
     "bootstrapPhases": {
       "download": "下载",
       "install": "安装",

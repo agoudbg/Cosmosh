@@ -122,6 +122,7 @@ export interface SettingsValues {
   terminalAutoCompletePathEnabled: boolean;
   terminalAutoCompletePasswordEnabled: boolean;
   terminalAutoCompleteAcceptKeys: 'tab' | 'enter' | 'tabEnter';
+  terminalAutoCompleteFocusShortcut: 'ctrlShiftSpace' | 'ctrlAltSpace' | 'altSlash';
   terminalAutoCompleteMinChars: number;
   terminalAutoCompleteMaxItems: number;
   terminalAutoCompleteFuzzyMatch: boolean;
@@ -1489,6 +1490,21 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     commandActionId: 'settings.terminal.runtime.autoComplete.acceptKeys.set',
     searchTerms: ['terminal', 'autocomplete', 'accept', 'shortcut', 'tab', 'enter'],
     options: [{ value: 'tab' }, { value: 'enter' }, { value: 'tabEnter' }],
+  },
+  {
+    key: 'terminalAutoCompleteFocusShortcut',
+    valueType: 'string',
+    defaultValue: 'ctrlShiftSpace',
+    nameI18nKey: 'settings.items.terminalAutoCompleteFocusShortcut.title',
+    descriptionI18nKey: 'settings.items.terminalAutoCompleteFocusShortcut.description',
+    optionI18nNamespace: 'terminalAutoCompleteFocusShortcut',
+    category: SETTINGS_CATEGORIES.terminal,
+    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
+    control: 'select',
+    path: 'terminal.runtime.autoComplete.focusShortcut',
+    commandActionId: 'settings.terminal.runtime.autoComplete.focusShortcut.set',
+    searchTerms: ['terminal', 'autocomplete', 'focus', 'shortcut'],
+    options: [{ value: 'ctrlShiftSpace' }, { value: 'ctrlAltSpace' }, { value: 'altSlash' }],
   },
   {
     key: 'terminalAutoCompleteMinChars',

@@ -179,6 +179,13 @@ Terminal text selection interactions in SSH pages must follow these rules:
 - Because Windows/Linux remove the native application menu (and with it the Edit-menu Copy role that would dispatch `Ctrl+C` into `webContents.copy()`), the fallback provider must also honor the shortcut it displays: `Ctrl+C` copies the current non-editable DOM text selection through the same clipboard path as the menu item. The keyboard fallback skips editable surfaces, CodeMirror, and dedicated context-menu trigger surfaces (including xterm panes, where `Ctrl+C` keeps sending SIGINT and copy stays on `Ctrl+Shift+C`); on macOS the native Edit menu Copy role keeps handling `Cmd+C`.
 - Standalone renderer documents, including SFTP entry properties popup windows, must mount the same fallback provider at the renderer root.
 
+## 7.5.1 Terminal Suggestion Ownership
+
+- Automatically displayed terminal suggestions remain passive and show the configured shortcut for entering the list. Only an explicitly focused list highlights an active option.
+- Keep xterm DOM focus while navigating suggestions. Only the focused list may consume unmodified navigation/apply keys; ordinary typing, IME composition, and modified shortcuts return to the terminal without losing the first input.
+- Moving to another pane, tab, application, or control releases suggestion ownership. Disabled/disconnected terminals and alternate-screen applications must retain native keys.
+- Use the shared menu styles and a labeled listbox connected to the xterm input. Remove temporary accessibility attributes when the list closes.
+
 ## 7.6 Command Palette Keyboard Focus
 
 - The global quick-pick overlay is shared by the command palette and tab switcher: a query starting with `>` shows commands, while a query without `>` shows the tab list.

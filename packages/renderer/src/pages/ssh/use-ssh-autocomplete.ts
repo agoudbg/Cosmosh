@@ -1,3 +1,4 @@
+import type { SettingsValues } from '@cosmosh/api-contract';
 import { type Terminal } from '@xterm/xterm';
 import React from 'react';
 
@@ -20,8 +21,10 @@ import {
   resolveTerminalCurrentLinePrefix,
   sendClientMessage,
 } from './ssh-utils';
+import { type AutocompleteInteractionMode, resolveAutocompleteKeyAction } from './terminal-autocomplete-interaction';
 
 type UseSshAutocompleteParams = {
+  isActive: boolean;
   connectionState: 'connecting' | 'connected' | 'failed';
   terminalAutoCompleteEnabled: boolean;
   terminalAutoCompleteHistoryEnabled: boolean;
@@ -29,6 +32,7 @@ type UseSshAutocompleteParams = {
   terminalAutoCompletePathEnabled: boolean;
   terminalAutoCompletePasswordEnabled: boolean;
   terminalAutoCompleteAcceptKeys: 'tab' | 'enter' | 'tabEnter';
+  terminalAutoCompleteFocusShortcut: SettingsValues['terminalAutoCompleteFocusShortcut'];
   terminalAutoCompleteMinChars: number;
   terminalAutoCompleteMaxItems: number;
   terminalAutoCompleteFuzzyMatch: boolean;
@@ -37,13 +41,16 @@ type UseSshAutocompleteParams = {
   terminalContainerRef: React.RefObject<HTMLDivElement | null>;
   terminalRef: React.RefObject<Terminal | null>;
   activePaneIdRef: React.RefObject<string>;
-  paneRuntimeMapRef: React.RefObject<Map<string, TerminalPaneRuntime>>;
+  paneRuntimeMapRef: React.RefObject<Map<string, Pick<TerminalPaneRuntime, 'terminal' | 'socket'>>>;
   getPaneLineState: (paneId: string) => SshPaneLineState | null;
   getPaneTrustedCwd: (paneId: string) => string | null;
 };
 
 type UseSshAutocompleteResult = {
   autocompleteItems: TerminalAutocompleteItem[];
+  autocompleteFocused: boolean;
+  autocompleteInputElement: HTMLTextAreaElement | null;
+  focusAutocomplete: () => void;
   autocompleteAnchor: TerminalAutocompleteAnchor | null;
   autocompleteMenuRef: React.RefObject<TerminalAutocompleteMenuHandle | null>;
   acceptAutocompleteAtIndex: (index: number) => void;
@@ -57,7 +64,7 @@ type UseSshAutocompleteResult = {
   scheduleAutocompleteRequestRef: React.RefObject<
     (paneId: string, trigger: 'typing' | 'manual' | 'secretPrompt') => void
   >;
-  handleAutocompleteTerminalKeyDownRef: React.RefObject<(event: KeyboardEvent) => void>;
+  handleAutocompleteTerminalKeyDownRef: React.RefObject<(event: KeyboardEvent, paneId: string) => void>;
   latestAutocompletePaneIdRef: React.RefObject<string>;
   latestAutocompleteRequestIdRef: React.RefObject<string>;
   latestAutocompleteCommandStartColumnRef: React.RefObject<number>;
@@ -77,6 +84,7 @@ type UseSshAutocompleteResult = {
  */
 export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAutocompleteResult => {
   const {
+    isActive,
     connectionState,
     terminalAutoCompleteEnabled,
     terminalAutoCompleteHistoryEnabled,
@@ -84,6 +92,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
     terminalAutoCompletePathEnabled,
     terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteAcceptKeys,
+    terminalAutoCompleteFocusShortcut,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
@@ -116,7 +125,24 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
   }, [terminalAutoCompletePromptRegex]);
 
   const [autocompleteItems, setAutocompleteItems] = React.useState<TerminalAutocompleteItem[]>([]);
+  const interactionModeRef = React.useRef<AutocompleteInteractionMode>('passive');
+  const [autocompleteFocused, setAutocompleteFocused] = React.useState(false);
   const [autocompleteAnchor, setAutocompleteAnchor] = React.useState<TerminalAutocompleteAnchor | null>(null);
+  const responseEligibilityRef = React.useRef({ isActive, terminalAutoCompleteEnabled, connectionState });
+  React.useLayoutEffect(() => {
+    responseEligibilityRef.current = { isActive, terminalAutoCompleteEnabled, connectionState };
+  }, [isActive, terminalAutoCompleteEnabled, connectionState]);
+
+  /**
+   * Updates keyboard ownership synchronously, including before React renders.
+   *
+   * @param mode New ownership state.
+   * @returns Nothing.
+   */
+  const setInteractionMode = React.useCallback((mode: AutocompleteInteractionMode): void => {
+    interactionModeRef.current = mode;
+    setAutocompleteFocused(mode === 'focused');
+  }, []);
 
   /**
    * Determines whether xterm is currently rendering the alternate screen buffer.
@@ -148,7 +174,9 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
   }, [clearScheduledAutocompleteRequest]);
 
   React.useEffect(() => {
-    if (connectionState !== 'connected' || !terminalAutoCompleteEnabled) {
+    if (!isActive || connectionState !== 'connected' || !terminalAutoCompleteEnabled) {
+      clearScheduledAutocompleteRequest();
+      setInteractionMode('passive');
       setAutocompleteItems([]);
       autocompleteMenuRef.current?.reset();
       setAutocompleteAnchor(null);
@@ -159,7 +187,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       localAutocompletePrefixNeedsRenderedContextByPaneRef.current.clear();
       pendingTypingRequestPaneSetRef.current.clear();
     }
-  }, [connectionState, terminalAutoCompleteEnabled]);
+  }, [isActive, connectionState, terminalAutoCompleteEnabled, clearScheduledAutocompleteRequest, setInteractionMode]);
 
   /**
    * Resets autocomplete UI and request bookkeeping state.
@@ -167,6 +195,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    * @returns Nothing.
    */
   const closeAutocomplete = React.useCallback(() => {
+    setInteractionMode('passive');
     clearScheduledAutocompleteRequest();
     pendingTypingRequestPaneSetRef.current.clear();
     setAutocompleteItems([]);
@@ -175,7 +204,24 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
     autocompleteReplacePrefixLengthRef.current = 0;
     latestAutocompleteRequestIdRef.current = '';
     latestAutocompleteRequestKeyRef.current = '';
-  }, [clearScheduledAutocompleteRequest]);
+  }, [clearScheduledAutocompleteRequest, setInteractionMode]);
+
+  React.useEffect(() => {
+    /** Dismisses ownership when focus leaves this terminal and its suggestion surface. */
+    const handleFocus = (event: FocusEvent): void => {
+      if (!(event.target instanceof Element)) return;
+      const withinTerminal = terminalRef.current?.element?.contains(event.target);
+      const withinMenu =
+        wrapperRef.current?.contains(event.target) && event.target.closest('[data-terminal-autocomplete]');
+      if (!withinTerminal && !withinMenu) closeAutocomplete();
+    };
+    window.addEventListener('blur', closeAutocomplete);
+    document.addEventListener('focusin', handleFocus);
+    return () => {
+      window.removeEventListener('blur', closeAutocomplete);
+      document.removeEventListener('focusin', handleFocus);
+    };
+  }, [closeAutocomplete, terminalRef, wrapperRef]);
 
   /**
    * Releases command-prefix and request state that belongs to one ending PTY session.
@@ -313,6 +359,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       const terminal = paneRuntime?.terminal ?? null;
 
       if (
+        !isActive ||
         paneId !== activePaneIdRef.current ||
         !terminalAutoCompleteEnabled ||
         !socket ||
@@ -378,6 +425,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       activePaneIdRef,
       closeAutocomplete,
       connectionState,
+      isActive,
       dispatchCompletionRequest,
       getPaneLineState,
       getPaneTrustedCwd,
@@ -430,7 +478,15 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       const paneId = latestAutocompletePaneIdRef.current;
       const paneRuntime = paneRuntimeMapRef.current.get(paneId);
       const socket = paneRuntime?.socket ?? null;
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
+      if (
+        !isActive ||
+        !terminalAutoCompleteEnabled ||
+        paneId !== activePaneIdRef.current ||
+        connectionState !== 'connected' ||
+        !socket ||
+        socket.readyState !== WebSocket.OPEN ||
+        !latestAutocompleteRequestIdRef.current
+      ) {
         closeAutocomplete();
         return;
       }
@@ -468,11 +524,15 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       }
     },
     [
+      activePaneIdRef,
       autocompleteItems,
       closeAutocomplete,
+      connectionState,
       dispatchCompletionRequest,
+      isActive,
       localAutocompleteCommandPrefixByPaneRef,
       paneRuntimeMapRef,
+      terminalAutoCompleteEnabled,
     ],
   );
 
@@ -484,6 +544,8 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    */
   const applyAutocompleteInputData = React.useCallback(
     (paneId: string, data: string): { shouldRequest: boolean; shouldClose: boolean } => {
+      // Any real input invalidates the displayed candidates before an echo or delayed response arrives.
+      if (paneId === activePaneIdRef.current) closeAutocomplete();
       let shouldRequest = false;
       let shouldClose = false;
       let canTrackCommandPrefix = true;
@@ -492,8 +554,8 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       for (let index = 0; index < data.length; index += 1) {
         const char = data[index] ?? '';
 
-        if (char === '\x1b') {
-          // Escape sequences are frequently cursor movement/edit commands; stop shadow tracking.
+        if (char === '\x1b' || char === '\t') {
+          // Cursor keys and native Tab can rewrite the Shell editor buffer; the old shadow is no longer usable.
           canTrackCommandPrefix = false;
           localAutocompleteCommandPrefixByPaneRef.current.delete(paneId);
           localAutocompletePrefixNeedsRenderedContextByPaneRef.current.add(paneId);
@@ -518,7 +580,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
           continue;
         }
 
-        if (char === '\t' || char === '\u0000') {
+        if (char === '\u0000') {
           continue;
         }
 
@@ -553,7 +615,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
         shouldClose,
       };
     },
-    [],
+    [activePaneIdRef, closeAutocomplete],
   );
 
   /**
@@ -585,82 +647,113 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    * @returns Nothing.
    */
   const handleAutocompleteTerminalKeyDown = React.useCallback(
-    (event: KeyboardEvent) => {
-      const acceptsByTab = terminalAutoCompleteAcceptKeys === 'tab' || terminalAutoCompleteAcceptKeys === 'tabEnter';
-      const acceptsByEnter =
-        terminalAutoCompleteAcceptKeys === 'enter' || terminalAutoCompleteAcceptKeys === 'tabEnter';
-
-      if (event.isComposing || event.key === 'Process') {
-        return;
-      }
-
-      const activeTerminal = terminalRef.current;
-      if (activeTerminal && isAlternateScreenBufferActive(activeTerminal)) {
-        // Keep TUI/editor key handling untouched when shell prompt is not active.
-        return;
-      }
-
-      if (event.key === 'Tab' && acceptsByTab) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (autocompleteItems.length > 0) {
-          acceptAutocompleteAtIndex(autocompleteMenuRef.current?.getActiveIndex() ?? 0);
-        } else {
-          scheduleAutocompleteRequest(activePaneIdRef.current, 'manual');
-        }
-        return;
-      }
-
-      if (event.key === 'Enter' && acceptsByEnter && autocompleteItems.length > 0) {
-        event.preventDefault();
-        event.stopPropagation();
-        acceptAutocompleteAtIndex(autocompleteMenuRef.current?.getActiveIndex() ?? 0);
-        return;
-      }
-
-      if (autocompleteItems.length === 0) {
-        return;
-      }
-
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        event.stopPropagation();
-        autocompleteMenuRef.current?.moveNext();
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        event.stopPropagation();
-        autocompleteMenuRef.current?.movePrevious();
-        return;
-      }
-
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
+    (event: KeyboardEvent, paneId: string): void => {
+      const terminal = paneRuntimeMapRef.current.get(paneId)?.terminal;
+      const action = resolveAutocompleteKeyAction(event, {
+        available:
+          isActive &&
+          terminalAutoCompleteEnabled &&
+          connectionState === 'connected' &&
+          paneId === activePaneIdRef.current &&
+          !!terminal &&
+          !isAlternateScreenBufferActive(terminal),
+        hasItems: latestAutocompletePaneIdRef.current === paneId && autocompleteItems.length > 0,
+        mode: interactionModeRef.current,
+        acceptKeys: terminalAutoCompleteAcceptKeys,
+        focusShortcut: terminalAutoCompleteFocusShortcut,
+      });
+      if (action === 'pass') return;
+      if (action === 'dismiss-pass') {
         closeAutocomplete();
+        return;
       }
+      event.preventDefault();
+      event.stopPropagation();
+      if (action === 'focus') setInteractionMode('focused');
+      if (action === 'request') {
+        setInteractionMode('requested');
+        scheduleAutocompleteRequest(paneId, 'manual');
+      }
+      if (action === 'next') autocompleteMenuRef.current?.moveNext();
+      if (action === 'previous') autocompleteMenuRef.current?.movePrevious();
+      if (action === 'accept') acceptAutocompleteAtIndex(autocompleteMenuRef.current?.getActiveIndex() ?? 0);
+      if (action === 'close') closeAutocomplete();
     },
     [
       acceptAutocompleteAtIndex,
       activePaneIdRef,
       autocompleteItems,
       closeAutocomplete,
+      connectionState,
+      isActive,
       isAlternateScreenBufferActive,
+      paneRuntimeMapRef,
       scheduleAutocompleteRequest,
+      setInteractionMode,
       terminalAutoCompleteAcceptKeys,
-      terminalRef,
+      terminalAutoCompleteEnabled,
+      terminalAutoCompleteFocusShortcut,
     ],
   );
 
+  /**
+   * Gives the visible list keyboard ownership while retaining xterm's input focus.
+   *
+   * @returns Nothing.
+   */
+  const focusAutocomplete = React.useCallback((): void => {
+    if (
+      !isActive ||
+      !terminalAutoCompleteEnabled ||
+      connectionState !== 'connected' ||
+      autocompleteItems.length === 0 ||
+      latestAutocompletePaneIdRef.current !== activePaneIdRef.current
+    )
+      return;
+    setInteractionMode('focused');
+    terminalRef.current?.focus();
+  }, [
+    activePaneIdRef,
+    autocompleteItems.length,
+    connectionState,
+    isActive,
+    setInteractionMode,
+    terminalAutoCompleteEnabled,
+    terminalRef,
+  ]);
+
   const closeAutocompleteRef = React.useRef(closeAutocomplete);
+  const hasAutocompleteItems = autocompleteItems.length > 0;
+  React.useEffect(() => {
+    const wrapper = wrapperRef.current;
+    const container = terminalContainerRef.current;
+    if (!hasAutocompleteItems || !wrapper || !container) return;
+    const observer = new ResizeObserver(() => {
+      const anchor = resolveAutocompleteAnchor(
+        latestAutocompleteCommandStartColumnRef.current,
+        terminalRef.current?.buffer.active.cursorY ?? latestAutocompleteCursorRowRef.current,
+      );
+      if (anchor) setAutocompleteAnchor(anchor);
+      else closeAutocomplete();
+    });
+    observer.observe(wrapper);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [
+    closeAutocomplete,
+    hasAutocompleteItems,
+    resolveAutocompleteAnchor,
+    terminalContainerRef,
+    terminalRef,
+    wrapperRef,
+  ]);
+
   const resolveAutocompleteAnchorRef = React.useRef(resolveAutocompleteAnchor);
   const scheduleAutocompleteRequestRef = React.useRef(scheduleAutocompleteRequest);
   const handleAutocompleteTerminalKeyDownRef = React.useRef(handleAutocompleteTerminalKeyDown);
   const notifyAutocompleteOutputEchoRef = React.useRef(notifyAutocompleteOutputEcho);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     closeAutocompleteRef.current = closeAutocomplete;
     resolveAutocompleteAnchorRef.current = resolveAutocompleteAnchor;
     scheduleAutocompleteRequestRef.current = scheduleAutocompleteRequest;
@@ -683,6 +776,14 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    */
   const handleCompletionResponse = React.useCallback(
     (payload: Extract<ServerInboundMessage, { type: 'completion-response' }>, paneId: string) => {
+      // This callback is a transport-effect dependency; changing UI gates must not recreate a PTY.
+      const eligibility = responseEligibilityRef.current;
+      if (
+        !eligibility.isActive ||
+        !eligibility.terminalAutoCompleteEnabled ||
+        eligibility.connectionState !== 'connected'
+      )
+        return;
       if (latestAutocompletePaneIdRef.current !== paneId) {
         return;
       }
@@ -710,15 +811,19 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       }
 
       setAutocompleteItems(payload.items);
+      if (interactionModeRef.current === 'requested') setInteractionMode('focused');
       autocompleteMenuRef.current?.reset();
       setAutocompleteAnchor(anchor);
       autocompleteReplacePrefixLengthRef.current = payload.replacePrefixLength;
     },
-    [activePaneIdRef, closeAutocomplete, resolveAutocompleteAnchor],
+    [activePaneIdRef, closeAutocomplete, resolveAutocompleteAnchor, setInteractionMode],
   );
 
   return {
     autocompleteItems,
+    autocompleteFocused,
+    autocompleteInputElement: terminalRef.current?.textarea ?? null,
+    focusAutocomplete,
     autocompleteAnchor,
     autocompleteMenuRef,
     acceptAutocompleteAtIndex,

@@ -607,7 +607,7 @@
         "title": "Hold Alt/Option and Click to Move Cursor"
       },
       "terminalAutoCompleteAcceptKeys": {
-        "description": "Set which key applies the highlighted auto-complete suggestion.",
+        "description": "Set which key applies the selected suggestion after entering the suggestion list.",
         "title": "Auto Complete Apply Shortcut"
       },
       "terminalAutoCompleteBuiltInCommandsEnabled": {
@@ -617,6 +617,10 @@
       "terminalAutoCompleteEnabled": {
         "description": "Enable terminal command auto-complete suggestions while typing.",
         "title": "Terminal Auto Complete"
+      },
+      "terminalAutoCompleteFocusShortcut": {
+        "description": "Enter the suggestion list to select a completion. Until then, Tab and arrow keys keep their normal terminal behavior.",
+        "title": "Select Auto Complete Suggestions"
       },
       "terminalAutoCompleteFuzzyMatch": {
         "description": "Allow fuzzy matching in addition to strict prefix matching.",
@@ -905,6 +909,11 @@
         "enter": "Enter",
         "tab": "Tab",
         "tabEnter": "Tab/Enter"
+      },
+      "terminalAutoCompleteFocusShortcut": {
+        "altSlash": "Alt+/",
+        "ctrlAltSpace": "Ctrl+Alt+Space",
+        "ctrlShiftSpace": "Ctrl+Shift+Space"
       },
       "terminalClipboardAccess": {
         "askAlways": "Always ask",
@@ -1394,6 +1403,13 @@
     "authTypeKey": "Private Key",
     "authTypePassword": "Password",
     "authTypePlaceholder": "Select auth type",
+    "autocomplete": {
+      "command": "Command",
+      "focusedHint": "↑ ↓ to select · Esc to return to typing",
+      "focusHint": "{shortcut} to select suggestions",
+      "history": "History",
+      "label": "Terminal suggestions"
+    },
     "bootstrapPhases": {
       "download": "Download",
       "install": "Install",

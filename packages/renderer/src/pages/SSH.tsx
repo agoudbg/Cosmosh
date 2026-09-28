@@ -148,6 +148,7 @@ const SSH: React.FC<SSHProps> = ({
   const terminalAutoCompletePathEnabled = settingsValues.terminalAutoCompletePathEnabled;
   const terminalAutoCompletePasswordEnabled = settingsValues.terminalAutoCompletePasswordEnabled;
   const terminalAutoCompleteAcceptKeys = settingsValues.terminalAutoCompleteAcceptKeys;
+  const terminalAutoCompleteFocusShortcut = settingsValues.terminalAutoCompleteFocusShortcut;
   const terminalAutoCompleteMinChars = settingsValues.terminalAutoCompleteMinChars;
   const terminalAutoCompleteMaxItems = settingsValues.terminalAutoCompleteMaxItems;
   const terminalAutoCompleteFuzzyMatch = settingsValues.terminalAutoCompleteFuzzyMatch;
@@ -381,6 +382,7 @@ const SSH: React.FC<SSHProps> = ({
     terminalAutoCompletePathEnabled,
     terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteAcceptKeys,
+    terminalAutoCompleteFocusShortcut,
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
@@ -419,6 +421,8 @@ const SSH: React.FC<SSHProps> = ({
       selectionBarPosition,
       dismissedSelectionText,
       autocompleteItems,
+      autocompleteFocused,
+      autocompleteInputElement,
       autocompleteAnchor,
     },
     actions: {
@@ -442,6 +446,7 @@ const SSH: React.FC<SSHProps> = ({
       resolveHostFingerprintPrompt,
       dismissSelectionBar,
       acceptAutocompleteAtIndex,
+      focusAutocomplete,
     },
     refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
   } = sshCore;
@@ -1520,6 +1525,12 @@ const SSH: React.FC<SSHProps> = ({
         panelWidth={autocompleteAnchor?.panelWidth ?? 340}
         renderAbove={autocompleteAnchor?.renderAbove ?? false}
         items={autocompleteItems}
+        focused={autocompleteFocused}
+        inputElement={autocompleteInputElement}
+        focusShortcutLabel={t(
+          `settings.options.terminalAutoCompleteFocusShortcut.${terminalAutoCompleteFocusShortcut}`,
+        )}
+        onFocusList={focusAutocomplete}
         onItemSelect={acceptAutocompleteAtIndex}
       />
 
