@@ -19,6 +19,8 @@ flowchart TB
 
 ## 2. Channel 字典
 
+`ShellPathQueryRequest`/`ShellPathQueryResult`定义已安装助手固定`path-query`命令的私有 stdin/stdout JSON，不是由前端指定的 Shell 命令，也不增加 Electron IPC 通道。请求包含字面目录、文件名前缀和有界匹配选项，结果包含完整文件名记录与固定来源状态。旧 SSH 补全消息不能查询或填写远端路径，仅接受快照的路径草稿等待候选标识菜单迁移。
+
 编辑器`cursor`字段和私有补全范围使用 Unicode 码点计数，不使用 UTF-16 代码单元。共享的`ShellCompletionCandidate`仅用于展示，包含不透明标识、标签、说明、来源和类型；修改范围与完整替换内容保留在 Backend 会过期的会话快照中。该类型为后续菜单迁移提供基础，本身不增加消息或 Electron IPC 通道，上述现有编辑器消息保留到该迁移完成。
 
 | Channel                                    | IPC Type                   | Params                                                                                                                     | Return Schema                                                                                                                                                                                                                                                                                                                                                                                                       | Main Handler Behavior                                                                                                              |

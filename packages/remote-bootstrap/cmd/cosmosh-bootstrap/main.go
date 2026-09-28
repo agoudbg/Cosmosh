@@ -11,6 +11,7 @@ import (
 
 	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/editor"
 	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/install"
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/paths"
 )
 
 // main dispatches remote bootstrap install and status commands.
@@ -30,6 +31,12 @@ func main() {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGPIPE)
 		defer stop()
 		if err := editor.RunRequest(ctx, os.Stdin, os.Stdout); err != nil {
+			os.Exit(1)
+		}
+	case "path-query":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGPIPE)
+		defer stop()
+		if err := paths.Run(ctx, os.Stdin, os.Stdout); err != nil {
 			os.Exit(1)
 		}
 	case "editor-widget":

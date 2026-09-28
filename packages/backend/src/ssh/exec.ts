@@ -1,3 +1,5 @@
+import { StringDecoder } from 'node:string_decoder';
+
 import type { Client, ClientChannel } from 'ssh2';
 
 export const DEFAULT_SSH_EXEC_TIMEOUT_MS = 15_000;
@@ -12,7 +14,7 @@ export const DEFAULT_SSH_EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
  *
  * @param client Connected ssh2 client.
  * @param command Remote command string.
- * @param options Optional timeout, stdout byte limits, and cancellation signal.
+ * @param options Optional timeout, stdout byte limits, cancellation signal and private stdin payload.
  * @returns UTF-8 stdout on success, otherwise null.
  */
 export const executeBoundedSshCommand = async (
@@ -22,6 +24,7 @@ export const executeBoundedSshCommand = async (
     timeoutMs?: number;
     maxOutputBytes?: number;
     signal?: AbortSignal;
+    stdin?: string;
   },
 ): Promise<string | null> => {
   const timeoutMs = Math.max(1, options?.timeoutMs ?? DEFAULT_SSH_EXEC_TIMEOUT_MS);
@@ -35,6 +38,7 @@ export const executeBoundedSshCommand = async (
   return await new Promise<string | null>((resolve) => {
     let channel: ClientChannel | null = null;
     let output = '';
+    const decoder = new StringDecoder('utf8');
     let outputBytes = 0;
     let settled = false;
     let timeoutId: NodeJS.Timeout | null = null;
@@ -52,6 +56,13 @@ export const executeBoundedSshCommand = async (
       signal?.removeEventListener('abort', handleAbort);
 
       if (closeChannel && channel) {
+        if (options?.stdin !== undefined) {
+          try {
+            channel.signal('TERM');
+          } catch {
+            /* The private worker also has its own deadline if SSH already closed. */
+          }
+        }
         try {
           channel.close();
         } catch {
@@ -94,21 +105,27 @@ export const executeBoundedSshCommand = async (
 
         channel = openedChannel;
         channel.on('data', (chunk: Buffer | string) => {
-          const data = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-          outputBytes += Buffer.byteLength(data, 'utf8');
+          const bytes = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+          outputBytes += bytes.length;
           if (outputBytes > maxOutputBytes) {
             finish(null, true);
             return;
           }
 
-          output += data;
+          output += decoder.write(bytes);
         });
         channel.once('error', () => {
           finish(null, true);
         });
         channel.once('close', () => {
-          finish(output);
+          finish(output + decoder.end());
         });
+        try {
+          if (options?.stdin !== undefined) channel.end(options.stdin, 'utf8');
+        } catch {
+          // ssh2 callbacks are asynchronous; outer client.exec containment cannot catch a failed stdin write.
+          finish(null, true);
+        }
       });
     } catch {
       finish(null);

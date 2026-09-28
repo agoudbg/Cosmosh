@@ -43,6 +43,7 @@ test('executeBoundedSshCommand returns stdout when the channel closes', async ()
 });
 
 test('executeBoundedSshCommand closes channels that exceed the output budget', async () => {
+  // The production transport must count raw bytes before decoding split Unicode chunks.
   const { channel, wasClosed } = createFakeChannel();
   const client = {
     exec: (_command: string, callback: (error: Error | undefined, channel: ClientChannel) => void) => {
@@ -55,12 +56,51 @@ test('executeBoundedSshCommand closes channels that exceed the output budget', a
   assert.equal(wasClosed(), true);
 });
 
+test('bounded SSH exec keeps private stdin out of command arguments and decodes split UTF-8', async () => {
+  const { channel } = createFakeChannel();
+  let received = '';
+  Object.assign(channel, {
+    end: (data: string) => {
+      received = data;
+      const bytes = Buffer.from('{"name":"中文🐟"}');
+      for (const byte of bytes) channel.emit('data', Buffer.from([byte]));
+      channel.emit('close');
+    },
+  });
+  const client = {
+    exec: (command: string, callback: (error: Error | undefined, channel: ClientChannel) => void) => {
+      assert.equal(command, "'/fixed/helper' path-query");
+      callback(undefined, channel as unknown as ClientChannel);
+    },
+  } as unknown as Client;
+  const stdin = '{"directory":"/private name"}';
+  assert.equal(await executeBoundedSshCommand(client, "'/fixed/helper' path-query", { stdin }), '{"name":"中文🐟"}');
+  assert.equal(received, stdin);
+});
+
 test('executeBoundedSshCommand times out stalled exec callbacks', async () => {
+  // A callback that never arrives must not retain a periodic query indefinitely.
   const client = {
     exec: () => undefined,
   } as unknown as Client;
 
   assert.equal(await executeBoundedSshCommand(client, 'sleep forever', { timeoutMs: 5 }), null);
+});
+
+test('asynchronous SSH stdin write exceptions close the channel without escaping containment', async () => {
+  const { channel, wasClosed } = createFakeChannel();
+  Object.assign(channel, {
+    end: () => {
+      throw new Error('closed input');
+    },
+  });
+  const client = {
+    exec: (_command: string, callback: (error: Error | undefined, channel: ClientChannel) => void) => {
+      queueMicrotask(() => callback(undefined, channel as unknown as ClientChannel));
+    },
+  } as unknown as Client;
+  assert.equal(await executeBoundedSshCommand(client, "'/fixed/helper' path-query", { stdin: '{}' }), null);
+  assert.equal(wasClosed(), true);
 });
 
 test('executeBoundedSshCommand closes the active channel when its shared budget is aborted', async () => {

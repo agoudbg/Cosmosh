@@ -34,7 +34,6 @@ import {
   type TerminalManagedSessionBase,
 } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
-import { createRemotePathProvider } from '../terminal/completion/path-providers.js';
 import {
   createCredentialFillState,
   type CredentialFillState,
@@ -219,8 +218,6 @@ const REMOTE_SHELL_UTF8_ENV = {
   LANG: 'C.UTF-8',
   LC_CTYPE: 'C.UTF-8',
 } as const satisfies Readonly<NodeJS.ProcessEnv>;
-const SSH_COMPLETION_EXEC_TIMEOUT_MS = 3_000;
-const SSH_TYPING_PATH_PROVIDER_TIMEOUT_MS = 1_200;
 const SSH_PENDING_STREAM_FRAME_MAX_COUNT = TERMINAL_PENDING_OUTPUT_MAX_CHUNKS;
 const SSH_PENDING_STREAM_FRAME_MAX_BYTES = TERMINAL_PENDING_OUTPUT_MAX_BYTES;
 const SSH_REMOTE_BOOTSTRAP_ENSURE_TIMEOUT_MS = 15_000;
@@ -1763,16 +1760,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     session: SshLiveSession,
     message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
   ): Promise<void> {
+    const socket = session.socket;
     const contextRevision = session.shellContext.revision;
-    /** Whether this request still owns permission to start or publish a remote directory operation. */
-    const canReadPaths = (): boolean =>
-      !session.disposed &&
-      session.shellContext.revision === contextRevision &&
-      session.shellContext.status === 'ready' &&
-      session.shellContext.cwd?.physical !== null &&
-      session.shellContext.cwd !== null &&
-      session.shellContext.permissions.cwd &&
-      session.shellContext.permissions.paths;
     if (session.shellContext.status !== 'ready' || !session.shellContext.permissions.input) {
       this.sendServerMessage(session, {
         type: 'completion-response',
@@ -1791,27 +1780,17 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         fuzzyMatch: message.fuzzyMatch,
         includeHistory: message.includeHistory,
         includeBuiltInCommands: message.includeBuiltInCommands,
-        includePathSuggestions: message.includePathSuggestions !== false && canReadPaths(),
+        // Literal remote filenames require snapshot-bound edits; the legacy PTY writer cannot accept them safely.
+        includePathSuggestions: false,
         trigger: message.trigger,
       },
       {
         recentCommands: session.completionRecentCommands,
         tokenizerMode: 'posix',
-        typingPathProviderTimeoutMs: SSH_TYPING_PATH_PROVIDER_TIMEOUT_MS,
-        pathProvider: createRemotePathProvider({
-          resolveCwd: async () => (canReadPaths() ? (session.shellContext.cwd?.physical ?? null) : null),
-          resolveHomeDirectory: async () => (canReadPaths() ? (session.shellContext.cwd?.home ?? null) : null),
-          executeCommand: async (command) => {
-            if (!canReadPaths()) return '';
-            const output = await this.executeRemoteCommand(session, command, {
-              timeoutMs: SSH_COMPLETION_EXEC_TIMEOUT_MS,
-            });
-            return canReadPaths() ? (output ?? '') : '';
-          },
-        }),
       },
     );
 
+    if (session.disposed || session.socket !== socket) return;
     this.sendServerMessage(session, {
       type: 'completion-response',
       requestId: message.requestId,

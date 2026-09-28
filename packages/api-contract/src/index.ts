@@ -98,6 +98,9 @@ export type {
   ShellEditorNotification,
   ShellCompletionCandidate,
   ShellEditorBuffer,
+  ShellPathEntry,
+  ShellPathQueryRequest,
+  ShellPathQueryResult,
   ShellEditorSnapshot,
   ShellEditorRequest,
 } from './terminal-protocol';

@@ -4,15 +4,11 @@ import path from 'node:path';
 
 import type { TerminalPathCompletionContext, TerminalPathEntry } from './types.js';
 
-const MAX_REMOTE_SCAN_ENTRIES = 200;
-
 type PreparedPathLookup = {
   lookupDirectory: string;
   typedDirectoryPrefix: string;
   fragment: string;
 };
-
-type PathFlavor = 'local' | 'remote';
 
 const stripWrappingQuotes = (value: string): string => {
   const trimmed = value.trim();
@@ -117,37 +113,15 @@ const rankPathEntries = (
     }));
 };
 
-const preparePathLookup = (
-  partialPath: string,
-  baseDirectory: string,
-  flavor: PathFlavor,
-  homeDirectory?: string | null,
-): PreparedPathLookup | null => {
+const preparePathLookup = (partialPath: string, baseDirectory: string): PreparedPathLookup | null => {
   const normalizedPartialPath = stripWrappingQuotes(partialPath);
-  if (flavor === 'remote') {
-    const homeRelative = normalizedPartialPath === '~' || normalizedPartialPath.startsWith('~/');
-    if (homeRelative && !homeDirectory) return null;
-    let expanded = homeRelative ? homeDirectory + normalizedPartialPath.slice(1) : normalizedPartialPath;
-    if (expanded === '.' || expanded === '..') expanded += '/';
-    const separator = expanded.lastIndexOf('/');
-    const directory = separator < 0 ? '' : expanded.slice(0, separator + 1);
-    const fragment = expanded.slice(separator + 1);
-    return {
-      lookupDirectory: directory.startsWith('/') ? directory : baseDirectory + '/' + directory,
-      typedDirectoryPrefix:
-        normalizedPartialPath === '.' || normalizedPartialPath === '..'
-          ? normalizedPartialPath + '/'
-          : normalizedPartialPath.slice(0, normalizedPartialPath.length - fragment.length),
-      fragment,
-    };
-  }
   const modulePath = path;
   const separatorPattern = /[\\/]/;
-  const normalizedHomeDirectory = (homeDirectory ?? (flavor === 'local' ? os.homedir() : '')).trim();
+  const normalizedHomeDirectory = os.homedir();
   const isHomeRelativePath = normalizedPartialPath === '~' || normalizedPartialPath.startsWith('~/');
 
   const expandedPartialPath = isHomeRelativePath
-    ? `${flavor === 'local' ? os.homedir() : normalizedHomeDirectory}${normalizedPartialPath.slice(1)}`
+    ? `${normalizedHomeDirectory}${normalizedPartialPath.slice(1)}`
     : normalizedPartialPath;
 
   if (isHomeRelativePath && !normalizedHomeDirectory) {
@@ -204,7 +178,7 @@ const preparePathLookup = (
 export const createLocalPathProvider =
   (cwd: string) =>
   async (context: TerminalPathCompletionContext): Promise<TerminalPathEntry[]> => {
-    const lookup = preparePathLookup(context.partialPath, cwd, 'local');
+    const lookup = preparePathLookup(context.partialPath, cwd);
     if (!lookup) {
       return [];
     }
@@ -223,59 +197,3 @@ export const createLocalPathProvider =
       return [];
     }
   };
-
-const escapeSingleQuotedForSh = (value: string): string => {
-  return value.replace(/'/g, "'\"'\"'");
-};
-
-/**
- * Creates a path completion provider for SSH sessions backed by separate exec channels.
- * @param options helper callbacks to fetch and execute remote directory scans.
- * @returns provider function consumed by completion engine.
- */
-export const createRemotePathProvider = (options: {
-  resolveCwd: () => Promise<string | null>;
-  resolveHomeDirectory?: () => Promise<string | null>;
-  executeCommand: (command: string) => Promise<string>;
-}) => {
-  return async (context: TerminalPathCompletionContext): Promise<TerminalPathEntry[]> => {
-    const cwd = await options.resolveCwd();
-    if (!cwd) {
-      return [];
-    }
-
-    const normalizedPartialPath = stripWrappingQuotes(context.partialPath);
-    const homeDirectory =
-      normalizedPartialPath === '~' || normalizedPartialPath.startsWith('~/')
-        ? await options.resolveHomeDirectory?.()
-        : null;
-    const lookup = preparePathLookup(context.partialPath, cwd, 'remote', homeDirectory);
-    if (!lookup) {
-      return [];
-    }
-
-    const escapedDirectory = escapeSingleQuotedForSh(lookup.lookupDirectory);
-    const command = `sh -lc 'set +e; dir='"'"'${escapedDirectory}'"'"'; count=0; for p in "$dir"/* "$dir"/.*; do [ -e "$p" ] || continue; name=\${p##*/}; [ "$name" = "." ] && continue; [ "$name" = ".." ] && continue; if [ -d "$p" ]; then printf "D\t%s\n" "$name"; else printf "F\t%s\n" "$name"; fi; count=$((count+1)); if [ "$count" -ge ${MAX_REMOTE_SCAN_ENTRIES} ]; then break; fi; done'`;
-
-    try {
-      const output = await options.executeCommand(command);
-      const mappedEntries: TerminalPathEntry[] = output
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 2 && line.includes('\t'))
-        .map((line) => {
-          const [type, ...parts] = line.split('\t');
-          const name = parts.join('\t').trim();
-          return {
-            name,
-            kind: type === 'D' ? 'directory' : 'file',
-          } as TerminalPathEntry;
-        })
-        .filter((entry) => entry.name.length > 0);
-
-      return rankPathEntries(mappedEntries, lookup, context);
-    } catch {
-      return [];
-    }
-  };
-};

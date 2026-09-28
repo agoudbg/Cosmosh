@@ -125,6 +125,26 @@ export type ShellEditorRequest = {
   replacement?: ShellEditorBuffer;
 };
 
+/** Data-only directory query sent to the installed helper through bounded SSH stdin. */
+export type ShellPathQueryRequest = {
+  directory: string;
+  fragment: string;
+  directoriesOnly: boolean;
+  fuzzyMatch: boolean;
+  limit: number;
+};
+
+/** Complete literal directory entry; names are never split or trimmed. */
+export type ShellPathEntry = { name: string; kind: 'file' | 'directory' };
+
+/** Stable directory source outcome; partial indicates the scan reached 10,000 entries. */
+export type ShellPathQueryResult = {
+  status:
+    'ok' | 'partial' | 'denied' | 'missing' | 'not-directory' | 'invalid' | 'unavailable' | 'timeout' | 'cancelled';
+  entries: ShellPathEntry[];
+  scanned: number;
+};
+
 /** User permissions are independent of the capabilities installed by a helper. */
 export type ShellPermissions = {
   cwd: boolean;
