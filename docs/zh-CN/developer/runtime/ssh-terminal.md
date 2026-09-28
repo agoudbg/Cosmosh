@@ -120,7 +120,8 @@ Locale 行为：
 - 后端命令历史来源于远端 history 探测与 shell 历史解析结果。
 - 每次 SSH 会话建立后，后端都会执行远端 history 探测并解析为标准化命令列表。
 - 远端历史来源按兼容顺序探测（shell 内建 + 常见历史文件），覆盖 Bash/Zsh/Fish/Ksh/Ash 等格式，并在可用时兼容 PowerShell PSReadLine 历史。
-- 运行时 REPL 专用历史（例如 `.node_repl_history`）会被排除，不作为 shell 命令历史聚合来源。
+- 程序专用输入记录（`.node_repl_history`、`.python_history`、`.sqlite_history`、`.mysql_history`及`.lesshst`）不作为 Shell 命令历史来源。
+- SSH 与本地终端输入处理器只转发 PTY 输入，不保留命令缓冲，也不把按键内容加入补全历史。密码提示和交互程序共用同一输入通道，仅凭回车无法确认 Shell 命令。历史只从 Shell 自身的历史来源读取，原始`cd`输入不会更新补全目录。
 - 当已激活的可信 helper 声明 `command-start` 时，backend 将每个唯一 `commandId` 作为命令计数与延迟 history 刷新的权威触发源。重复生命周期事件不会重复计数。
 - 只有 session 不具备已激活的结构化命令生命周期时，原始 `input` 中的提交字符（`\r` / `\n`）才触发既有的“延迟 + 节流”history 刷新，为禁用或降级 helper 保留保守 fallback。
 - history 与 telemetry 解耦：telemetry 仍为定时采样，history 可通过 `history` 事件即时推送。
@@ -139,8 +140,7 @@ Locale 行为：
 - prompt 解析支持用户配置：`terminalAutoCompletePromptRegex`（设置 > 终端 > 自动补全）。配置后将优先使用该正则覆盖默认 prompt 裁剪；留空或正则无效时回退到内置启发式策略。
 - 渲染层还会在 `completion-request` 中携带来源过滤开关（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`、`includePasswordSuggestions`），其值来自设置项，且默认全部开启。
 - 后端补全引擎由 SSH 与本地终端会话服务共享，候选来源合并为：
-  - 当前会话实时输入流提取的交互命令（历史信号，按会话隔离），
-  - 同步得到的 shell 历史快照会合并进补全历史缓存，保证在会话初期也能提供历史补全，
+  - 同步得到的 Shell 历史快照会合并进当前会话的补全历史缓存，
   - 来自 inshellisense/Fig 资源的命令元数据（规范信号，按完整命令路径索引生成，而非仅根命令子集），
   - 在同一排序流水线中组合的运行时 provider（路径补全 provider 与交互式密钥提示 provider）。
 - 补全引擎的 token 解析按会话 shell 类型区分：SSH 使用 POSIX 规则；本地 PowerShell/CMD 使用 Windows 友好规则，反斜杠会作为路径字面字符保留，而不是通用转义符。
@@ -165,7 +165,7 @@ Locale 行为：
   - 内置路径规则当前覆盖目录优先导航命令（`cd`、`pushd`）与常见文件/路径消费命令（`cat`、`vim`、`vi`、`nvim`、`nano`、`less`、`more`、`head`、`tail`、`grep`、`rg`、`sed`、`awk`、`find`、`ls`、`touch`、`rm`、`cp`、`mv`、`chmod`、`chown`、`chgrp`、`ln`、`tar`、`unzip`、`zip`、`scp`、`sftp`、`rsync`），以及命令位的直接路径前缀（`./`、`../`、`/`、`~`），
   - 相对路径的部分输入（例如 `cd ../../c`）会基于会话跟踪的工作目录解析，并按“前缀优先、包含回退”匹配排序，
   - SSH 的 home 相对输入（`~` / `~/...`）会基于探测到的远端 `$HOME` 展开后扫描目录，同时在返回候选中保留用户输入的 `~/` 前缀，
-  - SSH 会话会在后台初始化补全 cwd/home，并让路径请求共享这次进行中的探测；在 cwd 尚未知时提交的 `cd` 命令会在首次 cwd 探测完成后重放，避免会话初期的相对路径补全错误回退到登录目录，
+  - SSH 会话会在后台初始化补全 cwd/home，并让路径请求共享这次进行中的探测；不会保留输入来预测目录变化，
   - 输入触发（typing）的请求会对路径 provider 使用短超时预算，避免慢文件系统探测阻塞命令/历史/规范候选；手动 `Tab` 触发仍使用完整 provider 结果，
   - SSH 路径补全的 typing 预算会大于本地终端，因为远端 exec 延迟受网络影响；这避免香港/海外等高延迟服务器仅因首次目录扫描超过本地文件系统预算就返回空的运行时路径候选，
   - 远程 SSH 路径扫描使用 POSIX 参数展开（`${p##*/}`）替代 GNU 专有 `basename --`，以保证在 GNU/Linux、BSD/macOS 与 BusyBox 环境下都能稳定补全，

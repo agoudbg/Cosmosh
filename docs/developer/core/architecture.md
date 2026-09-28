@@ -49,6 +49,7 @@ Development and packaging intentionally use different native targets. The Main a
 
 ### Backend Process (`packages/backend/src/index.ts`)
 
+- SSH and local PTY input is forwarded without retaining a command-line buffer for history or predicted directory changes. Completion history comes from Shell-owned history sources; interpreter/database input stores are excluded.
 - Registers idempotent graceful-shutdown flow for runtime signals and fatal process events.
 - Exposes internal-token-protected runtime connection summary/close operations used only by Main's close guard; renderer does not receive a bulk-disconnect bridge.
 - Shutdown order is explicit: stop WS session services, close HTTP listener, then disconnect Prisma/SQLite handles.

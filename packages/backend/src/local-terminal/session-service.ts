@@ -15,7 +15,6 @@ import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../
 import { createLocalPathProvider } from '../terminal/completion/path-providers.js';
 import {
   type CompletionPromptState,
-  updateLocalCompletionCwd,
   updatePromptStateFromInput,
   updatePromptStateFromOutput,
 } from '../terminal/completion/runtime-state.js';
@@ -25,10 +24,8 @@ import {
   mergeTerminalRecentCommands,
   normalizeTerminalClientMessage,
   parseTerminalHistoryOutput,
-  TERMINAL_HISTORY_MAX_ENTRIES,
   TERMINAL_TELEMETRY_INTERVAL_MS,
   type TerminalClientInboundMessage,
-  updateInteractiveCompletionState,
 } from '../terminal/shared.js';
 
 const execFileAsync = promisify(execFile);
@@ -97,7 +94,6 @@ type LocalLiveSession = TerminalManagedSessionBase & {
   historySyncPending: boolean;
   lastHistorySyncStartedAtMs: number;
   recentCommands: string[];
-  completionLineBuffer: string;
   completionRecentCommands: string[];
   completionWorkingDirectory: string;
   completionPromptState: CompletionPromptState;
@@ -338,7 +334,6 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       historySyncPending: false,
       lastHistorySyncStartedAtMs: 0,
       recentCommands: [],
-      completionLineBuffer: '',
       completionRecentCommands: [],
       completionWorkingDirectory: workingDirectory,
       completionPromptState: {
@@ -398,18 +393,8 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
     }
 
     if (message.type === 'input') {
-      const interactiveState = {
-        lineBuffer: session.completionLineBuffer,
-        recentCommands: session.completionRecentCommands,
-      };
-      updateInteractiveCompletionState(interactiveState, message.data, {
-        maxEntries: TERMINAL_HISTORY_MAX_ENTRIES,
-        onCommandSubmitted: (command) => {
-          session.completionWorkingDirectory = updateLocalCompletionCwd(session.completionWorkingDirectory, command);
-        },
-      });
-      session.completionLineBuffer = interactiveState.lineBuffer;
-      session.completionRecentCommands = interactiveState.recentCommands;
+      // Local PTYs have the same password/program boundary as SSH. Raw input is
+      // transport data, never a substitute for the Shell's own command history.
       session.completionPromptState = updatePromptStateFromInput(session.completionPromptState, message.data);
 
       if (/\r|\n/.test(message.data)) {

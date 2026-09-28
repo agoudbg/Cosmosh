@@ -35,7 +35,6 @@ import {
   resolveRemotePromptCwd,
   updatePromptStateFromInput,
   updatePromptStateFromOutput,
-  updateRemoteCompletionCwd,
 } from '../terminal/completion/runtime-state.js';
 import {
   clampTerminalSize,
@@ -43,10 +42,8 @@ import {
   mergeTerminalRecentCommands,
   normalizeTerminalClientMessage,
   parseTerminalHistoryOutput,
-  TERMINAL_HISTORY_MAX_ENTRIES,
   TERMINAL_TELEMETRY_INTERVAL_MS,
   type TerminalClientInboundMessage,
-  updateInteractiveCompletionState,
 } from '../terminal/shared.js';
 import {
   openSshClient,
@@ -160,7 +157,6 @@ type SshLiveSession = TerminalManagedSessionBase & {
   lastHistorySyncStartedAtMs: number;
   commandCount: number;
   recentCommands: string[];
-  completionLineBuffer: string;
   completionRecentCommands: string[];
   completionWorkingDirectory: string | null;
   completionHomeDirectory: string | null;
@@ -199,7 +195,7 @@ type ParsedRemoteTelemetry = {
 const TELEMETRY_COMMAND =
   ' sh -lc \'cpu=$(top -bn1 | awk -F"[, ]+" "/Cpu\\(s\\)|%Cpu\\(s\\)/ {for(i=1;i<=NF;i++){if($i==\\"id\\"){print 100-$(i-1); exit}}}"); if [ -z "$cpu" ]; then cpu=$(awk "/^cpu /{idle=$5;total=0;for(i=2;i<=NF;i++){total+=$i} if(total>0){print (total-idle)*100/total}else{print 0}}" /proc/stat); fi; mem=$(free -b | awk "/^Mem:/ {print \\$3 \\" \\" \\$2}"); net=$(awk "NR>2 {rx+=\\$2;tx+=\\$10} END {print rx \\" \\" tx}" /proc/net/dev); printf "%s\\n%s\\n%s\\n" "${cpu:-0}" "${mem:-0 0}" "${net:-0 0}"\'';
 const REMOTE_HISTORY_FETCH_COMMAND =
-  ' sh -lc \'set +e; if command -v history >/dev/null 2>&1; then history 2>/dev/null; fi; for file in "$HISTFILE" "$HOME/.bash_history" "$HOME/.zsh_history" "$HOME/.ash_history" "$HOME/.sh_history" "$HOME/.mksh_history" "$HOME/.ksh_history" "$HOME/.local/share/fish/fish_history" "$HOME/.python_history" "$HOME/.sqlite_history" "$HOME/.mysql_history" "$HOME/.lesshst"; do if [ -n "$file" ] && [ -f "$file" ]; then cat "$file" 2>/dev/null; fi; done; if command -v pwsh >/dev/null 2>&1; then pwsh -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi; if command -v powershell >/dev/null 2>&1; then powershell -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi\'';
+  ' sh -lc \'set +e; if command -v history >/dev/null 2>&1; then history 2>/dev/null; fi; for file in "$HISTFILE" "$HOME/.bash_history" "$HOME/.zsh_history" "$HOME/.ash_history" "$HOME/.sh_history" "$HOME/.mksh_history" "$HOME/.ksh_history" "$HOME/.local/share/fish/fish_history"; do if [ -n "$file" ] && [ -f "$file" ]; then cat "$file" 2>/dev/null; fi; done; if command -v pwsh >/dev/null 2>&1; then pwsh -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi; if command -v powershell >/dev/null 2>&1; then powershell -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi\'';
 // LC_ALL is intentionally omitted so remote time, sorting, and numeric locale categories remain user-controlled.
 const REMOTE_SHELL_UTF8_ENV = {
   LANG: 'C.UTF-8',
@@ -634,7 +630,6 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       lastHistorySyncStartedAtMs: 0,
       commandCount: 0,
       recentCommands: [],
-      completionLineBuffer: '',
       completionRecentCommands: [],
       completionWorkingDirectory: null,
       completionHomeDirectory: null,
@@ -1420,25 +1415,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
-      const interactiveState = {
-        lineBuffer: session.completionLineBuffer,
-        recentCommands: session.completionRecentCommands,
-      };
-      updateInteractiveCompletionState(interactiveState, message.data, {
-        maxEntries: TERMINAL_HISTORY_MAX_ENTRIES,
-        onCommandSubmitted: (command) => {
-          if (!session.completionWorkingDirectory) {
-            session.completionPendingCwdCommands.push(command);
-            return;
-          }
-
-          session.completionWorkingDirectory = updateRemoteCompletionCwd(session.completionWorkingDirectory, command, {
-            homeDirectory: session.completionHomeDirectory,
-          });
-        },
-      });
-      session.completionLineBuffer = interactiveState.lineBuffer;
-      session.completionRecentCommands = interactiveState.recentCommands;
+      // PTY input may belong to a password prompt or another program. Only Shell-owned
+      // history is eligible for completion; keystrokes must never be retained as commands.
       session.completionPromptState = updatePromptStateFromInput(session.completionPromptState, message.data);
 
       const usesStructuredCommandLifecycle = usesStructuredRemoteCommandLifecycle(

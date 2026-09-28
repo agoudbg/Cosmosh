@@ -49,6 +49,7 @@ flowchart LR
 
 ### Backend 进程 (`packages/backend/src/index.ts`)
 
+- SSH 与本地 PTY 输入直接转发，不保留用于历史记录或预测目录变化的命令缓冲。补全历史来自 Shell 自身的历史来源，排除解释器和数据库程序的输入记录。
 - 注册幂等的优雅关闭流程，覆盖运行时信号与致命进程事件。
 - 暴露仅由 Main 关闭守卫使用、受内部 token 保护的运行时连接汇总/关闭操作；renderer 不获得批量断开 bridge。
 - 关闭顺序固定：先停 WS 会话服务，再关闭 HTTP 监听，最后断开 Prisma/SQLite 连接句柄。
