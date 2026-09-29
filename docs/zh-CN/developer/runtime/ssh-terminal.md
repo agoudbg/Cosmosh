@@ -343,7 +343,9 @@ flowchart LR
 
 真实测试入口在环境不可用时明确失败。单元测试通过不能证明真实 Shell、网络延迟或 Electron 交互已得到验证。
 
-输入顺序验证包含 Linux 元数据／会话测试、模拟 0／150／300 ms 往返延迟的三项真实 Bash SSH 场景，以及经过生产送达传输的 35 项 Fish 编辑器场景。Zsh 原生填写也已在 5.8 和 5.9 上进行真实 PTY／文件锁检查。受支持版本限定为 Bash 5.1／5.2、Zsh 5.8／5.8.1／5.9 和 Fish 4.0.1；本轮验证没有独立运行 Zsh 5.8.1。完整 Electron 和架构／版本矩阵仍须验收。这些检查不会开启候选编号菜单，也不代表终端整治计划已全部验收。
+输入顺序验证包含 Linux 元数据／会话测试、模拟 0／150／300 ms 往返延迟的三项真实 Bash SSH 场景，以及经过生产送达传输的 35 项 Fish 编辑器场景。Zsh 原生填写也已在 5.8 和 5.9 上进行真实 PTY／文件锁检查。受支持版本限定为 Bash 5.1／5.2、Zsh 5.8／5.8.1／5.9 和 Fish 4.0.1；本轮验证没有独立运行 Zsh 5.8.1。
+
+完整 Electron 验收使用实际 Main／preload、Node Backend、SQLCipher、xterm UI 事件和一次性 OpenSSH 账号。Linux Electron 43.7.1／Node 24.21 通过 Bash、Zsh 和 Fish；Windows Electron 43.7.1 通过 Fish，打包后的`win-unpacked` Windows 应用重复通过完整 Fish 流程。每种 Shell 都验证了主机指纹信任、SHA 校验的助手安装／更新、原始编辑器就绪、快速输入逐字节精确、私密原生历史、按不透明候选填写且不发送回车、中间光标路径修改、旧建议失效、原生 Tab／历史键、权限撤销与不重连恢复、基于新鲜物理 CWD 的相对 SFTP 交接，以及无渲染错误或输入 containment 警告。同一组本机构建的 amd64 助手字节在更新检查中下载三次；arm64 助手已完成构建和哈希校验，但未在远端执行。完整桌面流程未单独加入网络延迟：0／150／300 ms 覆盖仍位于真实送达传输边界。Windows x64 NSIS 安装器和 blockmap 已成功构建，但执行安装器仍是单独的打包检查。Windows 开发 profile 因主机 Prisma schema-engine CLI 在两个源码工作区均失败而先种入空 SQLite 数据库；随后实际 Backend 运行时成功应用全部内置迁移。
 
 凭据回归覆盖真实密码输入不会自动提交，以及真实加密私钥登录不会复用口令。测试仅隔离数据库／传输边界，直接使用生产凭据处理器。单元测试包含设置读取延迟、重复点击、新提示／清除提示、过期、连接替换、会话释放与分屏结果隔离。
 
@@ -351,9 +353,9 @@ flowchart LR
 
 运行`pnpm --filter @cosmosh/renderer dev --port 28767`，再使用`playwright-cli open`打开`http://127.0.0.1:28767/tests/terminal-autocomplete.html`。在仓库根目录执行`playwright-cli run-code --filename=packages/renderer/tests/terminal-completion.browser.cjs`。产物保存在已忽略的`.playwright-cli/`目录；检查结束后关闭浏览器并停止 Vite。
 
-独立密码操作使用`/tests/terminal-credential.html`，执行`playwright-cli run-code --filename=packages/renderer/tests/terminal-credential.browser.cjs`。测试使用生产组件、分屏 reducer 和真实 xterm，只替换服务端操作／结果消息及请求捕获边界。检查处理中禁用按钮、保留焦点、不携带密码的请求、手动回车提示、过期、断开连接和窄窗口边界。完整 Electron 会话接线仍需独立验收。
+独立密码操作使用`/tests/terminal-credential.html`，执行`playwright-cli run-code --filename=packages/renderer/tests/terminal-credential.browser.cjs`。测试使用生产组件、分屏 reducer 和真实 xterm，只替换服务端操作／结果消息及请求捕获边界。检查处理中禁用按钮、保留焦点、不携带密码的请求、手动回车提示、过期、断开连接和窄窗口边界。密码专用 Electron 接线仍需独立验收。
 
-这些检查使用实际的 xterm、补全 Hook 与菜单，覆盖只展示提示时的按键、明确进入列表、组合键、输入法、过时响应、分屏与焦点切换、原生 Tab 输出同步，以及终端会话依赖回调的稳定性。仅替换 WebSocket 传递边界。真实远端编辑器行为及完整 Electron 会话生命周期仍须通过 SSH／Electron 验收。
+这些检查使用实际的 xterm、补全 Hook 与菜单，覆盖只展示提示时的按键、明确进入列表、组合键、输入法、过时响应、分屏与焦点切换、原生 Tab 输出同步，以及终端会话依赖回调的稳定性。仅替换 WebSocket 传递边界。真实远端编辑器行为和完整 Electron 生命周期已由上方的必需 SSH fixture 验收覆盖；这些浏览器文件保持为渲染边界回归。
 
 ## 8. 远端增强运行时
 
@@ -461,7 +463,7 @@ sequenceDiagram
 
 Shell 仍须确认原始读取器符合条件、完整观察匹配。最终临界区以不等待的方式取得元数据锁，重新检查状态和排队输入，消费有效授权，完成本地修改，并在恢复信号、重绘或远端回执之前释放锁。因此输入接收和修改具有明确顺序：较新的接收序号会拒绝旧修改；已经进入临界区的修改会先完成，随后才能记录新输入。等待桌面授权时绝不持锁。转发器更新元数据最多重试取锁 1.5 秒，无法继续则关闭会话，不强行解锁或重放输入，从而限制适配器损坏或中断对普通输入的影响。
 
-送达传输也覆盖真实 SSH 凭据输入、任务控制、Ctrl+D／退出、断线和前台编辑器。精确菜单已接入，完整 Electron 验收仍待完成。启动后关闭增强数据权限会保留已经建立的终端传输；打开会话时已关闭增强，则使用普通`shell()`。
+送达传输也覆盖真实 SSH 凭据输入、任务控制、Ctrl+D／退出、断线和前台编辑器。精确菜单已接入，并由 Linux Bash／Zsh／Fish 与 Windows Fish Electron 流程覆盖。启动后关闭增强数据权限会保留已经建立的终端传输；打开会话时已关闭增强，则使用普通`shell()`。
 
 ### 8.2.1 远端 Shell 事件协议
 
@@ -596,7 +598,7 @@ sequenceDiagram
 - 目录与输入权限独立检查。输入、权限变化、WebSocket 客户端替换、生命周期事件及会话结束会取消请求并清除快照。原生回调取消不需要废弃已注入的按键。授权后丢失确认仍返回`unknown`，不会自动重放修改。
 - 敏感缓冲直接在原生内存与私有 socket 之间传输，不进入 Shell tracing、DEBUG 或用户替换的`printf`函数。私有`history`基础操作按最新优先读取 Bash 已接受的内存历史，不包含输入或目录字段。关闭历史记录或 HISTFILE 未设置／为空时返回私密状态；上限为 200 条、每条 8 KiB、总量 64 KiB，最多检查 2,000 条记录。精确删除另行取得授权并完整扫描原生列表，不写入历史文件；上限与仅当前读取器有效的结果见下文。
 
-真实 SSH 回归测试位于`src/terminal/integration/editor-bridge.live-test.ts`和`native-bash.live-test.ts`，覆盖原生填写／撤销、隐私、取消、模块失效、信号按键调整、原提示符／DEBUG 行为及私有端点归属。有序 Bash 检查还覆盖 0／150／300 ms 往返延迟。最终仍须完成 Electron 及完整版本矩阵验收。
+真实 SSH 回归测试位于`src/terminal/integration/editor-bridge.live-test.ts`和`native-bash.live-test.ts`，覆盖原生填写／撤销、隐私、取消、模块失效、信号按键调整、原提示符／DEBUG 行为及私有端点归属。有序 Bash 检查还覆盖 0／150／300 ms 往返延迟。最终 Electron 路径已执行；完整版本／架构矩阵仍缺少独立 Zsh 5.8.1 和远端 arm64 执行。
 
 #### Zsh 私有编辑器交互
 
@@ -616,7 +618,7 @@ Zsh 适配器复用上述有界工作进程、私有 socket、输入边界、权
 - 在多个检查／赋值命令外包一层 Shell 脚本文件锁不能提供此边界：SIGWINCH 可以在内置命令之间重新进入提示符计算，使提示符代码运行时输入接收仍等待锁。原生内置命令把信号延后、比较及赋值放在同一次本地操作中，在任何提示符或网络工作前释放锁。
 - 取消不会注入按键或锁定提示符代数。重复 source 保留管道和身份；用户移除的注册不会被静默重新接管。读取回调会先校验描述符、FIFO 类型、inode、UID 和注册归属。失去归属的描述符不被读取或关闭；EOF 或永久错误只移除 Cosmosh 自己的回调，暂时无数据时继续保留。
 
-`src/terminal/integration/zsh-editor.live-test.ts`测试真实 Zsh 5.9、autosuggestions 0.7.0、syntax-highlighting 0.7.1、原生补全与提示符钩子，覆盖私有内容 tracing、连续删除／恢复文字、排队按键、密码读取、取消与激活竞态、异步目录／HOME 及组合字符。原生模块还在 Zsh 5.8 和 5.9 上通过真实 PTY／文件锁检查，覆盖填写、撤销、拒绝、按键映射身份及模块生命周期。Zsh 5.8.1 属于明确允许的版本，但本轮未独立运行；完整 Electron／架构矩阵仍须验收。API 行为遵循[Zsh 行编辑器文档](https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html)；只读 trap 的差异通过 Zsh 编辑器实现和真实 SSH 测试确认。
+`src/terminal/integration/zsh-editor.live-test.ts`测试真实 Zsh 5.9、autosuggestions 0.7.0、syntax-highlighting 0.7.1、原生补全与提示符钩子，覆盖私有内容 tracing、连续删除／恢复文字、排队按键、密码读取、取消与激活竞态、异步目录／HOME 及组合字符。原生模块还在 Zsh 5.8 和 5.9 上通过真实 PTY／文件锁检查，覆盖填写、撤销、拒绝、按键映射身份及模块生命周期。Zsh 5.8.1 属于明确允许的版本，但本轮未独立运行。API 行为遵循[Zsh 行编辑器文档](https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html)；只读 trap 的差异通过 Zsh 编辑器实现和真实 SSH 测试确认。
 
 #### Fish 私有编辑器交互
 
@@ -631,13 +633,13 @@ Fish 复用相同的私有请求、授权和确认流程，以固定的`notifica
 - 修改操作在等待桌面授权前结束第一次捕获回调，再通过第二次 pidfd 通知重新捕获和比较。填写函数使用`block --local`暂缓事件；作用域内继承的 FD 9 保持元数据锁，助手在其中消费授权并检查 PTY 待处理字节。函数在原生缓冲／光标赋值前复核实际读取器、模式、分页、选区、完整原文及光标。撤销组结束、排队事件、重绘、拒绝或远端确认发生之前，描述符已经关闭。等待桌面及重绘期间不持锁。
 - 精确填写还比较请求的目录元数据，把替换和光标移动组合为一次原生撤销操作，再确认实际赋值结果，不求值或发送回车。Fish 会丢弃命令替换中的空字段，因此私有传输用明确标记表示空输入。文本只存在于内存和私有管道／socket 交互中。历史删除消费独立的完整记录授权，释放锁之后才进行历史／文件操作，不编辑当前输入缓冲。
 
-`src/terminal/integration/fish-editor.live-test.ts`通过真实 SSH 测试官方 4.0.1 和发行版 Fish 3.6，覆盖 Unicode、中间编辑、旧建议拒绝、一次撤销、原生灰色建议、密码输入、搜索／选区／vi／多行拒绝、自定义按键边界和不触发自动加载的检查。测试环境按 SHA-256 固定官方发行文件。完整 Electron、延迟、版本矩阵验收及前端补全接入仍属于计划后续步骤。
+`src/terminal/integration/fish-editor.live-test.ts`通过真实 SSH 测试官方 4.0.1 和发行版 Fish 3.6，覆盖 Unicode、中间编辑、旧建议拒绝、一次撤销、原生灰色建议、密码输入、搜索／选区／vi／多行拒绝、自定义按键边界和不触发自动加载的检查。测试环境按 SHA-256 固定官方发行文件。完整 Electron 与前端补全接入已在 Fish 4.0.1 上执行；延迟覆盖仍位于传输层，Fish 3.6 保持普通终端／原生按键支持。
 
 #### 独立 Fish 原生候选来源
 
 私有`native-completion`操作要求 Backend 持有的当前输入快照、独立的原生补全／输入／CWD 权限、可用的原始 Fish 编辑器和已确认物理目录。工作进程在未变化的送达边界重新观察并比较输入、光标、提示符、模式及目录。回调只通过远端经过身份检查的私有 socket 传输原始导出环境，不把这份环境附在桌面端响应中。快照编排按已保存的查询模式，将仅供展示的 Fish 候选与当前其他来源合并。
 
-`terminalNativeCompletionMode`使用现有设置选择器，路径为`advanced.runtime.remoteEnhancements.nativeCompletionMode`，可选`off`、`manual`（新配置默认值）和`automatic`，分别表示不查询、主动进入建议列表时查询和随输入查询。菜单接入完成前，界面明确说明仅保存选择供后续使用；切换模式不会发起查询。`off`关闭 Backend 查询权限，其余模式仍受全局和服务器增强开关限制。后续消费者必须同时执行查询时机约束，以及输入／CWD 能力和权限检查。
+`terminalNativeCompletionMode`使用现有设置选择器，路径为`advanced.runtime.remoteEnhancements.nativeCompletionMode`，可选`off`、`manual`（新配置默认值）和`automatic`，分别表示不查询、主动进入建议列表时查询和随输入查询。菜单消费者同时执行所选查询时机及输入／CWD 能力与权限检查。`off`关闭 Backend 查询权限，其余模式仍受全局和服务器增强开关限制。
 
 已保存配置和前端启动缓存使用同一个设置规范化函数。旧的`terminalNativeCompletionEnabled: false`转换为`off`，`true`转换为`manual`；有效的显式模式优先于旧开关。显式模式无效，或没有模式且旧开关格式错误时，结果为`off`；设置缺失时使用新默认值。规范化结果移除旧字段。当前 HTTP／JSON 写入要求当前结构，拒绝旧字段和无效值，无需变更数据库表结构。
 
@@ -666,7 +668,7 @@ Fish 公开的`complete --do-complete --escape`返回**补全后的当前字词*
 
 说明文字只用于普通文本展示，最多 1 KiB，包含控制字符的说明被忽略。Fish 直接添加说明中的 LF／TAB，导致多行说明与额外候选可能完全相同；公开接口无法恢复其来源。这些行仍须通过字面验证和重新引用，但该来源不能保证完整复制原生 Tab 的列表。不支持的控制字符文件名被忽略，并将结果标为`partial`，原生 Tab 继续可用。结果必须包含固定结束帧。`timeout`及`unavailable`不携带候选；输入、权限或归属变化后，即使 SSH 清理阶段已经收到结果，也不能发布。
 
-真实 SSH 测试`native-completion.live-test.ts`覆盖实际 Git 分支、已安装自定义补全、原始导出变量／CWD、不复制临时定义、旧输入拒绝、编辑器响应及慢脚本子进程取消。Linux 助手测试覆盖特殊文件名、说明歧义、启动／结果大小限制、同名函数覆盖、超时，以及使用小容量输入管道的独立读者。最终仍须完成 Electron、网络延迟和打包版本验收。
+真实 SSH 测试`native-completion.live-test.ts`覆盖实际 Git 分支、已安装自定义补全、原始导出变量／CWD、不复制临时定义、旧输入拒绝、编辑器响应及慢脚本子进程取消。Linux 助手测试覆盖特殊文件名、说明歧义、启动／结果大小限制、同名函数覆盖、超时，以及使用小容量输入管道的独立读者。这些测试补充完整 Electron 矩阵；延迟仍位于传输层，打包版本覆盖见上文。
 
 #### 绑定输入快照的补全修改
 
@@ -698,7 +700,7 @@ Fish 公开的`complete --do-complete --escape`返回**补全后的当前字词*
 
 前端分别保存各分屏展示中的查询／快照与等待中的填写。查询等待期间允许最初的上下文确认；展示更新要求`contextRevision`与当前值完全相同。分屏、焦点、权限／设置、输入或传输变化会取消等待中的工作。公开补全消息只包含展示资料；原始快照、替换内容和来源查询数据不持久化，也不写入日志。本地终端对这个协议明确返回不可用。
 
-`snapshot-completion.test.ts`使用真实编辑器／来源控制器，仅隔离 SSH／设置边界，覆盖上下文／历史排队、等待时继续输入、累积候选编号、慢查询期间填写、延迟取消、未知确认、来源隐私、设置变化和到期。`path-cleanup.test.ts`另外验证延迟关闭和安全停用来源。这些检查不替代完整 Electron→SSH 验收。
+`snapshot-completion.test.ts`使用真实编辑器／来源控制器，仅隔离 SSH／设置边界，覆盖上下文／历史排队、等待时继续输入、累积候选编号、慢查询期间填写、延迟取消、未知确认、来源隐私、设置变化和到期。`path-cleanup.test.ts`另外验证延迟关闭和安全停用来源。这些检查补充完整 Electron→SSH 验收矩阵。
 
 #### 基于快照的历史与命令资料基础
 
@@ -728,7 +730,7 @@ Fish 精确删除匹配当前命名空间内的所有相同文字。原生保存
 
 `fish-history.live-test.ts`通过 SSH 验证真实 Fish 4.0.1，覆盖从新到旧的去重、精确 Unicode／多行记录、跟踪模式、前导空格隐私、私密模式、禁用历史、自定义策略移除、超大记录和原生读取上限。移除测试覆盖完整文字、命名空间变化、授权撤销、已保存记录，以及独立不可写数据目录中的旧记录和近期记录。另一个原生行编辑器验证近期文件记录可能在当前会话移除后仍存在。单元和传输测试还覆盖独立权限、未请求字段、JSON 大小、取消、延迟清理和操作结果混用。
 
-`history-session.live-test.ts`使用真实 Fish PTY 驱动生产 OSC 解析器、会话服务、控制器和 SSH 传输，验证自动发布、历史库与来源替换、精确移除、拒绝旧来源，以及输入和 CWD 读取关闭时的历史权限清理。`tests/terminal-history.browser.cjs`使用生产分屏 reducer 和侧栏，仅替代 WebSocket 边界，覆盖完整复制、多行限制、来源／分屏／权限失效、明确的移除范围、等待与结果状态、窄窗口布局。完整 Electron→Backend→SSH 验收仍是单独的计划检查。
+`history-session.live-test.ts`使用真实 Fish PTY 驱动生产 OSC 解析器、会话服务、控制器和 SSH 传输，验证自动发布、历史库与来源替换、精确移除、拒绝旧来源，以及输入和 CWD 读取关闭时的历史权限清理。`tests/terminal-history.browser.cjs`使用生产分屏 reducer 和侧栏，仅替代 WebSocket 边界，覆盖完整复制、多行限制、来源／分屏／权限失效、明确的移除范围、等待与结果状态、窄窗口布局。这些检查补充完整 Electron→Backend→SSH 验收矩阵。
 
 ##### Bash
 
