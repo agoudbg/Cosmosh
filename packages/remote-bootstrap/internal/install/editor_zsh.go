@@ -3,6 +3,17 @@ package install
 // zshEditorHooks uses ZLE's descriptor callback without replacing any user key or widget.
 // A callback-local DEBUG trap exposes read-only ZLE parameters without changing native editing state.
 const zshEditorHooks = `
+__cosmosh_zsh_native_prepare() {
+  builtin emulate -L zsh
+  [[ "$__COSMOSH_NATIVE_PACKAGED" = 1 ]] || return 1
+  builtin cosmosh_editor_apply status >/dev/null 2>&1 && return 0
+  # Zsh accepts module names rather than absolute paths. Restrict lookup to the packaged
+  # directory in this function only; the user's module_path is restored on return.
+  builtin zmodload zsh/zle || return 1
+  local -a module_path=("${__COSMOSH_EDITOR_MODULE:h}")
+  builtin zmodload cosmosh_zsh 2>/dev/null && builtin cosmosh_editor_apply status >/dev/null 2>&1
+}
+
 __cosmosh_zsh_editor_owned() {
   builtin emulate -L zsh
   [[ "$__COSMOSH_EDITOR_OWNER_PID" = "$$" ]] || return 1
@@ -22,25 +33,26 @@ __cosmosh_zsh_editor_prepare() {
     __COSMOSH_EDITOR_NONCE="$__COSMOSH_SHELL_INSTANCE_ID"
     __COSMOSH_EDITOR_START="$("$__COSMOSH_EDITOR_BINARY" editor-identity "$$" 2>/dev/null)" || __COSMOSH_EDITOR_START=
     __COSMOSH_EDITOR_NOTIFY_INODE=
-    # The Shell owns both ends. CLOEXEC prevents children from extending the pipe lifetime.
-    # No filesystem FIFO, persistent process, or command text is needed.
+    # Native pipe creation provides NONBLOCK and CLOEXEC on both supported Zsh versions.
+    # The Shell owns both ends; no filesystem FIFO or persistent process is needed.
     if [[ -n "$__COSMOSH_EDITOR_START" ]] &&
-       builtin zmodload zsh/system && builtin zmodload zsh/stat && builtin zmodload zsh/parameter; then
-      local __cosmosh_temporary_fd
-      exec {__cosmosh_temporary_fd}< <(builtin true)
-      if builtin sysopen -r -u __COSMOSH_EDITOR_NOTIFY_FD -o cloexec,nonblock /proc/$$/fd/$__cosmosh_temporary_fd &&
-         builtin sysopen -w -u __COSMOSH_EDITOR_NOTIFY_KEEP_FD -o cloexec,nonblock /proc/$$/fd/$__cosmosh_temporary_fd; then
+       builtin zmodload zsh/system && builtin zmodload zsh/stat && builtin zmodload zsh/parameter &&
+       __cosmosh_zsh_native_prepare &&
+       builtin typeset -g +x __COSMOSH_EDITOR_NOTIFY_FD='' __COSMOSH_EDITOR_NOTIFY_KEEP_FD=''; then
+      if builtin cosmosh_editor_apply notification; then
         local -A __cosmosh_stat
-        if builtin zstat -H __cosmosh_stat -- /proc/$$/fd/$__COSMOSH_EDITOR_NOTIFY_FD; then
+        if builtin zstat -H __cosmosh_stat -- /proc/$$/fd/$__COSMOSH_EDITOR_NOTIFY_FD &&
+           builtin zle -F "$__COSMOSH_EDITOR_NOTIFY_FD" __cosmosh_zsh_editor_notify; then
           __COSMOSH_EDITOR_NOTIFY_INODE="$__cosmosh_stat[inode]"
-          builtin zle -F "$__COSMOSH_EDITOR_NOTIFY_FD" __cosmosh_zsh_editor_notify
+        else
+          exec {__COSMOSH_EDITOR_NOTIFY_FD}<&-
+          exec {__COSMOSH_EDITOR_NOTIFY_KEEP_FD}>&-
         fi
       fi
-      exec {__cosmosh_temporary_fd}<&-
     fi
   fi
   if [[ -n "$__COSMOSH_EDITOR_NOTIFY_INODE" ]] && __cosmosh_zsh_editor_owned &&
-     [[ "$(command locale charmap 2>/dev/null)" = UTF-8 ]]; then
+     [[ "$(command locale charmap 2>/dev/null)" = UTF-8 ]] && __cosmosh_zsh_native_prepare; then
     __COSMOSH_EDITOR_AVAILABLE=true
   fi
   __cosmosh_emit_remote_shell_event editor-state
@@ -133,7 +145,7 @@ __cosmosh_zsh_editor_observe() {
   local -a __cosmosh_request __cosmosh_response
   local __cosmosh_input=0 __cosmosh_line= __cosmosh_point= __cosmosh_pwd= __cosmosh_home=
   __cosmosh_request=("${(@f)$("$__COSMOSH_EDITOR_BINARY" editor-widget mode "$__COSMOSH_SHELL_INSTANCE_ID" zsh "$__COSMOSH_SHELL_OWNER_PID" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs 2>/dev/null)}")
-  [[ "$#__cosmosh_request" = 3 ]] || return 0
+  [[ "$#__cosmosh_request" = 6 ]] || return 0
   # Input received while the permission handshake ran must be consumed by the real editor first.
   if ! __cosmosh_zsh_editor_supported; then __cosmosh_zsh_editor_reject "$__cosmosh_request[1]"; return 0; fi
   case "$__cosmosh_request[2]" in
@@ -152,6 +164,10 @@ __cosmosh_zsh_editor_observe() {
     local __cosmosh_replacement
     __cosmosh_replacement="$(builtin printf '%s' "$__cosmosh_response[2]" | command base64 -d 2>/dev/null)" || return 0
     [[ "$__cosmosh_response[3]" = <-> ]] || return 0
+    local __cosmosh_replacement_point="$__cosmosh_response[3]"
+    local __cosmosh_prompt_generation="$__COSMOSH_PROMPT_GENERATION"
+    local __cosmosh_input_epoch="$__cosmosh_request[4]" __cosmosh_input_sequence="$__cosmosh_request[5]"
+    local __cosmosh_request_id="$__cosmosh_request[1]"
     # Only an explicitly authorized edit enters a writable widget and creates an editing boundary.
     # Register only for this request: startup plugins may wrap existing widgets, including private names.
     local __cosmosh_applied=0 __cosmosh_apply_widget="__cosmosh_apply_$__cosmosh_request[1]"
@@ -160,7 +176,8 @@ __cosmosh_zsh_editor_observe() {
       __cosmosh_zsh_editor_reject "$__cosmosh_request[1]"; return 0
     fi
     {
-      builtin zle "$__cosmosh_apply_widget" -f nolast -- 2>/dev/null || :
+      # This explicit edit is a real editing boundary; no read-only observation enters a widget.
+      builtin zle "$__cosmosh_apply_widget" -- 2>/dev/null || :
     } always {
       if [[ "$widgets[$__cosmosh_apply_widget]" = user:__cosmosh_zsh_editor_apply ]]; then
         builtin zle -D "$__cosmosh_apply_widget"
@@ -182,10 +199,16 @@ __cosmosh_zsh_editor_apply() {
   if ! __cosmosh_zsh_editor_supported || [[ "$BUFFER" != "$__cosmosh_line" || "$CURSOR" != "$__cosmosh_point" ]]; then
     __cosmosh_zsh_editor_reject "$__cosmosh_request[1]"; return 0
   fi
-  BUFFER="$__cosmosh_replacement"
-  CURSOR="$__cosmosh_response[3]"
-  __cosmosh_applied=1
-  builtin zle -R
+  # A single native operation masks resize/trap signals, rechecks the real editor, consumes
+  # the input grant, and assigns both values. All signals and input resume before redisplay.
+  local __cosmosh_apply_status=0
+  builtin cosmosh_editor_apply || __cosmosh_apply_status=$?
+  if [[ "$__cosmosh_apply_status" = 0 ]]; then
+    __cosmosh_applied=1
+    builtin zle -R
+  elif [[ "$__cosmosh_apply_status" = 1 ]]; then
+    __cosmosh_zsh_editor_reject "$__cosmosh_request[1]"
+  fi
   return 0
 }
 `

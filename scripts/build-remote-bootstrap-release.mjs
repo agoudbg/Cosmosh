@@ -101,7 +101,7 @@ const calculateSha256 = async (filePath) => {
 const buildAssets = async () => {
   await runCommand(
     process.execPath,
-    [path.join(scriptDir, "build-bash-native.mjs")],
+    [path.join(scriptDir, "build-shell-native.mjs")],
     {
       cwd: workspaceRoot,
       env: process.env,

@@ -242,7 +242,11 @@ test(
       const fd = event.notification.fd;
       if (failure === 'reused') {
         const boundary = terminal.write(
-          'exec {__COSMOSH_EDITOR_NOTIFY_FD}<&-; exec {__fixture_spare_fd}</etc/hostname; exec {__fixture_reused_fd}</etc/hostname; builtin printf "REUSED_FD:%s\\n" "$__fixture_reused_fd"\r',
+          'exec {__COSMOSH_EDITOR_NOTIFY_FD}<&-; builtin sysopen -r -u ' +
+            fd +
+            ' /etc/hostname && builtin printf "REUSED_FD:%s\\n" ' +
+            fd +
+            '\r',
         );
         await terminal.waitFor(new RegExp('REUSED_FD:' + fd + '\\r?\\n', 'u'), boundary);
       } else if (failure === 'eof') {
@@ -430,6 +434,7 @@ test(
     });
     const request: ShellEditorRequest = {
       requestId: randomUUID(),
+      inputBoundary: await fixture.inputBoundary(),
       target: { instanceId: event.shellInstanceId, shell: 'zsh', pid: event.pid, startTime: event.startTime },
       operation: 'snapshot',
       promptGeneration: event.promptGeneration,

@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/inputorder"
 )
 
 const (
@@ -68,6 +70,7 @@ type Snapshot struct {
 // Request is the private SSH-exec stdin protocol. Apply always includes the exact expected observation.
 type Request struct {
 	RequestID        string        `json:"requestId"`
+	InputBoundary    inputorder.Boundary `json:"inputBoundary"`
 	Target           Target        `json:"target"`
 	Operation        string        `json:"operation"`
 	PromptGeneration uint64        `json:"promptGeneration"`
@@ -120,6 +123,7 @@ func validTarget(target Target) bool {
 // validRequest confines each operation to its explicitly requested data.
 func validRequest(request Request) bool {
 	if !uuidPattern.MatchString(request.RequestID) || !validTarget(request.Target) ||
+		!validInputBoundary(request.InputBoundary) ||
 		request.PromptGeneration == 0 || request.PromptGeneration > 9007199254740991 {
 		return false
 	}
@@ -151,6 +155,12 @@ func validRequest(request Request) bool {
 	default:
 		return false
 	}
+}
+
+// validInputBoundary requires a canonical connection UUID and an exactly representable input sequence.
+func validInputBoundary(boundary inputorder.Boundary) bool {
+	return uuidPattern.MatchString(boundary.Epoch) && boundary.Epoch[14] == '4' &&
+		strings.ContainsRune("89ab", rune(boundary.Epoch[19])) && boundary.Sequence <= 9007199254740991
 }
 
 // validNotification prevents either out-of-band adapter from falling back to terminal key injection.

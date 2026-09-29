@@ -65,7 +65,9 @@ func TestNativeHistoryCannotBorrowInputOrDirectoryPermission(t *testing.T) {
 	if validSnapshot(snapshot, false, false, true) {
 		t.Fatal("history query accepted a directory")
 	}
-	request := Request{RequestID: "01234567-89ab-4def-8123-456789abcdef", Target: Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "fish", PID: 23, StartTime: "1234"}, Operation: "history", PromptGeneration: 1, Notification: &Notification{Signal: "URG"}}
+	request := Request{RequestID: "01234567-89ab-4def-8123-456789abcdef", InputBoundary: testInputBoundary,
+		Target:    Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "fish", PID: 23, StartTime: "1234"},
+		Operation: "history", PromptGeneration: 1, Notification: &Notification{Signal: "URG"}}
 	if !validRequest(request) {
 		t.Fatal("native history request rejected")
 	}

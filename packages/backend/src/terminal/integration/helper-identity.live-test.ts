@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS_VALUES } from '@cosmosh/api-contract';
 import { executeShellEditorRequest } from '../../ssh/editor-exec.js';
 import { executeBoundedSshCommand } from '../../ssh/exec.js';
 import { RemoteShellEventOscParser } from '../../ssh/remote-shell-events.js';
+import { DeliveredTerminal } from '../../ssh/terminal-transport.js';
 import { confirmShellEditorContext, ShellEditorController } from '../editor-controller.js';
 import {
   applyShellContextEvent,
@@ -28,7 +29,7 @@ const binary = path.join(workspace, '.cosmosh/terminal-fixture/cosmosh-bootstrap
 
 before(() => {
   // Build the actual installer; only disposable loopback fixture accounts receive it.
-  execFileSync(process.execPath, [path.join(workspace, 'scripts/build-bash-native.mjs'), '--if-stale'], {
+  execFileSync(process.execPath, [path.join(workspace, 'scripts/build-shell-native.mjs'), '--if-stale'], {
     cwd: workspace,
     timeout: 600_000,
     stdio: 'pipe',
@@ -91,7 +92,7 @@ class ShellEvents {
     const controller = new ShellEditorController(
       () => this.context,
       (request, options) => executeShellEditorRequest(this.terminal.client, editorBinaryPath('zsh'), request, options),
-      () => assert.fail('ZLE context must never inject a terminal key'),
+      () => (this.terminal.channel instanceof DeliveredTerminal ? this.terminal.channel : null),
       (expected, snapshot) => {
         this.context = confirmShellEditorContext(expected, snapshot);
       },

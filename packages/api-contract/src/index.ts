@@ -103,6 +103,7 @@ export type {
   ShellPathQueryResult,
   ShellEditorSnapshot,
   ShellEditorRequest,
+  ShellInputBoundary,
   ShellNativeCompletionEntry,
   ShellNativeCompletionResult,
 } from './terminal-protocol';

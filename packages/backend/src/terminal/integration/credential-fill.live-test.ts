@@ -20,13 +20,21 @@ test(
   { timeout: 30_000 },
   async (t) => {
     const terminal = await openFixtureTerminal('bash');
-    t.after(() => terminal.close());
+    const disconnected = new Promise<void>((resolve) => terminal.client.once('close', resolve));
+    t.after(async () => {
+      try {
+        terminal.close();
+      } finally {
+        terminal.client.destroy();
+      }
+      await disconnected;
+    });
     const ready = terminal.write("printf 'CREDENTIAL_READY:%s\\n' 'ok'\r");
     await terminal.waitFor(/CREDENTIAL_READY:ok\r?\n/u, ready);
     const password = 'fixture 口令🔑 $\\"';
     const harness = createCredentialServiceHarness({ password, stream: terminal.channel });
     harness.session.credentialFillState = createCredentialFillState();
-    terminal.channel.on('data', (data: string) => harness.service.handleShellOutput(harness.session, data));
+    terminal.onOutput((data) => harness.service.handleShellOutput(harness.session, data));
     const prompt = terminal.write(
       "IFS= read -r -s -p 'Password: ' fixture_password; printf '\\nFILLED:%s\\n' \"$fixture_password\"; unset fixture_password\r",
     );

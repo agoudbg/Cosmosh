@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -84,10 +85,15 @@ func TestBlockedPTYCannotAcknowledgeEarly(t *testing.T) {
 }
 
 func TestProtocolBoundsAndSessionOrder(t *testing.T) {
-	start := frame{Type: "start", Protocol: 1, Epoch: testEpoch, Rows: 32, Cols: 120, Term: "xterm-256color"}
+	start := frame{Type: "start", Protocol: ProtocolVersion, Epoch: testEpoch, Rows: 32, Cols: 120, Term: "xterm-256color"}
 	if !start.validStart() {
 		t.Fatal("valid start rejected")
 	}
+	start.Protocol = 1
+	if start.validStart() {
+		t.Fatal("protocol v1 start accepted")
+	}
+	start.Protocol = ProtocolVersion
 	start.Data = []byte("injected")
 	if start.validStart() {
 		t.Fatal("start accepted input")
@@ -100,6 +106,28 @@ func TestProtocolBoundsAndSessionOrder(t *testing.T) {
 	if input.validControl(testEpoch, maxSequence) {
 		t.Fatal("unsafe JS number accepted")
 	}
+	authorize := frame{Type: "authorize-editor", Epoch: testEpoch, Sequence: 1, RequestID: testEpoch}
+	if !authorize.validControl(testEpoch, 1) {
+		t.Fatal("valid editor authorization rejected")
+	}
+	falseValue := false
+	authorize.Approved = &falseValue
+	if authorize.validControl(testEpoch, 1) {
+		t.Fatal("response-only approval accepted as control input")
+	}
+	authorize.Approved = nil
+	authorize.RequestID = "not-a-uuid"
+	if authorize.validControl(testEpoch, 1) {
+		t.Fatal("invalid request UUID accepted")
+	}
+	revoke := frame{Type: "revoke-editor", Epoch: testEpoch, RequestID: testEpoch}
+	if !revoke.validControl(testEpoch, 1) {
+		t.Fatal("valid revoke rejected")
+	}
+	revoke.Sequence = 1
+	if revoke.validControl(testEpoch, 1) {
+		t.Fatal("revoke with sequence accepted")
+	}
 	for _, source := range []string{`{"type":"input","extra":true}`, `{"type":"input"} {}`, strings.Repeat("x", maxFrameBytes)} {
 		if _, err := newFrameReader(strings.NewReader(source + "\n")).read(); err == nil {
 			t.Fatal("invalid frame accepted")
@@ -107,5 +135,23 @@ func TestProtocolBoundsAndSessionOrder(t *testing.T) {
 	}
 	if _, err := newFrameReader(strings.NewReader("")).read(); !errors.Is(err, io.EOF) {
 		t.Fatal("EOF not recognized")
+	}
+}
+
+func TestEditorAuthorizationSerializesZeroSequence(t *testing.T) {
+	var output bytes.Buffer
+	writer := frameWriter{encoder: json.NewEncoder(&output)}
+	approved := true
+	if err := writer.write(frame{Type: "editor-authorized", Epoch: testEpoch,
+		Sequence: 0, RequestID: testEpoch, Approved: &approved}); err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(output.Bytes(), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 5 || string(fields["sequence"]) != "0" ||
+		string(fields["approved"]) != "true" {
+		t.Fatalf("authorization wire omitted required zero sequence: %s", output.String())
 	}
 }

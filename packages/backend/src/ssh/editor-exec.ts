@@ -20,6 +20,10 @@ export type ShellEditorExecOptions = {
   signal: AbortSignal;
   isCurrent: () => boolean;
   trigger: () => void;
+  /** Grants one expiring mutation through the same channel that forwards terminal input. */
+  authorize: () => Promise<boolean>;
+  /** Revokes unused remote authority during every completion and cancellation path. */
+  revoke: () => void;
 };
 
 /**
@@ -42,6 +46,7 @@ export const executeShellEditorRequest = (
     let settled = false;
     let ready = false;
     let authorized = false;
+    let authorizing = false;
     let pending = '';
     let totalBytes = 0;
     const decoder = new StringDecoder('utf8');
@@ -87,6 +92,7 @@ export const executeShellEditorRequest = (
       settled = true;
       clearTimeout(timer);
       options.signal.removeEventListener('abort', abort);
+      options.revoke();
       if (channel && !channelClosed) release(channel, () => resolve(result));
       else resolve(result);
     };
@@ -164,19 +170,31 @@ export const executeShellEditorRequest = (
                 abort();
                 return;
               }
-            } else if (message.phase === 'prepared' && ready && !authorized && mutating) {
+            } else if (message.phase === 'prepared' && ready && !authorized && !authorizing && mutating) {
               const snapshot = normalizeEditorSnapshot(message.snapshot, request);
               if (!snapshot || JSON.stringify(snapshot) !== JSON.stringify(request.expected) || !options.isCurrent()) {
                 finish({ status: 'stale' });
                 return;
               }
-              authorized = true;
-              try {
-                stream.write(JSON.stringify({ requestId: request.requestId, apply: true }) + '\n');
-              } catch {
-                abort();
-                return;
-              }
+              authorizing = true;
+              // The terminal owner serializes this grant with input receipt. The Shell then
+              // consumes it under the same local lock immediately before changing its editor.
+              void options.authorize().then(
+                (approved) => {
+                  if (settled) return;
+                  if (!approved || options.signal.aborted || !options.isCurrent()) {
+                    finish({ status: 'stale' });
+                    return;
+                  }
+                  authorized = true;
+                  try {
+                    stream.write(JSON.stringify({ requestId: request.requestId, apply: true }) + '\n');
+                  } catch {
+                    abort();
+                  }
+                },
+                () => abort(),
+              );
             } else if (message.phase === 'done') {
               if (
                 message.status === 'native-completions' &&
@@ -211,6 +229,9 @@ export const executeShellEditorRequest = (
                 message.applied === true
               ) {
                 finish({ status: 'applied' });
+              } else if (message.status === 'stale' && ready) {
+                // The remote adapter explicitly proved that no assignment happened.
+                finish({ status: 'stale' });
               } else if (authorized) {
                 finish({ status: 'unknown' });
               } else {

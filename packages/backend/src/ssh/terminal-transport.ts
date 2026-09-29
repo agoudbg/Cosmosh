@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { StringDecoder } from 'node:string_decoder';
 
+import type { ShellInputBoundary } from '@cosmosh/api-contract';
 import type { Client, ClientChannel } from 'ssh2';
 
 /** Minimal terminal surface shared by an ordinary SSH PTY and the framed remote PTY. */
@@ -37,6 +38,19 @@ export type DeliveredTerminalOptions = {
 const MAX_FRAME_BYTES = 96 * 1024;
 const MAX_INPUT_BYTES = 64 * 1024;
 const MAX_PENDING_BYTES = 1024 * 1024;
+const EDITOR_AUTHORIZATION_TIMEOUT_MS = 1500;
+const REQUEST_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
+
+/** One private metadata grant; the timer and abort listener remain active after approval until it is revoked. */
+type EditorAuthorization = {
+  requestId: string;
+  sequence: number;
+  acknowledged: boolean;
+  resolve: (approved: boolean) => void;
+  timer: NodeJS.Timeout;
+  signal: AbortSignal;
+  abort: () => void;
+};
 
 /** @param value Untrusted JSON value. @returns Whether it is a plain protocol record. */
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -61,8 +75,12 @@ export class DeliveredTerminal extends EventEmitter {
   private pending = '';
   private noiseBytes = 0;
   private started = false;
+  private startRejected = false;
   private ready = false;
   private exited = false;
+  private shellPID: number | null = null;
+  private editorAuthorization: EditorAuthorization | null = null;
+  private lastEditorRequestID: string | null = null;
   private sentSequence = 0;
   private deliveredSequence = 0;
   private pendingInputBytes = 0;
@@ -93,6 +111,66 @@ export class DeliveredTerminal extends EventEmitter {
     return { epoch: this.epoch, sent: this.sentSequence, delivered: this.deliveredSequence };
   }
 
+  /** @returns The original remote Shell PID only while its validated terminal remains alive. */
+  public get originalShellPID(): number | null {
+    return this.ready && !this.destroyed && !this.exited ? this.shellPID : null;
+  }
+
+  /**
+   * Authorizes one editor request at the exact delivered boundary on the ordered terminal channel.
+   * No input bytes are retained, and authorizations never delay ordinary terminal writes.
+   * @param requestId Fresh canonical UUID v4 for this editor operation.
+   * @param boundary Exact epoch and sequence already delivered to the remote PTY.
+   * @param signal Lifetime of the editor operation, including time after remote approval.
+   * @returns Whether the remote forwarder approved this still-current request before its deadline.
+   */
+  public authorizeEditor(requestId: string, boundary: ShellInputBoundary, signal: AbortSignal): Promise<boolean> {
+    if (
+      !this.ready ||
+      this.destroyed ||
+      this.exited ||
+      signal.aborted ||
+      this.editorAuthorization !== null ||
+      typeof requestId !== 'string' ||
+      !REQUEST_ID_PATTERN.test(requestId) ||
+      requestId === this.lastEditorRequestID ||
+      boundary.epoch !== this.epoch ||
+      !Number.isSafeInteger(boundary.sequence) ||
+      boundary.sequence < 0 ||
+      boundary.sequence !== this.sentSequence ||
+      boundary.sequence !== this.deliveredSequence
+    )
+      return Promise.resolve(false);
+    return new Promise((resolve) => {
+      /** @returns Nothing; cancellation revokes even an already acknowledged grant. */
+      const abort = (): void => this.revokeEditor(requestId);
+      const timer = setTimeout(abort, EDITOR_AUTHORIZATION_TIMEOUT_MS);
+      timer.unref();
+      this.editorAuthorization = {
+        requestId,
+        sequence: boundary.sequence,
+        acknowledged: false,
+        resolve,
+        timer,
+        signal,
+        abort,
+      };
+      this.lastEditorRequestID = requestId;
+      signal.addEventListener('abort', abort, { once: true });
+      try {
+        this.send({ type: 'authorize-editor', epoch: this.epoch, sequence: boundary.sequence, requestId });
+      } catch {
+        // send already closes the failed transport; the pending promise must still finish.
+        this.cancelEditorAuthorization(false);
+      }
+    });
+  }
+
+  /** @param requestId Exact operation to revoke. @returns Nothing; unrelated or completed requests are harmless. */
+  public revokeEditor(requestId: string): void {
+    if (this.editorAuthorization?.requestId === requestId) this.cancelEditorAuthorization(true);
+  }
+
   /**
    * Assigns sequence numbers synchronously before transport buffering, including password fills.
    * @param input Original UTF-8 input or bytes. @returns Whether the SSH writer can accept more data.
@@ -109,6 +187,9 @@ export class DeliveredTerminal extends EventEmitter {
       this.fail();
       throw new Error('Terminal input exceeded its delivery budget.');
     }
+    // The remote input frame revokes under the same lock before PTY delivery. An extra revoke
+    // frame here would add work ahead of ordinary input without strengthening that guarantee.
+    this.cancelEditorAuthorization(false);
     let writable = true;
     for (let offset = 0; offset < bytes.length; offset += MAX_INPUT_BYTES) {
       const chunk = bytes.subarray(offset, offset + MAX_INPUT_BYTES);
@@ -166,6 +247,61 @@ export class DeliveredTerminal extends EventEmitter {
     this.fail();
   }
 
+  /**
+   * Releases local authorization state before notifying the remote peer, preventing reentrant cancellation.
+   * @param notify Whether a live remote grant needs explicit revocation rather than input/terminal teardown.
+   * @returns Nothing; acknowledged grants keep their settled result but cannot be reused.
+   */
+  private cancelEditorAuthorization(notify: boolean): void {
+    const active = this.editorAuthorization;
+    if (!active) return;
+    this.editorAuthorization = null;
+    clearTimeout(active.timer);
+    active.signal.removeEventListener('abort', active.abort);
+    if (!active.acknowledged) active.resolve(false);
+    if (notify && this.ready && !this.destroyed && !this.exited) {
+      try {
+        this.send({ type: 'revoke-editor', epoch: this.epoch, requestId: active.requestId });
+      } catch {
+        // send closes the owning terminal on a transport error; input is never replayed.
+      }
+    }
+  }
+
+  /**
+   * Accepts only complete metadata acknowledgements; late valid replies cannot grant a newer operation.
+   * @param value Remote authorization acknowledgement with the already-checked session epoch.
+   * @returns Whether the frame is valid, including harmless late or duplicate replies.
+   */
+  private acceptEditorAuthorization(value: Record<string, unknown>): boolean {
+    if (
+      Object.keys(value).length !== 5 ||
+      typeof value.requestId !== 'string' ||
+      !REQUEST_ID_PATTERN.test(value.requestId) ||
+      !Number.isSafeInteger(value.sequence) ||
+      (value.sequence as number) < 0 ||
+      (value.sequence as number) > this.sentSequence ||
+      typeof value.approved !== 'boolean'
+    )
+      return false;
+    const active = this.editorAuthorization;
+    // Cancellation can race with a correctly ordered remote reply. Retaining all old IDs would
+    // grow with typing; unmatched valid metadata is ignored and cannot change the active grant.
+    if (!active || value.requestId !== active.requestId) return true;
+    if (value.sequence !== active.sequence) return false;
+    if (active.acknowledged) return true;
+    if (active.signal.aborted || active.sequence !== this.sentSequence || active.sequence !== this.deliveredSequence) {
+      this.cancelEditorAuthorization(true);
+      return true;
+    }
+    if (!value.approved) this.cancelEditorAuthorization(false);
+    else {
+      active.acknowledged = true;
+      active.resolve(true);
+    }
+    return true;
+  }
+
   /** @param value Fixed protocol record. @returns The underlying SSH backpressure state. */
   private send(value: Record<string, unknown>): boolean {
     if (this.channel.writableLength > MAX_PENDING_BYTES * 2) {
@@ -218,13 +354,13 @@ export class DeliveredTerminal extends EventEmitter {
   /** @param value Validated record shape. @returns Whether the frame is valid in the current phase. */
   private handleFrame(value: Record<string, unknown>): boolean {
     if (!this.started) {
-      if (value.type !== 'hello' || value.protocol !== 1 || Object.keys(value).length !== 2) return false;
+      if (value.type !== 'hello' || value.protocol !== 2 || Object.keys(value).length !== 2) return false;
       // Mark before writing: any ambiguous write failure after this point forbids fallback.
       this.started = true;
       try {
         this.send({
           type: 'start',
-          protocol: 1,
+          protocol: 2,
           epoch: this.epoch,
           cols: this.options.cols,
           rows: this.options.rows,
@@ -237,18 +373,27 @@ export class DeliveredTerminal extends EventEmitter {
     }
     if (value.epoch !== this.epoch || this.exited) return false;
     if (!this.ready) {
+      if (value.type === 'start-rejected' && Object.keys(value).length === 2) {
+        // The helper explicitly confirms that its prerequisites failed before launching a Shell.
+        this.startRejected = true;
+        this.fail();
+        return true;
+      }
       if (
         value.type !== 'ready' ||
         !Number.isSafeInteger(value.pid) ||
-        (value.pid as number) <= 0 ||
+        (value.pid as number) < 2 ||
+        (value.pid as number) > 2147483647 ||
         Object.keys(value).length !== 3
       )
         return false;
+      this.shellPID = value.pid as number;
       this.ready = true;
       clearTimeout(this.startupTimer);
       this.complete({ status: 'ready', stream: this });
       return true;
     }
+    if (value.type === 'editor-authorized') return this.acceptEditorAuthorization(value);
     if (Object.keys(value).length !== 3) return false;
     if (value.type === 'output') {
       const data = decodeData(value.data);
@@ -277,6 +422,7 @@ export class DeliveredTerminal extends EventEmitter {
       (value.code as number) <= 255
     ) {
       this.exited = true;
+      this.cancelEditorAuthorization(false);
       this.emit('exit', value.code);
       this.channel.close();
       return true;
@@ -289,7 +435,8 @@ export class DeliveredTerminal extends EventEmitter {
     if (this.destroyed) return;
     this.destroyed = true;
     clearTimeout(this.startupTimer);
-    if (!this.ready) this.complete({ status: this.started ? 'failed' : 'unavailable' });
+    this.cancelEditorAuthorization(false);
+    if (!this.ready) this.complete({ status: this.started && !this.startRejected ? 'failed' : 'unavailable' });
     const tail = this.outputDecoder.end();
     if (tail) this.options.onOutput(tail);
     this.pending = '';

@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <langinfo.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,6 +61,8 @@ static idle_hook previous_hook, previous_startup_hook;
 static pid_t owner;
 static uint64_t generation;
 static char instance[37], start_time[21], request_id[37];
+static char input_epoch[37];
+static uint64_t input_sequence;
 static int socket_fd = -1, armed, entered, phase, operation, include_directory;
 static int startup_seen, loaded, retired;
 static struct timespec started;
@@ -94,6 +97,8 @@ static int uuid(const char *value) {
   return 1;
 }
 
+#include "input_order.h"
+
 /** Read only fixed non-secret Shell state. */
 static int variable_equals(const char *name, const char *expected) {
   const char *value = api.variable(name);
@@ -115,6 +120,7 @@ static void reset_exchange(void) {
   phase = operation = include_directory = 0;
   clear_packet(&incoming); clear_packet(&outgoing); clear_packet(&captured); clear_packet(&comparison);
   memset(request_id, 0, sizeof(request_id));
+  memset(input_epoch, 0, sizeof(input_epoch)); input_sequence = 0;
 }
 
 /** Append bounded bytes; an overflow invalidates the entire message. */
@@ -142,7 +148,7 @@ static void text(packet *value, const char *string, size_t maximum) {
 /** Start a fresh versioned record with space reserved for its length prefix. */
 static void begin_packet(packet *value, unsigned opcode) {
   clear_packet(value);
-  number(value, 0, 4); number(value, 1, 1); number(value, opcode, 1);
+  number(value, 0, 4); number(value, 2, 1); number(value, opcode, 1);
 }
 
 /** Finalize the length prefix after all field bounds have been checked. */
@@ -297,7 +303,7 @@ static int open_exchange(void) {
   return finish_packet(&outgoing);
 }
 
-/** Apply only when the complete observation remains equal; the third transport commit adds shared input ordering. */
+/** Apply only under the forwarder's input lock; no pending signal can longjmp past descriptor cleanup. */
 static int apply_record(packet *value) {
   char id[37], replacement[COSMOSH_MAX_INPUT + 1];
   if (!read_text(value, id, sizeof(id)) || !read_text(value, replacement, sizeof(replacement))) return 0;
@@ -313,8 +319,12 @@ static int apply_record(packet *value) {
     if (bytes == (size_t)-1 || bytes == (size_t)-2 || bytes == 0) return 0;
     offset += bytes;
   }
-  int unchanged = eligible() && capture_snapshot(&comparison) && comparison.length == captured.length &&
-    memcmp(comparison.data, captured.data, captured.length) == 0;
+  sigset_t blocked, previous;
+  sigfillset(&blocked);
+  if (sigprocmask(SIG_BLOCK, &blocked, &previous)) return 0;
+  int fd = order_lock(input_epoch, input_sequence);
+  int unchanged = fd >= 0 && eligible() && capture_snapshot(&comparison) && comparison.length == captured.length &&
+    memcmp(comparison.data, captured.data, captured.length) == 0 && order_consume(fd, input_epoch, input_sequence, request_id);
   unsigned status = 2;
   if (unchanged) {
     api.begin_undo();
@@ -325,6 +335,8 @@ static int apply_record(packet *value) {
     api.end_undo();
     status = *api.line && strcmp(*api.line, replacement) == 0 && *api.point == (int)offset ? 1 : 3;
   }
+  if (fd >= 0) close(fd);
+  sigprocmask(SIG_SETMASK, &previous, NULL);
   begin_packet(&outgoing, 5); number(&outgoing, status, 1);
   if (unchanged) api.redisplay();
   phase = 3;
@@ -334,14 +346,25 @@ static int apply_record(packet *value) {
 /** Consume exactly one complete private message; unknown operations close the exchange without reading input. */
 static int handle_record(void) {
   incoming.offset = 4;
-  if (read_number(&incoming, 1) != 1) return 0;
+  if (read_number(&incoming, 1) != 2) return 0;
   unsigned opcode = (unsigned)read_number(&incoming, 1);
   if (phase == 1 && opcode == 2) {
     operation = (int)read_number(&incoming, 1);
     include_directory = (int)read_number(&incoming, 1);
-    if (!read_text(&incoming, request_id, sizeof(request_id)) || !uuid(request_id) || incoming.error ||
+    if (!read_text(&incoming, request_id, sizeof(request_id)) || !order_uuid(request_id) ||
+        !read_text(&incoming, input_epoch, sizeof(input_epoch)) || !order_uuid(input_epoch)) return 0;
+    input_sequence = read_number(&incoming, 8);
+    if (incoming.error ||
         incoming.offset != incoming.length || operation < 1 || operation > 4 || include_directory > 1 ||
-        (operation == 4 && include_directory) || !eligible() || !capture_snapshot(&captured)) return 0;
+        (operation == 4 && include_directory)) return 0;
+    sigset_t blocked, previous;
+    sigfillset(&blocked);
+    if (sigprocmask(SIG_BLOCK, &blocked, &previous)) return 0;
+    int fd = order_lock(input_epoch, input_sequence);
+    int valid = fd >= 0 && eligible() && capture_snapshot(&captured);
+    if (fd >= 0) close(fd);
+    sigprocmask(SIG_SETMASK, &previous, NULL);
+    if (!valid) return 0;
     memcpy(outgoing.data, captured.data, captured.length);
     outgoing.length = captured.length; outgoing.offset = 0; outgoing.error = 0;
     phase = operation == 3 ? 2 : 3;

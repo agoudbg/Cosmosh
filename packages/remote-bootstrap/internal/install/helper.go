@@ -64,8 +64,8 @@ func BuildHelper(shell string, version string, binaryPath string) (string, error
 }
 
 // nativePackaged renders an explicit capability gate without probing arbitrary filesystem modules.
-func nativePackaged() int {
-	if nativeassets.Available() {
+func nativePackaged(shell string) int {
+	if nativeassets.Available(shell) {
 		return 1
 	}
 	return 0
@@ -94,8 +94,8 @@ __COSMOSH_PROTOCOL_VERSION=%d
 __COSMOSH_CAPABILITIES_JSON=%s
 __COSMOSH_EDITOR_BINARY=%s
 __COSMOSH_EDITOR_MODULE=%s
-__COSMOSH_BASH_NATIVE_PACKAGED=%d
-`, quotePOSIX(shell), quotePOSIX(version), RemoteShellProtocolVersion, quotePOSIX(capabilities), quotePOSIX(binaryPath), quotePOSIX(nativeassets.Path(binaryPath)), nativePackaged())
+__COSMOSH_NATIVE_PACKAGED=%d
+`, quotePOSIX(shell), quotePOSIX(version), RemoteShellProtocolVersion, quotePOSIX(capabilities), quotePOSIX(binaryPath), quotePOSIX(nativeassets.Path(binaryPath, shell)), nativePackaged(shell))
 
 	common := `
 __cosmosh_base64_value() {
@@ -394,7 +394,10 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
   # +X loads the widget helper's definition immediately: plain autoload
   # succeeds even when no definition file exists (zsh < 5.3) and would defer
   # the failure to call time, printing a visible error on every startup.
-  if zmodload zsh/datetime 2>/dev/null && autoload -Uz +X add-zle-hook-widget 2>/dev/null; then
+  # Minimal installations may not load ZLE before the first prompt. The stock hook
+  # initializer requires that module even though our editor callback runs later.
+  if builtin zmodload zsh/zle 2>/dev/null && zmodload zsh/datetime 2>/dev/null &&
+     autoload -Uz +X add-zle-hook-widget 2>/dev/null; then
     __cosmosh_now_ms() {
       printf '%.0f' "$((EPOCHREALTIME * 1000))"
     }

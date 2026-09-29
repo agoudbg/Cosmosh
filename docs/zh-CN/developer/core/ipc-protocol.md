@@ -15,7 +15,7 @@ flowchart TB
 
 现有终端 WebSocket 另外接受`editor-snapshot { requestId }`和`editor-apply { requestId, snapshotId, replacement: { text, cursor } }`。独立的`editor-snapshot-result`和`editor-apply-result`回包使输入内容不进入 OSC 调试历史。快照成功时包含不透明标识和获准字段，失败只返回固定状态。填入结果为`applied`、`stale`、`unavailable`、`unsupported`或`unknown`；本地终端返回`unavailable`。替换 WebSocket 会取消旧编辑器操作的归属，过期私有回包不发送给新客户端。不含文本的`editor-state` OSC 事件携带 PID／启动时间、提示符代数、可用性及当前拥有的触发标识，不增加 Electron IPC 通道。
 
-可用的 Zsh 编辑器要求`notification: { fd, inode }`；可用的 Fish 编辑器严格要求`notification: { signal: 'URG' }`。这两种不含文本的通知不能混用或用于其他 Shell。Fish 通过验证后的 pidfd 发送固定信号，前端不能指定任意信号。私有 Go 工作进程报告准备完成后，Backend 再检查权限，并通过该进程的 stdin 发送`{ requestId, activate: true }`；之后才允许通知 Shell 或接受其观察结果。通知元数据、激活与私有输入都不增加 Electron IPC 通道。
+可用的 Zsh 编辑器要求`notification: { fd, inode }`；可用的 Fish 编辑器严格要求`notification: { signal: 'URG' }`。显式加载 ZLE 与原生模块后，Zsh 的`cosmosh_editor_apply notification`操作创建匿名管道；原始 Shell 持有并关闭这些非阻塞、执行子程序时关闭的描述符。这两种不含文本的通知不能混用或用于其他 Shell。Fish 通过验证后的 pidfd 发送固定信号，前端不能指定任意信号。私有 Go 工作进程报告准备完成后，Backend 再检查权限，并通过该进程的 stdin 发送`{ requestId, activate: true }`；之后才允许通知 Shell 或接受其观察结果。通知元数据、激活与私有输入都不增加 Electron IPC 通道。
 
 可用的 Bash 编辑器严格要求`notification: { callback: 'readline' }`。该回调标记不含文件描述符、信号或终端按键；Backend 激活请求后，原始 Bash 5.1/5.2 模块在正常线程的 Readline 空闲回调内轮询经过身份检查的私有工作进程。C／Go 有界二进制交换只经过远端私有 socket，不执行 Shell 文本，也不在 Readline 内等待桌面授权。激活与 PTY 写入确认本身不授权输入修改；仍须匹配准备阶段的观察、当前权限及原始 Shell 的最终确认。不增加 Renderer 或 Electron IPC 通道。
 
@@ -225,6 +225,27 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 - `remote-enhancement-runtime-status` 与 `remote-shell-event` 仅用于 SSH session，不会出现在 local-terminal session。交互 shell 打开前的 Bootstrap ensure 成功后，运行时以 `pending` 开始；10 秒内到达且匹配的 `integration-ready` 会切换为 `active`。Ensure 失败、`BOOTSTRAP_ENSURE_TIMEOUT`、`HELPER_HANDSHAKE_TIMEOUT` 或 live 契约不匹配都会切换为 `disabled`。Renderer 会把最新运行状态与有界事件历史分别保存，并且只能将其用于诊断，不得据此重建 backend helper 状态。
 - `remote-shell-event`不得携带密码、secret、完整输出、命令行或输入缓冲区。动态 cwd/command 字段在 JSON 内使用规范 Base64，校验后才转发。Backend 将解码 JSON 限制在 32 KiB、编码 OSC 限制在 48 KiB，剥离 Cosmosh OSC，原样传递非 Cosmosh OSC。
 - Renderer 会把完整 server message union 路由到来源 pane 的 runtime/reducer。补全响应、密码提示、状态、telemetry、错误、退出、调试事件、重连与命令 marker 都不得隐式回退到 primary/active pane 状态。
+
+#### 私有终端与编辑器协议（Backend ↔ 远端助手）
+
+这些消息经过私有 SSH 通道，与 Electron IPC 和 OSC 观察协议 v3 分开。会话协议 v2 传递终端输入／输出，以及只包含元数据的顺序控制帧：
+
+| 方向           | 数据帧                                                       | 含义                                                                  |
+| -------------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| 助手 → Backend | `hello { protocol: 2 }`                                      | 在启动 Shell 之前协商版本。                                           |
+| Backend → 助手 | `start { protocol: 2, epoch, term, rows, cols }`             | 使用规范的小写 UUID v4 创建一个会话。                                 |
+| 助手 → Backend | `ready { epoch, pid }`                                       | 原始 Shell 已启动；Backend 接受 2 至 2,147,483,647 的 PID。           |
+| 助手 → Backend | `start-rejected { epoch }`                                   | 启动 Shell 前创建元数据失败；仅在 ready 之前且字段完全一致时接受。    |
+| 助手 → Backend | `delivered { epoch, sequence }`                              | 完整输入批次已写入远端 PTY 主端。                                     |
+| Backend → 助手 | `authorize-editor { epoch, sequence, requestId }`            | 在收到与送达序号均未变化的边界，为新的规范 UUID v4 请求授予一次权限。 |
+| 助手 → Backend | `editor-authorized { epoch, sequence, requestId, approved }` | 必须正好包含五个字段，包括值为零的序号和布尔批准结果。                |
+| Backend → 助手 | `revoke-editor { epoch, requestId }`                         | 只撤销这一次尚未消费的授权，无须回执。                                |
+
+所有帧都必须包含`type`。输入／输出继续使用有大小限制的 Base64 帧。只有启动前确认不可用，或收到精确的`start-rejected`，才允许回退到普通 SSH；其他启动后的失败都关闭连接，不重放输入。新输入在写入远端 PTY 前撤销授权。取消、超时和操作结束都会撤销未消费的授权；迟到的有效回执不能授权其他请求或延长时限。格式错误或来自其他会话的帧会终止传输。
+
+私有`ShellEditorRequest`必须包含`inputBoundary: { epoch, sequence }`，由 Backend 从当前`DeliveredTerminal`获取。控制器等待送达，要求报告的原始 PID 与编辑器绑定一致，并复核上下文、权限、客户端生命周期和序号。普通 SSH 传输无法满足此边界。字段范围明确限定：上下文请求省略输入，历史请求省略输入／CWD，快照及填写只包含获准字段。输入、替换内容、历史和导出环境都不能进入顺序控制帧、顺序文件、OSC 事件或调试历史。
+
+工作进程返回的`prepared`快照匹配后，Backend 才向终端请求授权，随后向私有工作进程发送`apply: true`决定。Shell 必须在实际修改前持有本地顺序锁并消费尚未到期的一次性授权，然后确认结果。授权按单调时钟在 1.5 秒后到期。收到或送达都不能单独证明编辑器观察符合条件；最终回执丢失时保持`unknown`，不会自动重放修改。候选编号菜单接入及完整 Electron 验收仍未完成。
 
 ### 3.5 Main 持有的活动连接契约
 

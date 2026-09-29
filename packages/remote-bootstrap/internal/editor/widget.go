@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/inputorder"
 )
 
 // exchangeWidget sends one authenticated request to the currently owned socket and bounds its response.
@@ -75,9 +77,11 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 			return errors.New("invalid-widget")
 		}
 		reply, err := exchangeWidget(message)
-		if err != nil || reply.Status != "ok" || !uuidPattern.MatchString(reply.RequestID) {
+		if err != nil || reply.Status != "ok" || !uuidPattern.MatchString(reply.RequestID) || !validInputBoundary(reply.InputBoundary) {
 			return errors.New("request-unavailable")
 		}
+		statePath, err := inputorder.Path(reply.InputBoundary.Epoch)
+		if err != nil { return errors.New("request-unavailable") }
 		directory := "0"
 		if reply.IncludeDirectory {
 			directory = "1"
@@ -89,9 +93,11 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 			}
 			namespace := base64.StdEncoding.EncodeToString([]byte(*reply.History.Namespace))
 			entry := base64.StdEncoding.EncodeToString([]byte(reply.History.Entries[0]))
-			_, err = fmt.Fprintf(output, "%s\n%s\n%s\n%s\n%s\n", reply.RequestID, reply.Operation, directory, namespace, entry)
+			_, err = fmt.Fprintf(output, "%s\n%s\n%s\n%s\n%d\n%s\n%s\n%s\n", reply.RequestID, reply.Operation, directory,
+				reply.InputBoundary.Epoch, reply.InputBoundary.Sequence, statePath, namespace, entry)
 		} else {
-			_, err = fmt.Fprintf(output, "%s\n%s\n%s\n", reply.RequestID, reply.Operation, directory)
+			_, err = fmt.Fprintf(output, "%s\n%s\n%s\n%s\n%d\n%s\n", reply.RequestID, reply.Operation, directory,
+				reply.InputBoundary.Epoch, reply.InputBoundary.Sequence, statePath)
 		}
 		return err
 	}

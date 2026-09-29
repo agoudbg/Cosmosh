@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type { ShellEditorRequest, ShellEditorSnapshot } from '@cosmosh/api-contract';
 
-import { ShellEditorController } from './editor-controller.js';
+import { type EditorInputTransport, ShellEditorController } from './editor-controller.js';
 import { normalizeEditorSnapshot, normalizeNativeHistoryObservation } from './editor-protocol.js';
 import { normalizeTerminalClientMessage } from './shared.js';
 import { createShellContext, type ShellContextState } from './shell-context.js';
@@ -12,6 +12,31 @@ const observation: ShellEditorSnapshot = {
   promptGeneration: 1,
   editorMode: 'emacs',
   history: { status: 'ok', namespace: 'fish', entries: ['echo 中文🐟  ', 'begin\n echo next\nend'] },
+};
+
+const inputEpoch = '89abcdef-0123-4567-89ab-cdef01234567';
+
+/**
+ * Isolates the external SSH delivery boundary while preserving the real controller and permission checks.
+ * @returns Stable original-Shell transport getter; this fixture has no terminal input writer.
+ */
+const orderedHistoryTransport = (): (() => EditorInputTransport) => {
+  const inputDelivery = { epoch: inputEpoch, sent: 0, delivered: 0 };
+  const transport: EditorInputTransport = {
+    inputDelivery,
+    originalShellPID: 42,
+    /** @param sequence Accepted input revision. @param signal Operation lifetime. @returns Remote delivery observation. */
+    waitForDelivery: async (sequence, signal) => !signal.aborted && sequence <= inputDelivery.delivered,
+    /** @param _requestId Private operation. @param boundary Input revision. @param signal Lifetime. @returns Remote grant. */
+    authorizeEditor: async (_requestId, boundary, signal) =>
+      !signal.aborted &&
+      boundary.epoch === inputDelivery.epoch &&
+      boundary.sequence === inputDelivery.sent &&
+      boundary.sequence === inputDelivery.delivered,
+    /** @returns Nothing; the external peer has no retained authorization in these scope tests. */
+    revokeEditor: () => {},
+  };
+  return () => transport;
 };
 
 /** @returns An original Fish editor with history permission only and no current input or directory. */
@@ -45,7 +70,7 @@ test('native history requests use only history permission and reject unsolicited
       requests.push(request);
       return { status: 'ok', snapshot: observation };
     },
-    () => assert.fail('history cannot inject terminal input'),
+    orderedHistoryTransport(),
     () => assert.fail('history must not confirm unrelated context'),
   );
   assert.deepEqual(await controller.history(new AbortController().signal), { status: 'ok', snapshot: observation });
@@ -53,6 +78,7 @@ test('native history requests use only history permission and reject unsolicited
   const request = requests[0];
   assert.equal(request.operation, 'history');
   assert.equal(request.includeDirectory, false);
+  assert.deepEqual(request.inputBoundary, { epoch: inputEpoch, sequence: 0 });
   assert.deepEqual(normalizeEditorSnapshot(observation, request), observation);
   for (const additional of [
     { buffer: { text: 'PRIVATE_INPUT', cursor: 0 } },
@@ -78,13 +104,14 @@ test('native history cancellation is independent and at most one editor request 
         options.signal.addEventListener('abort', () => resolve({ status: 'unavailable' }), { once: true }),
       );
     },
-    () => assert.fail('history must not inject input'),
+    orderedHistoryTransport(),
     () => {},
   );
   const lifetime = new AbortController();
   const pending = controller.history(lifetime.signal);
   const waitingLifetime = new AbortController();
   const waiting = controller.history(waitingLifetime.signal);
+  await Promise.resolve();
   assert.equal(calls, 1, 'waiting must not start a second private exchange');
   waitingLifetime.abort();
   assert.deepEqual(await waiting, { status: 'unavailable' });
@@ -151,7 +178,7 @@ test('history opt-out after a transport result resolves still rejects that priva
       lifetime.abort();
       return { status: 'ok', snapshot: observation };
     },
-    () => assert.fail('history must not inject input'),
+    orderedHistoryTransport(),
     () => {},
   );
   assert.deepEqual(await controller.history(lifetime.signal), { status: 'stale' });
@@ -166,7 +193,7 @@ test('history deletion preserves exact text and cannot borrow input or CWD permi
       requests.push(request);
       return { status: 'history-removed-from-reader' };
     },
-    () => assert.fail('history deletion cannot inject input'),
+    orderedHistoryTransport(),
     () => assert.fail('history deletion cannot confirm input or CWD'),
   );
   const signal = new AbortController().signal;
@@ -175,6 +202,7 @@ test('history deletion preserves exact text and cannot borrow input or CWD permi
   assert.equal(requests.length, 1);
   assert.equal(requests[0].operation, 'history-delete');
   assert.equal(requests[0].includeDirectory, false);
+  assert.deepEqual(requests[0].inputBoundary, { epoch: inputEpoch, sequence: 0 });
   assert.deepEqual(requests[0].expected, {
     promptGeneration: 1,
     editorMode: 'emacs',

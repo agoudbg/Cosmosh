@@ -11,7 +11,9 @@ The module exists so Cosmosh can add remote-side capabilities without pushing pr
 - Installs the current bootstrap binary into user-scoped XDG paths.
 - Generates a versioned shell helper in Go and wires it into the user's shell startup file.
 - Emits line-delimited `bootstrap-status` JSON so the backend can forward progress over the SSH WebSocket.
-- Installs first-phase shell integration hooks that can emit runtime shell state over Cosmosh OSC 777 from the interactive PTY.
+- Installs Shell integration hooks that emit bounded runtime metadata over Cosmosh OSC 777.
+- Runs the original login Shell on a framed PTY with ordered input receipt, delivery and one-use editor authorization.
+- Serves private scoped editor requests and packages native Bash/Zsh adapters for qualified configurations.
 - Reports installed version, binary SHA-256, protocol, capabilities, helper integrity, and profile-hook integrity through `status`.
 - Keeps installation idempotent by comparing the installed version, exact binary/helper contents, and every required shell hook before rewriting files.
 
@@ -19,9 +21,9 @@ The module exists so Cosmosh can add remote-side capabilities without pushing pr
 
 - It does not open SSH connections. `packages/backend/src/remote-bootstrap/service.ts` owns runtime orchestration.
 - It does not write root-owned or system-wide files.
-- It does not persist credentials, terminal output, or user command history.
+- It does not create its own credential, terminal-input/output or history store. Requested native history operations use the original Shell's source; the input-order file stores only fixed control metadata.
 - It does not download files from the user's local machine. The remote wrapper downloads an HTTPS asset URL from the deployment manifest.
-- It does not enable deeper Remote Enhancement behavior by itself. It only installs the first remote helper layer.
+- It does not activate renderer completion consumers by installation alone. Backend permissions, current original-Shell observations and input ordering remain required.
 
 ## Runtime Ownership
 
@@ -53,9 +55,14 @@ sequenceDiagram
   SSH->>AUX: Begin temporary transport teardown
   alt Validated ready contract with binaryPath
     SSH->>PRIMARY: No-PTY exec cosmosh-bootstrap session
-    PRIMARY-->>SSH: hello (session protocol 1)
+    PRIMARY-->>SSH: hello (session protocol 2)
     SSH->>PRIMARY: start (epoch, TERM, rows, cols)
-    PRIMARY-->>SSH: ready after login Shell starts on helper PTY
+    alt Input metadata created and Shell starts
+      PRIMARY-->>SSH: ready (epoch, original pid)
+    else Metadata unavailable before Shell launch
+      PRIMARY-->>SSH: start-rejected (epoch)
+      SSH->>PRIMARY: Ordinary shell() PTY, enhancements disabled
+    end
   else Disabled or unavailable before start
     SSH->>PRIMARY: Ordinary shell() PTY with enhancements disabled
   end
@@ -63,9 +70,15 @@ sequenceDiagram
   SSH-->>UI: Forward bootstrap and runtime status over SSH WebSocket
 ```
 
-The interactive terminal transport is separate from the bootstrap side channel. `SshSessionService` authenticates the primary client first, then lazily creates a temporary client only if `RemoteBootstrapService` needs a probe/install/status command. That client reuses credential, host-key, compression and proxy policies with its own proxy socket; its teardown begins before the primary opens a terminal channel. Actual socket closure may complete later. With a validated ready contract and `binaryPath`, the primary instead opens a no-PTY `exec` for `cosmosh-bootstrap session`. The helper's `hello`/`start` handshake precedes a user login Shell on its own PTY. This path does not guarantee sshd MOTD, PAM tty messages or utmp behavior. If unavailable before `start`, Backend opens an ordinary `shell()` PTY with enhancements disabled; an uncertain result after `start` fails without another Shell or input replay. Disabled enhancements keep the ordinary raw SSH path. The optional ensure has a shared 15-second budget; expiry aborts temporary work and permits an ordinary PTY. Validated manifests use a five-minute success-only cache. Installer JSON status never enters the terminal output.
+The interactive terminal transport is separate from the bootstrap side channel. `SshSessionService` authenticates the primary client first, then lazily creates a temporary client only if `RemoteBootstrapService` needs a probe/install/status command. That client reuses credential, host-key, compression and proxy policies with its own proxy socket; teardown begins before the primary opens a terminal channel. With a validated ready contract and `binaryPath`, the primary opens a no-PTY `exec` for `cosmosh-bootstrap session`. The protocol-v2 `hello`/`start` handshake precedes one login Shell on its own PTY; sshd MOTD, PAM tty and utmp behavior are not guaranteed. Known unavailability before `start`, or an exact matching `start-rejected` before `ready`, permits ordinary `shell()` fallback with enhancements disabled. The helper rejects startup only if metadata creation fails before launching a Shell. Every other uncertain post-start failure closes without another Shell or input replay. Disabled enhancements keep ordinary raw SSH. Optional ensure has a shared 15-second budget and validated manifests a five-minute success-only cache. Installer status never enters terminal output.
 
-The session transport uses protocol `1`, independent of OSC 777 Shell protocol v3. Input/output bytes are Base64 in newline-delimited JSON frames capped at 96 KiB; each input chunk is at most 64 KiB. One UUID epoch and consecutive safe-integer input sequences bind all writes. `delivered` is emitted only after the full chunk reaches the helper-owned PTY master; it does not assert Shell consumption. Backend permits at most 1 MiB of unacknowledged input; the helper limits its queued receive work to 4,096 frames and 1 MiB. Resize and exit share this connection-scoped channel. The helper restores login `argv[0]`, `TERM`, `SSH_TTY`, controlling terminal, foreground process group and inherited working directory. Connection loss closes the child. This transport does not persist input or output, log raw input, or put input into process arguments or debug events. Shell-native history and OSC metadata in normal terminal output remain unaffected. Turning off enhancement data after startup does not close the terminal transport. Delivery alone does not activate the later precise menu or Shell-consumption recovery.
+Session protocol `2` is independent of OSC observation protocol v3. Input/output use Base64 newline-delimited JSON frames capped at 96 KiB; input chunks are at most 64 KiB. A canonical lowercase UUID v4 epoch, validated original Shell PID and consecutive safe-integer sequences bind the session. The independent reader records `received` and revokes prior edit authority before queueing input, including when a previous PTY write is blocked. `delivered` advances only after a full PTY master write; it does not assert Shell consumption. Backend permits 1 MiB of unacknowledged input; the helper queues at most 4,096 frames and 1 MiB. Resize and exit share this channel. Login `argv[0]`, `TERM`, `SSH_TTY`, controlling terminal, foreground process group and inherited working directory are preserved. Connection loss closes the child; input/output are never persisted, logged raw or put in process arguments/debug events. Disabling enhancement data after startup preserves the terminal transport.
+
+`internal/inputorder` exclusively creates `/tmp/cosmosh-input-<uid>/<epoch>.state` before Shell launch. The owned directory is 0700; the regular single-link file is exactly 128 bytes and 0600. Opens reject symlinks and check UID, size, mode and pathname/opened-inode identity. The record contains only epoch/PID, received/delivered sequences and one request's authorization state/expiry. Cleanup removes only its own inode. It stores no input, replacement, history, environment or CWD text.
+
+Every private `ShellEditorRequest` requires `inputBoundary { epoch, sequence }`. Backend waits for delivery and rechecks original PID, current context, permissions and sequence. After an exact prepared observation it sends `authorize-editor { epoch, sequence, requestId }` over the ordered channel; the helper replies with exactly five fields, `type`, `epoch`, `sequence`, `requestId`, `approved`, retaining sequence zero and false. Grants require received and delivered to equal that sequence, accept a fresh canonical UUID v4, expire after 1.5 seconds on a monotonic clock and can be consumed only once. `revoke-editor { epoch, requestId }` handles cancellation/completion; input receipt also revokes. Late valid acknowledgements cannot revive canceled work.
+
+Final Shell mutation takes the same metadata flock without waiting, rechecks the actual editor and queued input, consumes the grant and assigns before unlocking. No lock spans desktop authorization, network I/O or redraw. Forwarder metadata updates have a 1.5-second lock-wait bound; failure ends the session without force-unlocking or replay. This orders mutation against input receipt while ordinary desktop input remains free to send. Delivery, observation and authorization are separate requirements. Candidate-ID menu wiring and full Electron acceptance remain pending; see the [English runtime guide](../../docs/developer/runtime/ssh-terminal.md) and [Chinese runtime guide](../../docs/zh-CN/developer/runtime/ssh-terminal.md).
 
 ## Directory Layout
 
@@ -88,6 +101,20 @@ packages/remote-bootstrap/
       protocol.go
       session_linux.go
       THIRD_PARTY_NOTICES.txt
+    inputorder/
+      inputorder_linux.go
+    editor/
+      worker.go
+      native_bash.go
+      input_lock.go
+    nativeassets/
+      nativeassets_release.go
+  native/
+    bash/
+      cosmosh_bash.c
+      input_order.h
+    zsh/
+      cosmosh_zsh.c
   go.mod
 ```
 
@@ -95,6 +122,10 @@ packages/remote-bootstrap/
 - `cmd/cosmosh-wrappergen`: command entry point for rendering shell wrapper source.
 - `internal/install`: owns helper generation and the OSC protocol contract, validates install inputs, resolves user-scoped paths, copies the bootstrap binary, updates profile hooks, validates installed state, and emits status lines.
 - `internal/wrapper`: validates manifest-derived wrapper inputs and renders POSIX or fish shell source with shell-safe quoting.
+- `internal/session` and `internal/inputorder`: own the PTY lifecycle, ordered input/authorization frames and fixed private metadata.
+- `internal/editor`: validates request scope/process identity and owns bounded private exchanges. Zsh/Fish first capture releases its callback before desktop authorization; a second notification recaptures before mutation.
+- `native/bash` and `native/zsh`: implement the local signal-masked comparison/consumption/assignment boundary. Bash owns an idle Readline adapter; Zsh provides atomic application and Shell-owned notification-pipe allocation through one builtin while read-only observation remains in `zle -F`.
+- `internal/nativeassets`: embeds the four checked Linux Bash/Zsh amd64/arm64 assets in `cosmosh_native` builds.
 
 ## Supported Targets
 
@@ -157,6 +188,7 @@ The installer writes only inside the remote user's home/XDG scope:
 | Purpose             | Default path                                                                                                         |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Bootstrap binary    | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` or `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap` |
+| Native modules      | `cosmosh-bash.so` for Bash or `cosmosh_zsh.so` for Zsh, beside the installed executable, mode 0600                   |
 | Version marker      | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` or `~/.local/share/cosmosh/bootstrap/bin/.version`                   |
 | POSIX helper        | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` or `~/.config/cosmosh/bootstrap/helper.sh`                            |
 | Fish helper         | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` or `~/.config/cosmosh/bootstrap/helper.fish`                        |
@@ -195,12 +227,12 @@ Current protocol v3 behavior:
 
 Each event carries a bounded `shellInstanceId`. Interactive processes generate Linux UUIDs; repeated sourcing preserves the same identity and hook registration. Fish internal state is unexported. Nested Shells get distinct identities, and non-interactive startup stays silent. The backend binds the first validated original Shell, pauses on foreign identities and resumes on a newer original prompt. Only implemented capabilities are advertised. Encoded OSC is bounded to 48 KiB and decoded JSON to 32 KiB.
 
-| Shell  | Advertised capabilities                                                                                                      |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| Bash   | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `editor-state`, `input-snapshot`, `input-apply` |
-| Zsh    | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `line-state`                                    |
-| Fish   | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `cwd-invalidated`                               |
-| Sh/Ash | `cwd`, `prompt-ready`                                                                                                        |
+| Shell  | Advertised capabilities                                                                                                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bash   | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `editor-state`, `input-snapshot`, `input-apply`                                                         |
+| Zsh    | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `cwd-invalidated`, `line-state`, `editor-state`, `input-snapshot`, `input-apply`                        |
+| Fish   | `cwd`, `command-start`, `command-end`, `foreground-command`, `prompt-ready`, `cwd-invalidated`, `editor-state`, `input-snapshot`, `input-apply`, `history-read`, `native-completion` |
+| Sh/Ash | `cwd`, `prompt-ready`                                                                                                                                                                |
 
 - Bash 5.1 or newer preserves existing `PROMPT_COMMAND` entries in a native array, retaining each user's command status, execution order and error behavior. Cosmosh callbacks succeed under `errexit`; older Bash versions keep plain terminal behavior without these hooks. A guarded `DEBUG` trap reports one command start per submitted line. Command end carries the same `commandId`, exit code, and measured duration.
 - Zsh uses `precmd`, `preexec` and `line-pre-redraw`; all required hooks must register before readiness. CWD is emitted only at the prompt boundary.
@@ -213,6 +245,12 @@ Every event includes `helperVersion`, integer `protocolVersion`, and the helper'
 
 OSC and command-lifecycle events must never collect or contain terminal input, passwords, private keys, full screen output or native completion lists. Command events carry only a sanitized executable name, never submitted arguments. Zsh `line-state` carries only length, cursor index and prompt generation. A separately authorized private editor request may temporarily read the original Shell's active input buffer; its contents never enter the event stream or diagnostics.
 
+Advertised capabilities do not prove current editor eligibility. Qualified editor versions are Bash 5.1/5.2, Zsh 5.8/5.8.1/5.9 and Fish 4.0.1 under the documented UTF-8/native-profile restrictions. Bash's private binary protocol v2 includes input epoch/sequence. Zsh explicitly loads `zsh/zle` before initializing `add-zle-hook-widget`. For the native module, it temporarily restricts a function-local `module_path` to the validated installed directory, then uses `builtin zmodload cosmosh_zsh`; an absolute module name is invalid. Zsh application uses one native call because SIGWINCH can run prompt code between separate Shell builtins; signal masking and the shared lock must cover the complete final comparison and assignment. Redraw and post-widget confirmation occur after unlock.
+
+After module loading, `builtin cosmosh_editor_apply notification` allocates the anonymous notification pipe in the original Shell. Empty, mutable ordinary `__COSMOSH_EDITOR_NOTIFY_FD` / `__COSMOSH_EDITOR_NOTIFY_KEEP_FD` scalars receive the read/write descriptor numbers without output. `pipe2` supplies nonblocking/close-on-exec flags; Zsh's descriptor allocator moves them above 9, then `FD_CLOEXEC` is reapplied and `FDT_EXTERNAL` ownership is registered. This supports Zsh 5.8 without relying on its unavailable `sysopen -o nonblock` option. Failure closes new descriptors; successful descriptors belong to the Shell, remain valid after module unload and are closed by Shell redirection or process exit. The adapter closes both ends if observer registration fails. No named FIFO or resident process is needed.
+
+Fish requires user-disabled native autosuggestions and a verified native key profile. Known Tab, Shift+Tab and Ctrl+R framing plus native completion/history-pager actions permit another observation after the reader becomes eligible; unknown sequences and script bindings remain paused. Its scoped apply function defers events, claims metadata through inherited FD 9, rechecks and assigns input, then closes the descriptor before undo/redraw or acknowledgement. Context requests omit input, and history requests omit input/CWD. Requested history deletion consumes its own grant before native history work and releases the lock before file access.
+
 ## Idempotency and Repair Behavior
 
 `cosmosh-bootstrap install` returns `skipped` when all of these are already current:
@@ -220,9 +258,10 @@ OSC and command-lifecycle events must never collect or contain terminal input, p
 - `.version` matches the requested version.
 - The installed binary exactly matches the executing installer.
 - The shell helper exactly matches the Go-generated helper for that shell and version.
+- For a Shell requiring a packaged native module, its embedded bytes, owner, single-link regular-file identity and exact mode 0600 match.
 - Every expected shell profile hook exists. Bash requires both `.bashrc` and its selected login profile.
 
-If the version and files exist but a profile hook was removed or edited, the installer repairs it instead of skipping. Binary, helper, version, and profile writes use same-directory temporary files plus atomic rename. Existing profile permissions and symlink targets are preserved. The version marker is written only after all files and profile updates succeed, which prevents a partial install from being mistaken for complete.
+If a profile hook or required native module is missing, modified or has unsafe permissions, the installer repairs the same version instead of skipping. Binary, helper, module, version and profile writes use same-directory temporary files plus atomic rename. Existing profile permissions and symlink targets are preserved. The version marker is written only after all updates succeed, preventing a partial installation from appearing complete.
 
 Before downloading an asset, backend invokes the installed binary's `status --shell <shell>` command. Download is skipped only when the reported version and binary SHA-256 match the selected manifest asset and the protocol, helper, and profile checks are current. Missing fields from an older binary are treated as incompatible and trigger reinstall. After install, backend reads `status` again before it allows the interactive shell to start.
 
@@ -290,7 +329,7 @@ Common failure codes include:
 - Manifest fields are treated as quoted data, never shell source.
 - Wrapper tests include adversarial version and URL cases with line breaks, shell metacharacters, and command substitutions.
 - Temporary files are created under `${TMPDIR:-/tmp}` with `mktemp`.
-- `umask 077` and `0700`/`0600` default modes keep new bootstrap files user-private; atomic profile repair retains an existing profile's mode. The packaged Bash module is installed beside the bootstrap executable at `cosmosh-bash.so` with mode `0600`; status checks its exact embedded bytes and a later install repairs damage without following a module-path symlink.
+- `umask 077` and `0700`/`0600` default modes keep new bootstrap files user-private; atomic profile repair retains an existing profile's mode. Bash/Zsh modules are installed beside the executable as `cosmosh-bash.so`/`cosmosh_zsh.so`, mode `0600`. Status checks bytes, UID, mode and single-link inode identity; reinstall repairs damage or permissions without following a module-path symlink. Input-order metadata uses its separate owned `/tmp/cosmosh-input-<uid>` lifetime and contains no text.
 - Temporary wrapper/download directories are cleaned up on exit, interrupt, and termination signals.
 - The installer does not require root and does not write outside the remote user's home/XDG paths.
 - `internal/session` uses `github.com/creack/pty` v1.1.24. Its license notice is distributed in `internal/session/THIRD_PARTY_NOTICES.txt`, embedded in the helper binary, and displayed by `cosmosh-bootstrap licenses`.
@@ -311,9 +350,9 @@ Build the remote installer for Linux targets:
 node ../../scripts/build-remote-bootstrap-release.mjs
 ```
 
-This release build requires Docker (on Windows, Docker inside the configured WSL Debian distribution). It compiles `native/bash/cosmosh_bash.c` for Linux amd64 and arm64 in a pinned Debian Bullseye image using native GCC and the AArch64 cross compiler. The builder checks both ELF architectures, the exported `cosmosh_editor_struct`, and a maximum glibc symbol version of 2.31 before the Go binaries embed the modules. The release build fails if either module is missing or invalid. CI additionally runs native-tagged installer tests on Linux. The generated `internal/nativeassets/assets/*.so` files are ignored; fixture tests use `node ../../scripts/build-bash-native.mjs --if-stale` to reuse matching artifacts and the cached builder image.
+The release build requires Docker (on Windows, Docker inside the configured WSL Debian distribution). `scripts/build-shell-native.mjs` uses `scripts/shell-native` and a pinned Debian Bullseye image with GCC/AArch64 cross tools to compile both `native/bash/cosmosh_bash.c` and `native/zsh/cosmosh_zsh.c`. The four outputs are `cosmosh-bash-linux-{amd64,arm64}.so` and `cosmosh-zsh-linux-{amd64,arm64}.so`. Validation checks ELF architecture, Bash's `cosmosh_editor_struct`, Zsh's module entry points and a maximum glibc symbol version of 2.31 before Go embeds them. Missing/invalid assets fail the release build. CI runs native-tagged installer tests on Linux. Generated `internal/nativeassets/assets/*.so` files are ignored; fixture tests use `node ../../scripts/build-shell-native.mjs --if-stale` to reuse source-matching artifacts and the cached image.
 
-Ordinary `go test ./...` and `go run` builds omit the native module and keep Bash's native editor capability unavailable. They do not install or remove a preexisting `cosmosh-bash.so`. A tagged release binary installs its matching embedded module, reports `nativeModulePath` and `nativeModuleCurrent` in `status --shell bash`, and marks a damaged or missing module as an incomplete installation.
+Ordinary `go test ./...` and `go run` builds omit native modules and keep Bash/Zsh native editing unavailable. They do not install or remove preexisting modules. A build with `-tags cosmosh_native` embeds all four checked assets, installs the selected Shell/architecture module, and reports `nativeModulePath`/`nativeModuleCurrent` for `status --shell bash` or `status --shell zsh`. A missing, damaged or incorrectly permissioned module makes installation incomplete. Real Shell tests and runtime version/architecture coverage remain separate from compilation; full Electron acceptance and the candidate-ID menu are not complete.
 
 The CI/release helper writes git-ignored files under `dist/`: `cosmosh-remote-bootstrap-linux-amd64`, `cosmosh-remote-bootstrap-linux-arm64`, and `cosmosh-remote-bootstrap-manifest.json`. Tagged release jobs stage those files as short-lived workflow artifacts, then the single release writer uploads them with the desktop packages after inventory, checksum, and provenance validation. `main` branch builds publish the same file names to the fixed `remote-bootstrap-dev` prerelease with a manifest version such as `dev-<commit-sha>`. Pushed branches whose name contains `remote-bootstrap` and manual workflow dispatch runs can publish branch-scoped temporary prereleases for end-to-end package testing; ordinary PR and feature-branch CI runs use the script for compilation and manifest validation only. The rolling channels remain intentionally replaceable, while versioned release assets are mutable only during draft assembly; see [Release Security](../../docs/developer/core/release-security.md).
 

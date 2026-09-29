@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import test, { before } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import type { ShellEditorRequest } from '@cosmosh/api-contract';
+import type { ShellEditorRequest, ShellInputBoundary } from '@cosmosh/api-contract';
 import type { ClientChannel } from 'ssh2';
 
 import { executeShellEditorRequest } from '../../ssh/editor-exec.js';
@@ -15,11 +15,12 @@ const installedBinary = '/home/cosmosh-bash/.local/share/cosmosh/bootstrap/bin/c
 
 before(() => installFixtureEditor('bash'));
 
-/** @param state Actual original-Shell metadata. @returns A request using its advertised native callback. */
-const snapshotRequest = (state: EditorEvent): ShellEditorRequest => {
+/** @param state Original-Shell metadata. @param inputBoundary Real delivered input. @returns A native callback request. */
+const snapshotRequest = (state: EditorEvent, inputBoundary: ShellInputBoundary): ShellEditorRequest => {
   assert.deepEqual(state.notification, { callback: 'readline' });
   return {
     requestId: randomUUID(),
+    inputBoundary,
     operation: 'snapshot',
     promptGeneration: state.promptGeneration,
     includeDirectory: false,
@@ -126,11 +127,18 @@ test(
         'nonzero previous status must not terminate a successful widget under errexit',
       );
       const cancelled = new AbortController();
-      const late = await executeShellEditorRequest(terminal.client, installedBinary, snapshotRequest(state), {
-        signal: cancelled.signal,
-        isCurrent: () => true,
-        trigger: () => cancelled.abort(),
-      });
+      const late = await executeShellEditorRequest(
+        terminal.client,
+        installedBinary,
+        snapshotRequest(state, await fixture.inputBoundary()),
+        {
+          signal: cancelled.signal,
+          isCurrent: () => true,
+          authorize: async () => assert.fail('read-only request cannot authorize a mutation'),
+          revoke: () => {},
+          trigger: () => cancelled.abort(),
+        },
+      );
       assert.equal(late.status, 'unavailable');
       state = await fixture.run(String.raw`builtin printf "CANCELLED_CALLBACK_ALIVE:%s\n" "$?"`);
       assert.match(terminal.readOutput(), /CANCELLED_CALLBACK_ALIVE:1\r?\n/u);
@@ -246,10 +254,12 @@ test(
     terminal.write('\x03');
     state = await fixture.prompt(state.promptGeneration);
     const controller = new AbortController();
-    const request = snapshotRequest(state);
+    const request = snapshotRequest(state, await fixture.inputBoundary());
     const cancelled = await executeShellEditorRequest(terminal.client, installedBinary, request, {
       signal: controller.signal,
       isCurrent: () => true,
+      authorize: async () => assert.fail('read-only request cannot authorize a mutation'),
+      revoke: () => {},
       trigger: () => controller.abort(),
     });
     assert.equal(cancelled.status, 'unavailable');
@@ -272,9 +282,9 @@ test(
     t.after(() => terminal.close());
     const fixture = new EditorFixture(terminal);
     const state = await fixture.prompt();
-    const request = snapshotRequest(state);
     const reading = terminal.write("builtin read -e -p $'\\nNATIVE_READER_WAIT>' fixture_read\r");
     await terminal.waitFor(/\r?\nNATIVE_READER_WAIT>/u, reading);
+    const request = snapshotRequest(state, await fixture.inputBoundary());
     const controller = new AbortController();
     let ready = (): void => {};
     const waiting = new Promise<void>((resolve) => {
@@ -284,6 +294,8 @@ test(
       signal: controller.signal,
       isCurrent: () => true,
       trigger: ready,
+      authorize: async () => assert.fail('read-only request cannot authorize a mutation'),
+      revoke: () => {},
     });
     try {
       await Promise.race([
@@ -299,6 +311,8 @@ test(
         {
           signal: new AbortController().signal,
           isCurrent: () => true,
+          authorize: async () => assert.fail('read-only request cannot authorize a mutation'),
+          revoke: () => {},
           trigger: () => {
             throw new Error('Competing worker must not obtain the endpoint');
           },
@@ -311,7 +325,7 @@ test(
         // widget protocol is incompatible. Without the peer check, this receives an opcode-2 request.
         stdin: [
           'import os, socket, struct',
-          `packet = struct.pack(">BBIQ", 1, 1, ${state.pid}, ${state.promptGeneration})`,
+          `packet = struct.pack(">BBIQ", 2, 1, ${state.pid}, ${state.promptGeneration})`,
           `for value in [${JSON.stringify(state.shellInstanceId)}, ${JSON.stringify(state.startTime)}]:`,
           '    raw = value.encode("ascii")',
           '    packet += struct.pack(">I", len(raw)) + raw',
@@ -350,7 +364,7 @@ test('real worker cleans its socket after abrupt SSH channel closure', { timeout
   t.after(() => terminal.close());
   const fixture = new EditorFixture(terminal);
   const state = await fixture.prompt();
-  const request = snapshotRequest(state);
+  const request = snapshotRequest(state, await fixture.inputBoundary());
   const channel = await new Promise<ClientChannel>((resolve, reject) => {
     terminal.client.exec(installedBinary + ' editor-request', (error, stream) => {
       if (error) reject(error);
@@ -394,12 +408,14 @@ test(
     const fixture = new EditorFixture(terminal);
     await fixture.prompt();
     const state = await fixture.run('stty intr 9');
-    const request = snapshotRequest(state);
     terminal.write('echo unchanged');
+    const request = snapshotRequest(state, await fixture.inputBoundary());
     const result = await executeShellEditorRequest(terminal.client, installedBinary, request, {
       signal: new AbortController().signal,
       isCurrent: () => true,
       trigger: () => {},
+      authorize: async () => assert.fail('read-only request cannot authorize a mutation'),
+      revoke: () => {},
     });
     assert.equal(result.status, 'ok');
     if (result.status === 'ok') assert.deepEqual(result.snapshot.buffer, { text: 'echo unchanged', cursor: 14 });

@@ -76,7 +76,7 @@ func TestNativeFramingRejectsAllocationAndVersionConfusion(t *testing.T) {
 			t.Fatal("invalid frame length accepted")
 		}
 	}
-	for _, header := range [][]byte{{2, 1}, {1, 2}} {
+	for _, header := range [][]byte{{1, 1}, {2, 2}} {
 		frame := append([]byte{0, 0, 0, 2}, header...)
 		if _, err := readNativeRecord(bytes.NewReader(frame), 1); err == nil {
 			t.Fatal("unexpected version or opcode accepted")

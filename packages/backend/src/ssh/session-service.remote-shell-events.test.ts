@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { PassThrough } from 'node:stream';
-import test from 'node:test';
+import { Duplex, PassThrough } from 'node:stream';
+import test, { type TestContext } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import {
@@ -37,6 +37,79 @@ import {
   SshSessionService,
   usesStructuredRemoteCommandLifecycle,
 } from './session-service.js';
+import { DeliveredTerminal } from './terminal-transport.js';
+
+/** External SSH peer for the ordered PTY; production framing, delivery and authorization remain real. */
+class OrderedTerminalChannel extends Duplex {
+  readonly stderr = new PassThrough();
+  private epoch: string | null = null;
+  private delivered = 0;
+
+  /** @param onInput Observer for the original terminal bytes accepted by the remote PTY. */
+  constructor(private readonly onInput: (data: string) => void) {
+    super();
+  }
+
+  /** @returns Nothing; remote frames are emitted explicitly at the SSH boundary. */
+  _read(): void {}
+
+  /** @param chunk Private frame. @param _encoding Encoding. @param done SSH write callback. @returns Nothing. */
+  _write(chunk: Buffer, _encoding: BufferEncoding, done: (error?: Error) => void): void {
+    const frame = JSON.parse(chunk.toString('utf8')) as Record<string, unknown>;
+    if (frame.type === 'start') {
+      assert.equal(frame.protocol, 2);
+      assert.equal(typeof frame.epoch, 'string');
+      this.epoch = frame.epoch as string;
+      this.reply({ type: 'ready', epoch: this.epoch, pid: 42 });
+    } else if (frame.type === 'input') {
+      assert.equal(frame.epoch, this.epoch);
+      assert.equal(frame.sequence, this.delivered + 1);
+      assert.equal(typeof frame.data, 'string');
+      this.onInput(Buffer.from(frame.data as string, 'base64').toString('utf8'));
+      this.delivered += 1;
+      this.reply({ type: 'delivered', epoch: this.epoch, sequence: this.delivered });
+    } else if (frame.type === 'authorize-editor') {
+      this.reply({
+        type: 'editor-authorized',
+        epoch: frame.epoch,
+        sequence: frame.sequence,
+        requestId: frame.requestId,
+        approved: frame.epoch === this.epoch && frame.sequence === this.delivered,
+      });
+    } else {
+      assert.ok(frame.type === 'revoke-editor' || frame.type === 'resize');
+    }
+    done();
+  }
+
+  /** @param frame Remote protocol reply. @returns Nothing. */
+  reply(frame: Record<string, unknown>): void {
+    this.emit('data', Buffer.from(JSON.stringify(frame) + '\n'));
+  }
+
+  /** @returns Nothing; closes the external SSH channel. */
+  close(): void {
+    this.destroy();
+  }
+}
+
+/**
+ * Completes the real transport handshake and scopes its lifetime to the test.
+ * @param t Test lifetime. @param onInput Observer for user input at the external PTY boundary.
+ * @returns Ready production terminal with an authenticated original Shell PID.
+ */
+const createOrderedTerminal = (t: TestContext, onInput: (data: string) => void = () => {}): DeliveredTerminal => {
+  const channel = new OrderedTerminalChannel(onInput);
+  const terminal = new DeliveredTerminal(
+    channel as unknown as ClientChannel,
+    { rows: 32, cols: 120, term: 'xterm-256color', onOutput: () => {} },
+    (result) => assert.equal(result.status, 'ready'),
+  );
+  t.after(() => terminal.close());
+  channel.reply({ type: 'hello', protocol: 2 });
+  assert.equal(terminal.originalShellPID, 42);
+  return terminal;
+};
 
 type RemoteShellEventSessionHarness = {
   shellContext: ShellContextState;
@@ -265,13 +338,12 @@ test('Zsh input pauses directory operations before forwarding and coalesces cont
   };
   const writes: string[] = [];
   const requests: string[] = [];
-  session.stream = {
-    write: (data) => {
-      assert.equal(session.shellContext.status, 'paused');
-      assert.equal(session.shellContext.cwd, null);
-      writes.push(data);
-    },
-  };
+  const terminal = createOrderedTerminal(t, (data) => {
+    assert.equal(session.shellContext.status, 'paused');
+    assert.equal(session.shellContext.cwd, null);
+    writes.push(data);
+  });
+  session.stream = terminal;
   session.editorController = new ShellEditorController(
     () => session.shellContext,
     async (request) => {
@@ -285,7 +357,7 @@ test('Zsh input pauses directory operations before forwarding and coalesces cont
         },
       };
     },
-    () => assert.fail('Zsh refresh must not inject keyboard input'),
+    () => terminal,
     (state, snapshot) => {
       session.shellContext = confirmShellEditorContext(state, snapshot);
     },
@@ -326,6 +398,8 @@ test('Zsh context recovery survives client attachment and permission changes dur
     };
     let requests = 0;
     let finishCancelled: (() => void) | undefined;
+    const terminal = createOrderedTerminal(t, () => assert.fail('context recovery must not write a key'));
+    session.stream = terminal;
     session.editorController = new ShellEditorController(
       () => session.shellContext,
       async () => {
@@ -345,7 +419,7 @@ test('Zsh context recovery survives client attachment and permission changes dur
           },
         };
       },
-      () => assert.fail('context recovery must not write a key'),
+      () => terminal,
       (state, snapshot) => {
         session.shellContext = confirmShellEditorContext(state, snapshot);
       },
@@ -373,7 +447,7 @@ test('Zsh context recovery survives client attachment and permission changes dur
   }
 });
 
-test('editor replies respect client and permission ownership through final publication', async () => {
+test('editor replies respect client and permission ownership through final publication', async (t) => {
   const channels: Array<
     EventEmitter & {
       stderr: PassThrough;
@@ -427,7 +501,7 @@ test('editor replies respect client and permission ownership through final publi
     remoteEnhancementsRuntimeState: 'active',
     socket: oldSocket,
     client,
-    stream: { write() {} },
+    stream: createOrderedTerminal(t, () => assert.fail('editor requests must not inject terminal input')),
   });
   const service = Object.assign(Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness, {
     sessions: new Map([[session.sessionId, session]]),
@@ -445,6 +519,7 @@ test('editor replies respect client and permission ownership through final publi
       startTime: '100',
       triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
       promptGeneration: 1,
+      notification: { signal: 'URG' },
     },
   };
   const id = '01234567-89ab-4def-8123-456789abcdef';
@@ -463,6 +538,7 @@ test('editor replies respect client and permission ownership through final publi
     );
   };
   const first = service.handleEditorRequest(session, { type: 'editor-snapshot', requestId: id });
+  await Promise.resolve();
   reply(0, { phase: 'ready' });
   reply(0, { phase: 'done', status: 'ok', snapshot: observed });
   await first;
@@ -474,12 +550,17 @@ test('editor replies respect client and permission ownership through final publi
     snapshotId: snapshot.snapshotId,
     replacement: { text: 'echo new', cursor: 8 },
   });
+  await Promise.resolve();
   reply(1, { phase: 'ready' });
   session.socket = newSocket;
   service.onSessionAttached(session);
   reply(1, { phase: 'prepared', snapshot: observed });
   await apply;
-  assert.equal(channels[1]!.writes.length, 1, 'old peer cannot authorize an edit after replacement');
+  assert.equal(channels[1]!.writes.length, 2, 'only the request and pre-cancellation activation were sent');
+  assert.ok(
+    channels[1]!.writes.every((value) => !value.includes('"apply":true')),
+    'old peer cannot authorize an edit after replacement',
+  );
   assert.equal(channels[1]!.destroyed, true);
   assert.equal(
     newMessages.some((message) => message.type === 'editor-apply-result'),
@@ -489,11 +570,16 @@ test('editor replies respect client and permission ownership through final publi
   for (const [index, permission] of (['input', 'cwd'] as const).entries()) {
     session.shellContext = {
       ...session.shellContext,
+      status: 'ready',
+      reason: null,
+      requiresEditorConfirmation: false,
       permissions: { ...session.shellContext.permissions, input: true, cwd: true },
       editorBinding: { ...session.shellContext.editorBinding!, triggerNonce: id.slice(0, -1) + index },
     };
+    const channelIndex = channels.length;
     const pending = service.handleEditorRequest(session, { type: 'editor-snapshot', requestId: id });
-    const channelIndex = channels.length - 1;
+    await Promise.resolve();
+    assert.equal(channels.length, channelIndex + 1, 'the replacement peer starts a fresh editor request');
     reply(channelIndex, { phase: 'ready' });
     reply(channelIndex, { phase: 'done', status: 'ok', snapshot: observed });
     // Revoke between the controller's resolved result and the service's final publication.
@@ -1008,14 +1094,16 @@ const fishHistoryEvent = (overrides: Partial<RemoteShellEventMessage> = {}): Rem
 
 /**
  * Keeps the production controller and two-phase transport while substituting only ssh2.
+ * @param t Test lifetime.
  * @param openImmediately Whether ssh2 delivers its exec callback synchronously.
  * @returns Mutable session and request-scoped worker channels.
  */
-const createHistoryServiceHarness = (openImmediately = true) => {
+const createHistoryServiceHarness = (t: TestContext, openImmediately = true) => {
   const messages: SshTerminalServerMessage[] = [];
   const channels: HistoryChannel[] = [];
   const commands: string[] = [];
   const session = Object.assign(createSessionHarness({ remoteEnhancementsRuntimeState: 'active' }), {
+    stream: createOrderedTerminal(t, () => assert.fail('history requests must not inject terminal input')),
     t: (key: string) => key,
     socket: {
       OPEN: 1,
@@ -1101,7 +1189,7 @@ const lastHistoryView = (messages: SshTerminalServerMessage[]): ShellHistoryView
 
 test('native history starts only after the Fish handshake and editor binding, including a late registration', async (t) => {
   for (const registered of [true, false]) {
-    const { session, service, channels, messages } = createHistoryServiceHarness();
+    const { session, service, channels, messages } = createHistoryServiceHarness(t);
     t.after(() => service.clearRemoteHistory(session));
     session.remoteEnhancementsRuntimeState = 'pending';
     session.shellContext = createShellContext(
@@ -1131,6 +1219,7 @@ test('native history starts only after the Fish handshake and editor binding, in
     if (session.historySyncTimeout) clearTimeout(session.historySyncTimeout);
     session.historySyncTimeout = null;
     const pending = service.syncRemoteHistory(session.sessionId);
+    await Promise.resolve();
     assert.equal(channels.length, 1);
     completeHistory(channels[0]!, ['echo earlier']);
     await pending;
@@ -1144,7 +1233,7 @@ test('native history starts only after the Fish handshake and editor binding, in
 });
 
 test('history opt-out during handshake and unsupported shells never execute a native request', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   session.remoteEnhancementsRuntimeState = 'pending';
   session.shellContext = createShellContext(
@@ -1162,7 +1251,7 @@ test('history opt-out during handshake and unsupported shells never execute a na
   await service.syncRemoteHistory(session.sessionId);
   assert.equal(channels.length, 0);
 
-  const unsupported = createHistoryServiceHarness();
+  const unsupported = createHistoryServiceHarness(t);
   t.after(() => unsupported.service.clearRemoteHistory(unsupported.session));
   unsupported.session.shellContext = { ...unsupported.session.shellContext, shell: 'bash' };
   unsupported.service.scheduleHistorySync(unsupported.session.sessionId, { immediate: true });
@@ -1172,9 +1261,10 @@ test('history opt-out during handshake and unsupported shells never execute a na
 });
 
 test('native observations replace namespace and private state without reusing source IDs or parsing records', async (t) => {
-  const { session, service, channels, messages, commands } = createHistoryServiceHarness();
+  const { session, service, channels, messages, commands } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const first = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[0]!, ['multi\nline', 'echo  trailing  ']);
   await first;
   const original = lastHistoryView(messages);
@@ -1183,6 +1273,7 @@ test('native observations replace namespace and private state without reusing so
   assert.deepEqual(session.recentCommands, ['echo  trailing  ', 'multi\nline']);
   assert.deepEqual(session.completionRecentCommands, ['echo  trailing  ']);
   const second = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[1]!, ['new only'], 'partial', 'project_history');
   await second;
   const changed = lastHistoryView(messages);
@@ -1190,6 +1281,7 @@ test('native observations replace namespace and private state without reusing so
   assert.notEqual(changed.source?.id, original.source?.id);
   assert.deepEqual(changed.entries, ['new only']);
   const third = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[2]!, [], 'private', null);
   await third;
   assert.deepEqual(lastHistoryView(messages), { status: 'private', source: null, entries: [] });
@@ -1199,7 +1291,7 @@ test('native observations replace namespace and private state without reusing so
 
 test('revocation clears queued and active native work, including an SSH callback delivered after cancellation', async (t) => {
   for (const openImmediately of [true, false]) {
-    const { session, service, channels, messages } = createHistoryServiceHarness(openImmediately);
+    const { session, service, channels, messages } = createHistoryServiceHarness(t, openImmediately);
     t.after(() => service.clearRemoteHistory(session));
     session.historyView = {
       status: 'ok',
@@ -1212,6 +1304,7 @@ test('revocation clears queued and active native work, including an SSH callback
     service.scheduleHistorySync(session.sessionId);
     assert.ok(session.historySyncTimeout);
     const pending = service.syncRemoteHistory(session.sessionId);
+    await Promise.resolve();
     const lifetime = session.historyAbortController!.signal;
     service.applyEnhancementSettings({
       revision: 1,
@@ -1229,9 +1322,10 @@ test('revocation clears queued and active native work, including an SSH callback
 });
 
 test('off-on permission races cannot publish the old reply and eventually refresh the new lifetime', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const old = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   const oldSignal = session.historyAbortController!.signal;
   channels[0]!.reply({ phase: 'ready' });
   service.applyEnhancementSettings({
@@ -1245,6 +1339,7 @@ test('off-on permission races cannot publish the old reply and eventually refres
   if (session.historySyncTimeout) clearTimeout(session.historySyncTimeout);
   session.historySyncTimeout = null;
   const fresh = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   assert.notEqual(session.historyAbortController!.signal, oldSignal);
   completeHistory(channels.at(-1)!, ['echo fresh']);
   await fresh;
@@ -1252,9 +1347,10 @@ test('off-on permission races cannot publish the old reply and eventually refres
 });
 
 test('hiding suggestions retains native reads while renderer completion respects display permission', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const pending = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   const signal = session.historyAbortController!.signal;
   service.applyEnhancementSettings({
     revision: 1,
@@ -1286,9 +1382,10 @@ test('hiding suggestions retains native reads while renderer completion respects
 });
 
 test('stale IDs and exact records cannot authorize deletion; legacy deletion is ignored', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const read = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[0]!, ['echo exact', 'echo other']);
   await read;
   const sourceId = lastHistoryView(messages).source!.id;
@@ -1305,19 +1402,22 @@ test('stale IDs and exact records cannot authorize deletion; legacy deletion is 
 });
 
 test('exact native deletion requires a prepared match and reports current-reader removal only', async (t) => {
-  const { session, service, channels, messages, commands } = createHistoryServiceHarness();
+  const { session, service, channels, messages, commands } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const read = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[0]!, ['echo exact', 'echo other', 'echo exact']);
   await read;
   const sourceId = lastHistoryView(messages).source!.id;
   const pending = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo exact'));
+  await Promise.resolve();
   const channel = channels[1]!;
   assert.equal(channel.request.operation, 'history-delete');
   assert.equal(channel.request.expected?.history?.namespace, 'fish');
   assert.deepEqual(channel.request.expected?.history?.entries, ['echo exact']);
   channel.reply({ phase: 'ready' });
   channel.reply({ phase: 'prepared', snapshot: channel.request.expected });
+  await Promise.resolve();
   assert.ok(channel.writes.some((value) => value.includes('"apply":true')));
   channel.reply({ phase: 'done', status: 'history-removed-from-reader', applied: true });
   await pending;
@@ -1333,13 +1433,15 @@ test('exact native deletion requires a prepared match and reports current-reader
 });
 
 test('deletion fails closed for a changed native snapshot and leaves the displayed record', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const read = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[0]!, ['echo exact']);
   await read;
   const sourceId = lastHistoryView(messages).source!.id;
   const pending = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo exact'));
+  await Promise.resolve();
   channels[1]!.reply({ phase: 'ready' });
   channels[1]!.reply({
     phase: 'prepared',
@@ -1360,9 +1462,10 @@ test('deletion fails closed for a changed native snapshot and leaves the display
 });
 
 test('read/delete competition and uncertain deletion never fabricate a removed result', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const initial = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[0]!, ['echo exact']);
   await initial;
   const sourceId = lastHistoryView(messages).source!.id;
@@ -1375,8 +1478,11 @@ test('read/delete competition and uncertain deletion never fabricate a removed r
   completeHistory(channels[1]!, ['echo exact']);
   await reading;
   const deleting = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo exact'));
+  await Promise.resolve();
   channels[2]!.reply({ phase: 'ready' });
   channels[2]!.reply({ phase: 'prepared', snapshot: channels[2]!.request.expected });
+  await Promise.resolve();
+  assert.ok(channels[2]!.writes.some((value) => value.includes('"apply":true')));
   channels[2]!.close();
   await deleting;
   const uncertain = messages.at(-1);
@@ -1386,7 +1492,7 @@ test('read/delete competition and uncertain deletion never fabricate a removed r
 });
 
 test('history waits for an active private editor exchange and then reads the current binding', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   session.shellContext = {
     ...session.shellContext,
@@ -1399,6 +1505,7 @@ test('history waits for an active private editor exchange and then reads the cur
     type: 'editor-snapshot',
     requestId: '01234567-89ab-4def-8123-456789abcdef',
   });
+  await Promise.resolve();
   assert.equal(channels[0]!.request.operation, 'snapshot');
   const history = service.syncRemoteHistory(session.sessionId);
   assert.equal(channels.length, 1, 'history waits until the editor channel releases its binding');
@@ -1421,9 +1528,10 @@ test('history waits for an active private editor exchange and then reads the cur
 });
 
 test('stale editor-state cannot clear a current Fish source or abort its permission lifetime', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const read = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[0]!, ['echo current']);
   await read;
   const view = lastHistoryView(messages);
@@ -1446,13 +1554,15 @@ test('stale editor-state cannot clear a current Fish source or abort its permiss
 });
 
 test('permission re-enable during cancelled deletion schedules the new history lifetime', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const initial = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[0]!, ['echo old']);
   await initial;
   const sourceId = lastHistoryView(messages).source!.id;
   const deleting = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo old'));
+  await Promise.resolve();
   assert.equal(channels[1]!.request.operation, 'history-delete');
   service.applyEnhancementSettings({
     revision: 1,
@@ -1466,6 +1576,7 @@ test('permission re-enable during cancelled deletion schedules the new history l
   clearTimeout(session.historySyncTimeout);
   session.historySyncTimeout = null;
   const fresh = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   completeHistory(channels[2]!, ['echo new']);
   await fresh;
   assert.deepEqual(lastHistoryView(messages).entries, ['echo new']);
@@ -1473,19 +1584,15 @@ test('permission re-enable during cancelled deletion schedules the new history l
 });
 
 test('disconnect closes active native history before session transport', async (t) => {
-  const { session, service, channels, messages } = createHistoryServiceHarness();
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   let transportClosed = false;
-  session.stream = Object.assign(
-    { write: () => undefined },
-    {
-      close: () => {
-        assert.equal(channels[0]!.closed, true);
-        transportClosed = true;
-      },
-    },
-  );
+  session.stream.on('close', () => {
+    assert.equal(channels[0]!.closed, true);
+    transportClosed = true;
+  });
   const pending = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
   service.disposeSession(session.sessionId, 'ws.clientRequestedClose');
   await pending;
   assert.equal(transportClosed, true);

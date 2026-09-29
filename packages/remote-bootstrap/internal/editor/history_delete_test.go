@@ -39,9 +39,10 @@ func TestHistoryDeletionRequiresOneExactNativeRecordInTheOriginalScope(t *testin
 	history := History{Status: "ok", Namespace: &namespace, Entries: []string{"echo 中文🐟  \n"}}
 	snapshot := Snapshot{PromptGeneration: 1, EditorMode: "emacs", History: &history}
 	request := Request{
-		RequestID: "01234567-89ab-4def-8123-456789abcdef",
-		Target:    Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "fish", PID: 23, StartTime: "1234"},
-		Operation: "history-delete", PromptGeneration: 1, Notification: &Notification{Signal: "URG"}, Expected: &snapshot,
+		RequestID:     "01234567-89ab-4def-8123-456789abcdef",
+		InputBoundary: testInputBoundary,
+		Target:        Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "fish", PID: 23, StartTime: "1234"},
+		Operation:     "history-delete", PromptGeneration: 1, Notification: &Notification{Signal: "URG"}, Expected: &snapshot,
 	}
 	if !validRequest(request) || !matchesExpected(request, snapshot) {
 		t.Fatal("exact native deletion target was rejected")

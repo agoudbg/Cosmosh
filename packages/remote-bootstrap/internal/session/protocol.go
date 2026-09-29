@@ -13,7 +13,7 @@ import (
 
 const (
 	// ProtocolVersion is independent of the Shell's OSC observation protocol.
-	ProtocolVersion = 1
+	ProtocolVersion = 2
 	maxFrameBytes   = 96 * 1024
 	maxDataBytes    = 64 * 1024
 	maxSequence     = uint64(1<<53 - 1)
@@ -25,16 +25,18 @@ var termPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._+-]{0,63}$`)
 // frame contains only bounded control metadata or base64-encoded terminal bytes.
 // Input delivery never implies that the Shell has consumed the bytes.
 type frame struct {
-	Type     string `json:"type"`
-	Protocol int    `json:"protocol,omitempty"`
-	Epoch    string `json:"epoch,omitempty"`
-	Sequence uint64 `json:"sequence,omitempty"`
-	Data     []byte `json:"data,omitempty"`
-	Rows     uint16 `json:"rows,omitempty"`
-	Cols     uint16 `json:"cols,omitempty"`
-	Term     string `json:"term,omitempty"`
-	PID      int    `json:"pid,omitempty"`
-	Code     *int   `json:"code,omitempty"`
+	Type      string `json:"type"`
+	Protocol  int    `json:"protocol,omitempty"`
+	Epoch     string `json:"epoch,omitempty"`
+	Sequence  uint64 `json:"sequence,omitempty"`
+	Data      []byte `json:"data,omitempty"`
+	Rows      uint16 `json:"rows,omitempty"`
+	Cols      uint16 `json:"cols,omitempty"`
+	Term      string `json:"term,omitempty"`
+	PID       int    `json:"pid,omitempty"`
+	Code      *int   `json:"code,omitempty"`
+	RequestID string `json:"requestId,omitempty"`
+	Approved  *bool  `json:"approved,omitempty"`
 }
 
 // frameReader bounds allocations before standard-library JSON decoding.
@@ -71,7 +73,8 @@ func (reader *frameReader) read() (frame, error) {
 // validStart admits only an explicit handshake before a child Shell can start.
 func (value frame) validStart() bool {
 	return value.Type == "start" && value.Protocol == ProtocolVersion && epochPattern.MatchString(value.Epoch) &&
-		termPattern.MatchString(value.Term) && value.validSize() && value.Sequence == 0 && len(value.Data) == 0 && value.PID == 0 && value.Code == nil
+		termPattern.MatchString(value.Term) && value.validSize() && value.Sequence == 0 && len(value.Data) == 0 &&
+		value.PID == 0 && value.Code == nil && value.RequestID == "" && value.Approved == nil
 }
 
 // validSize applies the same dimensions as the desktop terminal boundary.
@@ -81,14 +84,22 @@ func (value frame) validSize() bool {
 
 // validControl rejects cross-session data, skipped sequences and unrelated fields.
 func (value frame) validControl(epoch string, delivered uint64) bool {
-	if value.Epoch != epoch || value.Protocol != 0 || value.Term != "" || value.PID != 0 || value.Code != nil {
+	if value.Epoch != epoch || value.Protocol != 0 || value.Term != "" || value.PID != 0 ||
+		value.Code != nil || value.Approved != nil {
 		return false
 	}
 	switch value.Type {
 	case "input":
-		return value.Sequence == delivered+1 && value.Sequence <= maxSequence && len(value.Data) > 0 && len(value.Data) <= maxDataBytes && value.Rows == 0 && value.Cols == 0
+		return value.Sequence == delivered+1 && value.Sequence <= maxSequence && len(value.Data) > 0 &&
+			len(value.Data) <= maxDataBytes && value.Rows == 0 && value.Cols == 0 && value.RequestID == ""
 	case "resize":
-		return value.Sequence == 0 && len(value.Data) == 0 && value.validSize()
+		return value.Sequence == 0 && len(value.Data) == 0 && value.validSize() && value.RequestID == ""
+	case "authorize-editor":
+		return value.Sequence <= maxSequence && epochPattern.MatchString(value.RequestID) &&
+			len(value.Data) == 0 && value.Rows == 0 && value.Cols == 0
+	case "revoke-editor":
+		return value.Sequence == 0 && epochPattern.MatchString(value.RequestID) &&
+			len(value.Data) == 0 && value.Rows == 0 && value.Cols == 0
 	default:
 		return false
 	}
@@ -104,6 +115,19 @@ type frameWriter struct {
 func (writer *frameWriter) write(value frame) error {
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
+	if value.Type == "editor-authorized" {
+		ack := struct {
+			Type      string `json:"type"`
+			Epoch     string `json:"epoch"`
+			Sequence  uint64 `json:"sequence"`
+			RequestID string `json:"requestId"`
+			Approved  *bool  `json:"approved"`
+		}{value.Type, value.Epoch, value.Sequence, value.RequestID, value.Approved}
+		if writer.encoder.Encode(ack) != nil {
+			return errors.New("session-output-failed")
+		}
+		return nil
+	}
 	if writer.encoder.Encode(value) != nil {
 		return errors.New("session-output-failed")
 	}

@@ -7,6 +7,7 @@ import { executeShellEditorRequest, type ShellEditorResult } from '../../ssh/edi
 import { executeBoundedSshCommand } from '../../ssh/exec.js';
 import { RemoteShellEventOscParser } from '../../ssh/remote-shell-events.js';
 import { SshSessionService } from '../../ssh/session-service.js';
+import { DeliveredTerminal } from '../../ssh/terminal-transport.js';
 import { confirmShellEditorContext, ShellEditorController } from '../editor-controller.js';
 import { applyShellContextEvent, createShellContext } from '../shell-context.js';
 import { editorBinaryPath, EditorFixture, installFixtureEditor } from './editor-fixture.js';
@@ -58,7 +59,7 @@ test(
             attempts.push(result.status);
             return result;
           },
-          () => assert.fail('Fish must never inject a private terminal key'),
+          () => (terminal.channel instanceof DeliveredTerminal ? terminal.channel : null),
           (expected, snapshot) => {
             if (session.shellContext === expected) session.shellContext = confirmShellEditorContext(expected, snapshot);
           },
@@ -292,6 +293,44 @@ test(
       } finally {
         terminal.close();
       }
+    }
+  },
+);
+
+test(
+  'Fish recovers after qualified native Tab and search while script bindings remain unavailable',
+  { timeout: 60_000 },
+  async (t) => {
+    const terminal = await openFixtureTerminal('fish', fish4, { disableFishAutosuggestions: true });
+    t.after(() => terminal.close());
+    const fixture = new EditorFixture(terminal, 'fish');
+    await fixture.prompt();
+    terminal.write('cat /home/cosmosh-fish/.conf\t');
+    let result = await fixture.request('snapshot');
+    const deadline = Date.now() + 5000;
+    while (result.status !== 'ok' && Date.now() < deadline) {
+      await delay(30);
+      result = await fixture.request('snapshot');
+    }
+    assert.equal(result.status, 'ok');
+    if (result.status === 'ok') assert.match(result.snapshot.buffer?.text ?? '', /\.config\/$/u);
+    await fixture.cancel();
+    await fixture.run('echo COSMOSH_ORDERED_SEARCH_HISTORY');
+    terminal.write('COSMOSH_ORDERED_SEARCH\x12');
+    await delay(80);
+    assertPaused(await fixture.request('snapshot'));
+    await fixture.cancel();
+    assert.equal((await fixture.request('snapshot')).status, 'ok');
+    for (const binding of [
+      "bind tab 'commandline -i CUSTOM'",
+      'bind tab,a self-insert',
+      "bind ctrl-r 'commandline -i CUSTOM'",
+    ]) {
+      const state = await fixture.run(binding);
+      assert.equal(state.available, false, 'newly recognized keys must also reject script and prefix bindings');
+      assertPaused(await fixture.request('snapshot'));
+      await fixture.run('bind --erase --all; fish_default_key_bindings', true);
+      assert.equal((await fixture.request('snapshot')).status, 'ok');
     }
   },
 );

@@ -5,6 +5,7 @@ package session
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/inputorder"
 )
 
 const (
@@ -339,6 +342,104 @@ func TestSessionEOFInterruptsBlockedPTYWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	child.wait(t, 2*time.Second)
+}
+
+// TestSessionClaimsInputBeforeBlockedPTYWrite observes the real frame reader
+// while the forwarder cannot complete a PTY write.
+func TestSessionClaimsInputBeforeBlockedPTYWrite(t *testing.T) {
+	child := startSessionTestChild(t, "raw")
+	child.start(t)
+	child.send(t, frame{Type: "input", Epoch: testEpoch, Sequence: 1, Data: bytes.Repeat([]byte("a"), maxDataBytes)})
+	waitForSessionCondition(t, func() bool {
+		_, err := os.Stat(child.progress)
+		return err == nil
+	}, "first input never reached the actual PTY")
+	child.send(t, frame{Type: "input", Epoch: testEpoch, Sequence: 2, Data: bytes.Repeat([]byte("b"), maxDataBytes)})
+	path, err := inputorder.Path(testEpoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForSessionCondition(t, func() bool {
+		data, err := os.ReadFile(path)
+		return err == nil && len(data) == 128 && binary.BigEndian.Uint64(data[56:64]) == 2
+	}, "queued input was not claimed before the blocked PTY write")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delivered := binary.BigEndian.Uint64(data[64:72]); delivered >= 2 {
+		t.Fatalf("blocked PTY input was marked delivered: %d", delivered)
+	}
+	if inputorder.CheckBoundary(child.ptyProcess.Pid, inputorder.Boundary{Epoch: testEpoch, Sequence: 1}) {
+		t.Fatal("older boundary remained eligible after queued input")
+	}
+	if err := child.input.Close(); err != nil {
+		t.Fatal(err)
+	}
+	child.wait(t, 2*time.Second)
+}
+
+func TestSessionEditorAuthorizationIsOrderedAndSingleUse(t *testing.T) {
+	child := startSessionTestChild(t, "raw")
+	child.start(t)
+	request := "11111111-2222-4333-8abc-111111111111"
+	child.send(t, frame{Type: "authorize-editor", Epoch: testEpoch, Sequence: 0, RequestID: request})
+	answer := child.read(t)
+	if answer.Type != "editor-authorized" || answer.Epoch != testEpoch ||
+		answer.Sequence != 0 || answer.RequestID != request || answer.Approved == nil || !*answer.Approved {
+		t.Fatalf("eligible authorization not acknowledged: %+v", answer)
+	}
+	child.send(t, frame{Type: "authorize-editor", Epoch: testEpoch, Sequence: 0, RequestID: request})
+	answer = child.read(t)
+	if answer.Type != "editor-authorized" || answer.Approved == nil || *answer.Approved {
+		t.Fatalf("repeated request authorized: %+v", answer)
+	}
+	child.send(t, frame{Type: "input", Epoch: testEpoch, Sequence: 1, Data: []byte("a")})
+	if value := child.read(t); value.Type != "delivered" || value.Sequence != 1 {
+		t.Fatalf("input was not delivered: %+v", value)
+	}
+	child.send(t, frame{Type: "authorize-editor", Epoch: testEpoch, Sequence: 0,
+		RequestID: "22222222-3333-4444-8abc-222222222222"})
+	answer = child.read(t)
+	if answer.Type != "editor-authorized" || answer.Approved == nil || *answer.Approved {
+		t.Fatalf("stale sequence authorized: %+v", answer)
+	}
+	request = "33333333-4444-4555-8abc-333333333333"
+	child.send(t, frame{Type: "authorize-editor", Epoch: testEpoch, Sequence: 1, RequestID: request})
+	answer = child.read(t)
+	if answer.Type != "editor-authorized" || answer.Approved == nil || !*answer.Approved {
+		t.Fatalf("fresh sequence not authorized: %+v", answer)
+	}
+	child.send(t, frame{Type: "revoke-editor", Epoch: testEpoch, RequestID: request})
+	child.send(t, frame{Type: "authorize-editor", Epoch: testEpoch, Sequence: 1, RequestID: request})
+	answer = child.read(t)
+	if answer.Type != "editor-authorized" || answer.Approved == nil || *answer.Approved {
+		t.Fatalf("revoked request authorized: %+v", answer)
+	}
+}
+
+func TestSessionRejectsMetadataFailureBeforeStartingShell(t *testing.T) {
+	path, err := inputorder.Path(testEpoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("occupied"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(path) })
+	child := startSessionTestChild(t, "raw")
+	child.send(t, frame{Type: "start", Protocol: ProtocolVersion, Epoch: testEpoch, Rows: 24, Cols: 80, Term: "xterm-256color"})
+	response := child.read(t)
+	if response.Type != "start-rejected" || response.Epoch != testEpoch || response.PID != 0 {
+		t.Fatalf("metadata failure did not explicitly reject startup: %+v", response)
+	}
+	child.wait(t, 2*time.Second)
+	if child.ptyProcess != nil {
+		t.Fatal("Shell started after metadata creation failure")
+	}
 }
 
 func TestStandardIOCancellationInterruptsBlockedOutput(t *testing.T) {

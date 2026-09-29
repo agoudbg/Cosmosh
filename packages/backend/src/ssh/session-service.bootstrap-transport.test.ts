@@ -408,7 +408,7 @@ for (const mode of ['ready', 'before-start', 'after-start'] as const) {
         if (mode === 'before-start') callback(new Error('unavailable'));
         else {
           callback(null, channel as unknown as ClientChannel);
-          queueMicrotask(() => channel.emit('data', Buffer.from('{"type":"hello","protocol":1}\n')));
+          queueMicrotask(() => channel.emit('data', Buffer.from('{"type":"hello","protocol":2}\n')));
         }
       },
     });

@@ -73,7 +73,7 @@ import { executeShellEditorRequest, type ShellEditorResult } from './editor-exec
 import { executeBoundedSshCommand } from './exec.js';
 import type { SshProxyMetadata } from './proxy.js';
 import { RemoteShellEventOscParser, type RemoteShellEventStreamFrame } from './remote-shell-events.js';
-import { openDeliveredTerminal, type SshTerminalStream } from './terminal-transport.js';
+import { DeliveredTerminal, openDeliveredTerminal, type SshTerminalStream } from './terminal-transport.js';
 
 type GetDbClient = () => PrismaClient;
 
@@ -899,7 +899,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     session.editorController ??= new ShellEditorController(
       () => session.shellContext,
       (request, options) => executeShellEditorRequest(session.client, binaryPath, request, options),
-      (data) => session.stream.write(data),
+      () => (session.stream instanceof DeliveredTerminal ? session.stream : null),
       (expected, snapshot) => {
         if (session.disposed || session.shellContext !== expected) return;
         session.shellContext = confirmShellEditorContext(expected, snapshot);
@@ -1245,7 +1245,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   private applyRemoteShellEventState(session: SshLiveSession, event: RemoteShellEventMessage): void {
     if (event.event === 'prompt-ready' || event.event === 'command-start' || event.event === 'command-end') {
       const hadOffer = session.credentialFillState.offer !== null;
-      session.credentialFillState = createCredentialFillState();
+      session.credentialFillState = createCredentialFillState(session.credentialFillState);
       if (hadOffer) this.sendCredentialFillOffer(session);
     }
     if (event.event === 'integration-ready') {
@@ -1672,7 +1672,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       // PTY input may belong to a password prompt or another program. Only Shell-owned
       // history is eligible for completion; keystrokes must never be retained as commands.
       const hadCredentialOffer = session.credentialFillState.offer !== null;
-      session.credentialFillState = createCredentialFillState();
+      session.credentialFillState = createCredentialFillState(session.credentialFillState);
       if (hadCredentialOffer) this.sendCredentialFillOffer(session);
 
       const usesStructuredCommandLifecycle = usesStructuredRemoteCommandLifecycle(
@@ -1794,7 +1794,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         return;
       }
       // Consume the token before writing: rapid double clicks cannot fill twice.
-      session.credentialFillState = createCredentialFillState();
+      session.credentialFillState = createCredentialFillState(session.credentialFillState);
       this.sendCredentialFillOffer(session);
       session.stream.write(session.loginPassword!);
       this.sendServerMessage(session, { type: 'credential-fill-result', token, status: 'filled' });

@@ -105,6 +105,9 @@ export type ShellEditorNotification = { fd: number; inode: string } | { signal: 
 /** Complete input buffer with a Unicode codepoint cursor offset; never persisted or included in OSC/debug events. */
 export type ShellEditorBuffer = { text: string; cursor: number };
 
+/** Connection identity and latest input sequence acknowledged by the original remote PTY owner. */
+export type ShellInputBoundary = { epoch: string; sequence: number };
+
 /** Original Shell history in native newest-first order; private mode returns no namespace or records. */
 export type ShellNativeHistory = {
   status: 'ok' | 'partial' | 'private';
@@ -150,6 +153,7 @@ export type ShellNativeCompletionResult = {
 export type ShellEditorRequest = {
   requestId: string;
   target: ShellEditorTarget;
+  inputBoundary: ShellInputBoundary;
   operation: 'context' | 'snapshot' | 'apply' | 'history' | 'history-delete' | 'native-completion';
   promptGeneration: number;
   includeDirectory: boolean;

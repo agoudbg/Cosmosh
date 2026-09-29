@@ -6,7 +6,7 @@ RUN sed -i -e '/^deb http:\/\/deb.debian.org/d' -e 's|^# deb http://snapshot.deb
       binutils binutils-aarch64-linux-gnu gcc gcc-aarch64-linux-gnu libc6-dev libc6-dev-arm64-cross \
     && rm -rf /var/lib/apt/lists/*
 
-COPY build.sh /usr/local/bin/cosmosh-build-bash-native
-RUN chmod 755 /usr/local/bin/cosmosh-build-bash-native
+COPY build.sh /usr/local/bin/cosmosh-build-shell-native
+RUN chmod 755 /usr/local/bin/cosmosh-build-shell-native
 
-ENTRYPOINT ["/usr/local/bin/cosmosh-build-bash-native"]
+ENTRYPOINT ["/usr/local/bin/cosmosh-build-shell-native"]

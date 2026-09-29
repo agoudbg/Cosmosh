@@ -1,9 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Client, type ClientChannel } from 'ssh2';
+
+import { DeliveredTerminal, openDeliveredTerminal } from '../../ssh/terminal-transport.js';
+import { openFixtureLatencyProxy } from './latency-proxy.js';
 
 /** Shells installed in the isolated real-SSH fixture. */
 export const FIXTURE_SHELLS = ['bash', 'zsh', 'fish'] as const;
@@ -74,19 +78,14 @@ export class FixtureTerminal {
    */
   constructor(
     readonly client: Client,
-    readonly channel: ClientChannel,
+    readonly channel: ClientChannel | DeliveredTerminal,
+    initialOutput = '',
   ) {
-    channel.setEncoding('utf8');
-    channel.on('data', (data: string) => {
-      if (this.disposed) return;
-      this.output += data;
-      if (Buffer.byteLength(this.output, 'utf8') > 2 * 1024 * 1024) {
-        this.fail(new Error('Fixture output exceeded its 2 MiB capture limit.'));
-        this.close();
-        return;
-      }
-      this.events.emit('output');
-    });
+    this.output = initialOutput;
+    if (!(channel instanceof DeliveredTerminal)) {
+      channel.setEncoding('utf8');
+      channel.on('data', (data: string) => this.acceptOutput(data));
+    }
     channel.on('error', (error: Error) => this.fail(error));
     client.on('error', (error: Error) => this.fail(error));
     channel.on('exit', (code: number | null) => {
@@ -97,6 +96,27 @@ export class FixtureTerminal {
       this.fail(new Error('Fixture PTY closed.'));
       this.events.emit('closed');
     });
+  }
+
+  /** @param data Real decoded PTY output. @returns Nothing; capture remains fixture-only and bounded. */
+  acceptOutput(data: string): void {
+    if (this.disposed) return;
+    this.output += data;
+    if (Buffer.byteLength(this.output, 'utf8') > 2 * 1024 * 1024) {
+      this.fail(new Error('Fixture output exceeded its 2 MiB capture limit.'));
+      this.close();
+      return;
+    }
+    try {
+      this.events.emit('output', data);
+    } finally {
+      this.events.emit('change');
+    }
+  }
+
+  /** @param listener Fixture observer of real output. @returns Nothing. */
+  onOutput(listener: (data: string) => void): void {
+    this.events.on('output', listener);
   }
 
   /**
@@ -132,7 +152,7 @@ export class FixtureTerminal {
       let timer: NodeJS.Timeout | null = null;
       const finish = (error: Error | null, match?: RegExpMatchArray): void => {
         if (timer) clearTimeout(timer);
-        this.events.off('output', inspect);
+        this.events.off('change', inspect);
         if (error) reject(error);
         else if (match) resolve(match);
       };
@@ -148,7 +168,7 @@ export class FixtureTerminal {
           ),
         timeoutMs,
       );
-      this.events.on('output', inspect);
+      this.events.on('change', inspect);
       inspect();
     });
   }
@@ -180,9 +200,15 @@ export class FixtureTerminal {
   close(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.fail(new Error('Fixture PTY disposed.'));
-    this.channel.destroy();
-    this.client.destroy();
+    try {
+      this.fail(new Error('Fixture PTY disposed.'));
+    } finally {
+      try {
+        this.channel.close();
+      } finally {
+        this.client.destroy();
+      }
+    }
   }
 
   /**
@@ -192,14 +218,14 @@ export class FixtureTerminal {
    */
   private fail(error: Error): void {
     this.failure ??= error;
-    this.events.emit('output');
+    this.events.emit('change');
   }
 }
 
 /**
  * Authenticate against a pinned, loopback-only fixture and open a real PTY.
  * @param shell Fixture account and Shell to exercise.
- * @param executable Optional versioned fixture runtime; Bash can also use COSMOSH_FIXTURE_BASH_EXECUTABLE.
+ * @param executable Optional versioned runtime; Bash/Zsh also accept COSMOSH_FIXTURE_<SHELL>_EXECUTABLE.
  * @param options Explicit fixture configuration, applied before the native reader starts.
  * @returns A session whose owner must close it in test cleanup.
  */
@@ -211,9 +237,16 @@ export async function openFixtureTerminal(
     privateFishHistory?: boolean;
     initialCommand?: string;
     fishHistoryDataDirectory?: string;
+    plain?: boolean;
+    roundTripLatencyMs?: 0 | 150 | 300;
   } = {},
 ): Promise<FixtureTerminal> {
-  executable ??= shell === 'bash' ? process.env.COSMOSH_FIXTURE_BASH_EXECUTABLE : undefined;
+  executable ??=
+    shell === 'bash'
+      ? process.env.COSMOSH_FIXTURE_BASH_EXECUTABLE
+      : shell === 'zsh'
+        ? process.env.COSMOSH_FIXTURE_ZSH_EXECUTABLE
+        : undefined;
   if (
     (options.disableFishAutosuggestions ||
       options.privateFishHistory ||
@@ -226,7 +259,8 @@ export async function openFixtureTerminal(
     executable !== undefined &&
     !(
       (shell === 'fish' && /^\/opt\/cosmosh-fixture\/fish-[0-9.]+\/runtime\/bin\/fish$/u.test(executable)) ||
-      (shell === 'bash' && /^\/opt\/cosmosh-fixture\/bash-[0-9.]+\/bin\/bash$/u.test(executable))
+      (shell === 'bash' && /^\/opt\/cosmosh-fixture\/bash-[0-9.]+\/bin\/bash$/u.test(executable)) ||
+      (shell === 'zsh' && /^\/opt\/cosmosh-fixture\/zsh-[0-9.]+\/bin\/zsh$/u.test(executable))
     )
   )
     throw new Error('Unsupported fixture Shell version path.');
@@ -236,7 +270,11 @@ export async function openFixtureTerminal(
   )
     throw new Error('History data directory must belong to a disposable fixture.');
   const connection = readFixtureConnection();
+  const proxy = options.roundTripLatencyMs
+    ? await openFixtureLatencyProxy(connection.port, options.roundTripLatencyMs)
+    : null;
   const client = new Client();
+  if (proxy) client.once('close', proxy.close);
   return await new Promise<FixtureTerminal>((resolve, reject) => {
     let settled = false;
     const timeout = setTimeout(() => onError(new Error('Fixture PTY startup timed out.')), 15_000);
@@ -244,11 +282,13 @@ export async function openFixtureTerminal(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      proxy?.close();
       client.destroy();
       reject(error);
     };
     client.once('error', onError);
-    client.once('ready', () => {
+    /** @returns Nothing after the real terminal opens or its startup is rejected. */
+    const onReady = async (): Promise<void> => {
       /** @param error Real SSH startup failure. @param stream Opened fixture PTY. @returns Nothing. */
       const onOpen = (error: Error | undefined, stream: ClientChannel): void => {
         if (settled) {
@@ -265,6 +305,104 @@ export async function openFixtureTerminal(
         clearTimeout(timeout);
         resolve(terminal);
       };
+      if (!options.plain) {
+        let terminal: FixtureTerminal | null = null;
+        let initialOutput = '';
+        const helper = '/home/cosmosh-' + shell + '/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap';
+        let launch = helper;
+        try {
+          if (executable) {
+            // The disposable launcher selects a real version/configuration while the
+            // production forwarder still owns and numbers every actual terminal byte.
+            launch = '/home/cosmosh-' + shell + '/.cosmosh-fixture-' + randomUUID();
+            const quote = (value: string): string => "'" + value.replaceAll("'", "'\\''") + "'";
+            const commands = [
+              options.disableFishAutosuggestions ? 'set -g fish_autosuggestion_enabled 0' : '',
+              options.initialCommand,
+            ]
+              .filter(Boolean)
+              .join('; ');
+            const invocation =
+              shell === 'bash'
+                ? quote(executable) + ' --noprofile --rcfile /home/cosmosh-bash/.bashrc -i'
+                : shell === 'zsh'
+                  ? quote(executable) + ' -i'
+                  : (options.fishHistoryDataDirectory
+                      ? 'env XDG_DATA_HOME=' + quote(options.fishHistoryDataDirectory) + ' '
+                      : '') +
+                    quote(executable) +
+                    ' --interactive' +
+                    (options.privateFishHistory ? ' --private' : '') +
+                    (commands ? ' --init-command ' + quote(commands) : '');
+            const script =
+              '#!/bin/sh\nif [ "$1" = session ]; then\n export SHELL="$0"\n exec ' +
+              quote(helper) +
+              ' session\nfi\nrm -- "$0"\nexec ' +
+              invocation +
+              '\n';
+            await new Promise<void>((done, rejectUpload) =>
+              client.sftp((error, sftp) => {
+                if (error) {
+                  rejectUpload(error);
+                  return;
+                }
+                sftp.writeFile(launch, script, { mode: 0o700 }, (error) => {
+                  sftp.end();
+                  if (error) rejectUpload(error);
+                  else done();
+                });
+              }),
+            );
+          }
+          const result = await openDeliveredTerminal(client, launch, {
+            rows: 32,
+            cols: 120,
+            term: 'xterm-256color',
+            onOutput: (data) => {
+              if (terminal) terminal.acceptOutput(data);
+              else {
+                initialOutput += data;
+                if (Buffer.byteLength(initialOutput, 'utf8') > 2 * 1024 * 1024)
+                  onError(new Error('Fixture startup output exceeded budget.'));
+              }
+            },
+          });
+          if (result.status === 'ready') {
+            if (settled) {
+              result.stream.close();
+              return;
+            }
+            terminal = new FixtureTerminal(client, result.stream, initialOutput);
+            settled = true;
+            client.off('error', onError);
+            clearTimeout(timeout);
+            resolve(terminal);
+            return;
+          }
+          if (result.status === 'failed') {
+            onError(new Error('Fixture forwarded Shell failed after start.'));
+            return;
+          }
+          if (launch !== helper) {
+            await new Promise<void>((done) =>
+              client.sftp((error, sftp) => {
+                if (error) {
+                  done();
+                  return;
+                }
+                sftp.unlink(launch, () => {
+                  sftp.end();
+                  done();
+                });
+              }),
+            );
+          }
+        } catch (error) {
+          onError(error instanceof Error ? error : new Error('Fixture forwarding failed.'));
+          return;
+        }
+      }
+      if (settled) return;
       if (executable) {
         const commands = [
           options.disableFishAutosuggestions ? 'set -g fish_autosuggestion_enabled 0' : '',
@@ -280,7 +418,9 @@ export async function openFixtureTerminal(
         client.exec(
           shell === 'bash'
             ? executable + ' --noprofile --rcfile /home/cosmosh-bash/.bashrc -i'
-            : environment +
+            : shell === 'zsh'
+              ? executable + ' -i'
+              : environment +
                 executable +
                 ' --interactive' +
                 (options.privateFishHistory ? ' --private' : '') +
@@ -300,13 +440,23 @@ export async function openFixtureTerminal(
         },
         onOpen,
       );
+    };
+    client.once('ready', () => {
+      void onReady().catch((error: unknown) =>
+        onError(error instanceof Error ? error : new Error('Fixture terminal startup failed.', { cause: error })),
+      );
     });
-    client.connect({
-      ...connection,
-      username: `cosmosh-${shell}`,
-      readyTimeout: 10_000,
-      hostHash: 'sha256',
-      hostVerifier: (fingerprint: string) => fingerprint === connection.hostFingerprint,
-    });
+    try {
+      client.connect({
+        ...connection,
+        port: proxy?.port ?? connection.port,
+        username: `cosmosh-${shell}`,
+        readyTimeout: 10_000,
+        hostHash: 'sha256',
+        hostVerifier: (fingerprint: string) => fingerprint === connection.hostFingerprint,
+      });
+    } catch (error) {
+      onError(error instanceof Error ? error : new Error('Fixture SSH connection failed.', { cause: error }));
+    }
   });
 }

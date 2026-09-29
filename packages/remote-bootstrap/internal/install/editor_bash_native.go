@@ -67,7 +67,7 @@ __cosmosh_bash_editor_prepare() {
     case "${PS2-}" in "$__COSMOSH_PS2_MARKER"*) ;; *) __COSMOSH_EDITOR_REVOKED=1 ;; esac
   fi
   if [ "$__COSMOSH_EDITOR_REVOKED" = 1 ] || [ -z "$__COSMOSH_EDITOR_START" ] ||
-    [ "$__COSMOSH_BASH_NATIVE_PACKAGED" != 1 ] || [ "$(command locale charmap 2>/dev/null)" != UTF-8 ] ||
+    [ "$__COSMOSH_NATIVE_PACKAGED" != 1 ] || [ "$(command locale charmap 2>/dev/null)" != UTF-8 ] ||
     ! __cosmosh_bash_editor_profile_supported; then
     __cosmosh_emit_remote_shell_event editor-state
     return 0

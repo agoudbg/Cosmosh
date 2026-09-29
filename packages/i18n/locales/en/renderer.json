@@ -1501,7 +1501,7 @@
         "nativeCompletion": "Fish native suggestions",
         "paths": "File suggestions"
       },
-      "fishSupport": "Fish enhancements are verified with Fish 4.0.1, compatible native keys and gray inline suggestions turned off. Native Tab, search or unknown key sequences currently pause Cosmosh's directory confirmation and history reading until you reconnect. Waiting or toggling permissions does not resume them. Ordinary input, native Tab and history keys remain usable. Custom bindings or history filters can also limit support.",
+      "fishSupport": "Fish enhancements are verified with Fish 4.0.1, compatible native keys and gray inline suggestions turned off. After native Tab completion or Ctrl+R search ends, Cosmosh can confirm the Shell and resume. Unknown key sequences pause enhancement reads until you reconnect; waiting or toggling permissions does not clear them. Ordinary input, native Tab and history keys remain usable. Custom bindings or history filters can also limit support.",
       "permissionAllowed": "Allowed",
       "permissionDisabled": "Off",
       "reasons": {

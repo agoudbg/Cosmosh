@@ -24,6 +24,7 @@ const FISH_COMPLETE_KEYS = [
   '\x1b[4~',
   '\x1b[7~',
   '\x1b[8~',
+  '\x1b[Z',
 ];
 const FISH_PASTE_START = '\x1b[200~';
 const FISH_PASTE_END = '\x1b[201~';
@@ -63,7 +64,7 @@ export const advanceFishInputBoundary = (previous: FishInputBoundary | undefined
     const code = character.codePointAt(0)!;
     if (
       (code < 32 || (code >= 127 && code <= 159)) &&
-      ![1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 19, 20, 21, 23, 25, 26, 31, 127].includes(code)
+      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 19, 20, 21, 23, 25, 26, 31, 127].includes(code)
     )
       next.uncertain = true;
   }

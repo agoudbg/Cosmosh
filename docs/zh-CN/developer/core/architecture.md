@@ -49,23 +49,24 @@ flowchart LR
 
 ### Backend 进程 (`packages/backend/src/index.ts`)
 
-- 可选 Fish 原生候选在原始编辑器完成私有观察后，通过单次请求的独立子进程查询。导出环境只经过远端私有 socket，Backend 只接收有界的字面候选数据。查询加载已保存的非交互配置，使用独立进程组，不连接 PTY，并受期限与取消约束。共享设置注册表提供关闭／主动查询／自动查询选项；已保存配置和前端缓存通过同一个规范化函数保留已有的关闭选择。输入送达传输已实现；候选编号菜单接入和 Shell 自身的输入消费确认仍是发布前提。具体边界见`runtime/ssh-terminal.md`中的原生来源说明。
+- 可选 Fish 原生候选在原始编辑器完成私有观察后，通过单次请求的独立子进程查询。导出环境只经过远端私有 socket，Backend 只接收有界的字面候选数据。查询加载已保存的非交互配置，使用独立进程组，不连接 PTY，并受期限与取消约束。共享设置注册表提供关闭／主动查询／自动查询选项；已保存配置和前端缓存通过同一个规范化函数保留已有的关闭选择。编辑器观察已绑定有序输入边界；候选编号菜单接入与完整 Electron 验收仍未完成。具体边界见`runtime/ssh-terminal.md`中的原生来源说明。
 
 - 增强消费者共享 Backend 持有的逐会话`ShellContext`，其中不包含输入文本。协议 v3 绑定原始 Shell 身份，分别记录能力和权限，用代数使异步工作失效。默认范围设置按数据库版本传播，可选初始化失败仍保留普通 SSH。Renderer 按分屏保留最新元数据。
 - 原始交互 Shell 的 CWD 报告与提示符代数配对后才能使用。逻辑路径、物理路径和 HOME 分开保存，过期目录仅供显示。补全与终端到 SFTP 的操作使用当前物理目录，并保留符号链接后的父目录片段交由远端解析。不再从屏幕文字或另开的登录 Shell 获取 CWD。
-- SSH 与本地 PTY 输入只做转发，不保存命令行缓冲来推断历史或目录变化。Linux 助手通过校验时，`ssh/terminal-transport.ts`让 SSH 输入经过本次连接专用的远端 PTY，并记录送达序号。确认只表示完整输入批次已写入 PTY 主端，不表示 Shell 已经消费。普通 SSH 与本地 PTY 仍走原有路径。补全历史来自 Shell 自身来源。
+- SSH 与本地 PTY 输入只做转发，不保存命令行缓冲来推断历史或目录变化。Linux 助手通过校验时，`ssh/terminal-transport.ts`使用会话协议 v2 记录原始 Shell PID 和连续输入序号。远端读取器在输入进入队列前记录收到的序号并撤销已有编辑授权，即使 PTY 写入正在阻塞也执行此检查；完整写入之后才确认送达。送达本身不证明 Shell 已消费输入。普通 SSH 与本地 PTY 仍走原有路径。补全历史来自 Shell 自身来源。
+- `internal/inputorder`持有`/tmp/cosmosh-input-<uid>/<epoch>.state`中的 128 字节记录，只保存会话／PID、收到及送达的序号和一个限时请求授权。它检查规范 UUID、所有者、0700 目录、0600 单硬链接文件和 inode 身份。编辑修改与输入接收使用同一个本地文件锁，修改须消费一次性授权，授权按单调时钟在 1.5 秒后到期。等待桌面授权、网络传输及重绘期间不持有此锁。转发器更新元数据时若 1.5 秒内仍不能取得锁，就终止会话，不强行解锁或重放输入。
 - SSH 历史任务共享由`remoteEnhancementsHistoryEnabled`控制的权限周期，与历史建议展示开关分开。关闭权限、助手失效和断开连接都会取消定时器及远端通道，并清空会话副本；重新开启后，过期结果也不能重新出现。前端参数不能覆盖这两项已保存设置。SSH 只使用已验证的原始 Fish 原生来源。来源编号绑定 Shell 身份、历史库名称和权限周期，每次观察替换全部缓存。不支持的 Shell 不会降级读取猜测文件。
 - 私有 Fish 历史操作复用原始编辑器经过身份检查的回调，不取得输入或 CWD。它们在 Shell 内过滤临时私密记录，并在该 Shell 的生命周期内保留对自定义历史策略的不可信判定。原生精确移除要求再次授权，只报告原始行编辑器中已确认的目标消失；原生保存无法确认历史文件是否更新。侧栏在用户确认范围后发送完整记录和所显示来源编号。请求、来源或分屏变化会使待处理操作失效；多行或控制字符记录只能完整复制。Bash 私有适配器已有有界原生历史读取原语，但 Backend 来源启用与删除仍待完成；当前 SSH 历史来源仍仅有 Fish。
-- 显式编辑器请求使用独立的 Backend 内存控制器和单次请求 Go 工作进程。打包的 Bash 5.1/5.2 通过`enable -f`将经过校验的`cosmosh-bash.so`载入原始 Shell；原生模块只在正常线程的 Readline 空闲回调内处理符合条件的主提示符，并通过已认证的私有 socket 交换有界二进制数据。该回调不执行 Shell 字符串、不注入按键，也不等待桌面授权；模块缺失、不兼容或归属校验失败时，Bash 编辑能力明确不可用。Zsh 使用经过身份检查的匿名管道通知和只读 ZLE 观察。Fish 4.0.1 使用固定的 pidfd 信号及经过验证的原生按键配置，要求用户已经关闭原生自动建议。私有 socket 校验 UID、进程和 PTY 身份；替换操作要求完整观察匹配、最新权限及客户端检查和 Shell 最终回执。文本不进入公开`ShellContext`或 OSC 调试历史。PTY 送达确认本身不证明 Shell 已消费输入，因此精确菜单仍需等待`runtime/ssh-terminal.md`所述的剩余排序工作。
+- 显式编辑器请求使用独立的 Backend 内存控制器和单次请求 Go 工作进程。每个请求必须携带`inputBoundary`；控制器等待送达，并在查询前确认原始 Shell PID、当前上下文和未变化的序号。完整预备观察匹配后，修改授权经过有序终端通道发送。Bash 5.1／5.2 使用打包的`cosmosh-bash.so` Readline 空闲适配器；Zsh 5.8／5.9 保留只读`zle -F`观察，通过打包的`cosmosh_zsh.so`执行原子填写并创建 Shell 持有的通知管道。钩子初始化前显式加载 ZLE；原生模块创建非阻塞、执行子程序时关闭的描述符，无需子进程。两个原生填写临界区都会暂时屏蔽信号，重新检查编辑器／PTY／输入状态，消费授权并赋值，然后解锁并允许重绘。Fish 4.0.1 使用 pidfd 通知、合格的原生按键配置，并要求用户关闭自动建议；其填写作用域暂缓事件处理，在撤销／重绘或确认工作前关闭锁描述符。Zsh／Fish 在等待桌面授权前结束第一次捕获回调，收到第二次通知后再次捕获。未满足条件的配置保持不可用。文本不进入公开`ShellContext`、输入顺序文件或 OSC 调试历史；修改回执丢失时返回`unknown`，不会重放。
 - 精确补全位置使用 Unicode 码点。Backend 将有界字面修改绑定到会话中的限时快照，只对外提供用于展示的候选标识；对应 Shell 的引号规则保证文件名字面含义及无关后续内容完整。复杂语法不产生精确候选。前端接入仍为独立迁移，每次填写之后仍须经过私有编辑器确认。
-- 远端目录补全使用已安装 Go 助手的有界 stdin/JSON 查询，先匹配再限制结果，并使用逐会话短时缓存。仅接受快照的路径草稿保留同一次观察中的 CWD/HOME 与引号语义。在候选标识迁移完成前，旧 SSH 菜单不再查询远端路径。新增的送达确认仍需与 Shell 自身的观察结果绑定，才能支持可靠恢复与精确菜单。
+- 远端目录补全使用已安装 Go 助手的有界 stdin/JSON 查询，先匹配再限制结果，并使用逐会话短时缓存。仅接受快照的路径草稿保留同一次观察中的 CWD/HOME 与引号语义。在候选标识迁移完成前，旧 SSH 菜单不再查询远端路径。私有恢复现在同时要求已送达的输入边界和合格的原始 Shell 观察；精确菜单及终端到 SFTP 的使用时确认仍需接入相应消费者。
 - 注册幂等的优雅关闭流程，覆盖运行时信号与致命进程事件。
 - 暴露仅由 Main 关闭守卫使用、受内部 token 保护的运行时连接汇总/关闭操作；renderer 不获得批量断开 bridge。
 - 关闭顺序固定：先停 WS 会话服务，再关闭 HTTP 监听，最后断开 Prisma/SQLite 连接句柄。
 - Windows 终止信号（`SIGBREAK`）与 POSIX 信号共用同一路径，降低数据库文件锁残留概率。
 - 本地终端 profile 发现改为短时内存缓存 + 并行探测，降低 Home/Settings 首次加载时重复扫描带来的等待。
 - 主 SSH transport 认证后，`SshSessionService`通过`RemoteBootstrapService`执行可选的远端增强 ensure。探测、安装和状态命令使用独立认证的临时 transport，并复用相同凭据、主机信任、压缩与代理策略；主 transport 打开终端通道前会先启动临时 transport 的关闭。Backend 负责 manifest 加载、远端探测、已安装状态校验、按需下载、状态转发、运行时门禁和审计。`packages/remote-bootstrap`负责用户级安装器、生成的 Shell helper 和本次连接专用的 PTY 转发器。Manifest 来源与发布通道详见`runtime/ssh-terminal.md`。
-- 已校验契约处于`ready`且包含`binaryPath`时，主 transport 通过无外层 PTY 的`exec`通道运行`cosmosh-bootstrap session`；完成`hello`/`start`后，助手在自建 PTY 上启动原始登录 Shell。这种通道形式不保证 sshd MOTD、PAM tty 消息或 utmp 行为。发送`start`前助手不可用时，Backend 会禁用增强并打开普通`shell()` PTY；发送`start`后启动结果不明确则连接失败，不重放输入，也不启动第二个 Shell。增强关闭时，普通原始 SSH 路径不变。当前安装契约可跳过下载；ensure 失败仍允许普通 Shell 路径。
+- 已校验的安装状态处于`ready`且包含`binaryPath`时，主 transport 通过无外层 PTY 的`exec`通道运行`cosmosh-bootstrap session`；完成协议 v2 的`hello`／`start`后，助手在自建 PTY 上启动原始登录 Shell。这种通道形式不保证 sshd MOTD、PAM tty 消息或 utmp 行为。发送`start`前确认不可用，或在`ready`之前收到字段及 epoch 完全匹配的`start-rejected`时，允许禁用增强并回退到普通`shell()`。助手只在 Shell 启动前创建输入顺序元数据失败时发送`start-rejected`。其他发送`start`后结果不明确的情况都关闭连接，不重放输入或启动第二个 Shell。增强关闭时保留普通原始 SSH 路径。当前安装状态可跳过下载；ensure 失败仍允许普通 Shell 路径。
 - `RemoteShellEventOscParser` 将可见输出与 helper 事件拆开后，`SshSessionService` 仍会保留原始 PTY 顺序，并按有序 frame 转发，而不是按类型重新分组。因此，位于 `command-start` 之前的输入回显与换行会先进入 renderer xterm，再捕获命令 marker 几何信息。WebSocket 未 attach 时，两类 frame 共用一个有界且保持到达顺序的队列；attach 会先发送当前控制状态，再按原顺序回放保留的 frame。
 - `RemoteBootstrapService` 会合并并发 manifest 加载，并只缓存校验成功结果五分钟。Session 取消只停止单个等待者，不会中止共享请求；失败加载可立即重试。
 - 启动阶段在 `initializeDatabase(...)` 内执行幂等 Prisma migration 文件同步，因此无论是安装后首次启动还是后续每次启动，都会在开放 HTTP 路由前将本地数据库结构收敛到当前后端契约。

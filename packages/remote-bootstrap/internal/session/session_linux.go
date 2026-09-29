@@ -15,6 +15,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/inputorder"
 	"github.com/creack/pty"
 )
 
@@ -66,6 +67,15 @@ func Run(parent context.Context, input io.ReadCloser, output io.WriteCloser) err
 		return errors.New("session-invalid-start")
 	}
 	startupTimer.Stop()
+	order, err := inputorder.Create(start.Epoch)
+	if err != nil {
+		_ = writer.write(frame{Type: "start-rejected", Epoch: start.Epoch})
+		return errors.New("session-input-order-unavailable")
+	}
+	defer func() {
+		cancel()
+		_ = order.Close()
+	}()
 
 	// sshd provides the account's configured Shell. No command text enters exec argv.
 	shell := os.Getenv("SHELL")
@@ -96,6 +106,9 @@ func Run(parent context.Context, input io.ReadCloser, output io.WriteCloser) err
 			}
 		}
 	}()
+	if order.SetShellPID(command.Process.Pid) != nil {
+		return errors.New("session-input-order-failed")
+	}
 	if err := writer.write(frame{Type: "ready", Epoch: start.Epoch, PID: command.Process.Pid}); err != nil {
 		return err
 	}
@@ -127,12 +140,17 @@ func Run(parent context.Context, input io.ReadCloser, output io.WriteCloser) err
 				cancel()
 				return
 			}
-			if value.Type == "input" {
-				received = value.Sequence
-			}
 			if queuedBytes.Add(int64(len(value.Data)+128)) > 1024*1024 {
 				cancel()
 				return
+			}
+			if value.Type == "input" {
+				// Claim the sequence before the queued frame can reach a blocked PTY write.
+				if order.Receive(ctx, value.Sequence) != nil {
+					cancel()
+					return
+				}
+				received = value.Sequence
 			}
 			select {
 			case inputs <- value:
@@ -195,13 +213,33 @@ func Run(parent context.Context, input io.ReadCloser, output io.WriteCloser) err
 			}
 			switch value.Type {
 			case "input":
-				if err := deliver(terminal, value, writer.write); err != nil {
+				if err := deliver(terminal, value, func(ack frame) error {
+					if order.Deliver(ctx, ack.Sequence) != nil {
+						return errors.New("session-input-order-failed")
+					}
+					return writer.write(ack)
+				}); err != nil {
 					return err
 				}
 				delivered = value.Sequence
 			case "resize":
 				if resizeTerminal(terminal, value.Rows, value.Cols) != nil {
 					return errors.New("session-resize-failed")
+				}
+			case "authorize-editor":
+				approved, err := order.Authorize(ctx, value.RequestID, value.Sequence)
+				if err != nil {
+					return errors.New("session-input-order-failed")
+				}
+				if err := writer.write(frame{
+					Type: "editor-authorized", Epoch: start.Epoch, Sequence: value.Sequence,
+					RequestID: value.RequestID, Approved: &approved,
+				}); err != nil {
+					return err
+				}
+			case "revoke-editor":
+				if order.Revoke(ctx, value.RequestID) != nil {
+					return errors.New("session-input-order-failed")
 				}
 			}
 		}

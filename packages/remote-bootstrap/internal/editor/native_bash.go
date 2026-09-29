@@ -9,12 +9,14 @@ import (
 	"io"
 	"net"
 	"os"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/inputorder"
 )
 
 // The native module uses an intentionally small, versioned binary protocol. Each record has a
-// big-endian uint32 byte length, version 1, opcode, and bounded length-prefixed UTF-8 strings.
+// big-endian uint32 byte length, version 2, opcode, and bounded length-prefixed UTF-8 strings.
 // This avoids embedding a JSON parser in Bash. The ordinary desktop protocol remains JSON.
-const nativeVersion = 1
+const nativeVersion = 2
 
 // nativeRecord decodes one already-bounded frame and records the first boundary error.
 type nativeRecord struct {
@@ -218,14 +220,14 @@ func runNativeBash(ctx context.Context, connection *net.UnixConn, request Reques
 	if request.IncludeDirectory {
 		directory = 1
 	}
-	if err := writeNativeRecord(connection, 2, operation, directory, request.RequestID); err != nil {
+	if err := writeNativeRecord(connection, 2, operation, directory, request.RequestID, request.InputBoundary.Epoch, request.InputBoundary.Sequence); err != nil {
 		return finish("unavailable")
 	}
 	snapshot, err := readNativeSnapshot(connection, request)
 	if err != nil {
 		return finish("unavailable")
 	}
-	if !matchesExpected(request, *snapshot) {
+	if !matchesExpected(request, *snapshot) || !inputorder.CheckBoundary(request.Target.PID, request.InputBoundary) {
 		return finish("stale")
 	}
 	if !validateNativeDirectory(ctx, request.Target, snapshot.Directory) {

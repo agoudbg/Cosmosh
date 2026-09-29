@@ -14,7 +14,7 @@ test('Fish framing waits for split paste delimiters without storing pasted input
 });
 
 test('Fish framing accepts complete native keys and retains unknown-control uncertainty', () => {
-  for (const input of ['echo 中🐟', '\x1b[D\x1b[3~', '\x01\x05', '\x03\r'])
+  for (const input of ['echo 中🐟', '\x1b[D\x1b[3~', '\x01\x05', '\x03\r', '\t', '\x12', '\x1b[Z'])
     assert.equal(isFishInputBoundaryPending(advanceFishInputBoundary(undefined, input)), false);
   let boundary = advanceFishInputBoundary(undefined, '\x1b[');
   assert.equal(isFishInputBoundaryPending(boundary), true);
@@ -23,8 +23,6 @@ test('Fish framing accepts complete native keys and retains unknown-control unce
   boundary = advanceFishInputBoundary(boundary, '\x18');
   assert.equal(isFishInputBoundaryPending(boundary), true);
   assert.equal(isFishInputBoundaryPending(advanceFishInputBoundary(boundary, 'ordinary')), true);
-  for (const input of ['\x09', '\x12'])
-    assert.equal(isFishInputBoundaryPending(advanceFishInputBoundary(undefined, input)), true);
 });
 
 test('paste content cannot inject another start delimiter or expose arbitrary partial text', () => {

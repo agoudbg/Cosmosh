@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/inputorder"
 )
 
 // RequestTimeout bounds a worker's complete lifetime, including an interrupted widget.
@@ -36,6 +38,7 @@ type widgetReply struct {
 	IncludeDirectory bool     `json:"includeDirectory,omitempty"`
 	Replacement      *Buffer  `json:"replacement,omitempty"`
 	History          *History `json:"history,omitempty"`
+	InputBoundary    inputorder.Boundary `json:"inputBoundary"`
 }
 
 // readFrame reads one bounded JSON line without allowing an unbounded allocation.
@@ -119,6 +122,9 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 	if err := checkTarget(request.Target, true); err != nil {
 		return finish("target-unavailable")
 	}
+	if !inputorder.CheckBoundary(request.Target.PID, request.InputBoundary) {
+		return finish("stale")
+	}
 	address, err := socketAddress(request.Target)
 	if err != nil {
 		return finish("socket-unavailable")
@@ -196,6 +202,7 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 		}
 	}
 	phase := "mode"
+	authorizationGranted := false
 	applicationDecided := false
 	attempts := 0
 	for {
@@ -241,12 +248,16 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			continue
 		}
 		if phase == "mode" {
+			if !inputorder.CheckBoundary(request.Target.PID, request.InputBoundary) {
+				connection.Close()
+				return finish("stale")
+			}
 			var history *History
 			if request.Operation == "history-delete" {
 				history = request.Expected.History
 			}
 			err = json.NewEncoder(connection).Encode(widgetReply{Status: "ok", RequestID: request.RequestID,
-				Operation: request.Operation, IncludeDirectory: request.IncludeDirectory, History: history})
+				Operation: request.Operation, IncludeDirectory: request.IncludeDirectory, History: history, InputBoundary: request.InputBoundary})
 			connection.Close()
 			if err != nil {
 				return finish("unavailable")
@@ -274,7 +285,7 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			connection.Close()
 			return emit("done", status, nil, status != "unknown")
 		}
-		if !matchesExpected(request, *widget.Snapshot) {
+		if !matchesExpected(request, *widget.Snapshot) || !inputorder.CheckBoundary(request.Target.PID, request.InputBoundary) {
 			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "stale"})
 			connection.Close()
 			return finish("stale")
@@ -296,19 +307,26 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			connection.Close()
 			return emit("done", "ok", widget.Snapshot, false)
 		}
-		if err := emit("prepared", "", widget.Snapshot, false); err != nil {
+		if !authorizationGranted {
+			// Release the interactive callback before waiting for a desktop round trip.
+			// A second callback must recapture the editor after ordered authorization arrives.
+			err = json.NewEncoder(connection).Encode(widgetReply{Status: "ok"})
 			connection.Close()
-			return err
-		}
-		select {
-		case approved := <-authorization:
-			if !approved {
-				connection.Close()
+			if err != nil { return finish("unavailable") }
+			if err := emit("prepared", "", widget.Snapshot, false); err != nil { return err }
+			select {
+			case approved := <-authorization:
+				if !approved { return finish("stale") }
+			case <-ctx.Done():
+				return finish("unavailable")
+			}
+			if !inputorder.CheckBoundary(request.Target.PID, request.InputBoundary) {
 				return finish("stale")
 			}
-		case <-ctx.Done():
-			connection.Close()
-			return finish("unavailable")
+			authorizationGranted = true
+			phase = "mode"
+			if !notifyAfterRelease(ctx, request) { return finish("unavailable") }
+			continue
 		}
 		applicationDecided = true
 		err = json.NewEncoder(connection).Encode(widgetReply{Status: "apply", Replacement: request.Replacement})
@@ -318,4 +336,18 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 		}
 		phase = "confirm"
 	}
+}
+
+// notifyAfterRelease tolerates the first local helper's exit without ever waiting inside the Shell.
+func notifyAfterRelease(ctx context.Context, request Request) bool {
+	for request.Notification != nil && ctx.Err() == nil {
+		if !inputorder.CheckBoundary(request.Target.PID, request.InputBoundary) { return false }
+		if notifyEditor(request.Target, *request.Notification) == nil { return true }
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done(): timer.Stop(); return false
+		case <-timer.C:
+		}
+	}
+	return false
 }

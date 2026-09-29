@@ -231,7 +231,7 @@ test('multiple submission boundaries in one chunk also require editor confirmati
 });
 
 test('Fish prompts cannot acknowledge unknown controls or partial frames queued after an earlier command', () => {
-  for (const input of ['echo ok\r\t', 'echo ok\r\x18q', 'echo ok\r\x1b[', 'echo ok\r\x1b[200~PRIVATE']) {
+  for (const input of ['echo ok\r\x00', 'echo ok\r\x18q', 'echo ok\r\x1b[', 'echo ok\r\x1b[200~PRIVATE']) {
     let context = createShellContext('fish-session', resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true), true);
     context = applyShellContextEvent(context, event({ shell: 'fish' }));
     context = applyShellContextEvent(context, event({ shell: 'fish', event: 'prompt-ready', promptGeneration: 1 }));

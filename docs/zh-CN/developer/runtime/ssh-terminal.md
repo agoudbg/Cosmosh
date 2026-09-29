@@ -170,8 +170,9 @@ Locale 行为：
   - 输入触发（typing）的 history 评分会限制在“最近历史窗口”内执行，以在远端历史快照较大时保持补全延迟稳定，
   - 当当前 token 以 `-` 开头时，优先保留参数/参数值补全，当前 token 的路径 provider 会被门控关闭。
 - **填入已保存的登录密码**是需要明确点击的独立操作。后端在有长度限制的可见输出尾部识别常见英文密码提示；这种识别无法证明请求密码的程序身份。按钮明确说明将填入服务器的登录密码，由用户判断是否适用。本地终端和仅使用私钥的会话没有可填入的登录密码；私钥口令永远不会用于此操作。
-- 后端只发送一次性标识和 45 秒的有效期。任何输入、新提示、可信命令／提示事件或会话释放都会使旧操作失效。清行、光标控制与不完整转义序列会清除保留的提示文本，只有新的可见文本才能再次提供按钮。空格和完整 SGR 样式序列不能延长原操作的有效期。
+- 后端只发送一次性标识和 45 秒的有效期。任何输入、新提示、可信命令／提示事件或会话释放都会使旧操作失效。完整 SGR 样式和括号粘贴模式切换（`CSI ?2004h/l`）保留可见文本，切换与新的密码提示合并在同一输出片段时也能识别；这些控制序列和空格都不能延长原操作的有效期。清行、光标控制与不完整转义序列会清除保留的提示文本。最多保留 64 个字符的控制前缀，用于跨片段隔离未完成序列；OSC／DCS／SOS／PM／APC 内容直接丢弃，不予保留，其中的换行和被控制序列消费的结束字符不能生成操作。拒绝后需要新的可见文本；提示文字被不完整样式序列分隔时，可能需要完整重绘后才能再次提供按钮。
 - 点击发送`credential-fill { token }`。后端异步读取设置后，再次检查注册会话、当前打开的 WebSocket、PTY、操作标识、有效期、登录密码和持久化权限。共享消息入口会拒绝被替换连接的消息；写入前先消费标识，避免并发点击重复填入。
+- 输入、助手状态变化和标识消费会清除操作，但保留尚未结束的输出控制序列状态。只有新建或释放输出通道才完全重置该状态；输入不能把不可见控制序列的后半段变成新的密码提示。
 - 操作原样写入已保存的登录密码，不追加回车。含控制字符或超过 8 KiB 的值不可填入。渲染层只收到操作／结果元数据；凭据不会进入补全响应、诊断历史或操作日志。填入后由用户手动按回车提交。
 - 为保留已有偏好，持久化字段继续使用`terminalAutoCompletePasswordEnabled`，现在控制独立操作。关闭普通自动补全不影响该操作；无法识别的提示格式不显示按钮。
 - 接受补全时默认仅替换光标前的当前 token 片段（`replacePrefixLength`）；候选项也可携带 `replacePrefixLength` 覆盖值（例如需要替换整段已输入前缀的根命令历史候选）。
@@ -366,6 +367,8 @@ flowchart LR
 
 真实测试入口在环境不可用时明确失败。单元测试通过不能证明真实 Shell、网络延迟或 Electron 交互已得到验证。
 
+输入顺序验证包含 Linux 元数据／会话测试、模拟 0／150／300 ms 往返延迟的三项真实 Bash SSH 场景，以及经过生产送达传输的 35 项 Fish 编辑器场景。Zsh 原生填写也已在 5.8 和 5.9 上进行真实 PTY／文件锁检查。受支持版本限定为 Bash 5.1／5.2、Zsh 5.8／5.8.1／5.9 和 Fish 4.0.1；本轮验证没有独立运行 Zsh 5.8.1。完整 Electron 和架构／版本矩阵仍须验收。这些检查不会开启候选编号菜单，也不代表终端整治计划已全部验收。
+
 凭据回归覆盖真实密码输入不会自动提交，以及真实加密私钥登录不会复用口令。测试仅隔离数据库／传输边界，直接使用生产凭据处理器。单元测试包含设置读取延迟、重复点击、新提示／清除提示、过期、连接替换、会话释放与分屏结果隔离。
 
 ### 7.2 浏览器交互检查
@@ -409,7 +412,7 @@ COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL="<manifest-url>" pnpm dev:main
 
 服务器增强开关在打开终端时确定。修改服务器设置后，需要从服务器列表重新打开连接；重试现有标签页会保留原连接意图。Fish 支持说明列出已验证的 4.0.1 与原生按键配置，以及关闭原生灰色建议的要求，不会根据泛化的不可用结果推断具体是哪项条件不满足。
 
-Fish 说明还明确告知：目前按原生 Tab、搜索键或无法识别的按键组合后，Cosmosh 的目录确认与原生历史读取会在本次连接中持续暂停。等待或重新开启权限无法清除该状态，重新连接才会建立新的输入边界；普通输入与 Shell 原生按键仍可使用。历史不可用时引导用户查看增强状态，不承诺返回提示符就一定恢复读取。这项持续暂停仍是验收限制，等待输入送达恢复方案解决。
+Fish 输入边界识别原生 Tab、Shift+Tab 和 Ctrl+R。原生按键配置符合要求时，补全／历史分页操作进行期间暂停观察，原始读取器重新满足条件后允许再次检查；这些按键不再使整个连接持续处于不确定状态。未知序列和脚本绑定仍会暂停精确操作。不完整的按键／粘贴帧等待剩余字节，提示符不能清除尚未解决的输入边界。历史为空时引导用户查看增强状态；普通输入和 Shell 原生按键继续工作。
 
 SSH 侧栏无需开启调试模式即可打开**增强状态**。连接失败优先于保留的运行状态信息。即使输入或目录功能暂停、关闭，读取成功但为空的原生历史视图仍可显示为可用。只有逻辑路径的目录属于部分可用，上次已知目录不会显示为当前目录。总开关、服务器开关、助手缺失、版本不匹配、超时、能力不支持及编辑器未确认均有对应说明。重新打开助手总开关需要重新连接。目录权限关闭后不再在当前状态中使用目录信息，已安装助手仍可能发送报告。精确填写、远端路径菜单候选和 Fish 原生菜单候选在对应功能接入前明确显示不可用，此状态界面不会启用它们。旧补全功能仍使用提示符正则，因此相关设置暂时保留。
 
@@ -441,9 +444,14 @@ sequenceDiagram
   SSH->>AUX: Begin temporary transport teardown
   alt 已校验的 ready 契约包含 binaryPath
     SSH->>PRIMARY: 无外层 PTY 的 exec cosmosh-bootstrap session
-    PRIMARY-->>SSH: hello（会话协议 1）
+    PRIMARY-->>SSH: hello（会话协议 2）
     SSH->>PRIMARY: start（epoch、TERM、行列数）
-    PRIMARY-->>SSH: 登录 Shell 的 PTY 启动后返回 ready
+    alt 输入元数据创建完成且 Shell 启动
+      PRIMARY-->>SSH: ready（epoch、原始 pid）
+    else Shell 启动前元数据不可用
+      PRIMARY-->>SSH: start-rejected（epoch）
+      SSH->>PRIMARY: 普通 shell() PTY，增强禁用
+    end
   else 增强关闭或 start 前确认不可用
     SSH->>PRIMARY: 普通 shell() PTY，增强禁用
   end
@@ -453,7 +461,7 @@ sequenceDiagram
 ```
 
 - 主 SSH transport 会先完成认证，但在 bootstrap 结束前不创建任何 channel。第一次真正需要远端命令时，backend 才会使用相同凭据、host-key 策略、压缩设置与代理策略懒创建第二条已认证 transport。每条使用代理的 transport 都会获得独立 socket。
-- Bootstrap probe/install/status `exec`通道仍只运行在临时 transport。主 transport 打开终端通道前，Backend 会启动临时 transport 的关闭；底层 socket 可以稍后关闭。已校验的 ready 契约含有`binaryPath`时，主 transport 的首个 session 通道是无外层 PTY 的`exec`，运行已安装助手的`session`命令。助手自建 PTY 并启动用户登录 Shell。这会改变 sshd MOTD、PAM tty 与 utmp 行为，不能保证这些登录消息。增强关闭或发送`start`前确认不可用时，会以增强禁用状态使用普通`client.shell(...)`。发送`start`后启动结果仍不明确，则连接失败，不启动第二个 Shell，也不重放输入。
+- Bootstrap probe/install/status `exec`通道仍只运行在临时 transport。主 transport 打开终端通道前，Backend 会启动临时 transport 的关闭；底层 socket 可以稍后关闭。已校验的 ready 状态含有`binaryPath`时，主 transport 通过无外层 PTY 的`exec`运行已安装助手的`session`命令。助手持有内部 PTY 和原始登录 Shell，不保证 sshd MOTD、PAM tty 或 utmp 行为。增强关闭、发送`start`前确认不可用，或在`ready`之前收到精确匹配的`start-rejected`，都允许以增强禁用状态使用普通`client.shell(...)`。其他启动后结果不明确的情况均使连接失败，不启动第二个 Shell 或重放输入。
 - 开关关闭或 manifest 缺失／无效时不会创建临时 transport。其解密得到的登录密码会被丢弃，永远不会复制到 session state、状态 payload 或审计 metadata。
 - Backend 会在下载前查询已安装 binary。只有 manifest version 与 asset SHA-256、受支持 protocol、helper 内容与 profile hook 均为最新时才跳过下载；旧 binary 缺失新字段时会被视为不兼容并重装。PTY 创建前会再次读取 status 复验安装。
 - 校验成功的 manifest 会缓存五分钟，并由并发 session 共享同一个 in-flight 加载。失败结果不会缓存。取消单个 session 只会停止该 session 的等待，不会取消其它 session 正在等待的共享 manifest 请求。
@@ -467,11 +475,17 @@ sequenceDiagram
 
 ### 8.2.0 本次连接的输入送达
 
-成帧终端传输与 OSC 777 Shell 观察协议 v3 相互独立。其协议版本为`1`：远端助手发送`hello`，Backend 发送含 UUID epoch、初始`TERM`及尺寸的`start`，然后助手在私有 PTY 上启动登录 Shell 并发送`ready`。助手恢复登录`argv[0]`、控制终端和前台进程组；`TERM`、`SSH_TTY`及继承的工作目录传给 Shell。外层 SSH exec 没有 PTY。连接中断时助手会终止子进程，终端输出结束后才上报退出；信号退出报告`128+signal`，不提供单独的信号字段。
+成帧终端传输与 OSC 777 Shell 观察协议 v3 相互独立。其版本为`2`：助手发送`hello`，Backend 发送含规范小写 UUID v4 epoch、初始`TERM`及尺寸的`start`，助手先创建输入顺序元数据，再启动一个登录 Shell。`ready`包含原始 PID，Backend 将其限定为 2 至 2,147,483,647 的整数。旧版本协议在启动前判为不可用；ready 之前精确的`start-rejected { epoch }`证明 Shell 启动前创建元数据失败，允许回退到普通 SSH。其他启动后失败的结果不明确，不会再启动 Shell。助手恢复登录`argv[0]`、控制终端、前台进程组、`TERM`、`SSH_TTY`及继承的工作目录。连接中断时关闭子进程，终端输出结束后报告退出，信号退出使用`128+signal`。
 
-进入`ready`后，每次非空输入写入，包括粘贴和凭据填写，都会拆为不超过 64 KiB 的批次，并在同一 epoch 下分配连续的安全整数序号。输入与输出字节以 Base64 放入换行分隔的 JSON 帧，每帧上限为 96 KiB。助手校验 epoch 和序号，只有完整批次写入 PTY 主端后才发送`delivered`。这表示送达远端 PTY，不表示 Shell 或前台程序已经消费。Backend 最多保留 1 MiB 待确认输入；助手接收队列最多 4,096 帧、1 MiB。无效帧、超载、PTY 部分写入失败及断线都会关闭会话，不重放字节。尺寸调整帧在同一有序通道中排在先前输入之后。本传输不会自行保存输入或输出、记录原始输入，或把输入放入进程参数及调试事件；Shell 原生历史保存和普通终端输出中的 OSC 元数据不受影响。
+进入 ready 后，每次非空输入写入，包括粘贴和凭据填写，都获得连续的安全整数序号，每批最多 64 KiB。输入／输出使用 Base64 换行分隔 JSON，每帧上限为 96 KiB。独立的远端读取器在每个输入帧进入队列前更新`received`并撤销现有授权，即使前一批 PTY 写入阻塞也如此。完整写入 PTY 主端之后才更新`delivered`并发送回执。送达不表示 Shell 或前台程序已经消费字节。Backend 允许最多 1 MiB 待确认输入；助手队列上限为 4,096 帧、1 MiB。无效帧、超载、部分写入失败及断线会关闭连接，不重放输入。尺寸调整使用同一有序通道。输入／输出不会进入持久化文件、进程参数、原始日志或调试事件；Shell 原生历史和普通 OSC 输出仍独立处理。
 
-送达确认是 Shell 自有空闲观察与精确菜单填写的前提；单凭送达确认尚不会开启自动恢复或候选标识菜单。增强关闭时，普通原始 SSH 仍使用`shell()`。新传输已通过三个 Shell、凭据输入、任务控制、Ctrl+D／退出、断线和前台编辑器的真实 SSH 场景检查。Bash 原生适配器另有真实 SSH 场景检查；三种 Shell 的最终输入消费检查仍未完成。
+`internal/inputorder`在`/tmp/cosmosh-input-<uid>/<epoch>.state`保存固定 128 字节，内容只有格式标记、epoch、原始 PID、收到／送达的序号、一个请求 UUID、授权状态／序号和单调时钟到期值；不包含输入、历史、目录或替换文本。文件以独占方式创建，所属目录权限为 0700，普通单硬链接文件权限为 0600。打开时拒绝符号链接，检查 UID／大小／模式，并比较路径与已打开 inode 的身份。清理只移除自己持有的 inode。授权要求`received == delivered == requested sequence`，只能使用一次，按远端单调时钟在 1.5 秒后到期。
+
+私有控制器要求每个请求都有`inputBoundary: { epoch, sequence }`，等待送达，并确认终端的原始 PID 与编辑器绑定匹配。普通 SSH 传输，以及上下文、权限、归属或输入边界变化的请求均被拒绝。`prepared`观察匹配后，通过有序终端通道交换`authorize-editor`与`editor-authorized`，绑定准确的 epoch／序号／请求编号；回执始终包含布尔结果和序号，包括零值。此后 Backend 才可向私有工作进程发送`apply: true`。明确取消／完成／超时会发送`revoke-editor`；新输入在本地撤销授权，远端接收时也使同一个授权失效。迟到的有效回执无法恢复已取消操作。所有顺序控制帧都不携带编辑器文本。
+
+Shell 仍须确认原始读取器符合条件、完整观察匹配。最终临界区以不等待的方式取得元数据锁，重新检查状态和排队输入，消费有效授权，完成本地修改，并在恢复信号、重绘或远端回执之前释放锁。因此输入接收和修改具有明确顺序：较新的接收序号会拒绝旧修改；已经进入临界区的修改会先完成，随后才能记录新输入。等待桌面授权时绝不持锁。转发器更新元数据最多重试取锁 1.5 秒，无法继续则关闭会话，不强行解锁或重放输入，从而限制适配器损坏或中断对普通输入的影响。
+
+送达传输也覆盖真实 SSH 凭据输入、任务控制、Ctrl+D／退出、断线和前台编辑器。精确菜单启用及完整 Electron 验收仍未完成。启动后关闭增强数据权限会保留已经建立的终端传输；打开会话时已关闭增强，则使用普通`shell()`。
 
 ### 8.2.1 远端 Shell 事件协议
 
@@ -531,8 +545,8 @@ type RemoteShellEventMessage = {
 当前第一期 helper 行为：
 
 - Bash 5.1 及以上版本把已有字符串或数组形式的`PROMPT_COMMAND`钩子保留为原生数组元素，保持其顺序、原始退出状态和错误行为。Cosmosh 回调成功返回，并受到`errexit`保护；前一条命令状态由 Bash 自己恢复。更早版本保留普通终端行为，不启用这些钩子。帮助程序发送`cwd`、`prompt-ready`，以及带匹配 command id、exit code 和 duration 的`command-end`。受保护的`DEBUG`trap 会在 prompt 设置完成后，为每条已提交命令行发送一次`command-start`与一次`foreground-command`。参见[Bash 交互行为](https://www.gnu.org/software/bash/manual/html_node/Interactive-Shell-Behavior)。
-- Zsh 使用`precmd`、`preexec`和提供数值编辑器元数据的`line-pre-redraw`。必需的钩子全部注册成功后才可用，部分失败会移除已安装的钩子。提示符 CWD 暂不启用，等待用户提示符钩子结束后的空闲 ZLE 观察确认。额外添加的`chpwd`钩子会使异步目录变化立即失效；重绘还会检查 PWD/HOME 是否改变。
-- Fish 使用`fish_preexec`、`fish_postexec`和`fish_prompt`事件，保留用户提示符函数原样。Fish 在提示符事件之后调用提示符和标题函数；后续函数改变 PWD/HOME 时，一次`cwd-invalidated`事件会停用当前代数的目录。下一次稳定的目录与提示符配对可恢复。即使 Fish 正在暂存提示符输出，元数据也直接发往 PTY。持续改变目录的提示符函数，需要计划中的可信编辑器交互确认后才能启用目录。
+- Zsh 使用`precmd`、`preexec`和提供数值编辑器元数据的`line-pre-redraw`。初始化`add-zle-hook-widget`前显式加载`zsh/zle`，兼容没有预先加载 ZLE 的最小 Zsh 5.8 安装。必需的钩子全部注册成功后才可用，部分失败会移除已安装的钩子。提示符 CWD 暂不启用，等待用户提示符钩子结束后的空闲 ZLE 观察确认。额外添加的`chpwd`钩子会使异步目录变化立即失效；重绘还会检查 PWD/HOME 是否改变。
+- Fish 使用`fish_preexec`、`fish_postexec`和`fish_prompt`事件，保留用户提示符函数原样。Fish 在提示符事件之后调用提示符和标题函数；后续函数改变 PWD/HOME 时，一次`cwd-invalidated`事件会停用当前代数的目录。下一次稳定的目录与提示符配对可恢复。即使 Fish 正在暂存提示符输出，元数据也直接发往 PTY。持续改变目录的提示符函数，需要新的合格私有编辑器观察确认后才能启用目录。
 - Sh/Ash 安装 prompt-capture fallback，并且只声明 `cwd` 与 `prompt-ready`；不声明命令生命周期支持。
 - 所有 shell 都只在其声明的 hook 集合成功安装后发送 `integration-ready`。非交互 shell 不发送 OSC 事件。
 - 对所有可提取出可执行命令名的已提交命令，helper 都会发送 `command-start` 与 `foreground-command`；事件只携带经过清洗的可执行命令名（例如 `vim`），不携带完整命令行或参数。
@@ -543,10 +557,10 @@ Backend 状态模型：
 - `terminal/shell-context.ts`维护权威`ShellContext`，通过`{ type: 'shell-context', context }`发布，包含会话/Shell 身份、准确的版本/能力、独立权限、可用状态（`unavailable`、`initializing`、`ready`、`busy`、`paused`）、原因及 revision/input/prompt/cwd 代数，不包含当前输入或凭据。Renderer 按分屏保留最新状态，不写入调试历史；旧版本状态及回放的 cwd/prompt 事件不能覆盖它。
 - 每个交互 Shell 获取 Linux UUID。重复 source 保留身份与钩子注册，新进程获取独立身份，Fish 内部元数据不再导出。只有原始 Shell 的更新提示能够恢复因其他 Shell 导致的暂停。Sh/Ash 保留不带提示代数的目录能力，不声明编辑器能力。
 - 输入在转发 PTY 前就使异步工作失效。回车、换行、Ctrl+C、Ctrl+D 暂停可用状态；命令结束后仍等待新的提示。目录操作边界与结果发布会重新检查当前代数和权限。
-- Renderer 在发送提交前立即停用来源分屏的目录。Backend 回显不含文本的`submissionToken`，避免已经在途的旧上下文重新启用目录操作。收到输入不代表 Shell 已处理连续输入：在忙碌、初始化、已有提交或其他 Shell 中再次提交，以及一次消息包含多个提交边界（CRLF 计为一次），都会在后端保留`requiresEditorConfirmation`。仅收到提示符不能恢复。Zsh 和符合条件的 Fish 配置通过独立于键盘通道的观察恢复；Fish 额外保留不确定按键边界直到重连。发布完整功能之前，仍须完成 Bash 的恢复工作。
+- Renderer 在发送提交前立即停用来源分屏的目录。Backend 回显不含文本的`submissionToken`，避免已经在途的旧上下文重新启用目录操作。在忙碌、初始化、已有提交或其他 Shell 中再次提交，以及一个批次包含多个提交边界（CRLF 计为一次），都会在后端保留`requiresEditorConfirmation`。仅收到提示符不能恢复。符合条件的 Bash、Zsh 和 Fish 恢复必须等待当前输入边界送达，并取得新的原始 Shell 观察。不支持的 Bash 按键配置和未知 Fish 输入边界仍保持暂停，更新的提示符不能覆盖这些限制。
 - 默认范围设置按持久化版本更新实时会话。关闭 CWD 权限会清理缓存并拒绝 cwd 事件；关闭输入权限会停止增强输入跟踪、候选请求和渲染命令捕获，普通终端输入输出继续工作。历史/路径设置各自对应权限。原生补全默认主动查询，菜单尚未接入，选择关闭会撤销来源权限。关闭全局增强会禁用运行时，再次开启需要重连。设置读取保留在可选初始化的 15 秒预算中，失败时普通 SSH 仍可连接。
 - 迁移边界：Bash、Zsh 和 Fish 已声明`editor-state`、`input-snapshot`和`input-apply`，实际可用性独立检查。结构化目录读取、仅接受快照的候选草稿及独立 Fish 原生来源已实现，Fish 原生历史及独立权限已接入。旧 SSH 菜单不再查询或填写远端路径，原生 Tab 行为保持不变。原生查询模式可以保存，前端候选编号接入与查询时机控制仍属后续变更。每个消费者必须使用实际观察中重新确认的原始 Shell PWD/HOME，复核归属与权限，无法确认时拒绝操作。终端到 SFTP 的使用时确认仍须在消费者迁移中完成。长期保存的`ready`元数据不能证明目录始终是最新状态。
-- 成帧会话现已确认先前输入到达远端 PTY 主端。普通 SSH 通道上的本机写入回调、等待时间和空的本地队列仍无法提供这种证明。精确菜单接入和自动恢复还须把已送达的 epoch／序号绑定到后续 Shell 自身的空闲观察及最终比较；当前私有编辑器测试只证明原生观察和修改本身的行为。
+- 成帧会话将私有观察和最终修改绑定到已送达的 epoch／序号。普通 SSH 的本机写入回调、等待时间和空的本地队列不能提供此类授权依据。快照编号还绑定准确的终端传输和输入边界，因此即使公开上下文尚未更新，新输入也会使缓存候选不可用。候选编号菜单仍待接入。
 - 每个 session 都持有明确的 `pending`、`active` 或 `disabled` 增强运行状态、PTY 创建前校验得到的契约，以及会在激活、禁用或 session 销毁时清理的握手 timer。
 - 每个`SshLiveSession`保存已确认目录／前台状态，以及最近的 command id、清洗后的可执行命令名、exit code 和 duration。唯一的结构化`command-start`驱动命令计数与历史刷新；缺少该能力时，Enter 边界只更新计数并触发 Shell 自有历史刷新，不保留输入文本。
 - `ShellContext.cwd`是唯一可供远端操作使用的目录来源。待确认报告仅保留在后端，在对应`promptGeneration`到达时启用；缺失、过期或被输入打断的配对保持目录不可用。Sh/Ash 每次无代数提示都需要新报告，提交或暂停会清除待确认报告。`lastKnownCwd`仅供显示。逻辑路径用于显示，物理路径和 HOME 用于文件操作。物理目录由继承实际 Shell 工作目录的外部`pwd -P`读取，避免内置命令返回已删除目录的缓存；只移除该程序输出的最后一个换行。未设置或非绝对 HOME、物理目录读取失败均保留 null，不裁剪目录字符。Bash 在用户`PROMPT_COMMAND`之后报告，并保留用户钩子接收到的退出状态。
@@ -556,18 +570,21 @@ Backend 状态模型：
 
 #### Bash 私有编辑器交互
 
-Backend 从校验过的安装状态保留程序绝对路径，只以正确引用的路径和固定`editor-request`子命令启动程序。JSON 请求通过 stdin 传输，输入内容不进入进程参数、OSC 事件、审计记录、文件或调试历史。实现使用现有 SSH 通道和只服务一次请求的 Go 进程，不增加常驻服务。
+Backend 从校验过的安装状态保留程序绝对路径，只以正确引用的路径和固定`editor-request`子命令启动程序。JSON 请求通过 stdin 传输，必须包含有序`inputBoundary`；仅上下文请求省略输入，历史请求省略输入和 CWD。输入内容不进入进程参数、OSC 事件、审计记录、文件或调试历史。交互使用现有 SSH 通道和单次请求 Go 进程，不增加常驻服务。
 
 Bash 5.1／5.2 使用随程序打包的`cosmosh-bash.so`可加载内置模块。在 Shell 普通执行线程中注册空闲回调之前，模块先解析所有必需的 Bash／Readline 符号。回调通过非阻塞私有 socket 交换数据，工作进程等待桌面端授权期间，回调会返回，不占用输入。适配器不安装终端按键绑定，也不注入转义序列。模块缺失、版本或符号不兼容、编辑配置不满足要求时，停用编辑能力并保留普通终端。
 
-发布构建器在固定的 Debian Bullseye 容器中编译 amd64 和 arm64 模块，glibc 兼容上限为 2.31；当前已核验产物最高引用 GLIBC_2.17。带原生模块标记的 Go 程序嵌入两种产物，并将匹配架构的模块安装在用户 XDG 数据目录的程序旁。Bash 安装状态报告`nativeModulePath`和`nativeModuleCurrent`；安装器校验完整字节、所有者、0600 权限及 inode 身份，后续安装会原子替换损坏的模块。普通开发构建不包含模块，Bash 编辑能力明确不可用。arm64 交叉编译与 ELF 检查不能替代 arm64 实机运行测试。
+`scripts/build-shell-native.mjs`和`scripts/shell-native`在固定的 Debian Bullseye 容器中构建四个模块：Bash 和 Zsh 各包含 Linux amd64／arm64，glibc 兼容上限为 2.31。带原生模块标记的 Go 程序嵌入这些产物，并将匹配 Shell／架构的模块安装在用户 XDG 数据目录的程序旁。状态报告`nativeModulePath`和`nativeModuleCurrent`；安装器校验完整字节、所有者、0600 权限及 inode 身份，后续安装会原子修复损坏内容或不安全权限。普通开发构建不包含原生模块，对应编辑能力明确不可用。arm64 交叉编译与 ELF 检查不能替代运行验证。
 
 ```mermaid
 sequenceDiagram
   participant B as Backend 会话
+  participant T as 有序 PTY 转发器
   participant G as 有时限的 Go 工作进程
   participant E as 原始 Bash Readline
-  B->>G: 通过 stdin 发送身份和获准字段
+  B->>T: 等待当前输入送达
+  T-->>B: 已送达的 epoch 和序号
+  B->>G: 通过 stdin 发送身份、inputBoundary 和获准字段
   G->>G: 验证 PID 代数、可执行程序和前台 PTY
   G-->>B: 准备完成
   B->>B: 再检查上下文、权限和客户端归属
@@ -578,10 +595,12 @@ sequenceDiagram
   alt 获取快照
     G-->>B: 验证后的观察结果
   else 填入内容
-    G-->>B: 当前完整观察结果
-    B->>G: 状态仍有效时才批准
+    G-->>B: prepared 完整观察；编辑器继续可用
+    B->>T: authorize-editor（epoch、序号、requestId）
+    T-->>B: editor-authorized（approved）
+    B->>G: 归属和输入边界仍有效时才发送 apply
     G->>E: 作为数据传递替换内容，不阻塞编辑器
-    E->>E: 原生修改前再次核对完整观察
+    E->>E: 屏蔽信号；取锁；复核；消费；赋值；解锁
     E->>G: 赋值后的输入确认
     G-->>B: 已填入或结果未知
   end
@@ -590,29 +609,36 @@ sequenceDiagram
 - 每次远端请求的总时限为 1.5 秒，包含首个 stdin 数据帧；Backend 将交换过程限制为三秒，并最多额外等待 1.75 秒完成通道清理。取消时先发送 stdin EOF，再等待通道关闭。工作进程在发送最终结果之前移除自己创建的端点，收到 SSH 终止信号时同样执行清理。每个会话仅保留一个执行中操作和一个快照，快照在十秒到期时主动清除。输入上限为 8 KiB UTF-8，JSON 帧上限为 256 KiB。换行、不支持的控制字符及无效光标位置均被拒绝。
 - 回调独立检查 Bash 原生执行／trap 状态、主提示符元数据、Readline 状态、原始 PID、前台标准输入 PTY 及内核待处理字节。`read`、`read -e`、`read -s`、信号处理脚本中的读取、续行和搜索均不能作为输入快照。用户移除 DEBUG 处理后，内置读取器也不能冒充主编辑器。Bash 原有信号回调继续在普通线程中负责取消和用户信号脚本。 若 Bash 经正常中断路径遗留增量搜索状态，清理仅在下一次符合条件的主 Readline 读取器启动时进行；活动搜索及其他读取状态不会被预先改动。
 - 用户独占的`/tmp/cosmosh-editor-<uid>`目录权限为 0700，socket 权限为 0600。Bash 对端必须具有准确的原始 PID、UID、启动时间及控制终端；使用 Shell 脚本的 Zsh／Fish 适配器保留子进程身份检查。不移除已有端点，清理时按 inode 身份确认只删除自己创建的端点。
-- 模块与工作进程使用带版本和长度前缀的二进制记录，上限为 256 KiB。读取输入之前先明确权限字段，桌面端交互仍使用 JSON。不完整、过大、版本错误或未获请求的数据均被拒绝。socket 取消及有时限的生命周期会清除模块内存中的私有缓冲。
+- 模块与工作进程使用带长度前缀的二进制协议 v2，上限为 256 KiB。读取输入之前传递输入 epoch／序号并明确权限字段，桌面端交互仍使用 JSON。不完整、过大、版本错误或未获请求的数据均被拒绝。socket 取消及有时限的生命周期会清除模块内存中的私有缓冲。
 - 共享协议中的光标和补全范围统一使用 Unicode 码点，原生适配器在经过确认的 UTF-8 环境中转换 Readline 字节位置。组合符号和 ZWJ 分别计为独立码点。填入前核对完整原文、光标、模式、提示符代数及请求的目录元数据，再通过 Readline 原生删除、插入和光标接口完成一个撤销组，不发送回车、不执行命令文本。原生撤销可以一次恢复原文字，光标可能恢复到行末。
 - PS2 前面的无可见输出标记用于停用续行输入。适配器保留用户提示符后缀并要求`promptvars`；标记被替换时撤销能力。重复 source 保留归属，不创建按键绑定。每个主提示符启用新的元数据代数。卸载只恢复仍由自己拥有的回调，`NODELETE`保证其他模块保留的函数指针继续有效。
 - CWD 捕获只读取内核`/proc/self/cwd`元数据。一次性的 Go 工作进程在请求时限内验证回调给出的物理路径与目标 Shell 的`/proc/PID/cwd`指向同一目录，把可能缓慢的文件系统查询放在交互 Shell 之外。工作进程保留 Shell 原始的逻辑 PWD 拼写，不以自身进程解析该拼写。仅上下文请求不读取输入缓冲。
 - Bash 自动请求当前支持经过验证的原生 Emacs 编辑配置。用户宏、其他`bind -x`处理器、不安全的可打印字符映射、vi 模式和非 UTF-8 环境会停用此适配器。Backend 保留原生按键行为，在转发 Tab、搜索／宏／模式快捷键或未知转义序列之前暂停增强。之后的主提示符仍保留此次不确定状态；当前需要重连才能恢复受支持的编辑行为。
-- 送达确认提供 PTY 写入完成的证明，本回调提供原生编辑器观察。最终消费者仍须组合这两种边界，并把最后授权与后续输入按原子顺序处理；此接入尚待完成。在此之前保留现有 Backend 不确定输入保护。
+- 观察与填写都检查有序输入边界。最终填写暂时屏蔽信号，以非阻塞方式取得元数据 flock，重新检查原生资格与完整捕获结果，消费准确且未到期的授权，并在一个撤销组内修改。锁描述符在恢复信号和重绘前关闭，最终比较与赋值之间无法记录新输入。桌面授权和 socket 传输都在此临界区之外进行。不支持的按键配置仍受限制。
 - 目录与输入权限独立检查。输入、权限变化、WebSocket 客户端替换、生命周期事件及会话结束会取消请求并清除快照。原生回调取消不需要废弃已注入的按键。授权后丢失确认仍返回`unknown`，不会自动重放修改。
 - 敏感缓冲直接在原生内存与私有 socket 之间传输，不进入 Shell tracing、DEBUG 或用户替换的`printf`函数。私有`history`基础操作按最新优先读取 Bash 已接受的内存历史，不包含输入或目录字段。关闭历史记录或 HISTFILE 未设置／为空时返回私密状态；上限为 200 条、每条 8 KiB、总量 64 KiB，最多检查 2,000 条记录。Bash 历史来源启用及删除仍属后续变更。
 
-真实 SSH 回归测试位于`src/terminal/integration/editor-bridge.live-test.ts`和`native-bash.live-test.ts`，覆盖原生填写／撤销、隐私、取消、模块失效、信号按键调整、原提示符／DEBUG 行为及私有端点归属。最终仍须完成 Electron、延迟输入及完整版本矩阵验收。
+真实 SSH 回归测试位于`src/terminal/integration/editor-bridge.live-test.ts`和`native-bash.live-test.ts`，覆盖原生填写／撤销、隐私、取消、模块失效、信号按键调整、原提示符／DEBUG 行为及私有端点归属。有序 Bash 检查还覆盖 0／150／300 ms 往返延迟。最终仍须完成 Electron 及完整版本矩阵验收。
 
 #### Zsh 私有编辑器交互
 
-Zsh 适配器复用上述有界工作进程、私有 socket、权限检查和快照时限。通知使用原始 Shell 持有的匿名管道，两端均为非阻塞并在执行子程序时关闭，不创建文件系统 FIFO 或常驻进程。Go 打开报告的`/proc/PID/fd/FD`，校验 FIFO 类型、UID、inode、PID 启动代数和前台 PTY，再写入一个不含输入的通知字节。通知及接受观察之前必须得到桌面端激活，因此已取消请求遗留的字节不能授权后续请求。
+Zsh 适配器复用上述有界工作进程、私有 socket、输入边界、权限检查和快照时限。通知使用原始 Shell 持有的匿名管道，两端均为非阻塞并在执行子程序时关闭，不创建文件系统 FIFO 或常驻进程。Go 打开报告的`/proc/PID/fd/FD`，校验 FIFO 类型、UID、inode、PID 启动代数和前台 PTY，再写入一个不含输入的通知字节。通知及接受观察之前必须得到桌面端激活，因此已取消请求遗留的字节不能授权后续请求。修改操作的第一次捕获会先返回并结束回调，再进入`prepared`等待桌面授权；获批后工作进程再次通知，比较第二次捕获后才返回替换数据。
+
+64 位 Linux 上的 Zsh 5.8、5.8.1 和 5.9 需要打包的`cosmosh_zsh.so`、多字节支持及 UTF-8。显式加载`zsh/zle`后，安装函数暂时将`module_path`设为仅包含经过校验的模块目录，再调用`builtin zmodload cosmosh_zsh`，返回时恢复用户路径；Zsh 不接受绝对路径形式的模块名。模块注册一个内置命令`cosmosh_editor_apply`，用于状态检查、通知管道创建和原子填写，不添加钩子、trap 或按键。缺少模块、符号或受支持版本时，编辑能力不可用。
+
+加载模块后，`builtin cosmosh_editor_apply notification`在原始 Shell 进程中创建管道，不经过 subshell。适配器先将`__COSMOSH_EDITOR_NOTIFY_FD`与`__COSMOSH_EDITOR_NOTIFY_KEEP_FD`声明为空、可写的普通标量。内置命令使用`pipe2(O_NONBLOCK | O_CLOEXEC)`，将两个描述符移动到不小于 10 的编号，在复制后重新设置`FD_CLOEXEC`，并登记为 Zsh 的`FDT_EXTERNAL`描述符。读写编号直接赋值，不打印输出。Zsh 5.8 的`sysopen`缺少`nonblock`选项，这个原生操作提供了所需的非阻塞创建能力。创建失败通过`zclose`关闭新描述符；观察回调注册失败由 Shell 关闭两端。创建成功后管道归 Shell 持有，卸载原生模块不会关闭；它会保留到通过`exec {name}<&-`／`>&-`显式关闭或进程退出。
+
+模块明确依赖`zsh/zle`，因此引用原生参数方法期间不能卸载 ZLE。卸载`cosmosh_zsh`会移除内置命令，符合条件的重新加载可以恢复。模块检查原始进程归属及真实 Emacs／局部按键映射身份，复制元数据或同名自定义映射不能取得访问权限。
 
 普通`zle -F`回调读取通知，一次性的回调局部 DEBUG trap 提供只读编辑器参数，返回后恢复用户原有的字符串或函数形式 trap。通过用户 widget 读取会改变 Zsh 原生删除／恢复文字的连续操作记录，即使使用`nolast`也如此。因此快照和仅上下文请求都不调用可写 widget。工作进程确认权限范围之后才读取输入；仅上下文请求完全省略 BUFFER/CURSOR。读取私有数据之前关闭 tracing。
 
 - 支持的观察要求 UTF-8、主提示符 Emacs 编辑模式，且不存在续行、活动选区、递归读取、未完整按键、待处理终端字节或宏按键。原生搜索、补全选择菜单、`vared`和 vi 模式会被拒绝，不修改其按键。用户 widget 函数返回普通编辑状态之后才允许观察。
 - Zsh 输入转发之前暂停目录可用性，包括可能被用户绑定到自定义读取器的可打印字符。恢复在输入停止 120 ms 后进行，只请求上下文，不阻塞 PTY 转发。请求会合并，等待上一工作进程完成 EOF 清理后再读取最新状态。客户端附加或权限变化会重新安排被取消的恢复；关闭输入权限但保留 CWD 权限时仍能恢复目录。回调缺失或编辑状态不受支持时保持暂停。
-- 只有获准填写才临时注册唯一名称的可写 widget。它再次检查输入、光标及排队字节，再赋值 BUFFER/CURSOR，不发送回车或求值。清理始终只移除仍属于自己的 widget。最终确认在 widget 返回之后进行，包含 Zsh 对组合字符光标的调整；不匹配返回`unknown`，不会返回`applied`。调用方必须刷新，不能直接重试结果不确定的填写。
+- 只有获准填写才临时注册唯一名称的可写 widget。它通过一次原生`cosmosh_editor_apply`调用读取本地标量，不传递命令文本参数，屏蔽信号并以不等待的方式取得输入锁。随后确认真实 ZLE 参数方法、主读取器、前台`SHTTY`、排队输入、代数及完整缓冲／光标，消费授权并调用原生 BUFFER／CURSOR 赋值方法。恢复信号或重绘前关闭锁。清理只移除仍属于自己的 widget。最终确认在 widget 返回后执行，包括组合字符光标规范化；不匹配保留`unknown`，不能直接重试。
+- 在多个检查／赋值命令外包一层 Shell 脚本文件锁不能提供此边界：SIGWINCH 可以在内置命令之间重新进入提示符计算，使提示符代码运行时输入接收仍等待锁。原生内置命令把信号延后、比较及赋值放在同一次本地操作中，在任何提示符或网络工作前释放锁。
 - 取消不会注入按键或锁定提示符代数。重复 source 保留管道和身份；用户移除的注册不会被静默重新接管。读取回调会先校验描述符、FIFO 类型、inode、UID 和注册归属。失去归属的描述符不被读取或关闭；EOF 或永久错误只移除 Cosmosh 自己的回调，暂时无数据时继续保留。
 
-`src/terminal/integration/zsh-editor.live-test.ts`测试真实 Zsh 5.9、autosuggestions 0.7.0、syntax-highlighting 0.7.1、原生补全与提示符钩子，覆盖私有内容 tracing、连续删除／恢复文字、排队按键、密码读取、取消与激活竞态、异步目录/HOME 及组合字符。Zsh 5.8 和完整 Electron 矩阵仍属于最终验收。API 行为遵循[Zsh 行编辑器文档](https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html)；只读 trap 的差异通过 Zsh 编辑器实现和真实 SSH 测试确认。
+`src/terminal/integration/zsh-editor.live-test.ts`测试真实 Zsh 5.9、autosuggestions 0.7.0、syntax-highlighting 0.7.1、原生补全与提示符钩子，覆盖私有内容 tracing、连续删除／恢复文字、排队按键、密码读取、取消与激活竞态、异步目录／HOME 及组合字符。原生模块还在 Zsh 5.8 和 5.9 上通过真实 PTY／文件锁检查，覆盖填写、撤销、拒绝、按键映射身份及模块生命周期。Zsh 5.8.1 属于明确允许的版本，但本轮未独立运行；完整 Electron／架构矩阵仍须验收。API 行为遵循[Zsh 行编辑器文档](https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html)；只读 trap 的差异通过 Zsh 编辑器实现和真实 SSH 测试确认。
 
 #### Fish 私有编辑器交互
 
@@ -623,14 +649,15 @@ Fish 复用相同的私有请求、授权和确认流程，以固定的`notifica
 - 按键检查仅在提示符事件之后第一次原生标题计算时进行。先调用原始标题函数，保留传入的退出状态和管道状态；已有事件订阅或私有名称冲突会阻止包装。用户替换包装函数后撤销归属。信号回调绝不调用`bind`，因为 Fish 等待后续按键时可能仍持有按键映射锁。
 - 只允许明确列出的原生操作和经过验证的系统函数依赖。自定义可打印字符前缀、原始转义前缀、切换模式的映射、函数缩写、用户按键／历史钩子及未知事件处理器会暂停精确编辑。检查函数名称不会自动加载用户文件。系统函数需要来源检查；缺少来源信息的原生定义按官方 4.0.1 完整内容校验，未知发行版或版本保持关闭。
 - 每次读取输入前，都重新检查处理器归属、处理器注册是否变化、自动建议设置、主输入状态、Emacs 模式、搜索／分页／选区及待处理终端字节。不支持嵌套`read`、密码输入、断点、多行输入或运行中的程序。仅上下文请求完全省略输入。
-- Backend 只保留固定的转义／粘贴边界元数据。不完整序列等待剩余字节；Tab、搜索及未知控制序列会在当前连接中持续暂停此适配器，重连建立新的边界。新提示符不能清除不确定状态，因为后续排队输入可能仍在等待。普通输入、原生 Tab 和历史按键继续转发。
-- 精确填写比较完整原文、光标和请求的目录元数据，把文字替换及光标移动组合为一次原生撤销操作，再确认实际赋值结果，不求值、不发送回车。Fish 会丢弃命令替换中的空字段，因此私有传输用明确标记表示空输入。文本只存在于内存和私有管道／socket 交互中。
+- Backend 只保留固定的转义／粘贴边界元数据，不完整序列等待剩余字节。Tab、Shift+Tab 和 Ctrl+R 已被识别；符合条件的原生`complete`、`complete-and-search`及`history-pager`不会使整个连接持续不可用。搜索／分页进行期间仍拒绝精确观察，直至读取器重新符合条件。未知序列及不合格／脚本映射保持暂停，更新的提示符不能清除未解决的输入边界。普通终端输入和原生按键始终转发。
+- 修改操作在等待桌面授权前结束第一次捕获回调，再通过第二次 pidfd 通知重新捕获和比较。填写函数使用`block --local`暂缓事件；作用域内继承的 FD 9 保持元数据锁，助手在其中消费授权并检查 PTY 待处理字节。函数在原生缓冲／光标赋值前复核实际读取器、模式、分页、选区、完整原文及光标。撤销组结束、排队事件、重绘、拒绝或远端确认发生之前，描述符已经关闭。等待桌面及重绘期间不持锁。
+- 精确填写还比较请求的目录元数据，把替换和光标移动组合为一次原生撤销操作，再确认实际赋值结果，不求值或发送回车。Fish 会丢弃命令替换中的空字段，因此私有传输用明确标记表示空输入。文本只存在于内存和私有管道／socket 交互中。历史删除消费独立的完整记录授权，释放锁之后才进行历史／文件操作，不编辑当前输入缓冲。
 
 `src/terminal/integration/fish-editor.live-test.ts`通过真实 SSH 测试官方 4.0.1 和发行版 Fish 3.6，覆盖 Unicode、中间编辑、旧建议拒绝、一次撤销、原生灰色建议、密码输入、搜索／选区／vi／多行拒绝、自定义按键边界和不触发自动加载的检查。测试环境按 SHA-256 固定官方发行文件。完整 Electron、延迟、版本矩阵验收及前端补全接入仍属于计划后续步骤。
 
 #### 独立 Fish 原生候选来源
 
-私有`native-completion`操作要求 Backend 持有的当前输入快照、独立的原生补全／输入／CWD 权限、可用的原始 Fish 编辑器和已确认物理目录。工作进程重新观察并比较输入、光标、提示符、模式及目录。回调只通过远端经过身份检查的私有 socket 传输原始导出环境，不把这份环境附在桌面端响应中。目前已实现 Backend 来源和查询模式设置；候选编号菜单及输入送达前提仍待完成，菜单尚未启用此来源。
+私有`native-completion`操作要求 Backend 持有的当前输入快照、独立的原生补全／输入／CWD 权限、可用的原始 Fish 编辑器和已确认物理目录。工作进程在未变化的送达边界重新观察并比较输入、光标、提示符、模式及目录。回调只通过远端经过身份检查的私有 socket 传输原始导出环境，不把这份环境附在桌面端响应中。目前已实现 Backend 来源、查询模式设置及输入送达绑定；候选编号消费者仍待接入，菜单尚未启用此来源。
 
 `terminalNativeCompletionMode`使用现有设置选择器，路径为`advanced.runtime.remoteEnhancements.nativeCompletionMode`，可选`off`、`manual`（新配置默认值）和`automatic`，分别表示不查询、主动进入建议列表时查询和随输入查询。菜单接入完成前，界面明确说明仅保存选择供后续使用；切换模式不会发起查询。`off`关闭 Backend 查询权限，其余模式仍受全局和服务器增强开关限制。后续消费者必须同时执行查询时机约束，以及输入／CWD 能力和权限检查。
 
@@ -770,6 +797,7 @@ Fish 精确删除匹配当前命名空间内的所有相同文字。原生保存
 | 用途             | 默认路径                                                                                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Bootstrap binary | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/cosmosh-bootstrap` 或 `~/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap`            |
+| 原生模块         | 程序旁的`cosmosh-bash.so`（Bash）或`cosmosh_zsh.so`（Zsh）；由当前用户持有，权限必须为 0600                                     |
 | Version marker   | `$XDG_DATA_HOME/cosmosh/bootstrap/bin/.version` 或 `~/.local/share/cosmosh/bootstrap/bin/.version`                              |
 | POSIX helper     | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.sh` 或 `~/.config/cosmosh/bootstrap/helper.sh`                                       |
 | Fish helper      | `$XDG_CONFIG_HOME/cosmosh/bootstrap/helper.fish` 或 `~/.config/cosmosh/bootstrap/helper.fish`                                   |
@@ -778,7 +806,7 @@ Fish 精确删除匹配当前命名空间内的所有相同文字。原生保存
 | Sh/Ash hook      | `~/.profile` 内的 Cosmosh marker block                                                                                          |
 | Fish hook        | `$XDG_CONFIG_HOME/fish/conf.d/cosmosh.fish` 或 `~/.config/fish/conf.d/cosmosh.fish`                                             |
 
-安装器具备幂等性。只有已安装 version、binary 精确内容、Go 生成的 helper 精确内容与所有必需 shell hook 均为最新时才会发送 `skipped`。Bash login-profile block 会检查 `BASH_VERSION`，因此由 Dash 读取的通用 `.profile` 不会加载 Bash helper。选择 login profile 时会检查 `.bash_profile` 与 `.bash_login` 目录项本身，因此 dotfile manager 创建的悬空符号链接仍是有效的 Bash 候选；安装器会创建其目标，而不会错误回退到 `.profile`。Binary/helper/version/profile 都采用原子替换；已有 profile 权限与符号链接目标会被保留。Version marker 只会在所有文件安装与 profile 更新成功后写入。`status` 同时报告兼容字段 `profilePath` 与完整 `profilePaths` 集合。
+安装器具备幂等性。只有已安装版本、binary／helper／原生模块完整内容、模块所有者／模式及所有必需 Shell 钩子均为最新时才发送`skipped`。Bash 登录配置块检查`BASH_VERSION`，因此由 Dash 读取的通用`.profile`不会加载 Bash helper。选择登录配置时检查`.bash_profile`与`.bash_login`目录项本身，文件管理工具创建的悬空符号链接仍是有效的 Bash 候选；安装器会创建目标，不错误回退到`.profile`。Binary／helper／模块／version／profile 都采用原子替换，保留已有 profile 权限与符号链接目标。版本标记只在所有安装与配置更新成功后写入；`status`同时报告兼容字段`profilePath`与完整`profilePaths`集合。
 
 ### 8.5 安全与失败模型
 

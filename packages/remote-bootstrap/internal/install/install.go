@@ -74,8 +74,8 @@ func Run(options Options) error {
 		writeStatus(options.Stdout, "install", "failed", options.Version, "INVALID_OPTIONS", err.Error())
 		return err
 	}
-	if options.Shell == "bash" {
-		if _, err := nativeassets.Payload(); err != nil && !errors.Is(err, nativeassets.ErrUnavailable) {
+	if nativeassets.NativeShell(options.Shell) {
+		if _, err := nativeassets.Payload(options.Shell); err != nil && !errors.Is(err, nativeassets.ErrUnavailable) {
 			writeStatus(options.Stdout, "install", "failed", options.Version, "INVALID_NATIVE_MODULE", err.Error())
 			return err
 		}
@@ -127,8 +127,9 @@ func Status(stdout io.Writer, shell string) error {
 	options := Options{Shell: shell, Version: version}
 	helperCurrent := version != "" && helperMatches(options, resolvedPaths)
 	profileCurrent := version != "" && profileHasCurrentHook(options, resolvedPaths)
-	nativeRequired := options.Shell == "bash" && nativeassets.Available()
-	nativeCurrent := nativeRequired && nativeMatches(resolvedPaths.binaryPath)
+	_, nativeErr := nativeassets.Payload(shell)
+	nativeRequired := nativeassets.NativeShell(shell) && !errors.Is(nativeErr, nativeassets.ErrUnavailable)
+	nativeCurrent := nativeRequired && nativeErr == nil && nativeMatches(resolvedPaths.binaryPath, shell)
 	binarySHA256, binaryErr := fileSHA256(resolvedPaths.binaryPath)
 	payload := InstallationStatus{
 		Installed:       binaryErr == nil && version != "" && helperCurrent && profileCurrent && (!nativeRequired || nativeCurrent),
@@ -143,8 +144,8 @@ func Status(stdout io.Writer, shell string) error {
 		ProfilePath:     resolvedPaths.profilePath,
 		ProfilePaths:    append([]string(nil), resolvedPaths.profilePaths...),
 	}
-	if options.Shell == "bash" {
-		payload.NativeModulePath = nativeassets.Path(resolvedPaths.binaryPath)
+	if nativeassets.NativeShell(shell) {
+		payload.NativeModulePath = nativeassets.Path(resolvedPaths.binaryPath, shell)
 		payload.NativeModuleCurrent = nativeCurrent
 	}
 
@@ -205,7 +206,8 @@ func isCurrentInstallation(options Options, resolvedPaths paths) bool {
 	}
 
 	return helperMatches(options, resolvedPaths) && profileHasCurrentHook(options, resolvedPaths) &&
-		(options.Shell != "bash" || !nativeassets.Available() || nativeMatches(resolvedPaths.binaryPath))
+		(!nativeassets.NativeShell(options.Shell) || !nativeassets.Available(options.Shell) ||
+			nativeMatches(resolvedPaths.binaryPath, options.Shell))
 }
 
 // nativeFileTrusted rejects altered permissions, shared or substituted native code at each observation.
@@ -214,9 +216,9 @@ func nativeFileTrusted(info os.FileInfo, size int64) bool {
 }
 
 // nativeMatches compares the embedded artifact while retaining its exact private inode identity.
-func nativeMatches(binaryPath string) bool {
-	modulePath := nativeassets.Path(binaryPath)
-	expected, err := nativeassets.Payload()
+func nativeMatches(binaryPath, shell string) bool {
+	modulePath := nativeassets.Path(binaryPath, shell)
+	expected, err := nativeassets.Payload(shell)
 	if err != nil {
 		return false
 	}
@@ -294,18 +296,18 @@ func installFiles(options Options, resolvedPaths paths) error {
 		return err
 	}
 
-	if options.Shell == "bash" {
-		modulePath := nativeassets.Path(resolvedPaths.binaryPath)
-		module, err := nativeassets.Payload()
+	if nativeassets.NativeShell(options.Shell) {
+		modulePath := nativeassets.Path(resolvedPaths.binaryPath, options.Shell)
+		module, err := nativeassets.Payload(options.Shell)
 		switch {
 		case err == nil:
 			if err := writeFileAtomically(modulePath, module, 0o600, false); err != nil {
-				return fmt.Errorf("install Bash native module: %w", err)
+				return fmt.Errorf("install %s native module: %w", options.Shell, err)
 			}
 		case errors.Is(err, nativeassets.ErrUnavailable):
 			// Development builds neither install nor load an unbundled module.
 		default:
-			return fmt.Errorf("load embedded Bash native module: %w", err)
+			return fmt.Errorf("load embedded %s native module: %w", options.Shell, err)
 		}
 	}
 

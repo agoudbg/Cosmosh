@@ -10,11 +10,13 @@ import type {
   ShellEditorBuffer,
   ShellEditorRequest,
   ShellEditorSnapshot,
+  ShellInputBoundary,
 } from '@cosmosh/api-contract';
 
 import { executeShellEditorRequest, type ShellEditorExecOptions } from '../../ssh/editor-exec.js';
 import { executeBoundedSshCommand } from '../../ssh/exec.js';
 import { RemoteShellEventOscParser } from '../../ssh/remote-shell-events.js';
+import { DeliveredTerminal } from '../../ssh/terminal-transport.js';
 import { type FixtureShell, type FixtureTerminal, openFixtureTerminal } from './fixture-client.js';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
@@ -28,7 +30,7 @@ export const editorBinaryPath = (shell: FixtureShell): string =>
 
 /** @param shell Disposable fixture account. @returns Nothing after building and installing the actual Go helper. */
 export const installFixtureEditor = async (shell: FixtureShell): Promise<void> => {
-  execFileSync(process.execPath, [path.join(workspace, 'scripts/build-bash-native.mjs'), '--if-stale'], {
+  execFileSync(process.execPath, [path.join(workspace, 'scripts/build-shell-native.mjs'), '--if-stale'], {
     cwd: workspace,
     timeout: 600_000,
     stdio: 'pipe',
@@ -39,7 +41,7 @@ export const installFixtureEditor = async (shell: FixtureShell): Promise<void> =
     timeout: 60_000,
     stdio: 'pipe',
   });
-  const terminal = await openFixtureTerminal(shell);
+  const terminal = await openFixtureTerminal(shell, undefined, { plain: true });
   try {
     const installer = '/home/cosmosh-' + shell + '/fixture-bootstrap';
     await new Promise<void>((resolve, reject) =>
@@ -118,6 +120,14 @@ export class EditorFixture {
     }
     return await this.prompt(generation);
   }
+  /** @returns The current sequence only after the real remote PTY acknowledges it. */
+  async inputBoundary(): Promise<ShellInputBoundary> {
+    const transport = this.terminal.channel;
+    assert.ok(transport instanceof DeliveredTerminal);
+    const delivery = transport.inputDelivery;
+    assert.equal(await transport.waitForDelivery(delivery.sent, new AbortController().signal), true);
+    return { epoch: delivery.epoch, sequence: delivery.sent };
+  }
   /**
    * @param operation Requested permission scope. @param expected Exact previous observation.
    * @param replacement Data-only edit. @param options Explicit cancellation/race test boundary.
@@ -131,8 +141,14 @@ export class EditorFixture {
   ) {
     const event = await this.prompt();
     if (!event.available) return { status: 'unavailable' as const };
+    const transport = this.terminal.channel;
+    if (!(transport instanceof DeliveredTerminal)) return { status: 'unavailable' as const };
+    const delivery = transport.inputDelivery;
+    const signal = options?.signal ?? new AbortController().signal;
+    if (!(await transport.waitForDelivery(delivery.sent, signal))) return { status: 'unavailable' as const };
     const request: ShellEditorRequest = {
       requestId: randomUUID(),
+      inputBoundary: { epoch: delivery.epoch, sequence: delivery.sent },
       target: { instanceId: event.shellInstanceId, shell: this.shell, pid: event.pid, startTime: event.startTime },
       operation,
       promptGeneration: event.promptGeneration,
@@ -142,11 +158,11 @@ export class EditorFixture {
       ...(replacement ? { replacement } : {}),
     };
     return await executeShellEditorRequest(this.terminal.client, editorBinaryPath(this.shell), request, {
-      signal: new AbortController().signal,
-      isCurrent: () => true,
-      trigger: () => {
-        if (!event.notification) this.terminal.write('\x1b[997;' + event.triggerNonce + '~');
-      },
+      signal,
+      isCurrent: () => transport.inputDelivery.sent === delivery.sent,
+      trigger: () => {},
+      authorize: () => transport.authorizeEditor(request.requestId, request.inputBoundary, signal),
+      revoke: () => transport.revokeEditor(request.requestId),
       ...options,
     });
   }

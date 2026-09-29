@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { DEFAULT_SETTINGS_VALUES, type ShellEditorSnapshot } from '@cosmosh/api-contract';
+import { DEFAULT_SETTINGS_VALUES, type ShellEditorSnapshot, type ShellInputBoundary } from '@cosmosh/api-contract';
 
-import { confirmShellEditorContext, type EditorExecutor, ShellEditorController } from './editor-controller.js';
+import {
+  confirmShellEditorContext,
+  type EditorExecutor,
+  type EditorInputTransport,
+  ShellEditorController,
+} from './editor-controller.js';
 import { isSupportedBashEditorInput, normalizeEditorBuffer, normalizeEditorSnapshot } from './editor-protocol.js';
 import { normalizeTerminalClientMessage } from './shared.js';
 import {
@@ -13,6 +18,40 @@ import {
   type ShellContextState,
   updateShellPermissions,
 } from './shell-context.js';
+
+const epoch = '89abcdef-0123-4567-89ab-cdef01234567';
+
+/** Explicit ordered SSH boundary double; controller identity, cache and permission checks stay real. */
+class OrderedInputTransport implements EditorInputTransport {
+  public inputDelivery = { epoch, sent: 0, delivered: 0 };
+  public originalShellPID: number | null = 42;
+  public waited: number[] = [];
+  public authorized: Array<{ requestId: string; boundary: ShellInputBoundary; signal: AbortSignal }> = [];
+  public revoked: string[] = [];
+
+  /** @param sequence Sent revision. @param signal Operation lifetime. @returns The explicit remote delivery observation. */
+  public async waitForDelivery(sequence: number, signal: AbortSignal): Promise<boolean> {
+    this.waited.push(sequence);
+    return !signal.aborted && sequence <= this.inputDelivery.delivered;
+  }
+
+  /** @param requestId Exact operation. @param boundary Delivered revision. @param signal Lifetime. @returns External grant. */
+  public async authorizeEditor(requestId: string, boundary: ShellInputBoundary, signal: AbortSignal): Promise<boolean> {
+    this.authorized.push({ requestId, boundary: { ...boundary }, signal });
+    return !signal.aborted;
+  }
+
+  /** @param requestId Operation whose external authority is released. @returns Nothing. */
+  public revokeEditor(requestId: string): void {
+    this.revoked.push(requestId);
+  }
+}
+
+/** @returns A stable per-test ordered SSH owner with an already delivered empty input boundary. */
+const orderedTransport = (): (() => OrderedInputTransport) => {
+  const transport = new OrderedInputTransport();
+  return () => transport;
+};
 
 /** @returns A confirmed original editor context with no input text in public metadata. */
 const readyState = (): ShellContextState => ({
@@ -28,6 +67,7 @@ const readyState = (): ShellContextState => ({
     startTime: '100',
     triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
     promptGeneration: 1,
+    notification: { callback: 'readline' },
   },
 });
 const snapshot: ShellEditorSnapshot = {
@@ -65,7 +105,7 @@ test('native queries require permission and discard late results after input or 
           state = updateShellPermissions(state, { ...state.permissions, [invalidation]: false });
         return { status: 'native-completions', completion: { status: 'ok', entries: [] } };
       },
-      () => assert.fail('Fish native query must not write terminal bytes'),
+      orderedTransport(),
       () => {},
     );
     const captured = await editor.snapshot();
@@ -94,7 +134,7 @@ test('disabled native permission prevents query dispatch even with an available 
       calls += 1;
       return { status: 'ok', snapshot: { ...snapshot, buffer: { text: 'git switch ', cursor: 11 } } };
     },
-    () => {},
+    orderedTransport(),
     () => {},
   );
   const captured = await editor.snapshot();
@@ -120,6 +160,7 @@ test('editor buffers count codepoints and reject controls, oversized input, malf
   assert.deepEqual(normalizeEditorBuffer({ text: '🐟', cursor: 1 }), { text: '🐟', cursor: 1 });
   const request = {
     requestId: '01234567-89ab-4def-8123-456789abcdef',
+    inputBoundary: { epoch, sequence: 0 },
     target: { instanceId: '01234567-89ab-4def-8123-456789abcdef', shell: 'bash' as const, pid: 42, startTime: '100' },
     operation: 'context' as const,
     promptGeneration: 1,
@@ -173,7 +214,7 @@ test('editor permission is checked before any transport and after awaited captur
       assert.equal(options.isCurrent(), false);
       return { status: 'ok', snapshot };
     },
-    () => {},
+    orderedTransport(),
     () => {},
   );
   assert.deepEqual(await editor.snapshot(), { status: 'stale' });
@@ -190,7 +231,7 @@ test('snapshots bind one application to the exact context and are erased by inpu
       operations.push(request.operation);
       return request.operation === 'apply' ? { status: 'applied' } : { status: 'ok', snapshot };
     },
-    () => {},
+    orderedTransport(),
     (expected, observed) => {
       state = confirmShellEditorContext(expected, observed);
     },
@@ -223,7 +264,7 @@ test('candidate identifiers own immutable edits and expire with their session sn
       }
       return { status: 'ok', snapshot };
     },
-    () => {},
+    orderedTransport(),
     () => {},
   );
   const draft = {
@@ -260,7 +301,7 @@ test('late sources append within a fixed candidate bound without invalidating al
   const editor = new ShellEditorController(
     () => state,
     async (request) => (request.operation === 'apply' ? { status: 'applied' } : { status: 'ok', snapshot }),
-    () => {},
+    orderedTransport(),
     () => {},
   );
   const id = (await editor.snapshot()).snapshotId!;
@@ -284,25 +325,24 @@ test('late sources append within a fixed candidate bound without invalidating al
   assert.deepEqual(await editor.applyCandidate(id, first.id), { status: 'applied' });
 });
 
-test('a timed-out dispatched trigger is not repeated before a new binding epoch', async () => {
-  let state = readyState();
-  let calls = 0;
-  const editor = new ShellEditorController(
-    () => state,
-    async (_request, options) => {
-      calls += 1;
-      options.trigger();
-      return { status: 'unavailable' };
-    },
-    () => {},
-    () => {},
-  );
-  assert.equal((await editor.snapshot()).status, 'unavailable');
-  assert.equal((await editor.snapshot()).status, 'unavailable');
-  assert.equal(calls, 1);
-  state = { ...state, editorBinding: { ...state.editorBinding!, triggerNonce: 'new-epoch' } };
-  await editor.snapshot();
-  assert.equal(calls, 2);
+test('ordinary SSH, an unknown notification and a different Shell process never dispatch an editor request', async () => {
+  for (const unavailable of ['ordinary', 'notification', 'process', 'closed'] as const) {
+    const state = readyState();
+    const transport = new OrderedInputTransport();
+    if (unavailable === 'notification') delete state.editorBinding!.notification;
+    if (unavailable === 'process') transport.originalShellPID = 43;
+    if (unavailable === 'closed') transport.originalShellPID = null;
+    const editor = new ShellEditorController(
+      () => state,
+      async () => assert.fail('an unverified owner must not open an editor channel'),
+      () => (unavailable === 'ordinary' ? null : transport),
+      () => assert.fail('an unverified owner cannot confirm context'),
+    );
+    assert.deepEqual(await editor.snapshot(), { status: 'unavailable' });
+    assert.equal(await editor.refreshContext(), false);
+    assert.deepEqual(transport.waited, []);
+    assert.deepEqual(transport.authorized, []);
+  }
 });
 
 test('idle private snapshots are actively erased after ten seconds and replacement resets retention', async (t) => {
@@ -311,7 +351,7 @@ test('idle private snapshots are actively erased after ten seconds and replaceme
   const editor = new ShellEditorController(
     () => state,
     async () => ({ status: 'ok', snapshot }),
-    () => {},
+    orderedTransport(),
     () => {},
   );
   const retained = editor as unknown as { cached: unknown; expiryTimer: unknown };
@@ -348,7 +388,7 @@ test('context refresh respects input and directory permissions independently', a
   const editor = new ShellEditorController(
     () => current,
     execute,
-    () => {},
+    orderedTransport(),
     (expected, observed) => {
       current = confirmShellEditorContext(expected, observed);
     },
@@ -371,6 +411,7 @@ test('context refresh respects input and directory permissions independently', a
 
 test('an ambiguous queued prompt cannot authorize a context probe into a later silent reader', async () => {
   const state = { ...readyState(), status: 'paused' as const, requiresEditorConfirmation: true };
+  delete state.editorBinding!.notification;
   let requests = 0;
   const editor = new ShellEditorController(
     () => state,
@@ -378,9 +419,7 @@ test('an ambiguous queued prompt cannot authorize a context probe into a later s
       requests += 1;
       return { status: 'unavailable' };
     },
-    () => {
-      assert.fail('ambiguous state must never inject a key');
-    },
+    orderedTransport(),
     () => {},
   );
   assert.equal(await editor.refreshContext(), false);
@@ -408,7 +447,7 @@ test('a verified notification adapter can recover paused context without reading
       if (attempts === 1) return { status: 'unavailable' };
       return { status: 'ok', snapshot: { promptGeneration: 1, editorMode: 'emacs', directory: snapshot.directory } };
     },
-    () => assert.fail('notification recovery must not inject terminal bytes'),
+    orderedTransport(),
     (expected, observed) => {
       state = confirmShellEditorContext(expected, observed);
     },
@@ -443,12 +482,13 @@ test('ZLE context recovery coalesces latest input while an older request waits f
         });
       return { status: 'ok', snapshot: { promptGeneration: 1, editorMode: 'emacs', directory: snapshot.directory } };
     },
-    () => assert.fail('ZLE must never inject a key'),
+    orderedTransport(),
     (expected, observed) => {
       state = confirmShellEditorContext(expected, observed);
     },
   );
   const previous = controller.snapshot();
+  await Promise.resolve();
   controller.invalidate();
   state = { ...invalidateShellInput(state, 'x'), status: 'paused', requiresEditorConfirmation: true, cwd: null };
   const refresh = controller.refreshContext();
@@ -465,6 +505,7 @@ test('ZLE context recovery coalesces latest input while an older request waits f
 
 test('input cancellation closes the active request, rejects overlap and releases retained text', async () => {
   const state = readyState();
+  let calls = 0;
   let entered: (() => void) | undefined;
   const started = new Promise<void>((resolve) => {
     entered = resolve;
@@ -472,13 +513,15 @@ test('input cancellation closes the active request, rejects overlap and releases
   const editor = new ShellEditorController(
     () => state,
     async (_request, options) => {
+      calls += 1;
+      if (calls > 1) return { status: 'unavailable' };
       options.trigger();
       entered?.();
       return await new Promise((resolve) =>
         options.signal.addEventListener('abort', () => resolve({ status: 'unavailable' }), { once: true }),
       );
     },
-    () => {},
+    orderedTransport(),
     () => {},
   );
   const active = editor.snapshot();
@@ -487,4 +530,121 @@ test('input cancellation closes the active request, rejects overlap and releases
   editor.invalidate();
   assert.deepEqual(await active, { status: 'unavailable' });
   assert.deepEqual(await editor.snapshot(), { status: 'unavailable' });
+  assert.equal(calls, 2, 'a canceled native operation does not permanently lock the prompt');
+});
+
+test('snapshot dispatch waits for actual delivery and binds that exact boundary to authorization', async () => {
+  const state = readyState();
+  const transport = new OrderedInputTransport();
+  transport.inputDelivery = { epoch, sent: 2, delivered: 1 };
+  let delivered: ((value: boolean) => void) | undefined;
+  transport.waitForDelivery = async (sequence, signal) => {
+    assert.equal(sequence, 2);
+    assert.equal(signal.aborted, false);
+    if (transport.inputDelivery.delivered === 2) return true;
+    return await new Promise<boolean>((resolve) => {
+      delivered = resolve;
+    });
+  };
+  let calls = 0;
+  const editor = new ShellEditorController(
+    () => state,
+    async (request, options) => {
+      calls += 1;
+      assert.deepEqual(request.inputBoundary, { epoch, sequence: 2 });
+      assert.equal(options.isCurrent(), true);
+      if (request.operation === 'snapshot') return { status: 'ok', snapshot };
+      assert.equal(await options.authorize(), true);
+      assert.equal(transport.authorized.at(-1)?.requestId, request.requestId);
+      assert.deepEqual(transport.authorized.at(-1)?.boundary, request.inputBoundary);
+      assert.equal(transport.authorized.at(-1)?.signal, options.signal);
+      return { status: 'applied' };
+    },
+    () => transport,
+    () => {},
+  );
+  const pending = editor.snapshot();
+  await Promise.resolve();
+  assert.equal(calls, 0, 'a local send must not start an editor observation');
+  transport.inputDelivery.delivered = 2;
+  delivered?.(true);
+  const captured = await pending;
+  assert.equal(captured.status, 'ok');
+  assert.ok(captured.snapshotId);
+  assert.deepEqual(await editor.apply(captured.snapshotId!, { text: 'echo accepted', cursor: 13 }), {
+    status: 'applied',
+  });
+  assert.equal(calls, 2);
+  assert.equal(transport.revoked.at(-1), transport.authorized.at(-1)?.requestId);
+});
+
+test('delivery failure and identity changes during its wait reject before opening an editor channel', async () => {
+  for (const change of ['delivery', 'input', 'epoch', 'process', 'owner', 'cancel'] as const) {
+    const state = readyState();
+    let transport = new OrderedInputTransport();
+    const original = transport;
+    let delivered: ((value: boolean) => void) | undefined;
+    original.waitForDelivery = async () =>
+      await new Promise<boolean>((resolve) => {
+        delivered = resolve;
+      });
+    const editor = new ShellEditorController(
+      () => state,
+      async () => assert.fail('a stale delivery wait must not open an editor channel'),
+      () => transport,
+      () => {},
+    );
+    const pending = editor.snapshot();
+    if (change === 'input') original.inputDelivery = { epoch, sent: 1, delivered: 1 };
+    if (change === 'epoch') original.inputDelivery.epoch = 'fedcba98-7654-4321-89ab-0123456789ab';
+    if (change === 'process') original.originalShellPID = 43;
+    if (change === 'owner') transport = new OrderedInputTransport();
+    if (change === 'cancel') editor.invalidate();
+    delivered?.(change !== 'delivery');
+    assert.deepEqual(await pending, { status: 'stale' }, change);
+    assert.equal(original.revoked.length, 1);
+  }
+});
+
+test('new delivery invalidates retained candidates even when public Shell metadata has not changed', async () => {
+  const state = readyState();
+  const transport = new OrderedInputTransport();
+  const editor = new ShellEditorController(
+    () => state,
+    async () => ({ status: 'ok', snapshot }),
+    () => transport,
+    () => {},
+  );
+  const draft = {
+    label: 'new',
+    detail: null,
+    source: 'runtime' as const,
+    kind: 'path' as const,
+    edit: { start: 5, end: 8, text: 'new' },
+  };
+  const captured = await editor.snapshot();
+  const candidate = editor.bindCandidates(captured.snapshotId!, [draft])![0];
+  transport.inputDelivery = { epoch, sent: 1, delivered: 1 };
+  assert.equal(editor.bindCandidates(captured.snapshotId!, [draft]), null);
+  assert.deepEqual(await editor.applyCandidate(captured.snapshotId!, candidate.id), { status: 'stale' });
+  assert.deepEqual(transport.authorized, []);
+  editor.invalidate();
+});
+
+test('input advancing during a private observation discards the late snapshot without caching it', async () => {
+  const state = readyState();
+  const transport = new OrderedInputTransport();
+  const editor = new ShellEditorController(
+    () => state,
+    async (_request, options) => {
+      transport.inputDelivery = { epoch, sent: 1, delivered: 1 };
+      assert.equal(options.isCurrent(), false);
+      assert.equal(await options.authorize(), false);
+      return { status: 'ok', snapshot };
+    },
+    () => transport,
+    () => {},
+  );
+  assert.deepEqual(await editor.snapshot(), { status: 'stale' });
+  assert.deepEqual(transport.authorized, []);
 });

@@ -7,7 +7,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/inputorder"
 )
+
+var testInputBoundary = inputorder.Boundary{Epoch: "01234567-89ab-4cde-8fab-0123456789ab", Sequence: 0}
 
 func TestDeadlineIncludesIncompleteInitialStdin(t *testing.T) {
 	reader, writer := io.Pipe()
@@ -39,9 +43,10 @@ func TestBufferUsesUnicodeCodePointBoundaries(t *testing.T) {
 
 func TestRequestBoundaryDoesNotExposeRejectedInput(t *testing.T) {
 	request := Request{
-		RequestID: "01234567-89ab-4def-8123-456789abcdef",
-		Target:    Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "bash", PID: 23, StartTime: "1234"},
-		Operation: "snapshot", PromptGeneration: 1,
+		RequestID:     "01234567-89ab-4def-8123-456789abcdef",
+		InputBoundary: testInputBoundary,
+		Target:        Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "bash", PID: 23, StartTime: "1234"},
+		Operation:     "snapshot", PromptGeneration: 1,
 		Notification: &Notification{Callback: "readline"},
 	}
 	encoded, _ := json.Marshal(request)
@@ -62,9 +67,10 @@ func TestRequestBoundaryDoesNotExposeRejectedInput(t *testing.T) {
 
 func TestNotificationRequiresExplicitZshDescriptorIdentity(t *testing.T) {
 	request := Request{
-		RequestID: "01234567-89ab-4def-8123-456789abcdef",
-		Target:    Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "zsh", PID: 23, StartTime: "1234"},
-		Operation: "snapshot", PromptGeneration: 1,
+		RequestID:     "01234567-89ab-4def-8123-456789abcdef",
+		InputBoundary: testInputBoundary,
+		Target:        Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "zsh", PID: 23, StartTime: "1234"},
+		Operation:     "snapshot", PromptGeneration: 1,
 	}
 	if validRequest(request) {
 		t.Fatal("Zsh must not fall back to injected terminal bytes")
@@ -82,6 +88,27 @@ func TestNotificationRequiresExplicitZshDescriptorIdentity(t *testing.T) {
 	request.Target.Shell = "bash"
 	if validRequest(request) {
 		t.Fatal("a Shell without this adapter accepted notification metadata")
+	}
+}
+
+func TestRequestRejectsNoncanonicalInputBoundary(t *testing.T) {
+	request := Request{RequestID: "01234567-89ab-4def-8123-456789abcdef",
+		InputBoundary: testInputBoundary,
+		Target:        Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "bash", PID: 23, StartTime: "1234"},
+		Operation:     "snapshot", PromptGeneration: 1, Notification: &Notification{Callback: "readline"}}
+	if !validRequest(request) {
+		t.Fatal("valid zero-sequence boundary rejected")
+	}
+	for _, boundary := range []inputorder.Boundary{
+		{}, {Epoch: strings.ToUpper(testInputBoundary.Epoch)},
+		{Epoch: "01234567-89ab-1cde-8fab-0123456789ab"},
+		{Epoch: "01234567-89ab-4cde-7fab-0123456789ab"},
+		{Epoch: testInputBoundary.Epoch, Sequence: 1 << 53},
+	} {
+		request.InputBoundary = boundary
+		if validRequest(request) {
+			t.Fatalf("unsafe input boundary accepted: %+v", boundary)
+		}
 	}
 }
 

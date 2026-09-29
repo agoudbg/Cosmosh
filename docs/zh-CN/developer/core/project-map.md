@@ -34,6 +34,7 @@ flowchart TB
   - `prepare-release-assets.mjs`：校验扁平的跨平台 release 资产清单，并在 attestation 与 draft 上传前写入确定性的 `SHA256SUMS`。
   - `verify-windows-release-signatures.ps1`：对 NSIS 安装器与打包应用可执行文件的 Authenticode 签名和时间戳证书进行审计或强制校验。
   - `update-version.js`：版本元数据更新辅助。
+  - `build-shell-native.mjs`与`shell-native/`：在固定的 Linux amd64／arm64 环境中构建并校验 Bash／Zsh 模块的 ELF／ABI，供带原生模块标记的远端发布程序嵌入。
   - `precommit-staged.mjs`：暂存文件 precommit 校验辅助。
   - `setup-githooks.mjs`：本地 Git hook 初始化。
 
@@ -93,8 +94,9 @@ flowchart TB
 - `completion/snapshot-suggestions.ts`负责有界、从新到旧的历史整理、基于快照的静态资料修改，以及按完整修改排序去重。`completion/matching.ts`为各来源提供字面 Unicode 匹配。原生历史读取与生命周期接入由独立模块负责。
 - `packages/remote-bootstrap/internal/editor/history.go`验证有界的原生历史观察。Fish 钩子在传输前过滤私密记录；`editor-protocol.ts`与`ShellEditorController.history`／`deleteHistory`执行 Backend 独立权限边界。工作进程授权 Fish 原生精确移除，并将当前行编辑器中已确认的目标消失与文件更新分开报告。`fish-history.live-test.ts`验证原始 Shell。Bash 原生回调能够通过私有原语读取有界的原始 Shell 历史，但 Bash 来源启用与删除尚未接入控制器或侧栏。
 - `completion/remote-path-query.ts`负责有界结构化 SSH 目录边界及逐会话查询取消与缓存；`completion/snapshot-paths.ts`将一次完整私有编辑器观察转为已经引用的字面路径草稿。`packages/remote-bootstrap/internal/paths`使用 Go 标准库读取目录。`path-query.live-test.ts`覆盖实际 SSH 文件名、大目录、权限、超时与取消及重新确认的目录观察。旧路径来源现在仅服务本地终端。
-- `src/terminal/editor-controller.ts`负责每会话的单个私有快照、操作和合并后的上下文恢复；`editor-protocol.ts`校验输入、Unicode 和权限数据边界，并维护固定的 Fish 传输边界而不保留输入文本。`src/ssh/editor-exec.ts`负责有界 stdin/JSON SSH 传输。`src/terminal/integration/editor-fixture.ts`为`editor-bridge.live-test.ts`（Bash）、`zsh-editor.live-test.ts`和`fish-editor.live-test.ts`共享实际帮助程序安装与观察。
-- `packages/remote-bootstrap/internal/editor`负责 Linux 进程身份、私有 socket、仅传递数据的协议，以及 Bash 非阻塞二进制回调交换。`internal/install/editor_bash_native.go`、`editor_zsh.go`和`editor_fish.go`生成各 Shell 适配器。`native/bash/cosmosh_bash.c`是原始 Bash 5.1/5.2 的 Readline 空闲适配器；`internal/nativeassets`嵌入 amd64/arm64 模块，`internal/install`安装并校验自有模块。`scripts/build-bash-native.mjs`与`scripts/bash-native`基于固定的 Debian Bullseye/glibc 2.31 基线构建两个模块。`internal/session`负责协议 v1 帧、原始登录 Shell 的 PTY、有序输入送达确认、调整尺寸及清理；PTY 写入完成不证明 Shell 已消费输入。`scripts/terminal-fixture/install_fish.py`仅在一次性镜像中安装固定的 Fish；Bash 原生实测可运行单独放置的 Bash 5.1 程序，不改动 fixture 账户。
+- `src/terminal/editor-controller.ts`负责每会话的单个私有快照、操作、合并后的上下文恢复、送达等待，以及原始 PID／输入边界精确检查。`editor-protocol.ts`校验输入、Unicode 和权限数据边界，维护固定的 Fish 按键／粘贴边界而不保留输入文本。`src/ssh/editor-exec.ts`负责有界 stdin/JSON SSH 交互，仅在预备观察匹配后请求有序修改授权。`src/terminal/integration/editor-fixture.ts`为 Bash、Zsh 和 Fish 实测共享生产环境的送达传输、实际助手安装与观察。
+- `packages/remote-bootstrap/internal/editor`负责 Linux 进程身份、私有 socket、按权限限定字段的数据请求及 Bash 非阻塞二进制协议 v2。`internal/install/editor_bash_native.go`、`editor_zsh.go`和`editor_fish.go`生成适配器。`native/bash/cosmosh_bash.c`负责 Bash 5.1／5.2 的 Readline 空闲观察／填写；`native/zsh/cosmosh_zsh.c`为 Zsh 5.8／5.9 提供原子填写内置命令并创建 Shell 持有的通知描述符，保留脚本的只读 ZLE 观察。`internal/install/helper.go`在钩子初始化前显式加载 ZLE。`native/bash/input_order.h`共享原生元数据检查。`internal/nativeassets`嵌入四个 Linux 模块（两种 Shell，各含 amd64／arm64）；`internal/install`安装并校验`cosmosh-bash.so`或`cosmosh_zsh.so`。`scripts/build-shell-native.mjs`与`scripts/shell-native`基于固定的 Debian Bullseye／glibc 2.31 基线构建模块。
+- `internal/session`负责协议 v2 帧、原始登录 Shell 的 PTY、有序输入／授权／撤销、调整尺寸及清理。`internal/inputorder`负责不含输入文本的固定 128 字节元数据、写入前记录接收／写入后记录送达、一次性授权到期及共享文件锁校验。`internal/editor/input_lock.go`验证 Fish 作用域内继承描述符的身份；交互适配器在网络或重绘工作前释放锁。`scripts/terminal-fixture/install_fish.py`仅在一次性镜像中安装固定 Fish；指定版本实测使用单独放置的程序，不更改测试账户。
 
 - **角色**：内部 API + 会话编排运行时。
 - **关键目录**：
@@ -123,7 +125,7 @@ flowchart TB
 - `src/settings-registry.ts`：所有设置定义的**唯一来源**——类型、默认值、约束、枚举集、UI 控件元数据、分类与辅助函数。增删设置项仅需编辑此文件。
 - `src/settings.ts`：基于注册表的通用校验与规范化辅助函数（`normalizeSettingsValuesStrict`、`normalizeSettingsValuesWithDefaults`），供 backend 与 renderer 共享。
 - `src/sftp.ts`：SFTP 条目/名称排序共享 helper，供后端会话列表与渲染层浏览器/树视图复用。
-- `src/terminal-protocol.ts`：协议 v3 终端 WebSocket union、共享 ShellContext/权限、远端 Shell 事件/能力常量及 bootstrap/runtime 状态类型。
+- `src/terminal-protocol.ts`：协议 v3 终端 WebSocket union、共享 ShellContext／权限、远端 Shell 事件／能力常量及 bootstrap/runtime 状态类型。私有`ShellEditorRequest`必须包含`ShellInputBoundary { epoch, sequence }`；该值由 Backend 从送达传输读取，不接受前端提供的授权依据。
 
 ### `packages/i18n`
 
@@ -140,7 +142,7 @@ main/backend/renderer 作用域共用的语言 JSON 源与运行时 i18n 包。
 - `cmd/cosmosh-wrappergen`：为 `bash`、`zsh`、`fish`、`ash`、`sh` 生成 shell 专属 bootstrap wrapper。
 - `cmd/cosmosh-bootstrap`：将下载得到的 bootstrap binary 与 Go 生成的 shell helper 安装到远端用户级目录，或报告经过校验的已安装运行时契约。
 - `internal/wrapper`：校验来自 manifest 的 wrapper 输入，并用 shell-safe quoting 渲染 POSIX/fish shell source。
-- `internal/install`：负责版本化 helper 生成、符合各 Shell 真实能力的 OSC 声明、helper／binary／模块精确校验、原子用户级安装、Bash 交互／登录 profile 覆盖、保留模式与符号链接的 profile 修复、已安装状态报告、version marker 写入以及逐行`bootstrap-status`输出。缺少打包模块或必要 ABI 时，Bash 原生能力明确不可用。
+- `internal/install`：负责版本化 helper 生成、符合各 Shell 真实能力的 OSC 声明、helper／binary／模块精确校验、原子用户级安装、Bash 交互／登录 profile 覆盖、保留模式与符号链接的 profile 修复、已安装状态报告、version marker 写入以及逐行`bootstrap-status`输出。缺少对应打包模块或必要 ABI 时，Bash／Zsh 原生编辑能力明确不可用，普通终端继续可用。
 
 ## 3. 功能落位规则
 

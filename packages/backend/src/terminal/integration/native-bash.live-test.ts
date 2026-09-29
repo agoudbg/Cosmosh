@@ -262,7 +262,7 @@ test(
     const fixture = new EditorFixture(terminal);
     await fixture.prompt();
     for (let iteration = 0; iteration < 3; iteration++) {
-      const unloaded = await fixture.run('__COSMOSH_BASH_NATIVE_PACKAGED=0; builtin enable -d cosmosh_editor');
+      const unloaded = await fixture.run('__COSMOSH_NATIVE_PACKAGED=0; builtin enable -d cosmosh_editor');
       assert.equal(unloaded.available, false);
       const offset = terminal.write("builtin printf '\\nNATIVE_UNLOADED_%s\\n' " + iteration + '\r');
       await terminal.waitFor(new RegExp('\\r?\\nNATIVE_UNLOADED_' + iteration + '\\r?\\n', 'u'), offset);

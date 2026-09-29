@@ -5,9 +5,11 @@ import type {
   ShellEditorBuffer,
   ShellEditorRequest,
   ShellEditorSnapshot,
+  ShellInputBoundary,
 } from '@cosmosh/api-contract';
 
 import type { ShellEditorExecOptions, ShellEditorResult } from '../ssh/editor-exec.js';
+import type { DeliveredTerminal } from '../ssh/terminal-transport.js';
 import { canQueryNativeCompletion } from './completion/native-completion.js';
 import { buildShellCompletionReplacement, type ShellCompletionDraft } from './completion/snapshot-edits.js';
 import {
@@ -24,6 +26,11 @@ export type EditorExecutor = (
 ) => Promise<ShellEditorResult>;
 /** Renderer-visible snapshot result; its opaque ID binds the later apply to exact session state. */
 export type EditorSnapshotResult = ShellEditorResult & { snapshotId?: string };
+/** Original terminal owner; unit tests may isolate this external SSH boundary. */
+export type EditorInputTransport = Pick<
+  DeliveredTerminal,
+  'inputDelivery' | 'originalShellPID' | 'waitForDelivery' | 'authorizeEditor' | 'revokeEditor'
+>;
 
 /**
  * Owns one session's private editor operation and one expiring snapshot.
@@ -32,19 +39,17 @@ export type EditorSnapshotResult = ShellEditorResult & { snapshotId?: string };
 export class ShellEditorController {
   private inFlight: {
     controller: AbortController;
-    triggered: boolean;
-    epoch: string;
-    injected: boolean;
     finished: Promise<void>;
   } | null = null;
   private contextRefresh: Promise<boolean> | null = null;
   private contextRefreshRequested = false;
-  private lockedEpoch: string | null = null;
   private expiryTimer: NodeJS.Timeout | null = null;
   private cached: {
     id: string;
     snapshot: ShellEditorSnapshot;
     state: ShellContextState;
+    transport: EditorInputTransport;
+    boundary: ShellInputBoundary;
     expiresAt: number;
     candidates: Map<string, ShellEditorBuffer>;
   } | null = null;
@@ -52,25 +57,24 @@ export class ShellEditorController {
   /**
    * @param state Current authoritative state reader.
    * @param execute Bounded, authenticated SSH transport boundary.
-   * @param write Trigger writer to the original PTY.
+   * @param transport Current ordered terminal owner, or null for ordinary SSH fallback.
    * @param confirm Applies only a verified observation to the exact expected context.
    */
   constructor(
     private readonly state: () => ShellContextState,
     private readonly execute: EditorExecutor,
-    private readonly write: (data: string) => void,
+    private readonly transport: () => EditorInputTransport | null,
     private readonly confirm: (expected: ShellContextState, snapshot: ShellEditorSnapshot | null) => void,
   ) {}
 
   /**
    * Invalidates data before user input, changed permissions, helper state or teardown.
-   * A dispatched but unfinished trigger cannot be safely repeated within the same binding epoch.
+   * Cancellation also revokes any unused mutation authority through the ordered terminal.
    * @returns Nothing.
    */
   invalidate(): void {
     this.clearSnapshot();
     if (this.inFlight) {
-      if (this.inFlight.triggered && this.inFlight.injected) this.lockedEpoch = this.inFlight.epoch;
       this.inFlight.controller.abort();
     }
   }
@@ -79,13 +83,17 @@ export class ShellEditorController {
   async snapshot(): Promise<EditorSnapshotResult> {
     const state = this.state();
     const result = await this.run('snapshot', state);
-    if (result.status !== 'ok' || this.state() !== state) return result;
+    const transport = this.transport();
+    if (result.status !== 'ok' || this.state() !== state || !transport) return result;
+    const delivery = transport.inputDelivery;
     const snapshotId = randomUUID();
     this.clearSnapshot();
     this.cached = {
       id: snapshotId,
       snapshot: result.snapshot,
       state,
+      transport,
+      boundary: { epoch: delivery.epoch, sequence: delivery.sent },
       expiresAt: Date.now() + 10_000,
       candidates: new Map(),
     };
@@ -148,6 +156,7 @@ export class ShellEditorController {
       !cached ||
       cached.id !== snapshotId ||
       cached.state !== this.state() ||
+      !this.isBoundaryCurrent(cached.transport, cached.boundary) ||
       cached.expiresAt <= Date.now() ||
       !cached.snapshot.buffer
     )
@@ -188,7 +197,13 @@ export class ShellEditorController {
    */
   async nativeCompletion(snapshotId: string, signal: AbortSignal): Promise<ShellEditorResult> {
     const cached = this.cached;
-    if (!cached || cached.id !== snapshotId || cached.state !== this.state() || cached.expiresAt <= Date.now())
+    if (
+      !cached ||
+      cached.id !== snapshotId ||
+      cached.state !== this.state() ||
+      !this.isBoundaryCurrent(cached.transport, cached.boundary) ||
+      cached.expiresAt <= Date.now()
+    )
       return { status: 'stale' };
     if (!canQueryNativeCompletion(cached.snapshot)) return { status: 'unsupported' };
     const result = await this.run('native-completion', cached.state, cached.snapshot, undefined, signal);
@@ -235,6 +250,7 @@ export class ShellEditorController {
       !cached ||
       cached.id !== snapshotId ||
       cached.state !== this.state() ||
+      !this.isBoundaryCurrent(cached.transport, cached.boundary) ||
       cached.expiresAt <= Date.now() ||
       !normalizeEditorBuffer(replacement)
     )
@@ -251,6 +267,17 @@ export class ShellEditorController {
     this.cached = null;
   }
 
+  /** @param transport Captured terminal owner. @param boundary Exact input revision. @returns Whether it is still delivered and current. */
+  private isBoundaryCurrent(transport: EditorInputTransport, boundary: ShellInputBoundary): boolean {
+    const delivery = transport.inputDelivery;
+    return (
+      this.transport() === transport &&
+      delivery.epoch === boundary.epoch &&
+      delivery.sent === boundary.sequence &&
+      delivery.delivered === boundary.sequence
+    );
+  }
+
   /**
    * @param operation Requested private scope. @param state Immutable context at dispatch.
    * @param expected Original complete observation. @param replacement Optional data-only edit.
@@ -265,6 +292,7 @@ export class ShellEditorController {
     signal?: AbortSignal,
   ): Promise<ShellEditorResult> {
     const binding = state.editorBinding;
+    const transport = this.transport();
     const includeHistory = operation === 'history' || operation === 'history-delete';
     const nativeCompletion = operation === 'native-completion';
     const canObservePaused =
@@ -274,6 +302,9 @@ export class ShellEditorController {
       this.inFlight ||
       (state.shell === 'fish' && isFishInputBoundaryPending(state.fishInputBoundary)) ||
       !binding ||
+      !binding.notification ||
+      !transport ||
+      transport.originalShellPID !== binding.pid ||
       !state.shellInstanceId ||
       (state.shell !== 'bash' && state.shell !== 'zsh' && state.shell !== 'fish') ||
       state.promptGeneration !== binding.promptGeneration ||
@@ -296,8 +327,7 @@ export class ShellEditorController {
             : operation === 'apply'
               ? 'input-apply'
               : 'input-snapshot',
-      ) ||
-      (!binding.notification && this.lockedEpoch === binding.triggerNonce)
+      )
     )
       return { status: 'unavailable' };
     let finishOperation = (): void => {};
@@ -307,16 +337,16 @@ export class ShellEditorController {
     const active = {
       controller: new AbortController(),
       finished,
-      triggered: false,
-      epoch: binding.triggerNonce,
-      injected: !binding.notification,
     };
     this.inFlight = active;
     /** @returns Nothing; opt-out cancels this read without authorizing any new source. */
     const abort = (): void => active.controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
+    const delivery = transport.inputDelivery;
+    const boundary = { epoch: delivery.epoch, sequence: delivery.sent };
     const request: ShellEditorRequest = {
       requestId: randomUUID(),
+      inputBoundary: boundary,
       operation,
       promptGeneration: binding.promptGeneration,
       target: { instanceId: state.shellInstanceId, shell: state.shell, pid: binding.pid, startTime: binding.startTime },
@@ -325,30 +355,33 @@ export class ShellEditorController {
       ...(expected ? { expected } : {}),
       ...(replacement ? { replacement } : {}),
     };
+    /** @returns Whether identity, permissions, original process and input are still exactly current. */
+    const isCurrent = (): boolean =>
+      this.state() === state &&
+      !active.controller.signal.aborted &&
+      transport.originalShellPID === binding.pid &&
+      this.isBoundaryCurrent(transport, boundary);
     try {
+      if (!(await transport.waitForDelivery(boundary.sequence, active.controller.signal)) || !isCurrent())
+        return { status: 'stale' };
       const result = await this.execute(request, {
         signal: active.controller.signal,
-        isCurrent: () => this.state() === state && !active.controller.signal.aborted,
-        trigger: () => {
-          if (this.state() !== state || active.controller.signal.aborted) return;
-          active.triggered = true;
-          if (active.injected) this.write('\x1b[997;' + binding.triggerNonce + '~');
-        },
+        isCurrent,
+        trigger: () => {},
+        authorize: () =>
+          isCurrent()
+            ? transport.authorizeEditor(request.requestId, boundary, active.controller.signal)
+            : Promise.resolve(false),
+        revoke: () => transport.revokeEditor(request.requestId),
       });
-      if (active.injected && active.triggered && (result.status === 'unavailable' || result.status === 'unknown'))
-        this.lockedEpoch = active.epoch;
-      return (this.state() !== state || active.controller.signal.aborted) &&
-        (result.status === 'ok' || result.status === 'native-completions')
+      return !isCurrent() && (result.status === 'ok' || result.status === 'native-completions')
         ? { status: 'stale' }
         : result;
     } catch {
       // A transport implementation must not turn an optional editor failure into an unhandled rejection.
-      if (active.injected && active.triggered) this.lockedEpoch = active.epoch;
-      return {
-        status:
-          (operation === 'apply' || operation === 'history-delete') && active.triggered ? 'unknown' : 'unavailable',
-      };
+      return { status: operation === 'apply' || operation === 'history-delete' ? 'unknown' : 'unavailable' };
     } finally {
+      transport.revokeEditor(request.requestId);
       signal?.removeEventListener('abort', abort);
       if (this.inFlight === active) this.inFlight = null;
       finishOperation();

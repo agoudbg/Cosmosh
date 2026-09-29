@@ -8,17 +8,15 @@ const workspace = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const source = path.join(
-  workspace,
-  "packages/remote-bootstrap/native/bash/cosmosh_bash.c",
-);
-const builder = path.join(workspace, "scripts/bash-native");
+const nativeRoot = path.join(workspace, "packages/remote-bootstrap/native");
+const builder = path.join(workspace, "scripts/shell-native");
 const output = path.join(
   workspace,
   "packages/remote-bootstrap/internal/nativeassets/assets",
 );
 const stampPath = path.join(output, ".build-stamp.json");
 const architectures = ["amd64", "arm64"];
+const shells = ["bash", "zsh"];
 const ifStale = process.argv.slice(2).join(" ") === "--if-stale";
 
 /** @param {string} command Executable name. @param {string[]} args Arguments. @returns {Promise<string>} Captured stdout. */
@@ -77,7 +75,9 @@ const sha256 = async (filePath) =>
 
 const main = async () => {
   const inputs = [
-    source,
+    path.join(nativeRoot, "bash/cosmosh_bash.c"),
+    path.join(nativeRoot, "bash/input_order.h"),
+    path.join(nativeRoot, "zsh/cosmosh_zsh.c"),
     path.join(builder, "Containerfile"),
     path.join(builder, "build.sh"),
   ];
@@ -91,17 +91,21 @@ const main = async () => {
         stamp.key === key &&
         (
           await Promise.all(
-            architectures.map(
-              async (arch) =>
-                (await sha256(
-                  path.join(output, `cosmosh-bash-linux-${arch}.so`),
-                )) === stamp.assets?.[arch],
+            shells.flatMap((shell) =>
+              architectures.map(async (arch) => {
+                const asset = `${shell}-${arch}`;
+                return (
+                  (await sha256(
+                    path.join(output, `cosmosh-${shell}-linux-${arch}.so`),
+                  )) === stamp.assets?.[asset]
+                );
+              }),
             ),
           )
         ).every(Boolean)
       ) {
         console.log(
-          "Bash native modules match source and builder; reusing checked assets.",
+          "Shell native modules match source and builder; reusing checked assets.",
         );
         return;
       }
@@ -110,7 +114,7 @@ const main = async () => {
     }
   }
   await fs.mkdir(output, { recursive: true });
-  const image = "cosmosh-bash-native:bullseye-v1";
+  const image = "cosmosh-shell-native:bullseye-v1";
   await docker([
     "build",
     "--pull=false",
@@ -126,7 +130,7 @@ const main = async () => {
     "--network",
     "none",
     "--mount",
-    `type=bind,src=${await dockerPath(source)},dst=/source/cosmosh_bash.c,readonly`,
+    `type=bind,src=${await dockerPath(nativeRoot)},dst=/native,readonly`,
     "--mount",
     `type=bind,src=${await dockerPath(output)},dst=/out`,
     image,
@@ -134,13 +138,15 @@ const main = async () => {
   const nextKey = createHash("sha256");
   for (const input of inputs) nextKey.update(await fs.readFile(input));
   if (nextKey.digest("hex") !== key)
-    throw new Error("Bash native source changed during build");
+    throw new Error("Shell native source changed during build");
   const assets = Object.fromEntries(
     await Promise.all(
-      architectures.map(async (arch) => [
-        arch,
-        await sha256(path.join(output, `cosmosh-bash-linux-${arch}.so`)),
-      ]),
+      shells.flatMap((shell) =>
+        architectures.map(async (arch) => [
+          `${shell}-${arch}`,
+          await sha256(path.join(output, `cosmosh-${shell}-linux-${arch}.so`)),
+        ]),
+      ),
     ),
   );
   await fs.writeFile(

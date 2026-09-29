@@ -52,6 +52,8 @@ func main() {
 		if err := editor.RunWidget(os.Args[2:], os.Stdin, os.Stdout); err != nil {
 			os.Exit(1)
 		}
+	case "editor-input-lock":
+		if err := editor.ClaimInputLock(os.Args[2:]); err != nil { os.Exit(1) }
 	case "editor-identity":
 		if len(os.Args) != 3 {
 			os.Exit(1)

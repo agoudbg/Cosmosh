@@ -183,7 +183,7 @@ end
 function __cosmosh_fish_editor_key_supported
   # Keep this list aligned with Backend's allowed complete transport key sequences.
   switch "$argv[1]"
-    case '' space minus comma enter backspace delete home end up down left right
+    case '' space minus comma enter backspace delete home end up down left right tab shift-tab ctrl-i ctrl-r
       builtin return 0
     case ctrl-a ctrl-b ctrl-c ctrl-d ctrl-e ctrl-f ctrl-g ctrl-h ctrl-j ctrl-k ctrl-l ctrl-m ctrl-n ctrl-p ctrl-s ctrl-t ctrl-u ctrl-w ctrl-y ctrl-z ctrl-/ ctrl-_
       builtin return 0
@@ -221,13 +221,13 @@ function __cosmosh_fish_editor_profile_supported
     builtin set -l first (builtin string split -m 1 , -- "$key")[1]
     if builtin test "$terminfo" = 1
       switch "$key"
-        case up down left right home end dc
+        case up down left right home end dc btab
         case '*'
           continue
       end
     else if builtin string match -rq '^\e' -- "$key"
       builtin set -l recognized 0
-      for complete in \e\[A \e\[B \e\[C \e\[D \e\[H \e\[F \e\[1~ \e\[3~ \e\[4~ \e\[7~ \e\[8~
+      for complete in \e\[A \e\[B \e\[C \e\[D \e\[H \e\[F \e\[Z \e\[1~ \e\[3~ \e\[4~ \e\[7~ \e\[8~
         if builtin test (builtin string sub -l (builtin string length -- "$key") -- "$complete") = "$key"; or \
             builtin test (builtin string sub -l (builtin string length -- "$complete") -- "$key") = "$complete"
           # Either prefix direction can consume a complete transport key or wait for more input.
@@ -247,6 +247,7 @@ function __cosmosh_fish_editor_profile_supported
         case backward-kill-line backward-kill-path-component backward-kill-word kill-line clear-screen clear-commandline cancel-commandline cancel
         case execute exit pager-toggle-search history-search-backward history-search-forward up-line down-line
         case transpose-chars yank undo redo
+        case complete complete-and-search history-pager
         case up-or-search down-or-search
           # Their installed definitions and dependencies were checked before taking the mapping snapshot.
         case '*'
@@ -287,8 +288,8 @@ function __cosmosh_fish_editor_observe
     builtin return 0
   end
   builtin set -l request (command "$__COSMOSH_EDITOR_BINARY" editor-widget mode "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs 2>/dev/null)
-  if builtin test (builtin count $request) != 3
-    builtin test (builtin count $request) = 5; and builtin test "$request[2]" = history-delete; or builtin return 0
+  if builtin test (builtin count $request) != 6
+    builtin test (builtin count $request) = 8; and builtin test "$request[2]" = history-delete; or builtin return 0
   end
   __cosmosh_fish_editor_supported; or begin
     __cosmosh_fish_editor_reject "$request[1]"
@@ -302,7 +303,7 @@ function __cosmosh_fish_editor_observe
   builtin set -l user_home ''
   switch "$request[2]"
     case history-delete
-      __cosmosh_fish_history_delete "$request[1]" "$request[4]" "$request[5]"
+      __cosmosh_fish_history_delete "$request[1]" "$request[7]" "$request[8]" "$request[4]" "$request[5]" "$request[6]"
       builtin return 0
     case history
       __cosmosh_fish_history_read "$request[1]"
@@ -343,13 +344,37 @@ function __cosmosh_fish_editor_observe
     builtin string match -rq '^[0-9]+$' -- "$response[3]"; or builtin return 0
     # Group both assignments: Fish otherwise records a second undo step for the cursor change.
     builtin commandline --function begin-undo-group
-    builtin commandline --replace -- "$replacement"
-    builtin commandline --cursor "$response[3]"
+    __cosmosh_fish_editor_apply "$request[1]" "$request[4]" "$request[5]" "$request[6]" "$line" "$point" "$replacement" "$response[3]"
+    builtin set -l applied $status
     builtin commandline --function end-undo-group
+    if builtin test "$applied" != 0
+      __cosmosh_fish_editor_reject "$request[1]"
+      builtin return 0
+    end
     builtin set -l confirmed (builtin printf '%s\0' (builtin commandline --current-buffer | builtin string collect --no-trim-newlines --allow-empty) (builtin commandline --cursor) "$directory" "$user_home" |
       command "$__COSMOSH_EDITOR_BINARY" editor-widget confirm "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$request[1]" 1 "$request[3]" 2>/dev/null)
   end
   builtin return 0
+end
+
+function __cosmosh_fish_editor_apply --argument-names request_id epoch sequence state_path original_line original_point replacement replacement_point
+  # Defer event handlers until the function returns, after its scoped descriptor has closed.
+  # The full binding/profile check and all decoding have already finished outside this scope.
+  builtin block --local
+  builtin set -l applied 0
+  begin
+    if command "$__COSMOSH_EDITOR_BINARY" editor-input-lock "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$epoch" "$sequence" "$request_id"; and \
+        builtin test "$__COSMOSH_FISH_EDITING" = 1; and builtin test "$fish_bind_mode" = default; and \
+        not builtin commandline --search-mode; and not builtin commandline --paging-mode; and \
+        not builtin commandline --selection-start >/dev/null 2>&1; and \
+        builtin test (builtin commandline --current-buffer | builtin string collect --no-trim-newlines --allow-empty) = "$original_line"; and \
+        builtin test (builtin commandline --cursor) = "$original_point"
+      builtin commandline --replace -- "$replacement"
+      builtin commandline --cursor "$replacement_point"
+      builtin set applied 1
+    end
+  end 9<"$state_path" 2>/dev/null
+  builtin test "$applied" = 1
 end
 
 function __cosmosh_fish_history_scope
@@ -443,6 +468,17 @@ function __cosmosh_fish_history_delete
   end
   # Fish records exact-text tombstones for this namespace. Saving removes old file-backed
   # records from subsequent native searches; the builtin does not promise durable storage.
+  # Claim while input is ordered, then release before native history can touch its backing file.
+  builtin set -l granted 0
+  begin
+    if command "$__COSMOSH_EDITOR_BINARY" editor-input-lock "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$argv[4]" "$argv[5]" "$request_id"
+      builtin set granted 1
+    end
+  end 9<"$argv[6]" 2>/dev/null
+  if builtin test "$granted" != 1
+    __cosmosh_fish_editor_reject "$request_id"
+    builtin return 0
+  end
   builtin history delete --exact --case-sensitive -- "$record" 2>/dev/null; or builtin return 0
   builtin history save 2>/dev/null; or builtin return 0
   __cosmosh_fish_history_stream "$namespace" "$record" |
