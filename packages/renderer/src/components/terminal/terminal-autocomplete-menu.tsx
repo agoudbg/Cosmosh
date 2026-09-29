@@ -201,7 +201,13 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
                 const isActive = focused && index === activeIndex;
                 const detailText =
                   (item.detailI18nKey ? t(item.detailI18nKey) : item.detail?.trim()) ||
-                  t(item.source === 'history' ? 'ssh.autocomplete.history' : 'ssh.autocomplete.command');
+                  t(
+                    item.source === 'history'
+                      ? 'ssh.autocomplete.history'
+                      : item.source === 'fish'
+                        ? 'ssh.autocomplete.native'
+                        : 'ssh.autocomplete.command',
+                  );
 
                 return (
                   <Tooltip key={item.id}>

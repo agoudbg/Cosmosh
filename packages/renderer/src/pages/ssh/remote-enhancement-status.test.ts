@@ -4,13 +4,22 @@ import test from 'node:test';
 import { createEnhancementStatusFixture } from './integration/enhancement-status-fixture-data';
 import { resolveEnhancementStatus } from './remote-enhancement-status';
 
-test('advertised capabilities never imply enabled precise filling or menu integration', () => {
+test('confirmed original editor capabilities enable precise filling and configured sources', () => {
   const model = resolveEnhancementStatus(createEnhancementStatusFixture());
   assert.equal(model.summary, 'helperConnected');
-  assert.equal(model.features.find((feature) => feature.id === 'input')?.reason, 'verifiedEditingPending');
-  assert.equal(model.features.find((feature) => feature.id === 'paths')?.reason, 'pathMenuPending');
-  assert.equal(model.features.find((feature) => feature.id === 'nativeCompletion')?.reason, 'nativeMenuPending');
+  assert.equal(model.features.find((feature) => feature.id === 'input')?.reason, 'verifiedEditingReady');
+  assert.equal(model.features.find((feature) => feature.id === 'paths')?.reason, 'pathsReady');
+  assert.equal(model.features.find((feature) => feature.id === 'nativeCompletion')?.reason, 'nativeManual');
   assert.equal(model.features.find((feature) => feature.id === 'history')?.state, 'available');
+});
+
+test('confirmed directory metadata cannot enable a revoked editor or its completion sources', () => {
+  const input = createEnhancementStatusFixture();
+  input.context!.editorAvailable = false;
+  const model = resolveEnhancementStatus(input);
+  assert.equal(model.features[0].reason, 'directoryConfirmed');
+  for (const id of ['input', 'paths', 'nativeCompletion'])
+    assert.equal(model.features.find((feature) => feature.id === id)?.reason, 'unsupportedEditor');
 });
 
 test('offline and reconnecting panes never display a retained active helper or directory', () => {
@@ -27,15 +36,43 @@ test('offline and reconnecting panes never display a retained active helper or d
   }
 });
 
-test('native query mode preserves opt-outs and never promises a connected menu', () => {
+test('native mode explains manual and automatic behavior while preserving opt-outs', () => {
   const input = createEnhancementStatusFixture();
   for (const mode of ['off', 'manual', 'automatic'] as const) {
     input.settings.terminalNativeCompletionMode = mode;
     const feature = resolveEnhancementStatus(input).features.find((item) => item.id === 'nativeCompletion')!;
     assert.equal(feature.allowed, mode !== 'off');
-    assert.equal(feature.reason, mode === 'off' ? 'permissionDisabled' : 'nativeMenuPending');
-    assert.notEqual(feature.state, 'available');
+    assert.equal(
+      feature.reason,
+      mode === 'off' ? 'permissionDisabled' : mode === 'manual' ? 'nativeManual' : 'nativeAutomatic',
+    );
+    assert.equal(feature.state, mode === 'off' ? 'disabled' : 'available');
   }
+});
+
+test('source outcomes explain current failures and never bypass permission or editor gates', () => {
+  for (const [source, reason] of [
+    ['loading', 'queryLoading'],
+    ['partial', 'queryPartial'],
+    ['timeout', 'queryTimeout'],
+    ['unavailable', 'queryUnavailable'],
+    ['unsupported', 'queryUnsupported'],
+    ['private', 'queryPrivate'],
+  ] as const) {
+    const input = createEnhancementStatusFixture();
+    input.completionSources = { history: 'ok', metadata: 'ok', paths: source, native: source };
+    for (const id of ['paths', 'nativeCompletion']) {
+      assert.equal(resolveEnhancementStatus(input).features.find((feature) => feature.id === id)?.reason, reason);
+    }
+    input.settings.remoteEnhancementsInputEnabled = false;
+    assert.equal(resolveEnhancementStatus(input).features[3].reason, 'inputRequired');
+    input.settings.remoteEnhancementsInputEnabled = true;
+    input.context = { ...input.context!, status: 'busy', reason: 'command-running' };
+    assert.equal(resolveEnhancementStatus(input).features[3].reason, 'commandRunning');
+  }
+  const input = createEnhancementStatusFixture();
+  input.context!.capabilities = ['cwd', 'input-snapshot'];
+  assert.equal(resolveEnhancementStatus(input).features[2].reason, 'unsupported');
 });
 
 test('history is independent of paused input and directory permissions, including an empty successful read', () => {

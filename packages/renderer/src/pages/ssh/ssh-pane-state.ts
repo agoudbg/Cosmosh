@@ -12,13 +12,6 @@ import { DEFAULT_TELEMETRY_STATE } from './ssh-types';
 const REMOTE_ENHANCEMENTS_DEBUG_EVENT_MAX_COUNT = 200;
 const COMMAND_TIMELINE_MAX_COUNT = 200;
 
-/** Trusted shell line metadata that can calibrate renderer-side completion state. */
-export type SshPaneLineState = {
-  lineLength: number;
-  cursorIndex: number;
-  promptGeneration: number;
-};
-
 /** One structured command lifecycle retained for diagnostics and navigation. */
 export type SshPaneCommandLifecycle = {
   commandId: string;
@@ -56,9 +49,6 @@ export type SshPaneState = {
       { type: 'bootstrap-status' | 'remote-enhancement-runtime-status' | 'remote-shell-event' }
     >;
   }>;
-  trustedCwd: string | null;
-  promptGeneration: number | null;
-  lineState: SshPaneLineState | null;
   commandTimeline: SshPaneCommandLifecycle[];
 };
 
@@ -105,9 +95,6 @@ export const createSshPaneState = (): SshPaneState => ({
   remoteBootstrapStatus: null,
   remoteEnhancementRuntimeStatus: null,
   remoteEnhancementsDebugEvents: [],
-  trustedCwd: null,
-  promptGeneration: null,
-  lineState: null,
   commandTimeline: [],
 });
 
@@ -159,8 +146,6 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
       ...state,
       [action.paneId]: {
         ...pane,
-        trustedCwd: null,
-        lineState: null,
         pendingSubmissionToken: action.token,
         shellContext: { ...pane.shellContext, status: 'paused', reason: 'input-submitted', cwd: null },
       },
@@ -220,9 +205,6 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
               ...clearedHistory(paneState),
               shellContext: null,
               pendingSubmissionToken: null,
-              trustedCwd: null,
-              promptGeneration: null,
-              lineState: null,
               credentialFillOffer: null,
               credentialFillRequestToken: null,
               credentialFillResult: null,
@@ -292,14 +274,6 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
         ? clearedHistory(state, context.permissions.history ? 'unavailable' : 'disabled')
         : {}),
       pendingSubmissionToken: confirmed && context.status === 'ready' ? null : pendingToken,
-      trustedCwd: context.status === 'ready' && context.permissions.cwd ? (context.cwd?.physical ?? null) : null,
-      promptGeneration: payload.context.promptGeneration,
-      lineState:
-        context.status === 'ready' &&
-        context.permissions.input &&
-        previous?.promptGeneration === payload.context.promptGeneration
-          ? state.lineState
-          : null,
     };
   }
   if (payload.type === 'credential-fill-offer') {
@@ -334,9 +308,6 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
       ...clearedHistory(state),
       shellContext: null,
       pendingSubmissionToken: null,
-      trustedCwd: null,
-      promptGeneration: null,
-      lineState: null,
       connectionState: 'failed',
       connectionError: payload.message,
       credentialFillOffer: null,
@@ -351,9 +322,6 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
       ...clearedHistory(state),
       shellContext: null,
       pendingSubmissionToken: null,
-      trustedCwd: null,
-      promptGeneration: null,
-      lineState: null,
       connectionState: 'failed',
       connectionError: payload.reason,
       credentialFillOffer: null,
@@ -376,17 +344,6 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
     };
   }
 
-  if (payload.type === 'history') {
-    if (state.shellContext) return state;
-    return {
-      ...state,
-      telemetryState: {
-        ...state.telemetryState,
-        recentCommands: payload.recentCommands,
-      },
-    };
-  }
-
   if (payload.type === 'bootstrap-status') {
     return {
       ...state,
@@ -404,9 +361,6 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
         ? {}
         : {
             ...clearedHistory(state),
-            trustedCwd: null,
-            promptGeneration: null,
-            lineState: null,
           }),
     };
   }
@@ -420,46 +374,11 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
     remoteEnhancementsDebugEvents: appendDebugEvent(state, payload, receivedAt),
   };
 
-  if (payload.event === 'cwd') {
-    return nextState;
-  }
-
-  if (payload.event === 'prompt-ready') {
-    if (state.shellContext) return nextState;
-    return {
-      ...nextState,
-      promptGeneration: payload.promptGeneration ?? nextState.promptGeneration,
-      lineState: null,
-    };
-  }
-
-  if (payload.event === 'line-state') {
-    if (
-      state.shellContext &&
-      (state.shellContext.status !== 'ready' ||
-        !state.shellContext.permissions.input ||
-        state.shellContext.shellInstanceId !== payload.shellInstanceId)
-    )
-      return nextState;
-    if (nextState.promptGeneration !== null && payload.promptGeneration !== nextState.promptGeneration) {
-      return nextState;
-    }
-
-    return {
-      ...nextState,
-      promptGeneration: payload.promptGeneration,
-      lineState: {
-        lineLength: payload.lineLength,
-        cursorIndex: payload.cursorIndex,
-        promptGeneration: payload.promptGeneration,
-      },
-    };
-  }
+  if (payload.event === 'cwd' || payload.event === 'prompt-ready' || payload.event === 'line-state') return nextState;
 
   if (payload.event === 'command-start') {
     return {
       ...nextState,
-      lineState: null,
       commandTimeline: appendCommandStart(nextState.commandTimeline, payload, receivedAt),
     };
   }

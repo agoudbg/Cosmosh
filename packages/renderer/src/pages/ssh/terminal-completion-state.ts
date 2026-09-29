@@ -4,6 +4,7 @@ import type { ShellContext, TerminalCompletionUpdate } from '@cosmosh/api-contra
 export type CompletionViewRequest = {
   paneId: string;
   requestId: string;
+  trigger: 'typing' | 'manual';
   sessionId: string;
   shellInstanceId: string;
   promptGeneration: number | null;
@@ -68,6 +69,28 @@ export const bindCompletionViewUpdate = (
   )
     return null;
   return { ...request, snapshotId: update.snapshotId, contextRevision: update.contextRevision };
+};
+
+/**
+ * Explains an explicit empty query without exposing input or provider error details.
+ * @param update The current query's final display result.
+ * @returns A localized message key, or null for pending, populated or stale queries.
+ */
+export const completionQueryNotice = (update: TerminalCompletionUpdate): string | null => {
+  if (!update.complete || update.items.length || update.status === 'stale') return null;
+  const sources = Object.values(update.sources);
+  const reason = sources.includes('timeout')
+    ? 'queryTimeout'
+    : sources.includes('private')
+      ? 'queryPrivate'
+      : update.status === 'unsupported'
+        ? 'queryUnsupported'
+        : update.status !== 'ready' || sources.includes('unavailable')
+          ? 'queryUnavailable'
+          : sources.includes('unsupported')
+            ? 'queryUnsupported'
+            : null;
+  return reason ? `ssh.enhancementStatus.reasons.${reason}` : 'ssh.autocomplete.noMatches';
 };
 
 /**

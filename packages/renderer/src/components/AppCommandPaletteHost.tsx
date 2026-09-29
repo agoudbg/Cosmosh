@@ -24,7 +24,7 @@ import { createSshConnectionIntent } from '../lib/ssh-connection-intent';
 import { renderTabIconByKey } from '../lib/tab-icon';
 import { useToast } from '../lib/toast-context';
 import { resolvePageDefaults } from '../lib/useTabs';
-import { resolveCategoryId, SETTINGS_REGISTRY } from '../pages/settings-registry';
+import { resolveCategoryId, VISIBLE_SETTINGS_REGISTRY } from '../pages/settings-registry';
 import type { TabItem } from '../types/tabs';
 import { CommandPalette, type CommandPaletteItem } from './ui/command-palette';
 
@@ -403,7 +403,7 @@ const createSettingsCommandPaletteProvider = (): CommandPaletteProvider<AppComma
     const scopeLabel = resolveBilingualCommandLabel('commandPalette.scopes.settings', context.locale);
     const scopeSearchTerms = buildScopeSearchTerms(scopeLabel);
 
-    return SETTINGS_REGISTRY.map((item): CommandPaletteCommand => {
+    return VISIBLE_SETTINGS_REGISTRY.map((item): CommandPaletteCommand => {
       const categoryId = resolveCategoryId(item.category);
       const settingLabel = resolveBilingualCommandLabel(item.nameI18nKey, context.locale);
 

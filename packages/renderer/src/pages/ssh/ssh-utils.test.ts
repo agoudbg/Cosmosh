@@ -6,15 +6,14 @@ import type { SerializeAddon } from '@xterm/addon-serialize';
 import type { Terminal } from '@xterm/xterm';
 
 import {
-  calibrateAutocompleteCommandPrefix,
   canInsertHistoryCommand,
   containsTerminalControlContent,
   createTerminalPasteWarningRequest,
   flattenCommandForTerminalInput,
   forwardTerminalInput,
+  parseSftpDirectorySelection,
   reconcileSecondaryPaneRuntimes,
   resetTerminalForNewPtySession,
-  resolveAutocompleteCommandPrefix,
   resolvePromptCommandStartOffset,
   resolveSftpDirectoryPathFromSelection,
   resolveTerminalPaneCloseTransition,
@@ -177,6 +176,12 @@ test('selection directory resolver rejects ambiguous or unsafe values', () => {
 });
 
 test('selection directory resolver resolves dot-relative paths from trusted pane cwd', () => {
+  for (const selection of ['./logs', '../shared/cache', '~/folder', '/absolute']) {
+    assert.equal(parseSftpDirectorySelection(selection), selection);
+  }
+  for (const selection of ['relative/path', '~someone/other', '/first\n/second', '\0', 'https://example.test']) {
+    assert.equal(parseSftpDirectorySelection(selection), null);
+  }
   const directory = { logical: '/display/link', physical: '/actual/app', home: '/custom home' };
   assert.equal(resolveSftpDirectoryPathFromSelection('./logs', directory), '/actual/app/./logs');
   assert.equal(resolveSftpDirectoryPathFromSelection('../shared/cache', directory), '/actual/app/../shared/cache');
@@ -552,45 +557,6 @@ test('prompt boundary stops at shell operators inside command text', () => {
 test('prompt boundary ignores ascii symbolic arguments', () => {
   const line = '$ ls -- *';
   assert.equal(line.slice(resolvePromptCommandStartOffset(line)), 'ls -- *');
-});
-
-test('autocomplete command prefix uses local shadow for normal typing', () => {
-  assert.equal(resolveAutocompleteCommandPrefix('ec', 'echo'), 'echo');
-});
-
-test('autocomplete command prefix preserves recalled history command context', () => {
-  assert.equal(
-    resolveAutocompleteCommandPrefix('echo 1ec', 'ec', {
-      localPrefixNeedsRenderedContext: true,
-    }),
-    'echo 1ec',
-  );
-});
-
-test('autocomplete command prefix merges local suffix before terminal echo catches up', () => {
-  assert.equal(
-    resolveAutocompleteCommandPrefix('echo 1e', 'ec', {
-      localPrefixNeedsRenderedContext: true,
-    }),
-    'echo 1ec',
-  );
-});
-
-test('autocomplete command prefix uses trusted line-state cursor only when lengths agree', () => {
-  assert.equal(
-    calibrateAutocompleteCommandPrefix('git status --short', {
-      lineLength: 18,
-      cursorIndex: 10,
-    }),
-    'git status',
-  );
-  assert.equal(
-    calibrateAutocompleteCommandPrefix('git status --short', {
-      lineLength: 99,
-      cursorIndex: 3,
-    }),
-    'git status --short',
-  );
 });
 
 test('flatten keeps single-line commands untouched', () => {

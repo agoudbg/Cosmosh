@@ -23,6 +23,7 @@ import {
   type CredentialFillState,
   observeCredentialFillOutput,
 } from '../terminal/credential-fill.js';
+import { DirectoryQueryController } from '../terminal/directory-query.js';
 import { confirmShellEditorContext, ShellEditorController } from '../terminal/editor-controller.js';
 import type { TerminalClientInboundMessage } from '../terminal/shared.js';
 import {
@@ -118,6 +119,7 @@ type RemoteShellEventSessionHarness = {
   shellContext: ShellContextState;
   editorController?: ShellEditorController;
   completionController?: SnapshotCompletionController;
+  directoryController?: DirectoryQueryController;
   editorContextTimeout?: NodeJS.Timeout;
   client?: Client;
   stream?: { write(data: string): void };
@@ -156,7 +158,6 @@ type RemoteShellEventSessionHarness = {
   historyMutationInFlight?: boolean;
   lastHistorySyncStartedAtMs: number;
   recentCommands: string[];
-  completionRecentCommands: string[];
   socket: {
     OPEN: number;
     readyState: number;
@@ -167,16 +168,14 @@ type RemoteShellEventSessionHarness = {
 
 type RemoteShellEventServiceHarness = {
   handleClientMessage(session: RemoteShellEventSessionHarness, payload: Buffer): void;
-  handleEditorRequest(
-    session: RemoteShellEventSessionHarness,
-    message: Extract<TerminalClientInboundMessage, { type: 'editor-snapshot' | 'editor-apply' }>,
-  ): Promise<void>;
+  getEditorController(session: RemoteShellEventSessionHarness): ShellEditorController | null;
   applyRemoteShellEventState(session: RemoteShellEventSessionHarness, event: RemoteShellEventMessage): void;
   disableRemoteEnhancementsRuntime(session: RemoteShellEventSessionHarness, code: string, message: string): void;
   handleRemoteShellEvent(session: RemoteShellEventSessionHarness, event: RemoteShellEventMessage): void;
   onSessionAttached(session: RemoteShellEventSessionHarness): void;
   applyEnhancementSettings(snapshot: DefaultSettingsSnapshot): void;
   sendServerMessage(session: RemoteShellEventSessionHarness, payload: SshTerminalServerMessage): void;
+  sendShellContext(session: RemoteShellEventSessionHarness): void;
   startRemoteEnhancementHandshakeTimeout(session: RemoteShellEventSessionHarness, timeoutMs?: number): void;
 };
 
@@ -256,7 +255,6 @@ const createSessionHarness = (
   historyMutationInFlight: false,
   lastHistorySyncStartedAtMs: 0,
   recentCommands: [],
-  completionRecentCommands: [],
   socket: null,
   disposed: false,
   ...overrides,
@@ -343,6 +341,111 @@ test('optional WebSocket notification failures never prevent ordered input or re
   assert.equal(warnings.length, 3);
   assert.equal(JSON.stringify(warnings).includes('private-'), false);
 });
+
+for (const action of ['success', 'input', 'cancel'] as const) {
+  test('directory wire uses the real ordered owner and handles ' + action + ' before a delayed reply', async (t) => {
+    const session = createSessionHarness({ remoteEnhancementsRuntimeState: 'active' });
+    session.remoteEnhancementsRuntimeContract!.binaryPath = '/verified/helper';
+    session.shellContext = {
+      ...session.shellContext,
+      shell: 'zsh',
+      shellInstanceId: randomUUID(),
+      status: 'ready',
+      reason: null,
+      promptGeneration: 1,
+      capabilities: ['input-snapshot', 'directory-read'],
+      permissions: { cwd: true, input: false, history: false, paths: false, nativeCompletion: false },
+      editorBinding: {
+        pid: 42,
+        startTime: '100',
+        promptGeneration: 1,
+        triggerNonce: randomUUID(),
+        notification: { fd: 19, inode: '100' },
+      },
+    };
+    const writes: string[] = [];
+    const messages: SshTerminalServerMessage[] = [];
+    const terminal = createOrderedTerminal(t, (data) => writes.push(data));
+    session.stream = terminal;
+    session.socket = {
+      OPEN: 1,
+      readyState: 1,
+      send: (payload) => messages.push(JSON.parse(payload) as SshTerminalServerMessage),
+    };
+    let reply!: (result: {
+      status: 'ok';
+      snapshot: {
+        promptGeneration: number;
+        editorMode: 'emacs';
+        directory: { logical: string; physical: string; home: string };
+      };
+    }) => void;
+    const observed = new Promise<Parameters<typeof reply>[0]>((resolve) => {
+      reply = resolve;
+    });
+    let signal: AbortSignal | null = null;
+    const service = Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness;
+    const editor = new ShellEditorController(
+      () => session.shellContext,
+      async (request, exchange) => {
+        assert.equal(request.operation, 'context');
+        assert.equal(request.includeDirectory, true);
+        signal = exchange.signal;
+        return observed;
+      },
+      () => terminal,
+      (expected, snapshot) => {
+        if (session.shellContext !== expected) return;
+        session.shellContext = confirmShellEditorContext(expected, snapshot);
+        service.sendShellContext(session);
+      },
+    );
+    session.editorController = editor;
+    const directory = new DirectoryQueryController({
+      editor,
+      completion: () => null,
+      context: () => session.shellContext,
+      owner: () => session.socket,
+      readSettings: async () => ({ ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsInputEnabled: false }),
+      publish: (message) => service.sendServerMessage(session, message),
+    });
+    session.directoryController = directory;
+    t.after(() => {
+      directory.invalidate();
+      if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
+    });
+    const requestId = randomUUID();
+    service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'directory-query', requestId })));
+    const deadline = Date.now() + 2000;
+    while (signal === null && Date.now() < deadline) await delay(1);
+    assert.ok(signal);
+    if (action === 'input')
+      service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'input', data: 'private-input' })));
+    if (action === 'cancel')
+      service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'directory-cancel', requestId })));
+    assert.deepEqual(writes, action === 'input' ? ['private-input'] : []);
+    assert.equal((signal as AbortSignal | null)?.aborted, action !== 'success');
+    reply({
+      status: 'ok',
+      snapshot: {
+        promptGeneration: 1,
+        editorMode: 'emacs',
+        directory: { logical: '/fresh', physical: '/fresh', home: '/home' },
+      },
+    });
+    while (!messages.some((message) => message.type === 'directory-result') && Date.now() < deadline) await delay(1);
+    const result = messages.find((message) => message.type === 'directory-result');
+    assert.ok(result?.type === 'directory-result');
+    assert.equal(result.status, action === 'success' ? 'ok' : 'stale');
+    if (action === 'success') {
+      const first = messages[0];
+      assert.ok(first.type === 'shell-context');
+      assert.equal(first.context.revision, result.contextRevision);
+      assert.equal(result.directory?.physical, '/fresh');
+    } else assert.equal(result.directory, null);
+    assert.equal(directory.busy, false);
+  });
+}
 
 test('input and resize transport exceptions close only their session and never expose payloads', (t) => {
   for (const message of [
@@ -533,7 +636,7 @@ test('Zsh context recovery survives client attachment and permission changes dur
   }
 });
 
-test('editor replies respect client and permission ownership through final publication', async (t) => {
+test('private editor replies respect client and permission ownership without public raw snapshots', async (t) => {
   const channels: Array<
     EventEmitter & {
       stderr: PassThrough;
@@ -623,19 +726,16 @@ test('editor replies respect client and permission ownership through final publi
       Buffer.from(JSON.stringify({ type: 'editor', requestId: request.requestId, ...message }) + '\n'),
     );
   };
-  const first = service.handleEditorRequest(session, { type: 'editor-snapshot', requestId: id });
+  const controller = service.getEditorController(session);
+  assert.ok(controller);
+  const first = controller.snapshot();
   await Promise.resolve();
   reply(0, { phase: 'ready' });
   reply(0, { phase: 'done', status: 'ok', snapshot: observed });
-  await first;
-  const snapshot = oldMessages.find((message) => message.type === 'editor-snapshot-result' && message.status === 'ok');
-  assert.ok(snapshot && snapshot.type === 'editor-snapshot-result' && snapshot.status === 'ok');
-  const apply = service.handleEditorRequest(session, {
-    type: 'editor-apply',
-    requestId: id,
-    snapshotId: snapshot.snapshotId,
-    replacement: { text: 'echo new', cursor: 8 },
-  });
+  const snapshot = await first;
+  assert.ok(snapshot.status === 'ok' && snapshot.snapshotId);
+  assert.equal(JSON.stringify(oldMessages).includes('PRIVATE_EDITOR_SENTINEL'), false);
+  const apply = controller.apply(snapshot.snapshotId, { text: 'echo new', cursor: 8 });
   await Promise.resolve();
   reply(1, { phase: 'ready' });
   session.socket = newSocket;
@@ -648,10 +748,6 @@ test('editor replies respect client and permission ownership through final publi
     'old peer cannot authorize an edit after replacement',
   );
   assert.equal(channels[1]!.destroyed, true);
-  assert.equal(
-    newMessages.some((message) => message.type === 'editor-apply-result'),
-    false,
-  );
   assert.equal(JSON.stringify(newMessages).includes('PRIVATE_EDITOR_SENTINEL'), false);
   for (const [index, permission] of (['input', 'cwd'] as const).entries()) {
     session.shellContext = {
@@ -663,25 +759,23 @@ test('editor replies respect client and permission ownership through final publi
       editorBinding: { ...session.shellContext.editorBinding!, triggerNonce: id.slice(0, -1) + index },
     };
     const channelIndex = channels.length;
-    const pending = service.handleEditorRequest(session, { type: 'editor-snapshot', requestId: id });
+    const pending = controller.snapshot();
     await Promise.resolve();
     assert.equal(channels.length, channelIndex + 1, 'the replacement peer starts a fresh editor request');
     reply(channelIndex, { phase: 'ready' });
+    session.shellContext = updateShellPermissions(session.shellContext, {
+      ...session.shellContext.permissions,
+      [permission]: false,
+    });
+    controller.invalidate();
     reply(channelIndex, { phase: 'done', status: 'ok', snapshot: observed });
-    // Revoke between the controller's resolved result and the service's final publication.
-    queueMicrotask(() =>
-      queueMicrotask(() => {
-        session.shellContext = updateShellPermissions(session.shellContext, {
-          ...session.shellContext.permissions,
-          [permission]: false,
-        });
-        session.editorController!.invalidate();
-      }),
+    assert.equal(
+      (await pending).status,
+      'unavailable',
+      'cancellation closes the private channel before its late reply',
     );
-    await pending;
     assert.equal(session.shellContext.permissions[permission], false);
     assert.equal(JSON.stringify(newMessages).includes('PRIVATE_EDITOR_SENTINEL'), false);
-    assert.deepEqual(newMessages.at(-1), { type: 'editor-snapshot-result', requestId: id, status: 'stale' });
   }
 });
 
@@ -1110,10 +1204,6 @@ type HistoryServiceHarness = RemoteShellEventServiceHarness & {
     session: RemoteShellEventSessionHarness,
     message: Extract<TerminalClientInboundMessage, { type: 'shell-history-remove' }>,
   ): Promise<void>;
-  handleCompletionRequest(
-    session: RemoteShellEventSessionHarness,
-    message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
-  ): Promise<void>;
 };
 
 /** Models the private helper protocol without replacing the editor controller or transport. */
@@ -1357,7 +1447,7 @@ test('native observations replace namespace and private state without reusing so
   assert.equal(original.status, 'ok');
   assert.deepEqual(original.entries, ['multi\nline', 'echo  trailing  ']);
   assert.deepEqual(session.recentCommands, ['echo  trailing  ', 'multi\nline']);
-  assert.deepEqual(session.completionRecentCommands, ['echo  trailing  ']);
+  assert.equal('completionRecentCommands' in session, false, 'native history has no legacy lossy cache');
   const second = service.syncRemoteHistory(session.sessionId);
   await Promise.resolve();
   completeHistory(channels[1]!, ['new only'], 'partial', 'project_history');
@@ -1443,7 +1533,6 @@ test('revocation clears queued and active native work, including an SSH callback
     };
     session.historyOwnerInstanceId = 'shell-1';
     session.recentCommands = ['echo cached'];
-    session.completionRecentCommands = ['echo cached'];
     service.scheduleHistorySync(session.sessionId);
     assert.ok(session.historySyncTimeout);
     const pending = service.syncRemoteHistory(session.sessionId);
@@ -1459,7 +1548,7 @@ test('revocation clears queued and active native work, including an SSH callback
     assert.equal(channels[0]!.closed, true);
     assert.deepEqual(lastHistoryView(messages), { status: 'disabled', source: null, entries: [] });
     assert.deepEqual(session.recentCommands, []);
-    assert.deepEqual(session.completionRecentCommands, []);
+    assert.equal('completionRecentCommands' in session, false);
     assert.equal(session.historySyncTimeout, null);
   }
 });
@@ -1489,7 +1578,7 @@ test('off-on permission races cannot publish the old reply and eventually refres
   assert.deepEqual(lastHistoryView(messages).entries, ['echo fresh']);
 });
 
-test('hiding suggestions retains native reads while renderer completion respects display permission', async (t) => {
+test('hiding completion suggestions retains the independently permitted native history view', async (t) => {
   const { session, service, channels, messages } = createHistoryServiceHarness(t);
   t.after(() => service.clearRemoteHistory(session));
   const pending = service.syncRemoteHistory(session.sessionId);
@@ -1502,26 +1591,10 @@ test('hiding suggestions retains native reads while renderer completion respects
   assert.equal(signal.aborted, false);
   completeHistory(channels[0]!, ['echo retained']);
   await pending;
-  session.shellContext = { ...session.shellContext, status: 'ready', reason: null };
-  const request = {
-    type: 'completion-request' as const,
-    requestId: 'display-only',
-    linePrefix: 'echo',
-    cursorIndex: 4,
-    includeHistory: true,
-    includeBuiltInCommands: false,
-    includePathSuggestions: false,
-    trigger: 'manual' as const,
-  };
-  await service.handleCompletionRequest(session, request);
-  const hidden = messages.at(-1);
-  assert.ok(hidden?.type === 'completion-response');
-  assert.deepEqual(hidden.items, []);
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo retained']);
   service.applyEnhancementSettings({ revision: 2, values: DEFAULT_SETTINGS_VALUES });
-  await service.handleCompletionRequest(session, request);
-  const visible = messages.at(-1);
-  assert.ok(visible?.type === 'completion-response');
-  assert.ok(visible.items.some((item) => item.source === 'history'));
+  assert.equal(signal.aborted, false);
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo retained']);
 });
 
 test('stale IDs and exact records cannot authorize deletion; legacy deletion is ignored', async (t) => {
@@ -1644,10 +1717,9 @@ test('history waits for an active private editor exchange and then reads the cur
     requiresEditorConfirmation: false,
     capabilities: [...session.shellContext.capabilities, 'input-snapshot'],
   };
-  const editor = service.handleEditorRequest(session, {
-    type: 'editor-snapshot',
-    requestId: '01234567-89ab-4def-8123-456789abcdef',
-  });
+  const controller = service.getEditorController(session);
+  assert.ok(controller);
+  const editor = controller.snapshot();
   await Promise.resolve();
   assert.equal(channels[0]!.request.operation, 'snapshot');
   const history = service.syncRemoteHistory(session.sessionId);

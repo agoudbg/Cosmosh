@@ -12,10 +12,6 @@ import { createShellContext, resolveShellPermissions, type ShellContextState } f
 type InputSession = {
   shellContext: ShellContextState;
   sessionId: string;
-  completionLineBuffer: string;
-  completionRecentCommands: string[];
-  completionWorkingDirectory: string;
-  completionPendingCwdCommands: string[];
   credentialFillState: CredentialFillState;
   loginPassword: string | null;
   remoteEnhancementsRuntimeState: 'active' | 'disabled';
@@ -61,10 +57,6 @@ for (const [name, prototype] of [
             false,
           ),
           sessionId: 'privacy-test',
-          completionLineBuffer: '',
-          completionRecentCommands: ['echo retained-shell-history'],
-          completionWorkingDirectory: '/fixture',
-          completionPendingCwdCommands: [],
           credentialFillState: {
             outputTail: inputCase.passwordPrompt ? '[sudo] password for fixture: ' : '',
             offer: inputCase.passwordPrompt ? { token: 'prompt-token', expiresAt: Date.now() + 45_000 } : null,
@@ -90,10 +82,15 @@ for (const [name, prototype] of [
             session,
             Buffer.from(JSON.stringify({ type: 'input', data: chunk })),
           );
-          assert.equal(session.completionLineBuffer, '', 'even an unfinished input must not be retained');
-          assert.deepEqual(session.completionRecentCommands, ['echo retained-shell-history']);
-          assert.equal(session.completionWorkingDirectory, '/fixture');
-          assert.deepEqual(session.completionPendingCwdCommands, []);
+          for (const obsolete of [
+            'completionLineBuffer',
+            'completionRecentCommands',
+            'completionWorkingDirectory',
+            'completionPendingCwdCommands',
+          ]) {
+            assert.equal(obsolete in session, false, 'input cannot recreate removed guess-based state');
+          }
+          assert.equal(JSON.stringify(session).includes('PRIVATE_TEST_'), false);
         }
         assert.equal(writes.join(''), inputCase.chunks.join(''), 'all input bytes must reach the PTY unchanged');
       });

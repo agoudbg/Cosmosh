@@ -13,9 +13,11 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { TerminalAutocompleteMenu } from '../../../components/terminal/terminal-autocomplete-menu';
+import { RemoteEnhancementsStatus } from '../RemoteEnhancementsStatus';
 import type { TerminalPaneRuntime } from '../ssh-types';
 import { forwardTerminalInput } from '../ssh-utils';
 import { useSshAutocomplete } from '../use-ssh-completion';
+import { createEnhancementStatusFixture } from './enhancement-status-fixture-data';
 
 type FixtureSettings = {
   inputAllowed: boolean;
@@ -29,6 +31,7 @@ type RecordedMessage = { paneId: string; payload: TerminalClientMessage };
 type FixtureController = {
   messages: RecordedMessage[];
   warnings: string[];
+  sources: () => TerminalCompletionUpdate['sources'] | null;
   directInput: (data: string) => void;
   context: (changes: Partial<ShellContext>) => void;
   acceptResult: (status: TerminalCompletionAcceptResult['status']) => void;
@@ -82,9 +85,9 @@ export const AutocompleteFixture = (): React.ReactNode => {
     shell: 'bash',
     helperVersion: 'fixture',
     protocolVersion: 3,
-    capabilities: ['input-snapshot', 'input-apply'],
+    capabilities: ['cwd', 'directory-read', 'input-snapshot', 'input-apply'],
     editorAvailable: true,
-    permissions: { input: true, history: true, cwd: false, paths: false, nativeCompletion: false },
+    permissions: { input: true, history: true, cwd: true, paths: true, nativeCompletion: false },
     status: 'ready',
     reason: null,
     revision: 1,
@@ -92,7 +95,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
     submissionToken: null,
     promptGeneration: 1,
     cwdGeneration: 0,
-    cwd: null,
+    cwd: { logical: '/home/fixture', physical: '/home/fixture', home: '/home/fixture' },
     lastKnownCwd: null,
   });
   const autocomplete = useSshAutocomplete({
@@ -103,7 +106,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
     terminalAutoCompleteEnabled: settings.enabled && settings.inputAllowed,
     terminalAutoCompleteHistoryEnabled: settings.historyEnabled,
     terminalAutoCompleteBuiltInCommandsEnabled: true,
-    terminalAutoCompletePathEnabled: false,
+    terminalAutoCompletePathEnabled: true,
     terminalAutoCompleteAcceptKeys: settings.acceptKeys,
     terminalAutoCompleteFocusShortcut: 'ctrlShiftSpace',
     terminalAutoCompleteMinChars: 1,
@@ -175,6 +178,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
     window.terminalInteractionFixture = {
       messages,
       warnings: warningsRef.current,
+      sources: () => current.current.autocompleteSources,
       directInput: (data) => {
         const paneId = activePaneIdRef.current;
         forwardTerminalInput({
@@ -278,6 +282,14 @@ export const AutocompleteFixture = (): React.ReactNode => {
       >
         Outside terminal
       </button>
+      <RemoteEnhancementsStatus
+        paneNumber={1}
+        input={{
+          ...createEnhancementStatusFixture(),
+          context: contextRef.current,
+          completionSources: autocomplete.autocompleteSources,
+        }}
+      />
       <div className="flex gap-4">
         <div
           ref={firstRef}

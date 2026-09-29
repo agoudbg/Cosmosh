@@ -292,6 +292,19 @@ export type ShellCompletionCandidate = {
   kind: 'command' | 'subcommand' | 'option' | 'argument' | 'history' | 'path';
 };
 
+/** Opaque use-time directory intent; current input, paths and permissions are Backend-owned. */
+export type TerminalDirectoryClientMessage =
+  { type: 'directory-query'; requestId: string } | { type: 'directory-cancel'; requestId: string };
+
+/** Fresh original-Shell directory observation; failed requests never return retained directory metadata. */
+export type TerminalDirectoryResult = {
+  type: 'directory-result';
+  requestId: string;
+  status: 'ok' | 'stale' | 'unavailable';
+  contextRevision: number;
+  directory: ShellDirectoryContext | null;
+};
+
 /** Opaque actions; the Renderer supplies neither current input nor replacement text. */
 export type TerminalCompletionClientMessage =
   | { type: 'completion-query'; requestId: string; trigger: 'typing' | 'manual' }
@@ -327,61 +340,22 @@ export type TerminalCompletionAcceptResult = {
   status: 'applied' | 'stale' | 'unavailable' | 'unsupported' | 'unknown';
 };
 
-/** Legacy completion candidate transferred over a terminal WebSocket. */
-export type TerminalCompletionItem = {
-  id: string;
-  label: string;
-  insertText: string;
-  replacePrefixLength?: number;
-  detail: string | null;
-  source: 'history' | 'inshellisense' | 'runtime';
-  kind: 'command' | 'subcommand' | 'option' | 'history' | 'path';
-  score: number;
-};
-
 /** Renderer-to-Backend messages supported by interactive terminal sessions. */
 export type TerminalClientMessage =
+  | TerminalDirectoryClientMessage
   | TerminalCompletionClientMessage
   | { type: 'input'; data: string; submissionToken?: string }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'close' }
   | { type: 'ping' }
-  | { type: 'history-delete'; command: string }
   | { type: 'shell-history-remove'; requestId: string; sourceId: string; command: string }
-  | { type: 'credential-fill'; token: string }
-  | { type: 'editor-snapshot'; requestId: string }
-  | { type: 'editor-apply'; requestId: string; snapshotId: string; replacement: ShellEditorBuffer }
-  | {
-      type: 'completion-request';
-      requestId: string;
-      linePrefix: string;
-      cursorIndex: number;
-      workingDirectoryHint?: string;
-      limit?: number;
-      fuzzyMatch?: boolean;
-      includeHistory?: boolean;
-      includeBuiltInCommands?: boolean;
-      includePathSuggestions?: boolean;
-      trigger: 'typing' | 'manual';
-    };
+  | { type: 'credential-fill'; token: string };
 
 /** Messages common to local and SSH terminal WebSocket sessions. */
 export type TerminalServerMessage =
+  | TerminalDirectoryResult
   | TerminalCompletionUpdate
   | TerminalCompletionAcceptResult
-  | {
-      type: 'editor-snapshot-result';
-      requestId: string;
-      status: 'ok';
-      snapshotId: string;
-      snapshot: ShellEditorSnapshot;
-    }
-  | { type: 'editor-snapshot-result'; requestId: string; status: 'stale' | 'unavailable' | 'unsupported' | 'unknown' }
-  | {
-      type: 'editor-apply-result';
-      requestId: string;
-      status: 'applied' | 'stale' | 'unavailable' | 'unsupported' | 'unknown';
-    }
   | { type: 'credential-fill-offer'; offer: TerminalCredentialFillOffer | null }
   | TerminalCredentialFillResult
   | { type: 'ready' }
@@ -397,13 +371,6 @@ export type TerminalServerMessage =
       networkRxBytesPerSec: number | null;
       networkTxBytesPerSec: number | null;
       recentCommands: string[];
-    }
-  | { type: 'history'; recentCommands: string[] }
-  | {
-      type: 'completion-response';
-      requestId: string;
-      replacePrefixLength: number;
-      items: TerminalCompletionItem[];
     };
 
 /** Complete Backend-to-Renderer message contract for SSH terminal sessions. */

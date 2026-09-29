@@ -4,6 +4,7 @@ import type {
   RemoteEnhancementRuntimeStatus,
   RemoteShellCapability,
   RemoteShellEventMessage,
+  SettingsValues,
   ShellHistoryRemovalResult,
   ShellHistoryView,
   SshTerminalServerMessage,
@@ -35,7 +36,6 @@ import {
   TERMINAL_PENDING_OUTPUT_MAX_CHUNKS,
   type TerminalManagedSessionBase,
 } from '../terminal/base-session-service.js';
-import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import { createRemotePathExecutor, RemotePathQueryController } from '../terminal/completion/remote-path-query.js';
 import {
   SnapshotCompletionController,
@@ -48,6 +48,7 @@ import {
   isFillableLoginPassword,
   observeCredentialFillOutput,
 } from '../terminal/credential-fill.js';
+import { DirectoryQueryController } from '../terminal/directory-query.js';
 import { confirmShellEditorContext, ShellEditorController } from '../terminal/editor-controller.js';
 import { isSupportedBashEditorInput } from '../terminal/editor-protocol.js';
 import {
@@ -187,11 +188,11 @@ type SshLiveSession = TerminalManagedSessionBase & {
   lastHistorySyncStartedAtMs: number;
   commandCount: number;
   recentCommands: string[];
-  completionRecentCommands: string[];
   credentialFillState: CredentialFillState;
   shellContext: ShellContextState;
   editorController?: ShellEditorController;
   completionController?: SnapshotCompletionController;
+  directoryController?: DirectoryQueryController;
   editorContextTimeout?: NodeJS.Timeout;
   enhancementsAllowed: boolean;
   loginPassword: string | null;
@@ -670,7 +671,6 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       lastHistorySyncStartedAtMs: 0,
       commandCount: 0,
       recentCommands: [],
-      completionRecentCommands: [],
       credentialFillState: createCredentialFillState(),
       enhancementsAllowed: remoteEnhancementsEnabled,
       shellContext: createShellContext(
@@ -865,6 +865,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.enhancementSettingsSnapshot = snapshot;
     for (const session of this.sessions.values()) {
       session.completionController?.settingsChanged(snapshot.values);
+      session.directoryController?.settingsChanged(snapshot.values);
       const previous = session.shellContext;
       session.shellContext = updateShellPermissions(
         previous,
@@ -895,10 +896,27 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    */
   private sendShellContext(session: SshLiveSession): void {
     session.completionController?.contextChanged();
+    session.directoryController?.contextChanged();
     this.sendOptionalServerMessage(session, {
       type: 'shell-context',
       context: getShellContextSnapshot(session.shellContext),
     });
+  }
+
+  /** @returns Current persisted preferences after applying their revision to live sessions. */
+  private async readLiveEnhancementSettings(): Promise<SettingsValues> {
+    const snapshot = await readDefaultSettingsSnapshot(this.getDbClient());
+    this.applyEnhancementSettings(snapshot);
+    return this.enhancementSettingsSnapshot?.values ?? snapshot.values;
+  }
+
+  /** @param session Original owner. @returns Nothing after resuming queued optional background work. */
+  private resumeEditorBackgroundWork(session: SshLiveSession): void {
+    this.scheduleEditorContextRefresh(session);
+    if (session.historySyncPending) {
+      session.historySyncPending = false;
+      this.scheduleHistorySync(session.sessionId);
+    }
   }
 
   /**
@@ -913,23 +931,13 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       editor,
       paths: new RemotePathQueryController(createRemotePathExecutor(session.client, binaryPath)),
       context: () => session.shellContext,
-      readSettings: async () => {
-        const snapshot = await readDefaultSettingsSnapshot(this.getDbClient());
-        this.applyEnhancementSettings(snapshot);
-        return this.enhancementSettingsSnapshot?.values ?? snapshot.values;
-      },
+      readSettings: () => this.readLiveEnhancementSettings(),
       history: () =>
         session.historyView?.source && session.historyOwnerInstanceId !== session.shellContext.shellInstanceId
           ? null
           : (session.historyView ?? null),
       publish: (message) => this.sendServerMessage(session, message),
-      onIdle: () => {
-        this.scheduleEditorContextRefresh(session);
-        if (session.historySyncPending) {
-          session.historySyncPending = false;
-          this.scheduleHistorySync(session.sessionId);
-        }
-      },
+      onIdle: () => this.resumeEditorBackgroundWork(session),
     });
     return session.completionController;
   }
@@ -950,6 +958,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       session.completionController?.cancel(message.requestId);
       return;
     }
+    session.directoryController?.invalidate();
     const controller = this.getCompletionController(session);
     if (!controller) {
       this.sendOptionalServerMessage(
@@ -964,6 +973,52 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     session.editorContextTimeout = undefined;
     if (message.type === 'completion-query') void controller.query(message);
     else void controller.accept(message);
+  }
+
+  /**
+   * Routes an opaque use-time directory action through the original editor with CWD-only permission.
+   * @param session Authenticated live owner. @param message Normalized query or cancellation.
+   * @returns Nothing; original terminal input remains synchronous and independent.
+   */
+  private handleDirectoryQuery(
+    session: SshLiveSession,
+    message: Extract<TerminalClientInboundMessage, { type: 'directory-query' | 'directory-cancel' }>,
+  ): void {
+    if (message.type === 'directory-cancel') {
+      session.directoryController?.cancel(message.requestId);
+      return;
+    }
+    const editor = this.getEditorController(session);
+    if (!editor || !(session.stream instanceof DeliveredTerminal)) {
+      this.sendOptionalServerMessage(session, {
+        type: 'directory-result',
+        requestId: message.requestId,
+        status: 'unavailable',
+        contextRevision: session.shellContext.revision,
+        directory: null,
+      });
+      return;
+    }
+    session.directoryController ??= new DirectoryQueryController({
+      editor,
+      completion: () => session.completionController ?? null,
+      context: () => session.shellContext,
+      owner: () => {
+        const socket = session.socket;
+        return !session.disposed &&
+          session.remoteEnhancementsRuntimeState === 'active' &&
+          socket &&
+          socket.readyState === socket.OPEN
+          ? socket
+          : null;
+      },
+      readSettings: () => this.readLiveEnhancementSettings(),
+      publish: (message) => this.sendServerMessage(session, message),
+      onIdle: () => this.resumeEditorBackgroundWork(session),
+    });
+    if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
+    session.editorContextTimeout = undefined;
+    void session.directoryController.query(message);
   }
 
   /**
@@ -1001,84 +1056,22 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       session.remoteEnhancementsRuntimeState !== 'active' ||
       state.status !== 'paused' ||
       session.completionController?.busy ||
+      session.directoryController?.busy ||
       !state.editorBinding?.notification ||
       (!state.permissions.cwd && !state.permissions.input)
     )
       return;
     session.editorContextTimeout = setTimeout(() => {
       session.editorContextTimeout = undefined;
-      if (session.completionController?.busy) return;
+      if (session.completionController?.busy || session.directoryController?.busy) return;
       void this.getEditorController(session)?.refreshContext();
     }, 120);
     session.editorContextTimeout.unref();
   }
 
-  /**
-   * Replies through a private response channel, never the remote-shell-event debug history.
-   * @param session Original Shell session. @param message Explicit snapshot or apply request.
-   * @returns Nothing.
-   */
-  private async handleEditorRequest(
-    session: SshLiveSession,
-    message: Extract<TerminalClientInboundMessage, { type: 'editor-snapshot' | 'editor-apply' }>,
-  ): Promise<void> {
-    const socket = session.socket;
-    const context = session.shellContext;
-    const editor = this.getEditorController(session);
-    if (message.type === 'editor-snapshot') {
-      const result = editor ? await editor.snapshot() : { status: 'unavailable' as const };
-      if (session.disposed || session.socket !== socket) return;
-      if (session.shellContext !== context || !session.shellContext.permissions.input) {
-        editor?.invalidate();
-        this.sendServerMessage(session, {
-          type: 'editor-snapshot-result',
-          requestId: message.requestId,
-          status: 'stale',
-        });
-        return;
-      }
-      this.sendServerMessage(
-        session,
-        result.status === 'ok' && result.snapshotId
-          ? {
-              type: 'editor-snapshot-result',
-              requestId: message.requestId,
-              status: 'ok',
-              snapshotId: result.snapshotId,
-              snapshot: result.snapshot,
-            }
-          : {
-              type: 'editor-snapshot-result',
-              requestId: message.requestId,
-              status:
-                result.status === 'ok' ||
-                result.status === 'applied' ||
-                result.status === 'history-removed-from-reader' ||
-                result.status === 'native-completions'
-                  ? 'unavailable'
-                  : result.status,
-            },
-      );
-      return;
-    }
-    const result = editor
-      ? await editor.apply(message.snapshotId, message.replacement)
-      : { status: 'unavailable' as const };
-    if (!session.disposed && session.socket === socket)
-      this.sendServerMessage(session, {
-        type: 'editor-apply-result',
-        requestId: message.requestId,
-        status:
-          result.status === 'ok' ||
-          result.status === 'history-removed-from-reader' ||
-          result.status === 'native-completions'
-            ? 'unknown'
-            : result.status,
-      });
-  }
-
   protected onSessionAttached(session: SshLiveSession): void {
     session.completionController?.invalidate(true, false);
+    session.directoryController?.invalidate();
     session.editorController?.invalidate();
     session.shellContext = { ...session.shellContext, revision: session.shellContext.revision + 1 };
     session.shellContext = requireShellEditorConfirmation(session.shellContext);
@@ -1685,6 +1678,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns Nothing.
    */
   private disableRemoteEnhancementsRuntime(session: SshLiveSession, code: string, message: string): void {
+    session.directoryController?.invalidate('unavailable');
     session.shellContext = suspendShellContext(
       session.shellContext,
       code === 'PERMISSION_DISABLED' ? 'permission-disabled' : 'helper-unavailable',
@@ -1729,6 +1723,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
+      session.directoryController?.invalidate();
       session.completionController?.invalidate();
       session.editorController?.invalidate();
       const previousStatus = session.shellContext.status;
@@ -1793,15 +1788,13 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'shell-history-remove') {
+      session.directoryController?.invalidate();
       session.completionController?.invalidate();
       void this.deleteRemoteHistoryEntry(session, message);
       return;
     }
-    // The unbound legacy operation belongs only to local terminals.
-    if (message.type === 'history-delete') return;
-
-    if (message.type === 'completion-request') {
-      void this.handleCompletionRequest(session, message);
+    if (message.type === 'directory-query' || message.type === 'directory-cancel') {
+      this.handleDirectoryQuery(session, message);
       return;
     }
 
@@ -1815,14 +1808,9 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'credential-fill') {
+      session.directoryController?.invalidate();
       session.completionController?.invalidate();
       void this.fillLoginPassword(session, message.token);
-      return;
-    }
-
-    if (message.type === 'editor-snapshot' || message.type === 'editor-apply') {
-      session.completionController?.invalidate();
-      void this.handleEditorRequest(session, message);
       return;
     }
 
@@ -1901,72 +1889,6 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
   }
 
-  /**
-   * Resolves and returns localized completion items for one renderer request.
-   */
-  private async handleCompletionRequest(
-    session: SshLiveSession,
-    message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
-  ): Promise<void> {
-    const socket = session.socket;
-    const contextRevision = session.shellContext.revision;
-    if (session.shellContext.status !== 'ready' || !session.shellContext.permissions.input) {
-      this.sendServerMessage(session, {
-        type: 'completion-response',
-        requestId: message.requestId,
-        replacePrefixLength: 0,
-        items: [],
-      });
-      return;
-    }
-
-    const completionResult = await resolveTerminalCompletions(
-      {
-        linePrefix: message.linePrefix,
-        cursorIndex: message.cursorIndex,
-        limit: message.limit,
-        fuzzyMatch: message.fuzzyMatch,
-        includeHistory: this.canShowHistorySuggestions(session) && message.includeHistory !== false,
-        includeBuiltInCommands: message.includeBuiltInCommands,
-        // Literal remote filenames require snapshot-bound edits; the legacy PTY writer cannot accept them safely.
-        includePathSuggestions: false,
-        trigger: message.trigger,
-      },
-      {
-        recentCommands: session.completionRecentCommands,
-        tokenizerMode: 'posix',
-      },
-    );
-
-    if (session.disposed || session.socket !== socket) return;
-    this.sendServerMessage(session, {
-      type: 'completion-response',
-      requestId: message.requestId,
-      replacePrefixLength: completionResult.replacePrefixLength,
-      items:
-        session.disposed || session.shellContext.revision !== contextRevision
-          ? []
-          : localizeTerminalCompletionItems(
-              completionResult.items.filter(
-                (item) => item.source !== 'history' || this.canShowHistorySuggestions(session),
-              ),
-              (key) => session.t(key),
-            ),
-    });
-  }
-
-  /**
-   * Separates permission to retain remote history from the user's preference to show history suggestions.
-   * @param session Candidate owner. @returns Whether a history suggestion can be published now.
-   */
-  private canShowHistorySuggestions(session: SshLiveSession): boolean {
-    return (
-      session.shellContext.permissions.history &&
-      (this.enhancementSettingsSnapshot?.values.terminalAutoCompleteHistoryEnabled ??
-        DEFAULT_SETTINGS_VALUES.terminalAutoCompleteHistoryEnabled)
-    );
-  }
-
   protected disposeSession(
     sessionId: string,
     reasonKey: string,
@@ -1974,6 +1896,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   ): void {
     this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
       beforeExit: (session, reason) => {
+        session.directoryController?.invalidate();
         session.completionController?.invalidate(true, false);
         this.clearRemoteHistory(session);
         if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
@@ -2101,9 +2024,6 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     session.historyOwnerInstanceId = view.source ? (session.shellContext.shellInstanceId ?? undefined) : undefined;
     session.completionController?.historyChanged();
     session.recentCommands = [...view.entries].reverse();
-    // The legacy insertion route cannot safely send multiline/control records as terminal bytes.
-    // Precise snapshot candidates will use the complete native view directly.
-    session.completionRecentCommands = session.recentCommands.filter((entry) => !/\p{Cc}/u.test(entry));
     this.sendServerMessage(session, { type: 'shell-history', view });
   }
 
@@ -2159,7 +2079,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       session.historySyncPending = true;
       return;
     }
-    if (session.completionController?.busy) {
+    if (session.completionController?.busy || session.directoryController?.busy) {
       session.historySyncPending = true;
       return;
     }

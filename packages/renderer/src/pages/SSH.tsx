@@ -36,6 +36,7 @@ import {
   createTerminalPasteWarningRequest,
   flattenCommandForTerminalInput,
   parseOptionalNumberSetting,
+  parseSftpDirectorySelection,
   resolveSearchUrl,
   resolveSftpDirectoryPathFromSelection,
   resolveTerminalFontWeightSetting,
@@ -373,6 +374,8 @@ const SSH: React.FC<SSHProps> = ({
   );
 
   const sshCore = useSshCore({
+    remoteEnhancementsCwdEnabled:
+      settingsValues.remoteEnhancementsEnabled && settingsValues.remoteEnhancementsCwdEnabled,
     remoteEnhancementsHistoryEnabled:
       connectionIntent.lastResolvedSnapshot?.type !== 'ssh-server' || settingsValues.remoteEnhancementsHistoryEnabled,
     remoteEnhancementsInputEnabled:
@@ -424,7 +427,6 @@ const SSH: React.FC<SSHProps> = ({
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
       remoteEnhancementsDebugEvents,
-      shellDirectory,
       commandTimelineModels,
       hostFingerprintPrompt,
       canSplitTerminal,
@@ -432,6 +434,7 @@ const SSH: React.FC<SSHProps> = ({
       selectionBarPosition,
       dismissedSelectionText,
       autocompleteItems,
+      autocompleteSources,
       autocompleteFocused,
       autocompleteInputElement,
       credentialFillOffer,
@@ -440,7 +443,7 @@ const SSH: React.FC<SSHProps> = ({
       autocompleteAnchor,
     },
     actions: {
-      getPaneDirectory,
+      requestPaneDirectory,
       activatePane,
       splitPane,
       closePane,
@@ -735,11 +738,21 @@ const SSH: React.FC<SSHProps> = ({
    * @returns Nothing.
    */
   const openSelectionDirectoryInSftp = React.useCallback(
-    (selectionText: string, paneId = activePaneId): void => {
-      const directoryPath = resolveSftpDirectoryPathFromSelection(selectionText, getPaneDirectory(paneId));
+    async (selectionText: string, paneId = activePaneId): Promise<void> => {
       const serverSnapshot = connectionIntent.lastResolvedSnapshot;
+      if (
+        !parseSftpDirectorySelection(selectionText) ||
+        serverSnapshot?.type !== 'ssh-server' ||
+        !onOpenDirectoryInSFTP
+      ) {
+        notifyWarning(t('ssh.selectionBarOpenDirectoryUnavailable'));
+        return;
+      }
+      const absolutePath = resolveSftpDirectoryPathFromSelection(selectionText);
+      const directoryPath =
+        absolutePath ?? resolveSftpDirectoryPathFromSelection(selectionText, await requestPaneDirectory(paneId));
 
-      if (!directoryPath || serverSnapshot?.type !== 'ssh-server' || !onOpenDirectoryInSFTP) {
+      if (!directoryPath) {
         notifyWarning(t('ssh.selectionBarOpenDirectoryUnavailable'));
         return;
       }
@@ -753,7 +766,7 @@ const SSH: React.FC<SSHProps> = ({
       dismissSelectionBar,
       notifyWarning,
       onOpenDirectoryInSFTP,
-      getPaneDirectory,
+      requestPaneDirectory,
     ],
   );
 
@@ -1396,9 +1409,10 @@ const SSH: React.FC<SSHProps> = ({
 
   const selectionText = selectionAnchor?.selectionText ?? '';
   const selectionLink = resolveSelectionLink(selectionText);
-  const selectedSftpDirectoryPath = resolveSftpDirectoryPathFromSelection(selectionText, shellDirectory);
+  const selectedSftpDirectoryPath = parseSftpDirectorySelection(selectionText);
   const canOpenSelectionDirectoryInSftp =
     Boolean(selectedSftpDirectoryPath) &&
+    (selectedSftpDirectoryPath?.startsWith('/') || shellContext?.permissions.cwd === true) &&
     connectionIntent.lastResolvedSnapshot?.type === 'ssh-server' &&
     Boolean(onOpenDirectoryInSFTP);
   const canShowRemoteEnhancementsDebug =
@@ -1667,6 +1681,7 @@ const SSH: React.FC<SSHProps> = ({
                 context: shellContext,
                 runtimeStatus: remoteEnhancementRuntimeStatus,
                 historyView,
+                completionSources: autocompleteSources,
                 settings: settingsValues,
               }}
             />

@@ -3,6 +3,7 @@ import type {
   SettingsValues,
   ShellContext,
   ShellHistoryView,
+  TerminalCompletionSources,
 } from '@cosmosh/api-contract';
 
 /** Current pane observations and live settings; this view never initiates a remote read. */
@@ -12,6 +13,7 @@ export type EnhancementStatusInput = {
   context: ShellContext | null;
   runtimeStatus: RemoteEnhancementRuntimeStatus | null;
   historyView: ShellHistoryView | null;
+  completionSources?: TerminalCompletionSources | null;
   settings: Pick<
     SettingsValues,
     | 'remoteEnhancementsEnabled'
@@ -53,9 +55,16 @@ export type EnhancementDiagnostic = {
     | 'historyUnavailable'
     | 'inputRequired'
     | 'directoryRequired'
-    | 'verifiedEditingPending'
-    | 'pathMenuPending'
-    | 'nativeMenuPending';
+    | 'verifiedEditingReady'
+    | 'pathsReady'
+    | 'nativeManual'
+    | 'nativeAutomatic'
+    | 'queryLoading'
+    | 'queryPartial'
+    | 'queryTimeout'
+    | 'queryUnavailable'
+    | 'queryUnsupported'
+    | 'queryPrivate';
 };
 
 /** Five independently explained capabilities; private command/history text is never included. */
@@ -166,13 +175,30 @@ export const resolveEnhancementStatus = (input: EnhancementStatusInput): Enhance
     if (id === 'nativeCompletion' && context.shell !== 'fish') return { state: 'unavailable', reason: 'unsupported' };
     if (!enabled.input) return { state: 'disabled', reason: 'inputRequired' };
     if (id !== 'input' && !enabled.directory) return { state: 'disabled', reason: 'directoryRequired' };
-    if (!context.capabilities.includes('input-snapshot')) return { state: 'unavailable', reason: 'unsupported' };
+    if (!context.capabilities.includes('input-snapshot') || !context.capabilities.includes('input-apply'))
+      return { state: 'unavailable', reason: 'unsupported' };
     const blocked = editorBlocker(context);
     if (blocked) return blocked;
-    // These sources exist independently; no current UI consumer can claim verified filling yet.
+    if (!context.editorAvailable) return { state: 'unavailable', reason: 'unsupportedEditor' };
+    if (id === 'input') return { state: 'available', reason: 'verifiedEditingReady' };
+    if (!context.cwd?.physical) return { state: 'paused', reason: 'directoryUnknown' };
+    if (id === 'nativeCompletion' && !context.capabilities.includes('native-completion'))
+      return { state: 'unavailable', reason: 'unsupported' };
+    const source = input.completionSources?.[id === 'paths' ? 'paths' : 'native'];
+    if (source === 'loading') return { state: 'paused', reason: 'queryLoading' };
+    if (source === 'partial') return { state: 'partial', reason: 'queryPartial' };
+    if (source === 'timeout') return { state: 'unavailable', reason: 'queryTimeout' };
+    if (source === 'unavailable') return { state: 'unavailable', reason: 'queryUnavailable' };
+    if (source === 'unsupported') return { state: 'unavailable', reason: 'queryUnsupported' };
+    if (source === 'private') return { state: 'disabled', reason: 'queryPrivate' };
     return {
-      state: 'unavailable',
-      reason: id === 'input' ? 'verifiedEditingPending' : id === 'paths' ? 'pathMenuPending' : 'nativeMenuPending',
+      state: 'available',
+      reason:
+        id === 'paths'
+          ? 'pathsReady'
+          : settings.terminalNativeCompletionMode === 'manual'
+            ? 'nativeManual'
+            : 'nativeAutomatic',
     };
   };
   const features = (['directory', 'history', 'input', 'paths', 'nativeCompletion'] as const).map((id) => ({

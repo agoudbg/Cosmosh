@@ -74,7 +74,6 @@ const createLiveSession = (
     historyOwnerInstanceId: undefined as string | undefined,
     lastHistorySyncStartedAtMs: 0,
     recentCommands: [] as string[],
-    completionRecentCommands: [] as string[],
     loginPassword: null,
     credentialFillState: createCredentialFillState(),
     socket: {
@@ -246,7 +245,7 @@ test(
     });
     assert.deepEqual(latestView(messages), { status: 'disabled', source: null, entries: [] });
     assert.deepEqual(liveSession.recentCommands, []);
-    assert.deepEqual(liveSession.completionRecentCommands, []);
+    assert.equal('completionRecentCommands' in liveSession, false);
     const execBeforeStaleAction = execCount;
     const staleId = randomUUID();
     liveService.handleClientMessage(

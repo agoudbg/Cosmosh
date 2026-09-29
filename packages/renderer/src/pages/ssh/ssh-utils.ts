@@ -69,10 +69,6 @@ type CommandStartResolveOptions = {
   promptPrefixRegex?: RegExp | null;
 };
 
-type AutocompleteCommandPrefixResolveOptions = {
-  localPrefixNeedsRenderedContext?: boolean;
-};
-
 /**
  * Determines whether a pane should open a new session when its tab becomes active.
  *
@@ -642,84 +638,6 @@ const tokenizeWhitespace = (linePrefix: string): PromptBoundaryToken[] => {
 };
 
 /**
- * Finds the start offset of current shell command segment by parsing separators.
- *
- * Separator parsing intentionally tracks basic shell quoting semantics so
- * `;`, `&&`, `||`, `|` inside quotes do not split command segments.
- *
- * @param linePrefix Full text before cursor.
- * @returns Segment start offset before prompt-specific trimming.
- */
-const resolveShellSegmentStartOffset = (linePrefix: string): number => {
-  let segmentStartOffset = 0;
-  let quote: 'single' | 'double' | null = null;
-
-  for (let cursor = 0; cursor < linePrefix.length; cursor += 1) {
-    const currentChar = linePrefix[cursor] ?? '';
-    const nextChar = linePrefix[cursor + 1] ?? '';
-
-    if (quote === 'single') {
-      if (currentChar === "'") {
-        quote = null;
-      }
-
-      continue;
-    }
-
-    if (quote === 'double') {
-      if (currentChar === '"') {
-        quote = null;
-        continue;
-      }
-
-      if (currentChar === '\\') {
-        cursor += 1;
-      }
-
-      continue;
-    }
-
-    if (currentChar === "'") {
-      quote = 'single';
-      continue;
-    }
-
-    if (currentChar === '"') {
-      quote = 'double';
-      continue;
-    }
-
-    if (currentChar === '\\') {
-      cursor += 1;
-      continue;
-    }
-
-    const isSemicolon = currentChar === ';';
-    const isPipe = currentChar === '|';
-    const isAmpersand = currentChar === '&';
-    const isLogicalAnd = isAmpersand && nextChar === '&';
-    const isLogicalOr = isPipe && nextChar === '|';
-    if (!isSemicolon && !isPipe && !isAmpersand) {
-      continue;
-    }
-
-    if (isLogicalAnd || isLogicalOr) {
-      segmentStartOffset = cursor + 2;
-      cursor += 1;
-      continue;
-    }
-
-    segmentStartOffset = cursor + 1;
-  }
-
-  while (segmentStartOffset < linePrefix.length && /\s/.test(linePrefix[segmentStartOffset] ?? '')) {
-    segmentStartOffset += 1;
-  }
-
-  return Math.max(0, segmentStartOffset);
-};
-
-/**
  * Resolves command start offset from user-provided prompt regex.
  *
  * Regex must match prompt prefix from the start of current command segment.
@@ -795,98 +713,8 @@ const resolveHeuristicPromptOffset = (linePrefix: string): number => {
 };
 
 /**
- * Finds the largest overlap where the rendered prefix suffix already contains
- * the beginning of the local suffix. This keeps readline-recalled commands from
- * duplicating text while the terminal echo is still catching up.
- *
- * @param renderedCommandPrefix Command prefix reconstructed from xterm.
- * @param localCommandPrefix Local input suffix tracked from xterm input events.
- * @returns Number of local-prefix characters already present at the rendered suffix.
- */
-const resolveRenderedLocalPrefixOverlap = (renderedCommandPrefix: string, localCommandPrefix: string): number => {
-  const maxOverlapLength = Math.min(renderedCommandPrefix.length, localCommandPrefix.length);
-
-  for (let overlapLength = maxOverlapLength; overlapLength > 0; overlapLength -= 1) {
-    if (renderedCommandPrefix.endsWith(localCommandPrefix.slice(0, overlapLength))) {
-      return overlapLength;
-    }
-  }
-
-  return 0;
-};
-
-/**
- * Resolves the command prefix used for completion requests from rendered xterm
- * state and local input shadow state.
- *
- * @param renderedCommandPrefix Command prefix reconstructed from the visible xterm row.
- * @param localCommandPrefix Command prefix or suffix tracked from local input events.
- * @param options Reconciliation mode for local shadow state.
- * @returns Effective command prefix to send to the completion backend.
- */
-export const resolveAutocompleteCommandPrefix = (
-  renderedCommandPrefix: string,
-  localCommandPrefix: string | undefined,
-  options?: AutocompleteCommandPrefixResolveOptions,
-): string => {
-  if (localCommandPrefix === undefined) {
-    return renderedCommandPrefix;
-  }
-
-  if (!options?.localPrefixNeedsRenderedContext) {
-    return localCommandPrefix;
-  }
-
-  if (renderedCommandPrefix.length === 0) {
-    return localCommandPrefix;
-  }
-
-  if (localCommandPrefix.length === 0) {
-    return renderedCommandPrefix;
-  }
-
-  if (renderedCommandPrefix.endsWith(localCommandPrefix)) {
-    return renderedCommandPrefix;
-  }
-
-  if (localCommandPrefix.startsWith(renderedCommandPrefix)) {
-    return localCommandPrefix;
-  }
-
-  const overlapLength = resolveRenderedLocalPrefixOverlap(renderedCommandPrefix, localCommandPrefix);
-  return `${renderedCommandPrefix}${localCommandPrefix.slice(overlapLength)}`;
-};
-
-/**
- * Calibrates a reconstructed completion prefix with trusted shell cursor metadata.
- *
- * The helper never sends command text. Calibration is therefore applied only when
- * renderer reconstruction has the exact helper-reported line length; otherwise the
- * existing conservative prefix remains unchanged.
- *
- * @param commandPrefix Reconstructed command buffer candidate.
- * @param lineState Optional helper-reported line length and cursor index.
- * @returns Prefix ending at the trusted cursor when lengths agree.
- */
-export const calibrateAutocompleteCommandPrefix = (
-  commandPrefix: string,
-  lineState: { lineLength: number; cursorIndex: number } | null,
-): string => {
-  if (!lineState || commandPrefix.length !== lineState.lineLength) {
-    return commandPrefix;
-  }
-
-  return commandPrefix.slice(0, lineState.cursorIndex);
-};
-
-/**
- * Locates where user input starts without treating shell separators as a new
- * autocomplete segment.
- *
- * Command timeline tooltips need the complete submitted line, while
- * autocomplete intentionally narrows its context after separators such as
- * `&&` or `|`. Keeping prompt stripping separate prevents timeline entries
- * from losing the earlier portions of compound commands.
+ * Locates the full submitted command after a rendered prompt for timeline labels.
+ * Shell separators within the command remain intact, so compound commands keep their earlier portions.
  *
  * @param line Visible logical terminal line containing prompt and user input.
  * @param options Optional prompt parsing configuration.
@@ -925,79 +753,6 @@ export const resolvePromptCommandStartOffset = (line: string, options?: CommandS
   }
 
   return Math.max(0, resolveHeuristicPromptOffset(line));
-};
-
-/**
- * Locates where user command starts in a shell prompt line.
- *
- * @param linePrefix Visible content before cursor on current line.
- * @param options Optional prompt parsing configuration.
- * @returns Zero-based command start column.
- */
-export const resolveCommandStartOffset = (linePrefix: string, options?: CommandStartResolveOptions): number => {
-  const segmentStartOffset = resolveShellSegmentStartOffset(linePrefix);
-  const segmentPrefix = linePrefix.slice(segmentStartOffset);
-  return Math.max(0, segmentStartOffset + resolvePromptCommandStartOffset(segmentPrefix, options));
-};
-
-/**
- * Resolves current shell line prefix and extracted command-only prefix.
- *
- * @param terminal Source xterm instance.
- * @param options Optional prompt parsing configuration.
- * @returns Cursor row and command prefix context, or `null` when unavailable.
- */
-export const resolveTerminalCurrentLinePrefix = (
-  terminal: Terminal,
-  options?: CommandStartResolveOptions,
-): {
-  fullLinePrefix: string;
-  commandPrefix: string;
-  commandStartColumn: number;
-  commandPrefixStartOffset: number;
-  cursorRow: number;
-} | null => {
-  const activeBuffer = terminal.buffer.active;
-  const cursorY = activeBuffer.cursorY;
-  const cursorX = activeBuffer.cursorX;
-  const absoluteLineIndex = activeBuffer.baseY + cursorY;
-  const line = activeBuffer.getLine(absoluteLineIndex);
-
-  if (!line) {
-    return null;
-  }
-
-  const visualLinePrefix = line.translateToString(true, 0, cursorX);
-
-  // Reconstruct the wrapped logical line so long commands keep full context for completion.
-  const wrappedSegments: string[] = [visualLinePrefix];
-  let scanLineIndex = absoluteLineIndex;
-  while (scanLineIndex > 0) {
-    const currentLine = activeBuffer.getLine(scanLineIndex);
-    if (!currentLine?.isWrapped) {
-      break;
-    }
-
-    const previousLine = activeBuffer.getLine(scanLineIndex - 1);
-    if (!previousLine) {
-      break;
-    }
-
-    wrappedSegments.unshift(previousLine.translateToString(true));
-    scanLineIndex -= 1;
-  }
-
-  const fullLinePrefix = wrappedSegments.join('');
-  const commandPrefixStartOffset = resolveCommandStartOffset(fullLinePrefix, options);
-  const commandStartColumn = resolveCommandStartOffset(visualLinePrefix, options);
-
-  return {
-    fullLinePrefix,
-    commandPrefix: fullLinePrefix.slice(commandPrefixStartOffset),
-    commandStartColumn,
-    commandPrefixStartOffset,
-    cursorRow: cursorY,
-  };
 };
 
 /**
@@ -1102,21 +857,16 @@ const safeDecodePathComponent = (value: string): string => {
 };
 
 /**
- * Resolves terminal selection text into a remote SFTP directory path candidate.
+ * Parses an explicit terminal directory selection without consulting current or cached Shell state.
  *
  * This parser intentionally accepts only explicit POSIX-like directory strings:
  * absolute paths, home-relative paths, and dot-relative paths. Bare relative
- * names are excluded. Dot-relative paths are resolved only when the source pane
- * has a usable physical cwd. Dot components remain intact for remote symbolic-link resolution.
+ * names are excluded. Context-dependent paths stay relative until the caller obtains fresh directory metadata.
  *
  * @param text Raw terminal selection text.
- * @param directory Fresh directory metadata belonging to the source pane.
- * @returns Normalized path candidate or `null` when selection is not a safe directory path.
+ * @returns A validated absolute, tilde-relative or dot-relative path, or null for unsupported text.
  */
-export const resolveSftpDirectoryPathFromSelection = (
-  text: string,
-  directory?: ShellDirectoryContext | null,
-): string | null => {
+export const parseSftpDirectorySelection = (text: string): string | null => {
   const firstLine = text.trim();
   if (/[\r\n]/u.test(firstLine) || firstLine.includes('\u0000')) return null;
   if (!firstLine) {
@@ -1134,10 +884,25 @@ export const resolveSftpDirectoryPathFromSelection = (
     return null;
   }
 
-  if (withoutTrailingSlash.startsWith('/')) return withoutTrailingSlash;
-  if (withoutTrailingSlash.startsWith('~'))
-    return directory?.home ? directory.home + withoutTrailingSlash.slice(1) : null;
-  return directory?.physical ? directory.physical + '/' + withoutTrailingSlash : null;
+  return withoutTrailingSlash;
+};
+
+/**
+ * Resolves relative selections using an original-Shell directory confirmed at action time.
+ * Absolute paths need no directory permission; symbolic-link dot components remain for SFTP to resolve.
+ * @param text Raw selection text.
+ * @param directory Fresh source-pane metadata, never a retained last-known directory.
+ * @returns Absolute SFTP candidate, or null when required context is unavailable.
+ */
+export const resolveSftpDirectoryPathFromSelection = (
+  text: string,
+  directory?: ShellDirectoryContext | null,
+): string | null => {
+  const candidate = parseSftpDirectorySelection(text);
+  if (!candidate) return null;
+  if (candidate.startsWith('/')) return candidate;
+  if (candidate.startsWith('~')) return directory?.home ? directory.home + candidate.slice(1) : null;
+  return directory?.physical ? directory.physical + '/' + candidate : null;
 };
 
 /**

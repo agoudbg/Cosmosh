@@ -1,8 +1,8 @@
 import type { ShellEditorBuffer, ShellEditorTarget } from '@cosmosh/api-contract';
 
 import { normalizeEditorBuffer } from '../editor-protocol.js';
-import { resolveCommandMetadata } from './engine.js';
 import { scoreCompletionMatch } from './matching.js';
+import { resolveCommandMetadata } from './metadata.js';
 import {
   buildShellCompletionReplacement,
   parseShellCompletionContext,

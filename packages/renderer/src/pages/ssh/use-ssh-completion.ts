@@ -2,6 +2,7 @@ import type {
   SettingsValues,
   ShellContext,
   TerminalCompletionAcceptResult,
+  TerminalCompletionSources,
   TerminalCompletionUpdate,
 } from '@cosmosh/api-contract';
 import type { Terminal } from '@xterm/xterm';
@@ -24,6 +25,7 @@ import { type AutocompleteInteractionMode, resolveAutocompleteKeyAction } from '
 import {
   bindCompletionViewUpdate,
   canRequestTerminalCompletion,
+  completionQueryNotice,
   type CompletionViewRequest,
   retainsCompletionView,
   shouldQueryAfterTerminalInput,
@@ -61,6 +63,9 @@ type PendingAcceptance = {
   chain: boolean;
 };
 
+/** Text-free source outcomes belong to one unchanged original Shell observation. */
+type SourceDiagnosticOwner = { paneId: string } & Pick<ShellContext, 'sessionId' | 'shellInstanceId' | 'revision'>;
+
 /**
  * Displays opaque snapshot candidates and delegates every edit to the original Shell.
  * Stable transport callbacks read current settings through refs, so changing menu state never reconnects a PTY.
@@ -79,6 +84,8 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
   const modeRef = React.useRef<AutocompleteInteractionMode>('passive');
   const autocompleteMenuRef = React.useRef<TerminalAutocompleteMenuHandle | null>(null);
   const [autocompleteItems, setAutocompleteItems] = React.useState<TerminalAutocompleteItem[]>([]);
+  const [autocompleteSources, setAutocompleteSources] = React.useState<TerminalCompletionSources | null>(null);
+  const sourceOwnerRef = React.useRef<SourceDiagnosticOwner | null>(null);
   const [autocompleteFocused, setAutocompleteFocused] = React.useState(false);
   const [autocompleteAnchor, setAutocompleteAnchor] = React.useState<TerminalAutocompleteAnchor | null>(null);
 
@@ -109,8 +116,8 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
     if (socket?.readyState === WebSocket.OPEN) sendClientMessage(socket, { type: 'completion-cancel', requestId });
   }, []);
 
-  /** @returns Nothing; authority is revoked before any optional menu callback can fail. */
-  const closeAutocomplete = React.useCallback((): void => {
+  /** @returns Nothing; dismissal revokes edits while preserving text-free diagnostics for the status dialog. */
+  const dismissAutocomplete = React.useCallback((): void => {
     clearTimer();
     const query = requestRef.current;
     requestRef.current = null;
@@ -122,6 +129,27 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
     }
     hideMenu();
   }, [clearTimer, hideMenu, sendCancel]);
+
+  /** @returns Nothing after invalidating source evidence and every pending operation. */
+  const closeAutocomplete = React.useCallback((): void => {
+    sourceOwnerRef.current = null;
+    setAutocompleteSources(null);
+    dismissAutocomplete();
+  }, [dismissAutocomplete]);
+
+  /** @param paneId Source owner. @param context Current observation. @param sources Text-free outcomes. @returns Nothing. */
+  const updateSourceDiagnostics = React.useCallback(
+    (paneId: string, context: ShellContext, sources: TerminalCompletionSources): void => {
+      sourceOwnerRef.current = {
+        paneId,
+        sessionId: context.sessionId,
+        shellInstanceId: context.shellInstanceId,
+        revision: context.revision,
+      };
+      setAutocompleteSources({ ...sources });
+    },
+    [],
+  );
 
   /** @param paneId Requested pane. @returns Whether the current UI and original Shell permit an observation. */
   const available = React.useCallback((paneId: string): boolean => {
@@ -183,6 +211,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
       requestRef.current = {
         paneId,
         requestId,
+        trigger,
         sessionId: context.sessionId,
         shellInstanceId: context.shellInstanceId!,
         promptGeneration: context.promptGeneration,
@@ -237,6 +266,16 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
   /** @param paneId Context owner. @param context Newly received state. @returns Nothing. */
   const handleAutocompleteContext = React.useCallback(
     (paneId: string, context: ShellContext): void => {
+      const owner = sourceOwnerRef.current;
+      if (
+        owner?.paneId === paneId &&
+        (owner.revision !== context.revision ||
+          owner.sessionId !== context.sessionId ||
+          owner.shellInstanceId !== context.shellInstanceId)
+      ) {
+        sourceOwnerRef.current = null;
+        setAutocompleteSources(null);
+      }
       const request = requestRef.current;
       if (request?.paneId === paneId && !retainsCompletionView(request, context)) closeAutocomplete();
       const acceptance = acceptanceRef.current;
@@ -255,11 +294,22 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
       const bound = available(paneId)
         ? bindCompletionViewUpdate(request, paneId, options.getPaneContext(paneId), payload)
         : null;
+      if (payload.status !== 'ready') {
+        const current = available(paneId) && retainsCompletionView(request, options.getPaneContext(paneId));
+        closeAutocomplete();
+        if (current && payload.status !== 'stale') {
+          updateSourceDiagnostics(paneId, options.getPaneContext(paneId)!, payload.sources);
+          const notice = request.trigger === 'manual' ? completionQueryNotice(payload) : null;
+          if (notice) options.notifyWarning(t(notice));
+        }
+        return;
+      }
       if (!bound) {
         closeAutocomplete();
         return;
       }
       requestRef.current = bound;
+      updateSourceDiagnostics(paneId, options.getPaneContext(paneId)!, payload.sources);
       const items = payload.items.filter(
         (item) => item.source !== 'history' || options.terminalAutoCompleteHistoryEnabled,
       );
@@ -273,7 +323,12 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
       }
       // An empty early batch keeps an explicit query pending until its slower sources finish.
       if (items.length === 0) {
-        if (payload.complete) closeAutocomplete();
+        if (payload.complete) {
+          closeAutocomplete();
+          updateSourceDiagnostics(paneId, options.getPaneContext(paneId)!, payload.sources);
+          const notice = request.trigger === 'manual' ? completionQueryNotice({ ...payload, items }) : null;
+          if (notice) options.notifyWarning(t(notice));
+        }
         return;
       }
       const anchor = resolveAnchor();
@@ -286,7 +341,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
       setAutocompleteAnchor(anchor);
       if (modeRef.current === 'requested') setMode('focused');
     },
-    [available, closeAutocomplete, resolveAnchor, setMode],
+    [available, closeAutocomplete, resolveAnchor, setMode, updateSourceDiagnostics],
   );
 
   /** @param candidateId Identity selected from the rendered menu. @returns Nothing; never substitutes another row or presses Enter. */
@@ -357,7 +412,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
       });
       if (action === 'pass') return;
       if (action === 'dismiss-pass') {
-        closeAutocomplete();
+        dismissAutocomplete();
         return;
       }
       event.preventDefault();
@@ -367,9 +422,9 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
       if (action === 'next') autocompleteMenuRef.current?.moveNext();
       if (action === 'previous') autocompleteMenuRef.current?.movePrevious();
       if (action === 'accept') acceptAutocompleteCandidate(autocompleteMenuRef.current?.getActiveId() ?? null);
-      if (action === 'close') closeAutocomplete();
+      if (action === 'close') dismissAutocomplete();
     },
-    [acceptAutocompleteCandidate, available, closeAutocomplete, scheduleAutocompleteRequest],
+    [acceptAutocompleteCandidate, available, dismissAutocomplete, scheduleAutocompleteRequest],
   );
 
   /** @returns Nothing after granting the existing list keyboard ownership without moving focus away from xterm. */
@@ -404,16 +459,16 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
       const withinTerminal = options.terminalRef.current?.element?.contains(event.target);
       const withinMenu =
         options.wrapperRef.current?.contains(event.target) && event.target.closest('[data-terminal-autocomplete]');
-      if (!withinTerminal && !withinMenu) closeAutocomplete();
+      if (!withinTerminal && !withinMenu) dismissAutocomplete();
     };
-    window.addEventListener('blur', closeAutocomplete);
+    window.addEventListener('blur', dismissAutocomplete);
     document.addEventListener('focusin', handleFocus);
     return () => {
-      window.removeEventListener('blur', closeAutocomplete);
+      window.removeEventListener('blur', dismissAutocomplete);
       document.removeEventListener('focusin', handleFocus);
       closeAutocomplete();
     };
-  }, [closeAutocomplete]);
+  }, [closeAutocomplete, dismissAutocomplete]);
 
   React.useEffect(() => {
     const options = optionsRef.current;
@@ -448,6 +503,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
 
   return {
     autocompleteItems,
+    autocompleteSources,
     autocompleteFocused,
     autocompleteInputElement: params.terminalRef.current?.textarea ?? null,
     autocompleteAnchor,

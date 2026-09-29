@@ -1,4 +1,9 @@
-import type { SettingsValues, ShellDirectoryContext, ShellHistoryView } from '@cosmosh/api-contract';
+import type {
+  SettingsValues,
+  ShellDirectoryContext,
+  ShellHistoryView,
+  TerminalCompletionSources,
+} from '@cosmosh/api-contract';
 import { type ISearchOptions, type SearchAddon } from '@xterm/addon-search';
 import type { SerializeAddon } from '@xterm/addon-serialize';
 import { type ITerminalOptions, type Terminal } from '@xterm/xterm';
@@ -54,6 +59,7 @@ import {
   type TerminalWebglAddonRuntime,
   type TerminalWebLinksSettings,
 } from './terminal-addons';
+import { TerminalDirectoryRequests } from './terminal-directory-requests';
 import { useSshAutocomplete } from './use-ssh-completion';
 import { useSshMirrorPanes } from './use-ssh-mirror-panes';
 import { useSshPrimarySession } from './use-ssh-primary-session';
@@ -203,6 +209,7 @@ export type UseSshCoreParams = {
   sshConnectionTimeoutSec: number;
   terminalAutoCompleteEnabled: boolean;
   remoteEnhancementsInputEnabled: boolean;
+  remoteEnhancementsCwdEnabled: boolean;
   remoteEnhancementsHistoryEnabled: boolean;
   terminalAutoCompleteHistoryEnabled: boolean;
   terminalAutoCompleteBuiltInCommandsEnabled: boolean;
@@ -248,7 +255,6 @@ export type SshCoreState = {
   remoteBootstrapStatus: RemoteBootstrapStatus | null;
   remoteEnhancementRuntimeStatus: RemoteEnhancementRuntimeStatus | null;
   remoteEnhancementsDebugEvents: RemoteEnhancementsDebugEvent[];
-  shellDirectory: ShellDirectoryContext | null;
   commandTimelineModels: Record<string, TerminalCommandTimelineModel>;
   hostFingerprintPrompt: HostFingerprintPrompt | null;
   canSplitTerminal: boolean;
@@ -257,6 +263,7 @@ export type SshCoreState = {
   dismissedSelectionText: string | null;
   autocompleteItems: ReturnType<typeof useSshAutocomplete>['autocompleteItems'];
   autocompleteFocused: boolean;
+  autocompleteSources: TerminalCompletionSources | null;
   autocompleteInputElement: HTMLTextAreaElement | null;
   credentialFillOffer: SshPaneState['credentialFillOffer'];
   credentialFillPending: boolean;
@@ -268,8 +275,8 @@ export type SshCoreState = {
  * Declarative operations exposed by `useSshCore`.
  */
 export type SshCoreActions = {
-  /** Reads a source pane's current directory at action time, excluding paused or unconfirmed reports. */
-  getPaneDirectory: (paneId: string) => ShellDirectoryContext | null;
+  /** Requests a fresh original-Shell directory observation; changed input or connection resolves to null. */
+  requestPaneDirectory: (paneId: string) => Promise<ShellDirectoryContext | null>;
   /**
    * Activates a pane and routes follow-up input/socket interactions to it.
    *
@@ -449,16 +456,6 @@ export type UseSshCoreResult = {
  * @returns Declarative SSH page model (state + actions + required DOM refs).
  */
 export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
-  /**
-   * Reads the source pane immediately, including between activation and React's next render.
-   * @param paneId Pane that owns the selected text.
-   * @returns Confirmed metadata only while the original Shell remains usable.
-   */
-  const getPaneDirectory = React.useCallback((paneId: string): ShellDirectoryContext | null => {
-    const context = paneStateMapRef.current[paneId]?.shellContext;
-    return context?.status === 'ready' && context.permissions.cwd ? context.cwd : null;
-  }, []);
-
   const {
     tabId,
     isActive,
@@ -629,6 +626,30 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   const connectionError = activePaneState.connectionError;
   const telemetryState = activePaneState.telemetryState;
   const historyReadAllowedRef = React.useRef(remoteEnhancementsHistoryEnabled);
+  const directoryReadAllowedRef = React.useRef(params.isActive && params.remoteEnhancementsCwdEnabled);
+  const directoryRequestsRef = React.useRef<TerminalDirectoryRequests | null>(null);
+  if (!directoryRequestsRef.current) {
+    directoryRequestsRef.current = new TerminalDirectoryRequests((paneId) => {
+      const runtime = paneRuntimeMapRef.current.get(paneId);
+      const pane = paneStateMapRef.current[paneId];
+      const socket = runtime?.socket;
+      if (
+        !directoryReadAllowedRef.current ||
+        activePaneIdRef.current !== paneId ||
+        socket?.readyState !== WebSocket.OPEN ||
+        pane?.connectionState !== 'connected' ||
+        !pane.shellContext
+      )
+        return null;
+      return { socket, context: pane.shellContext, send: (message) => sendClientMessage(socket, message) };
+    });
+  }
+  const directoryRequests = directoryRequestsRef.current;
+  React.useLayoutEffect(() => {
+    directoryReadAllowedRef.current = params.isActive && params.remoteEnhancementsCwdEnabled;
+    if (!directoryReadAllowedRef.current) directoryRequests.invalidate();
+  }, [directoryRequests, params.isActive, params.remoteEnhancementsCwdEnabled]);
+  React.useEffect(() => () => directoryRequests.invalidate(), [directoryRequests]);
   const historyView: ShellHistoryView | null =
     connectionIntent.target?.type === 'local-terminal'
       ? null
@@ -830,6 +851,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
 
   const {
     autocompleteItems,
+    autocompleteSources,
     autocompleteFocused,
     autocompleteInputElement,
     focusAutocomplete,
@@ -872,6 +894,15 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     notifyWarning,
   });
 
+  /** @param paneId Selection owner. @returns Fresh directory metadata or null after a canceled/unavailable observation. */
+  const requestPaneDirectory = React.useCallback(
+    (paneId: string) => {
+      closeAutocompleteRef.current();
+      return directoryRequests.request(paneId);
+    },
+    [closeAutocompleteRef, directoryRequests],
+  );
+
   /**
    * Applies one pane transport transition to the shared reducer.
    *
@@ -882,6 +913,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    */
   const setPaneTransportState = React.useCallback(
     (paneId: string, nextState: SshConnectionState, error = ''): void => {
+      if (nextState !== 'connected') directoryRequests.invalidate(paneId);
       dispatchPaneState({
         type: 'transport-state',
         paneId,
@@ -889,7 +921,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         connectionError: error,
       });
     },
-    [dispatchPaneState],
+    [directoryRequests, dispatchPaneState],
   );
 
   /**
@@ -905,9 +937,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         clearTerminalCommandMarkers(paneRuntime);
       }
       resetAutocompletePaneState(paneId);
+      directoryRequests.invalidate(paneId);
       dispatchPaneState({ type: 'reset-pane', paneId });
     },
-    [dispatchPaneState, paneRuntimeMapRef, resetAutocompletePaneState],
+    [directoryRequests, dispatchPaneState, paneRuntimeMapRef, resetAutocompletePaneState],
   );
 
   /**
@@ -921,6 +954,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   const handlePaneServerMessage = React.useCallback(
     (paneId: string, terminal: Terminal, payload: ServerInboundMessage): void => {
       if (payload.type === 'shell-history' && !historyReadAllowedRef.current) return;
+      if (payload.type === 'directory-result') {
+        directoryRequests.receive(paneId, payload);
+        return;
+      }
       if (payload.type === 'output') {
         terminal.write(payload.data);
         return;
@@ -938,6 +975,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       const receivedAt = Date.now();
       const paneRuntime = paneRuntimeMapRef.current.get(paneId);
       if (payload.type === 'shell-context') {
+        directoryRequests.contextChanged(paneId, payload.context);
         handleAutocompleteContext(paneId, payload.context);
         if (!payload.context.permissions.input && paneRuntime) clearTerminalCommandMarkers(paneRuntime);
       }
@@ -986,6 +1024,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       handleCompletionResponse,
       handleCompletionAcceptResult,
       handleAutocompleteContext,
+      directoryRequests,
       paneRuntimeMapRef,
     ],
   );
@@ -999,6 +1038,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    */
   const preparePaneInput = React.useCallback(
     (paneId: string, inputData: string): string | undefined => {
+      directoryRequests.invalidate(paneId);
       let submissionToken: string | undefined;
       if (['\r', '\n', '\u0003', '\u0004'].some((boundary) => inputData.includes(boundary))) {
         submissionToken = crypto.randomUUID();
@@ -1022,7 +1062,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       }
       return submissionToken;
     },
-    [dispatchPaneState, paneRuntimeMapRef],
+    [directoryRequests, dispatchPaneState, paneRuntimeMapRef],
   );
 
   const {
@@ -1071,12 +1111,13 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       runtime.applyActivePane(paneId, terminalContainerRef);
 
       if (didPaneChange) {
+        directoryRequests.invalidate();
         closeAutocompleteRef.current();
       }
 
       refreshSelectionAnchorRef.current();
     },
-    [activePaneIdRef, closeAutocompleteRef],
+    [activePaneIdRef, closeAutocompleteRef, directoryRequests],
   );
 
   React.useEffect(() => {
@@ -1176,6 +1217,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       }
 
       const paneRuntime = runtimeRef.current.paneRuntimeMap.get(paneId);
+      directoryRequests.invalidate(paneId);
       paneRuntime?.dispose();
       runtimeRef.current.paneRuntimeMap.delete(paneId);
       runtimeRef.current.sessionMap.delete(paneId);
@@ -1183,7 +1225,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       closeAutocompleteRef.current();
       setTerminalPaneIds(transition.paneIds);
     },
-    [activatePane, activePaneIdRef, closeAutocompleteRef, dispatchPaneState, terminalPaneIds],
+    [activatePane, activePaneIdRef, closeAutocompleteRef, directoryRequests, dispatchPaneState, terminalPaneIds],
   );
 
   /**
@@ -1423,10 +1465,18 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       )
         return;
       dispatchPaneState({ type: 'credential-fill-requested', paneId, token });
+      directoryRequests.invalidate(paneId);
       sendClientMessage(runtime.socket, { type: 'credential-fill', token });
       runtime.terminal.focus();
     },
-    [activePaneIdRef, dispatchPaneState, isActive, paneRuntimeMapRef, terminalAutoCompletePasswordEnabled],
+    [
+      activePaneIdRef,
+      directoryRequests,
+      dispatchPaneState,
+      isActive,
+      paneRuntimeMapRef,
+      terminalAutoCompletePasswordEnabled,
+    ],
   );
 
   /**
@@ -1473,11 +1523,6 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         return;
       }
 
-      if (resolvedTerminalTargetRef.current?.type === 'local-terminal') {
-        if (sourceId === null && command.trim())
-          sendClientMessage(socket, { type: 'history-delete', command: command.trim() });
-        return;
-      }
       const paneId = activePaneIdRef.current;
       const pane = paneStateMapRef.current[paneId];
       const view = pane?.historyView;
@@ -1494,7 +1539,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       dispatchPaneState({ type: 'history-removal-requested', paneId, requestId, sourceId });
       sendClientMessage(socket, { type: 'shell-history-remove', requestId, sourceId, command });
     },
-    [socketRef, resolvedTerminalTargetRef, activePaneIdRef, dispatchPaneState],
+    [socketRef, activePaneIdRef, dispatchPaneState],
   );
 
   /**
@@ -1685,7 +1730,6 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
       remoteEnhancementsDebugEvents,
-      shellDirectory: getPaneDirectory(activePaneId),
       commandTimelineModels,
       hostFingerprintPrompt,
       canSplitTerminal: terminalPaneIds.length < MAX_TERMINAL_PANES,
@@ -1693,6 +1737,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       selectionBarPosition,
       dismissedSelectionText,
       autocompleteItems,
+      autocompleteSources,
       autocompleteFocused,
       autocompleteInputElement,
       credentialFillOffer: activePaneState.credentialFillOffer,
@@ -1701,7 +1746,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       autocompleteAnchor,
     },
     actions: {
-      getPaneDirectory,
+      requestPaneDirectory,
       activatePane,
       splitPane,
       closePane,

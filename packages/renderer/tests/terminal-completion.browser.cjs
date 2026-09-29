@@ -226,6 +226,43 @@ async (page) => {
   results.push('shortcut and list button explicitly query native sources before granting menu ownership');
 
   await reset(); await show(); await focus();
+  for (const manual of [false, true]) {
+    await reset();
+    if (manual) await page.keyboard.press('Control+Shift+Space');
+    else { await page.keyboard.type('gi'); await page.waitForFunction(() => window.terminalInteractionFixture.messages.some((entry) => entry.payload.type === 'completion-query')); }
+    await page.evaluate(() => window.terminalInteractionFixture.respond({ items: [], complete: true,
+      sources: { history: 'ok', metadata: 'ok', paths: 'timeout', native: 'disabled' } }));
+    await paint();
+    check((await page.evaluate(() => window.terminalInteractionFixture.warnings)).length === Number(manual), 'Query feedback ignored explicit entry');
+    check(await page.evaluate(() => window.terminalInteractionFixture.sources()?.paths) === 'timeout', 'Source failure was not available to capability diagnostics');
+    await page.getByRole('button', { name: /Enhancement Status|增强状态/ }).click();
+    const status = page.getByRole('dialog');
+    await status.waitFor();
+    check(/timed out|超时/i.test(await status.locator('[data-enhancement-feature="paths"]').innerText()), 'Opening the real status dialog erased the source failure');
+    check(await page.evaluate(() => window.terminalInteractionFixture.sources()?.paths) === 'timeout', 'Focus dismissal erased source evidence');
+    await page.keyboard.press('Escape');
+    await page.locator('#pane-1 textarea').focus();
+    await page.keyboard.type('x'); await paint();
+    check(await page.evaluate(() => window.terminalInteractionFixture.sources()) === null, 'New input retained old source diagnostics');
+  }
+  results.push('manual failures survive status dialog focus and new input clears their diagnostic lifetime');
+
+  for (const change of ['pane', 'session', 'shell', 'context', 'permission']) {
+    await reset(); await page.keyboard.press('Control+Shift+Space');
+    await page.evaluate(() => window.terminalInteractionFixture.respond({ items: [], complete: true,
+      sources: { history: 'ok', metadata: 'ok', paths: 'timeout', native: 'disabled' } }));
+    await paint();
+    if (change === 'pane') await page.evaluate(() => window.terminalInteractionFixture.focusPane('pane-2'));
+    if (change === 'session') await page.evaluate(() => window.terminalInteractionFixture.context({ sessionId: 'replacement-session' }));
+    if (change === 'shell') await page.evaluate(() => window.terminalInteractionFixture.context({ shellInstanceId: 'replacement-shell' }));
+    if (change === 'context') await page.evaluate(() => window.terminalInteractionFixture.context({ revision: 2 }));
+    if (change === 'permission') await page.evaluate(() => window.terminalInteractionFixture.setInputAllowed(false));
+    await paint();
+    check(await page.evaluate(() => window.terminalInteractionFixture.sources()) === null, 'Stale diagnostics survived ' + change);
+  }
+  results.push('source diagnostics cannot cross pane, session, shell, revision or permission changes');
+
+  await reset(); await show(); await focus();
   await page.screenshot({ path: '.playwright-cli/terminal-completion-focused.png' });
   await page.setViewportSize({ width: 440, height: 800 });
   await page.waitForFunction(() => { const rect = document.querySelector('[data-terminal-autocomplete]')?.getBoundingClientRect(); return rect && rect.left >= 0 && rect.right <= innerWidth; });

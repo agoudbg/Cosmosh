@@ -6,6 +6,7 @@ import type { ShellContext, TerminalCompletionUpdate } from '@cosmosh/api-contra
 import {
   bindCompletionViewUpdate,
   canRequestTerminalCompletion,
+  completionQueryNotice,
   type CompletionViewRequest,
   retainsCompletionView,
   shouldQueryAfterTerminalInput,
@@ -35,6 +36,7 @@ const context = (): ShellContext => ({
 const request = (): CompletionViewRequest => ({
   paneId: 'pane-1',
   requestId: 'query',
+  trigger: 'typing',
   sessionId: 'session',
   shellInstanceId: 'shell',
   promptGeneration: 3,
@@ -108,6 +110,28 @@ test('unsupported editor states and revoked permissions immediately remove query
   assert.equal(retainsCompletionView(request(), { ...context(), capabilities: ['input-snapshot'] }), false);
   for (const status of ['stale', 'unsupported', 'unavailable', 'unknown'] as const) {
     assert.equal(bindCompletionViewUpdate(request(), 'pane-1', context(), { ...update(), status }), null);
+  }
+});
+
+test('only final empty queries explain fixed source failures without exposing private diagnostics', () => {
+  assert.equal(completionQueryNotice(update()), null);
+  assert.equal(completionQueryNotice({ ...update(), complete: true, status: 'stale' }), null);
+  const complete = {
+    ...update(),
+    complete: true,
+    sources: { history: 'ok', metadata: 'ok', paths: 'ok', native: 'disabled' },
+  } as const;
+  assert.equal(completionQueryNotice(complete), 'ssh.autocomplete.noMatches');
+  for (const [source, reason] of [
+    ['timeout', 'queryTimeout'],
+    ['private', 'queryPrivate'],
+    ['unavailable', 'queryUnavailable'],
+    ['unsupported', 'queryUnsupported'],
+  ] as const) {
+    assert.equal(
+      completionQueryNotice({ ...complete, sources: { ...complete.sources, native: source } }),
+      'ssh.enhancementStatus.reasons.' + reason,
+    );
   }
 });
 

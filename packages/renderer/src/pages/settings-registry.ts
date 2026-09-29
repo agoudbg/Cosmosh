@@ -6,6 +6,13 @@
  * This file exists solely to keep existing import paths stable.
  */
 
+import { SETTINGS_REGISTRY as SHARED_SETTINGS_REGISTRY } from '@cosmosh/api-contract';
+
+/** Compatibility-only prompt parsing remains readable for old timeline preferences, but cannot configure suggestions. */
+export const VISIBLE_SETTINGS_REGISTRY = SHARED_SETTINGS_REGISTRY.filter(
+  (setting) => setting.key !== 'terminalAutoCompletePromptRegex',
+);
+
 export {
   getVisibleCategories,
   paginateSettingsByCategory,

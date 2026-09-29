@@ -67,6 +67,7 @@ import {
   SETTINGS_CATEGORY_IDS,
   SETTINGS_REGISTRY,
   type SettingsCategoryId,
+  VISIBLE_SETTINGS_REGISTRY,
 } from './settings-registry';
 
 type SettingsFormValue = string | boolean | AppSettingsValues[keyof AppSettingsValues];
@@ -82,7 +83,7 @@ const AUTOCOMPLETE_DEPENDENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>
   'terminalAutoCompleteMinChars',
   'terminalAutoCompleteMaxItems',
   'terminalAutoCompleteFuzzyMatch',
-  'terminalAutoCompletePromptRegex',
+  'terminalNativeCompletionMode',
 ]);
 
 const FALLBACK_TIME_ZONE_OPTIONS = [
@@ -487,7 +488,7 @@ const Settings: React.FC<SettingsProps> = ({ initialCategoryId, initialSearchQue
       return null;
     }
 
-    const matchedSetting = SETTINGS_REGISTRY.find((item) => item.key.toLowerCase() === normalizedSearch);
+    const matchedSetting = VISIBLE_SETTINGS_REGISTRY.find((item) => item.key.toLowerCase() === normalizedSearch);
     return matchedSetting?.key ?? null;
   }, [normalizedSearch]);
 
@@ -521,14 +522,14 @@ const Settings: React.FC<SettingsProps> = ({ initialCategoryId, initialSearchQue
     };
 
     if (!normalizedSearch) {
-      return SETTINGS_REGISTRY;
+      return VISIBLE_SETTINGS_REGISTRY;
     }
 
     if (exactSettingKeySearch) {
-      return SETTINGS_REGISTRY.filter((item) => item.key === exactSettingKeySearch);
+      return VISIBLE_SETTINGS_REGISTRY.filter((item) => item.key === exactSettingKeySearch);
     }
 
-    return SETTINGS_REGISTRY.filter((item) => {
+    return VISIBLE_SETTINGS_REGISTRY.filter((item) => {
       const categoryLabel = resolveCategoryLabel(item.category);
       const descriptionText = t(item.descriptionI18nKey);
       return matchesSearch(item, categoryLabel, descriptionText, normalizedSearch);

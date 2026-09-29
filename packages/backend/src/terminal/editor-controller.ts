@@ -109,6 +109,23 @@ export class ShellEditorController {
     }
   }
 
+  /**
+   * Observes only current directory/editor metadata, even when the previous public context is ready.
+   * @param signal This directory consumer's lifetime; canceling it cannot abort a later unrelated operation.
+   * @returns Fresh directory metadata after confirmation, or a fixed rejection without cached fallback.
+   */
+  async directory(signal: AbortSignal): Promise<ShellEditorResult> {
+    const state = this.state();
+    if (!state.permissions.cwd || !state.capabilities.includes('directory-read') || signal.aborted)
+      return { status: 'unavailable' };
+    const result = await this.run('context', state, undefined, undefined, signal);
+    if (result.status !== 'ok') return result;
+    if (this.state() !== state || signal.aborted) return { status: 'stale' };
+    if (!result.snapshot.directory?.physical) return { status: 'unavailable' };
+    this.confirm(state, result.snapshot);
+    return result;
+  }
+
   /** @returns A fresh complete input snapshot, or an explicit unsupported/unavailable result. */
   async snapshot(): Promise<EditorSnapshotResult> {
     const state = this.state();

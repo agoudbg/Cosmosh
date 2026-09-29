@@ -283,6 +283,28 @@ test('new messages accept only canonical opaque identifiers and reject input/set
   );
 });
 
+test('persisted history display preference filters native records without revoking read permission', async (t) => {
+  for (const enabled of [false, true]) {
+    const h = harness({
+      settings: {
+        terminalAutoCompleteHistoryEnabled: enabled,
+        terminalAutoCompleteBuiltInCommandsEnabled: false,
+        terminalAutoCompletePathEnabled: false,
+        terminalNativeCompletionMode: 'off',
+      },
+    });
+    t.after(h.close);
+    await h.query().finished;
+    assert.equal(h.state().permissions.history, true);
+    const update = h.updates().at(-1)!;
+    assert.equal(update.sources.history, enabled ? 'ok' : 'disabled');
+    assert.equal(
+      update.items.some((item) => item.source === 'history'),
+      enabled,
+    );
+  }
+});
+
 test('immediate history/metadata stay visible while path and Fish sources append stable opaque IDs', async (t) => {
   const path = deferred<ShellPathQueryResult>();
   const native = deferred<ShellEditorResult>();

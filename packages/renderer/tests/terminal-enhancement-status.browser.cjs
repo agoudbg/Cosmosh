@@ -16,14 +16,29 @@ async (page) => {
   await page.keyboard.press('Enter');
   await page.getByRole('dialog').waitFor();
   check((await feature('history').innerText()).includes('Allowed · Available'), 'Empty successful history was unavailable');
-  check((await feature('input').innerText()).includes('not yet enabled'), 'Advertised input capability claimed enabled filling');
-  check((await feature('paths').innerText()).includes('not yet connected'), 'Path menu claimed available');
-  check((await feature('nativeCompletion').innerText()).includes('not yet connected'), 'Native menu claimed available');
+  check((await feature('input').innerText()).includes('Filling never executes the command'), 'Verified edit behavior missing');
+  check((await feature('paths').innerText()).includes('freshly confirmed remote directory'), 'Path source behavior missing');
+  check((await feature('nativeCompletion').innerText()).includes('when you enter the suggestion list'), 'Manual native query behavior missing');
   await page.screenshot({ path: '.playwright-cli/enhancement-status-desktop.png', animations: 'disabled' });
   await page.keyboard.press('Escape');
   await page.getByRole('dialog').waitFor({ state: 'hidden' });
   check(await button().evaluate((element) => element === document.activeElement), 'Escape did not restore button focus');
   results.push('keyboard opening, precise support claims and focus restoration');
+
+  await button().click();
+  await update({ completionSources: { history: 'ok', metadata: 'ok', paths: 'timeout', native: 'ok' } });
+  check((await feature('paths').innerText()).includes('source timed out'), 'Current source failure was hidden');
+  check((await feature('nativeCompletion').innerText()).includes('Allowed · Available'), 'One failed source disabled another');
+  await page.evaluate(() => {
+    const input = window.enhancementStatusFixture.read();
+    window.enhancementStatusFixture.update({ context: { ...input.context, editorAvailable: false } });
+  });
+  await page.waitForFunction(() => document.querySelector('[data-enhancement-feature="input"]').textContent.includes('not supported'));
+  check((await feature('directory').innerText()).includes('Allowed · Available'), 'Editor revocation removed confirmed CWD');
+  check((await feature('nativeCompletion').innerText()).includes('not supported'), 'Revoked editor still advertised native queries');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.enhancementStatusFixture.reset());
+  results.push('source failures remain separate and revoked editing preserves independent directory status');
 
   await button().click();
   await page.evaluate(() => {

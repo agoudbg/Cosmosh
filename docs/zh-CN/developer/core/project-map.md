@@ -68,6 +68,8 @@ flowchart TB
 
 ### `packages/renderer`
 
+- `src/pages/ssh/terminal-directory-requests.ts`将使用时确认的目录结果绑定请求分屏的原始传输和编辑器身份。单元测试覆盖取消、延迟回复、上下文修订号和通知失败；`use-ssh-core.ts`负责接入输入、分屏和会话生命周期。
+
 - `src/pages/ssh/remote-enhancement-status.ts`生成不含命令文本的逐项功能诊断；`RemoteEnhancementsStatus.tsx`使用共享界面组件展示当前窗格的状态窗口。单元测试和浏览器测试覆盖过期连接状态、独立历史权限、部分目录信息和窗格切换。
 
 - **角色**：React UI 层。
@@ -87,6 +89,10 @@ flowchart TB
 
 ### `packages/backend`
 
+- `completion/metadata.ts`直接读取生成的命令资料，接收已从快照解析的字词，不重复解析终端显示内容。`types.ts`只描述资料结构；旧补全引擎、本地路径来源和原始文本消息已移除。`legacy-wire.test.ts`验证退役消息无法触发执行、修改或原始快照公开，以及本地原生按键保持原样。
+
+- `src/terminal/directory-query.ts`负责仅观察目录的即时操作周期。它等待实际补全来源清理，再调用`ShellEditorController.directory`，复核当前 CWD 权限，并且不返回保留的旧目录。`directory-query.test.ts`使用真实控制器，仅隔离 SSH／设置／通知边界，验证输入、权限、请求替换、超时和清理竞态。
+
 - `completion/native-completion.ts`验证独立 Fish 查询结果，并生成标为`source: 'fish'`的快照字面修改。`ShellEditorController.nativeCompletion`将请求绑定到已缓存观察及独立权限。`remote-bootstrap/internal/editor/completion*.go`与嵌入的`fish-completion.fish`负责仅在远端传递环境、进程隔离、限制和取消。`native-completion.live-test.ts`验证实际 SSH 来源。
 
 - `src/terminal/shell-context.ts`：原始 Shell 身份、权限、代数与配对提示符的目录状态。未确认报告仅留在后端，传输快照只包含可用目录和仅供显示的上次目录，不存储当前输入或凭据。
@@ -95,7 +101,7 @@ flowchart TB
 - `completion/snapshot-suggestions.ts`负责有界、从新到旧的历史整理、基于快照的静态资料修改，以及按完整修改排序去重。`completion/matching.ts`为各来源提供字面 Unicode 匹配。原生历史读取与生命周期接入由独立模块负责。
 - `completion/snapshot-completion.ts`负责每个 SSH 会话中的单个累积查询／填写周期、已保存设置检查、稳定候选编号、来源状态和取消。替换查询须等待远端清理，私有编辑器等待与后台上下文／历史任务相互协调。`snapshot-completion.test.ts`使用真实编辑器／来源控制器，仅隔离 SSH／设置边界；`path-cleanup.test.ts`验证延迟关闭确认和有界来源停用。
 - `packages/remote-bootstrap/internal/editor/history.go`验证有界的原生历史观察。Bash 与 Zsh 原生模块在传输前过滤私密记录，Fish 钩子执行自身的原生隐私策略。`editor-protocol.ts`与`ShellEditorController.history`／`deleteHistory`执行 Backend 独立权限边界。工作进程在原始 Shell 的预检匹配后授权单条完整记录，并将当前读取器中已确认的目标消失与文件更新分开报告。`bash-history.live-test.ts`、`zsh-history.live-test.ts`和`fish-history.live-test.ts`通过实际 Shell 验证读取及绑定来源的移除。
-- `completion/remote-path-query.ts`负责有界结构化 SSH 目录边界及逐会话查询取消与缓存；`completion/snapshot-paths.ts`将一次完整私有编辑器观察转为已经引用的字面路径草稿。`packages/remote-bootstrap/internal/paths`使用 Go 标准库读取目录。`path-query.live-test.ts`覆盖实际 SSH 文件名、大目录、权限、超时与取消及重新确认的目录观察。旧路径来源现在仅服务本地终端。
+- `completion/remote-path-query.ts`负责有界结构化 SSH 目录边界及逐会话查询取消与缓存；`completion/snapshot-paths.ts`将一次完整私有编辑器观察转为已经引用的字面路径草稿。`packages/remote-bootstrap/internal/paths`使用 Go 标准库读取目录。`path-query.live-test.ts`覆盖实际 SSH 文件名、大目录、权限、超时与取消及重新确认的目录观察。本地终端不使用猜测目录的路径来源。
 - `src/terminal/editor-controller.ts`负责每会话的单个私有快照、操作、合并后的上下文恢复、送达等待，以及原始 PID／输入边界精确检查。`editor-protocol.ts`校验输入、Unicode 和权限数据边界，维护固定的 Fish 按键／粘贴边界而不保留输入文本。`src/ssh/editor-exec.ts`负责有界 stdin/JSON SSH 交互，仅在预备观察匹配后请求有序修改授权。`src/terminal/integration/editor-fixture.ts`为 Bash、Zsh 和 Fish 实测共享生产环境的送达传输、实际助手安装与观察。
 - `packages/remote-bootstrap/internal/editor`负责 Linux 进程身份、私有 socket、按权限限定字段的数据请求、原生历史帧及 Bash 非阻塞二进制协议 v2。`internal/install/editor_bash_native.go`、`editor_zsh.go`和`editor_fish.go`生成适配器。`native/bash/cosmosh_bash.c`负责 Bash 5.1／5.2 的 Readline 空闲观察／填写及内存历史精确移除，并维护 GNU History 的当前位置。`native/zsh/cosmosh_zsh.c`负责 Zsh 5.8／5.9 的原子填写、Shell 持有的通知描述符、原生历史环观察与精确移除；脚本保留只读 ZLE 观察。`internal/install/helper.go`在钩子初始化前显式加载 ZLE。`native/bash/input_order.h`共享原生元数据检查。`internal/nativeassets`嵌入四个 Linux 模块（两种 Shell，各含 amd64／arm64）；`internal/install`安装并校验`cosmosh-bash.so`或`cosmosh_zsh.so`。`scripts/build-shell-native.mjs`与`scripts/shell-native`基于固定的 Debian Bullseye／glibc 2.31 基线构建模块。
 - `internal/session`负责协议 v2 帧、原始登录 Shell 的 PTY、有序输入／授权／撤销、调整尺寸及清理。`internal/inputorder`负责不含输入文本的固定 128 字节元数据、写入前记录接收／写入后记录送达、一次性授权到期及共享文件锁校验。`internal/editor/input_lock.go`验证 Fish 作用域内继承描述符的身份；交互适配器在网络或重绘工作前释放锁。`scripts/terminal-fixture/install_fish.py`仅在一次性镜像中安装固定 Fish；指定版本实测使用单独放置的程序，不更改测试账户。
@@ -110,10 +116,10 @@ flowchart TB
   - `src/sftp`：SFTP 浏览、下载、文件操作、任务调度与远端归档会话逻辑。`session-service.ts` 负责会话授权/生命周期与普通 `ssh2.sftp` 操作；`task-scheduler.ts` 负责每会话 total/heavy/mutation admission、POSIX path claim、绝对 deadline、取消信号与仅驻留内存的任务快照；`archive-service.ts` 在调度器独占 claim 下负责固定 POSIX 命令构造、能力探测、异步归档状态、暂存/提交、冲突合并、取消、审计与清理。单文件传输继续使用既有短期内存字节进度记录。
   - `src/settings`：设置默认值、请求校验解析，以及供 HTTP 路由和运行时服务复用的 AppSettings 读取器。
   - `src/validation-utils.ts`：后端 HTTP 边界校验共享原语，供路由与领域 payload 解析器复用。
-  - `src/local-terminal`：本地 PTY 会话逻辑（`node-pty`）。
-  - `src/terminal`：终端会话共享原语（WebSocket 消息规范化、历史命令解析、尺寸收敛、历史同步时序辅助）。
+  - `src/local-terminal`：本地 PTY 会话逻辑（`node-pty`）。精确补全和目录观察返回不可用；不再轮询或改写本地历史文件。
+  - `src/terminal`：终端会话共享原语（WebSocket 消息规范化、尺寸收敛、SSH 原生历史同步时序辅助）。
   - `src/terminal/integration`：真实 SSH PTY 测试客户端与 Shell 场景；`scripts/terminal-fixture`负责隔离容器、临时账户及生命周期命令。
-  - `src/terminal/completion`：终端自动补全共享领域模块（规范数据、排序引擎、补全响应组装），由 SSH 与本地终端会话服务共同使用。
+  - `src/terminal/completion`：SSH 快照补全领域，包括静态资料、快照字词解析、候选排序、来源协调和私有修改；本地终端只使用不可用响应辅助函数。
   - `src/terminal/credential-fill.ts`：有界可见密码提示的操作标识与登录密码可用性校验；SSH 会话服务负责权限检查和实际凭据写入，补全不包含凭据。
   - `src/db/prisma.ts`：Prisma 生命周期、运行时 migration 执行、schema 校验与结构化数据库错误。
   - `src/db/sqlcipher.ts`：生产 SQLCipher adapter factory、keyed connection 校验、旧明文库迁移与迁移中断恢复。

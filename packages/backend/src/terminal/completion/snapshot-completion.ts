@@ -150,6 +150,30 @@ export class SnapshotCompletionController {
     if (notify && !query.accepting) this.publishFailure(query, 'stale');
   }
 
+  /**
+   * Waits for the current sources' actual cleanup without transferring their input or candidate authority.
+   * @param signal Waiting consumer's lifetime; cancellation releases only this waiter.
+   * @returns Whether the captured source group finished before cancellation.
+   */
+  async waitForIdle(signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) return false;
+    const pending = this.work;
+    return await new Promise<boolean>((resolve) => {
+      /** @param ready Whether the source group completed. @returns Nothing after releasing the listener. */
+      const finish = (ready: boolean): void => {
+        signal.removeEventListener('abort', abort);
+        resolve(ready);
+      };
+      /** @returns Nothing; remote cleanup continues independently of this consumer. */
+      const abort = (): void => finish(false);
+      signal.addEventListener('abort', abort, { once: true });
+      void pending.then(
+        () => finish(!signal.aborted),
+        () => finish(false),
+      );
+    });
+  }
+
   /** @param requestId Query dismissed by its current pane. @returns Nothing; late cancellation cannot dismiss a new query. */
   cancel(requestId: string): void {
     if (this.active?.requestId === requestId || this.active?.acceptRequestId === requestId)

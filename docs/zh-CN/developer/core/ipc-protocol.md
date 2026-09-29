@@ -13,7 +13,7 @@ flowchart TB
 
 提交终端`input`时可附带不含输入内容的 UUID `submissionToken`。Backend 在`ShellContext`中回显最近收到的标识；Renderer 在匹配且可用的上下文到达前持续停用旧 ready 快照。这只确认 Backend 收到输入。无法确定归属的连续输入保持暂停，等待可信编辑器确认。Fish 和 Zsh 的`cwd-invalidated`只携带当前提示符代数，用于停用报告后发生变化的目录。
 
-现有终端 WebSocket 另外接受`editor-snapshot { requestId }`和`editor-apply { requestId, snapshotId, replacement: { text, cursor } }`。独立的`editor-snapshot-result`和`editor-apply-result`回包使输入内容不进入 OSC 调试历史。快照成功时包含不透明标识和获准字段，失败只返回固定状态。填入结果为`applied`、`stale`、`unavailable`、`unsupported`或`unknown`；本地终端返回`unavailable`。替换 WebSocket 会取消旧编辑器操作的归属，过期私有回包不发送给新客户端。不含文本的`editor-state` OSC 事件携带 PID／启动时间、提示符代数、可用性及当前拥有的触发标识，不增加 Electron IPC 通道。
+公开终端 WebSocket 只接受不透明的补全查询／取消／填写操作，不能读取原始编辑器快照或提供替换文本。原始输入、修改范围和替换缓冲保留在 Backend 持有的私有交互中；已移除的`completion-request`、`editor-snapshot`、`editor-apply`及未绑定来源的`history-delete`消息均被拒绝。没有发送方的无来源`history`服务端消息也已移除；原生历史通过携带原始 Shell 来源的`shell-history`提供。替换 WebSocket 会取消旧编辑器操作。不含文本的`editor-state` OSC 事件携带 PID／启动时间、提示符代数、可用性及当前拥有的触发标识，不增加 Electron IPC 通道。
 
 可用的 Zsh 编辑器要求`notification: { fd, inode }`；可用的 Fish 编辑器严格要求`notification: { signal: 'URG' }`。显式加载 ZLE 与原生模块后，Zsh 的`cosmosh_editor_apply notification`操作创建匿名管道；原始 Shell 持有并关闭这些非阻塞、执行子程序时关闭的描述符。这两种不含文本的通知不能混用或用于其他 Shell。Fish 通过验证后的 pidfd 发送固定信号，前端不能指定任意信号。私有 Go 工作进程报告准备完成后，Backend 再检查权限，并通过该进程的 stdin 发送`{ requestId, activate: true }`；之后才允许通知 Shell 或接受其观察结果。通知元数据、激活与私有输入都不增加 Electron IPC 通道。
 
@@ -21,13 +21,13 @@ flowchart TB
 
 ## 2. Channel 字典
 
-仅供 Backend 使用的编辑器`native-completion`操作要求 Fish、输入／CWD／原生权限、`includeDirectory: true`和完整匹配的`expected`快照，不允许替换内容。原始回调的导出环境只保留在远端 socket 协议中，不属于`ShellEditorSnapshot`。独立的`native-completions`结果包含`ShellNativeCompletionResult`：`ok`／`partial`最多携带 128 项`{ token, value, detail }`，`timeout`／`unavailable`不携带候选。这些结果不能作为输入修改、历史移除或普通快照的确认。`ShellCompletionCandidate`增加`argument`展示类型，不新增前端请求或 Electron IPC 通道，菜单接入仍待完成。
+仅供 Backend 使用的编辑器`native-completion`操作要求 Fish、输入／CWD／原生权限、`includeDirectory: true`和完整匹配的`expected`快照，不允许替换内容。原始回调的导出环境只保留在远端 socket 协议中，不属于`ShellEditorSnapshot`。独立的`native-completions`结果包含`ShellNativeCompletionResult`：`ok`／`partial`最多携带 128 项`{ token, value, detail }`，`timeout`／`unavailable`不携带候选。这些结果不能作为输入修改、历史移除或普通快照的确认。`ShellCompletionCandidate`增加`argument`展示类型，通过不透明补全查询提供结果，不增加 Electron IPC 通道。
 
-私有`editor-request`进程为 Bash、Zsh 和 Fish 提供`history`及`history-delete`。这两个仅供 Backend 使用的操作要求独立历史权限和`includeDirectory: false`；观察包含提示符／模式元数据和`ShellNativeHistory`，不附带当前输入或 CWD。私密模式结果不含命名空间或记录。删除要求`expected`包含一条完整原生记录和命名空间，不允许`replacement`，并在原生成员与来源检查后另行取得有序授权。`history-removed-from-reader`只确认原始读取器不再返回目标，不能确认历史文件持久化，也不能替代输入修改的`applied`结果。符合条件的三种 Shell 均声明`history-read`；Backend 使用这些操作同步原生历史并执行绑定来源的移除，不增加 Electron IPC 通道。候选编号补全菜单接入仍待第 13 步完成。
+私有`editor-request`进程为 Bash、Zsh 和 Fish 提供`history`及`history-delete`。这两个仅供 Backend 使用的操作要求独立历史权限和`includeDirectory: false`；观察包含提示符／模式元数据和`ShellNativeHistory`，不附带当前输入或 CWD。私密模式结果不含命名空间或记录。删除要求`expected`包含一条完整原生记录和命名空间，不允许`replacement`，并在原生成员与来源检查后另行取得有序授权。`history-removed-from-reader`只确认原始读取器不再返回目标，不能确认历史文件持久化，也不能替代输入修改的`applied`结果。符合条件的三种 Shell 均声明`history-read`；Backend 使用这些操作同步原生历史并执行绑定来源的移除，不增加 Electron IPC 通道。补全使用不透明候选编号及同一经过验证的私有编辑器边界。
 
-`ShellPathQueryRequest`/`ShellPathQueryResult`定义已安装助手固定`path-query`命令的私有 stdin/stdout JSON，不是由前端指定的 Shell 命令，也不增加 Electron IPC 通道。请求包含字面目录、文件名前缀和有界匹配选项，结果包含完整文件名记录与固定来源状态。旧 SSH 补全消息不能查询或填写远端路径，仅接受快照的路径草稿等待候选标识菜单迁移。
+`ShellPathQueryRequest`/`ShellPathQueryResult`定义已安装助手固定`path-query`命令的私有 stdin/stdout JSON，不是由前端指定的 Shell 命令，也不增加 Electron IPC 通道。请求包含字面目录、文件名前缀和有界匹配选项，结果包含完整文件名记录与固定来源状态。仅接受快照的路径草稿转换为不透明候选；前端不能指定目录或插入文本。
 
-编辑器`cursor`字段和私有补全范围使用 Unicode 码点计数，不使用 UTF-16 代码单元。共享的`ShellCompletionCandidate`仅用于展示，包含不透明标识、标签、说明、来源和类型；修改范围与完整替换内容保留在 Backend 会过期的会话快照中。该类型为后续菜单迁移提供基础，本身不增加消息或 Electron IPC 通道，上述现有编辑器消息保留到该迁移完成。
+编辑器`cursor`字段和私有补全范围使用 Unicode 码点计数，不使用 UTF-16 代码单元。共享的`ShellCompletionCandidate`仅用于展示，包含不透明标识、标签、说明、来源和类型；修改范围与完整替换内容保留在 Backend 会过期的会话快照中。公开 WebSocket 只传递展示候选；选择时返回不透明编号，再进行私有填写。
 
 | Channel                                    | IPC Type                   | Params                                                                                                                     | Return Schema                                                                                                                                                                                                                                                                                                                                                                                                       | Main Handler Behavior                                                                                                              |
 | ------------------------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -189,18 +189,18 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 终端流式消息虽然不属于 Electron IPC channel，但同样属于跨进程接口。`terminal-protocol.ts`是唯一来源，当前远端 helper 协议版本为 3。
 
 - 客户端到服务端（`/ws/ssh/{sessionId}` 与 `/ws/local-terminal/{sessionId}`）：
-  - `input`、`resize`、`ping`、`close`；`history-delete`仅供本地终端使用
+  - `input`、`resize`、`ping`、`close`
   - `completion-query { requestId, trigger }`的触发方式为`typing`或`manual`；另有`completion-cancel { requestId }`与`completion-accept { requestId, snapshotId, candidateId }`。编号必须是规范的小写 UUID v4，额外字段会被拒绝。查询不携带输入、CWD 提示、修改内容或设置覆盖。填写使用新的请求编号；取消可以指定当前查询或等待中的填写。
   - SSH `shell-history-remove { requestId, sourceId, command }`：两个编号均为 UUID，命令是一条有界的完整原生记录。Backend 要求当前来源及缓存成员匹配，不接受前端指定历史库或文件路径。
-  - `completion-request`，包含`requestId`、`linePrefix`、`cursorIndex`、可选`workingDirectoryHint`、可选`limit`、可选`fuzzyMatch`、可选来源过滤字段（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`）、`trigger`（`typing`或`manual`）
+
   - `credential-fill`只包含不超过 128 个字符的非空操作`token`，不携带凭据
 - 服务端到客户端：
-  - `ready`、`output`、`telemetry`、仅供本地终端使用的`history`、`pong`、`error`、`exit`
+  - `ready`、`output`、`telemetry`、`pong`、`error`、`exit`；本地遥测不包含历史记录
   - `completion-update { requestId, snapshotId, contextRevision, status, complete, sources, items }`包含同一快照的累积展示候选；没有可用快照时`snapshotId: null`。状态为`ready`、`stale`、`unavailable`、`unsupported`或`unknown`；`sources`固定包含`history`、`metadata`、`paths`、`native`，各自状态为`loading`、`ok`、`partial`、`disabled`、`unsupported`、`unavailable`、`timeout`或`private`。前端只展示当前请求且上下文修订号完全相同的候选。
   - `completion-accept-result { requestId, status }`的状态为`applied`、`stale`、`unavailable`、`unsupported`或`unknown`。填写只改变原始编辑器输入；授权后出现`unknown`时不允许自动重试。
   - SSH `shell-history { view }`：`ok`／`partial`包含`{ id, shell: 'bash' | 'zsh' | 'fish', namespace }`及按最新优先排列的完整原生记录；`disabled`／`unsupported`／`unavailable`／`private`的`source`为`null`且无记录。
   - `shell-history-remove-result { requestId, sourceId, status }`：状态为`removed-from-reader`、`stale`、`unavailable`、`unsupported`或`unknown`。当前读取器中的移除确认不代表原生历史文件已更新。
-  - `completion-response`，包含 `requestId`、`replacePrefixLength` 与排序后的候选 `items`
+
   - `credential-fill-offer`包含`{ token, expiresAt }`或`null`；`credential-fill-result`包含标识与`filled`或`rejected`状态，拒绝原因包括`stale`、`expired`、`disabled`、`unavailable`、`failed`，不返回密码
   - `bootstrap-status`，用于侧通道 Remote Bootstrap 安装/探测状态
   - `remote-enhancement-runtime-status`，包含 backend 持有的状态（`pending`、`active` 或 `disabled`），以及可选 `helperVersion`、`protocolVersion`、`capabilities`、`code` 与 `message`
@@ -218,7 +218,7 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 补全候选契约说明：
 
 - 新的`completion-update.items`使用`ShellCompletionCandidate`：不透明`id`、`label`、可为空的`detail`、可选`detailI18nKey`、`source`及`kind`。来源为`history`、`inshellisense`、表示路径的`runtime`以及表示独立原生结果的`fish`。类型在命令／资料／历史分类之外包含`argument`与`path`。不传递填写文本、分值或修改范围。
-- 旧`completion-request`／`completion-response`类型保留至单独清理；新消费者只发送不透明操作。凭据不能进入补全候选。
+- 凭据使用独立的操作／请求／结果消息，不能进入补全候选。公开补全操作只携带不透明编号；来源设置、快照和修改由 Backend 持有。
 - 凭据使用独立的操作提示／请求／结果消息。共享 WebSocket 入口拒绝已释放／未注册会话和被替换／正在关闭的连接。SSH 在填入前再次检查操作标识与持久化权限；本地终端以`unavailable`拒绝凭据操作。
 
 当前实现说明：
@@ -227,6 +227,8 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 - `remote-enhancement-runtime-status` 与 `remote-shell-event` 仅用于 SSH session，不会出现在 local-terminal session。交互 shell 打开前的 Bootstrap ensure 成功后，运行时以 `pending` 开始；10 秒内到达且匹配的 `integration-ready` 会切换为 `active`。Ensure 失败、`BOOTSTRAP_ENSURE_TIMEOUT`、`HELPER_HANDSHAKE_TIMEOUT` 或 live 契约不匹配都会切换为 `disabled`。Renderer 会把最新运行状态与有界事件历史分别保存，并且只能将其用于诊断，不得据此重建 backend helper 状态。
 - `remote-shell-event`不得携带密码、secret、完整输出、命令行或输入缓冲区。动态 cwd/command 字段在 JSON 内使用规范 Base64，校验后才转发。Backend 将解码 JSON 限制在 32 KiB、编码 OSC 限制在 48 KiB，剥离 Cosmosh OSC，原样传递非 Cosmosh OSC。
 - Renderer 会把完整 server message union 路由到来源 pane 的 runtime/reducer。补全响应、密码提示、状态、telemetry、错误、退出、调试事件、重连与命令 marker 都不得隐式回退到 primary/active pane 状态。
+
+公开的目录即时操作为`directory-query { requestId }`和`directory-cancel { requestId }`，编号必须是规范的小写 UUID v4，不能附带其他字段。`directory-result { requestId, status, contextRevision, directory }`返回`ok`、`stale`或`unavailable`；失败时`directory`始终为`null`。成功结果只包含刚取得的`ShellDirectoryContext`，在对应`shell-context`发布之后发送。查询不能覆盖 CWD 权限，也不能提供路径或输入提示。本地终端返回不可用；旧取消编号不能终止较新的请求或无关补全。
 
 #### 私有终端与编辑器协议（Backend ↔ 远端助手）
 
@@ -247,7 +249,7 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 
 私有`ShellEditorRequest`必须包含`inputBoundary: { epoch, sequence }`，由 Backend 从当前`DeliveredTerminal`获取。控制器等待送达，要求报告的原始 PID 与编辑器绑定一致，并复核上下文、权限、客户端生命周期和序号。普通 SSH 传输无法满足此边界。字段范围明确限定：上下文请求省略输入，历史请求省略输入／CWD，快照及填写只包含获准字段。输入、替换内容、历史和导出环境都不能进入顺序控制帧、顺序文件、OSC 事件或调试历史。
 
-工作进程返回的`prepared`快照匹配后，Backend 才向终端请求授权，随后向私有工作进程发送`apply: true`决定。Shell 必须在实际修改前持有本地顺序锁并消费尚未到期的一次性授权，然后确认结果。授权按单调时钟在 1.5 秒后到期。收到或送达都不能单独证明编辑器观察符合条件；最终回执丢失时保持`unknown`，不会自动重放修改。候选编号菜单接入及完整 Electron 验收仍未完成。
+工作进程返回的`prepared`快照匹配后，Backend 才向终端请求授权，随后向私有工作进程发送`apply: true`决定。Shell 必须在实际修改前持有本地顺序锁并消费尚未到期的一次性授权，然后确认结果。授权按单调时钟在 1.5 秒后到期。收到或送达都不能单独证明编辑器观察符合条件；最终回执丢失时保持`unknown`，不会自动重放修改。不透明候选填写使用这条边界；完整 Electron 验收仍待完成。
 
 ### 3.5 Main 持有的活动连接契约
 
