@@ -135,8 +135,10 @@ export const resolveEnhancementStatus = (input: EnhancementStatusInput): Enhance
     if ((id === 'paths' || id === 'nativeCompletion') && !settings.terminalAutoCompleteEnabled)
       return { state: 'disabled', reason: 'suggestionsDisabled' };
     if (id === 'history') {
-      if (context.shell !== 'fish' || !context.capabilities.includes('history-read'))
+      if (!['bash', 'zsh', 'fish'].includes(context.shell ?? '') || !context.capabilities.includes('history-read'))
         return { state: 'unavailable', reason: 'unsupported' };
+      if (input.historyView?.source && input.historyView.source.shell !== context.shell)
+        return { state: 'unavailable', reason: 'historyUnavailable' };
       switch (input.historyView?.status) {
         case 'ok':
           return { state: 'available', reason: 'historyReady' };

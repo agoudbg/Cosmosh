@@ -81,3 +81,28 @@ func TestHistoryDeletionRequiresOneExactNativeRecordInTheOriginalScope(t *testin
 		}
 	}
 }
+
+func TestBashHistoryDeletionRequiresNativeCallbackAndExactSource(t *testing.T) {
+	namespace := "abcdef01-2345-6789-abcd-ef0123456789:2"
+	history := History{Status: "ok", Namespace: &namespace, Entries: []string{"echo exact  "}}
+	snapshot := Snapshot{PromptGeneration: 7, EditorMode: "emacs", History: &history}
+	request := Request{
+		RequestID:     "01234567-89ab-4def-8123-456789abcdef",
+		InputBoundary: testInputBoundary,
+		Target:        Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "bash", PID: 23, StartTime: "1234"},
+		Operation:     "history-delete", PromptGeneration: 7, Notification: &Notification{Callback: "readline"}, Expected: &snapshot,
+	}
+	if !validRequest(request) || !matchesExpected(request, snapshot) {
+		t.Fatal("native Bash exact reader deletion rejected")
+	}
+	changed := snapshot
+	other := "abcdef01-2345-6789-abcd-ef0123456789:3"
+	changed.History = &History{Status: "ok", Namespace: &other, Entries: history.Entries}
+	if matchesExpected(request, changed) {
+		t.Fatal("a changed original-reader namespace authorized deletion")
+	}
+	request.Notification = nil
+	if validRequest(request) {
+		t.Fatal("Bash history deletion accepted a non-native notification")
+	}
+}

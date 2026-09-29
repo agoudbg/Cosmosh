@@ -1,9 +1,10 @@
-# Zsh atomic apply module
+# Zsh native editor and history module
 
-`cosmosh_zsh.c` supplies one native builtin, `cosmosh_editor_apply`. The existing
-Shell adapter still owns observations, eligibility checks, private socket
-messages and the temporary writable ZLE widget. This builtin only performs the
-final local comparison and assignment. It installs no hooks, signals or keys.
+`cosmosh_zsh.c` supplies the `cosmosh_editor_apply` builtin. The Shell adapter
+owns request activation, private socket messages and the temporary writable
+ZLE widget. Native modes perform final input assignment and Shell-owned history
+observation/removal without reading the current buffer or directory for history.
+The module installs no hooks, signals or keys.
 
 ## Load and call
 
@@ -49,6 +50,28 @@ assignment, and 2 for a changed editor whose immediate result cannot be verified
 The caller must still confirm the actual buffer/cursor after the containing
 widget returns: ZLE can normalize a cursor around combining characters at that
 boundary. A missing confirmation remains unknown.
+
+## Native history
+
+The fixed `history-state` mode reads policy and namespace metadata only;
+`history` reads complete newest-first native entries; `history-match` checks one
+selected exact text before authorization; and `history-delete` rechecks source,
+text and the one-use ordered grant before removing matches. Data modes run in
+the original Shell's bounded read-only observation scope and use ordinary
+private parameters plus NUL-framed stdin to the Go worker. They do not enter a
+ZLE widget or change its undo state. History operations omit current input and
+directory fields, Shell evaluation of the selected text and direct file I/O.
+
+The reader excludes the current line, `TMPSTORE`/`NOWRITE` records and entries
+with an ASCII leading space. It returns `private` for `HISTSIZE<=1`; once a
+nonempty `HISTORY_IGNORE` is observed, history remains unsupported for that
+Shell's lifetime. Up to 200 complete entries, 8 KiB each and 64 KiB total are
+published from at most 10,000 scanned nodes. Deletion refuses a whitespace-
+equivalent group with a different original text, private nodes or current
+line/undo references; eligible byte-exact duplicates are removed together.
+It confirms only current-reader absence and never rewrites or saves a history
+file. The opaque namespace rotates with native history context, `HISTFILE`,
+`HISTSIZE` or list contraction, and starts from a randomized module revision.
 
 ## Critical section
 

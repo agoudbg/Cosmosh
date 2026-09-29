@@ -124,7 +124,7 @@ export class ShellEditorController {
   }
 
   /**
-   * Deletes exact matching text only after the original Fish verifies its namespace and native membership.
+   * Deletes exact matching text only after the original Shell verifies its namespace and native membership.
    * @param namespace Source captured by a prior native history read. @param command Exact selected record.
    * @param signal Current history permission lifetime.
    * @returns Confirmed absence in the current reader (file persistence unconfirmed), or an explicit failure.
@@ -310,7 +310,7 @@ export class ShellEditorController {
       state.promptGeneration !== binding.promptGeneration ||
       (state.status !== 'ready' && !canObservePaused) ||
       (state.requiresEditorConfirmation && !canObservePaused) ||
-      (includeHistory && (state.shell !== 'fish' || !state.permissions.history)) ||
+      (includeHistory && !state.permissions.history) ||
       (nativeCompletion &&
         (state.shell !== 'fish' ||
           !state.permissions.nativeCompletion ||

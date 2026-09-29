@@ -491,7 +491,7 @@ func TestRunInstallsZshRemoteShellHelperHooks(t *testing.T) {
 	assertFileContains(t, helperPath, "autoload -Uz +X add-zle-hook-widget")
 	assertFileContains(t, helperPath, "add-zle-hook-widget -d line-pre-redraw __cosmosh_zsh_line_pre_redraw")
 	assertFileContains(t, helperPath, "precmd_functions=(${precmd_functions[@]:#__cosmosh_zsh_precmd})")
-	assertFileContains(t, helperPath, `__COSMOSH_CAPABILITIES_JSON='["cwd","command-start","command-end","foreground-command","prompt-ready","cwd-invalidated","line-state","editor-state","input-snapshot","input-apply"]'`)
+	assertFileContains(t, helperPath, `__COSMOSH_CAPABILITIES_JSON='["cwd","command-start","command-end","foreground-command","prompt-ready","cwd-invalidated","line-state","editor-state","input-snapshot","input-apply","history-read"]'`)
 	assertTextOrder(t, readFileString(t, helperPath), "add-zle-hook-widget line-pre-redraw", "__cosmosh_emit_remote_shell_event integration-ready")
 }
 

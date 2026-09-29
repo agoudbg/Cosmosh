@@ -217,3 +217,38 @@ test('history deletion preserves exact text and cannot borrow input or CWD permi
   assert.deepEqual(await controller.deleteHistory('fish', command, signal), { status: 'unavailable' });
   assert.equal(requests.length, 1);
 });
+
+test('each qualified Shell uses the same independent history permissions and exact deletion scope', async () => {
+  for (const shell of ['bash', 'zsh', 'fish'] as const) {
+    const state: ShellContextState = { ...historyState(), shell };
+    const requests: ShellEditorRequest[] = [];
+    const controller = new ShellEditorController(
+      () => state,
+      async (request) => {
+        requests.push(request);
+        return request.operation === 'history'
+          ? { status: 'ok', snapshot: observation }
+          : { status: 'history-removed-from-reader' };
+      },
+      orderedHistoryTransport(),
+      () => assert.fail('history operations cannot confirm input or CWD'),
+    );
+    const signal = new AbortController().signal;
+    assert.equal((await controller.history(signal)).status, 'ok');
+    assert.deepEqual(normalizeEditorSnapshot(observation, requests[0]), observation);
+    assert.equal(
+      (await controller.deleteHistory('native-source', 'echo 中文🐟  ', signal)).status,
+      'history-removed-from-reader',
+    );
+    assert.deepEqual(
+      requests.map((request) => request.target.shell),
+      [shell, shell],
+    );
+    assert.ok(requests.every((request) => !request.includeDirectory));
+    assert.deepEqual(requests[1].expected?.history?.entries, ['echo 中文🐟  ']);
+    state.permissions.history = false;
+    assert.equal((await controller.history(signal)).status, 'unavailable');
+    assert.equal((await controller.deleteHistory('native-source', 'echo 中文🐟  ', signal)).status, 'unavailable');
+    assert.equal(requests.length, 2);
+  }
+});

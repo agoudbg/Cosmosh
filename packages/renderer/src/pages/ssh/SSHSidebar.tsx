@@ -181,7 +181,7 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
 
         {historyView?.source ? (
           <div className="text-muted-text break-words px-2 py-1 text-xs">
-            {t('ssh.historySource', { name: historyView.source.namespace })}
+            {t('ssh.historySource', { name: { bash: 'Bash', zsh: 'Zsh', fish: 'Fish' }[historyView.source.shell] })}
           </div>
         ) : null}
         {historyView?.status === 'partial' ? (

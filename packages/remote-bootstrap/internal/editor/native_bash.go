@@ -18,6 +18,8 @@ import (
 // This avoids embedding a JSON parser in Bash. The ordinary desktop protocol remains JSON.
 const nativeVersion = 2
 
+var errNativeHistoryUnsafe = errors.New("native-history-unsafe-entry")
+
 // nativeRecord decodes one already-bounded frame and records the first boundary error.
 type nativeRecord struct {
 	*bytes.Reader
@@ -137,6 +139,13 @@ func readNativeSnapshot(reader io.Reader, request Request) (*Snapshot, error) {
 			history.Status = "partial"
 		case 3:
 			history.Status = "private"
+		case 4:
+			if request.Operation != "history-delete" || record.text(MaxPathBytes) != "" ||
+				record.word() != 0 || record.err != nil || record.Len() != 0 || flags != 4 ||
+				snapshot.PromptGeneration != request.PromptGeneration || snapshot.EditorMode != "emacs" {
+				return nil, errors.New("invalid-native-record")
+			}
+			return nil, errNativeHistoryUnsafe
 		default:
 			return nil, errors.New("invalid-native-record")
 		}
@@ -154,7 +163,8 @@ func readNativeSnapshot(reader io.Reader, request Request) (*Snapshot, error) {
 		snapshot.History = history
 	}
 	input := request.Operation == "snapshot" || request.Operation == "apply"
-	if record.err != nil || record.Len() != 0 || !validSnapshot(*snapshot, input, request.IncludeDirectory, request.Operation == "history") {
+	history := request.Operation == "history" || request.Operation == "history-delete"
+	if record.err != nil || record.Len() != 0 || !validSnapshot(*snapshot, input, request.IncludeDirectory, history) {
 		return nil, errors.New("invalid-native-record")
 	}
 	return snapshot, nil
@@ -213,6 +223,8 @@ func runNativeBash(ctx context.Context, connection *net.UnixConn, request Reques
 		operation = 3
 	case "history":
 		operation = 4
+	case "history-delete":
+		operation = 5
 	default:
 		return finish("unsupported")
 	}
@@ -220,10 +232,18 @@ func runNativeBash(ctx context.Context, connection *net.UnixConn, request Reques
 	if request.IncludeDirectory {
 		directory = 1
 	}
-	if err := writeNativeRecord(connection, 2, operation, directory, request.RequestID, request.InputBoundary.Epoch, request.InputBoundary.Sequence); err != nil {
+	var target []any
+	if request.Operation == "history-delete" {
+		target = append(target, request.Expected.History.Entries[0])
+	}
+	fields := append([]any{operation, directory, request.RequestID, request.InputBoundary.Epoch, request.InputBoundary.Sequence}, target...)
+	if err := writeNativeRecord(connection, 2, fields...); err != nil {
 		return finish("unavailable")
 	}
 	snapshot, err := readNativeSnapshot(connection, request)
+	if errors.Is(err, errNativeHistoryUnsafe) {
+		return finish("unsupported")
+	}
 	if err != nil {
 		return finish("unavailable")
 	}
@@ -233,7 +253,7 @@ func runNativeBash(ctx context.Context, connection *net.UnixConn, request Reques
 	if !validateNativeDirectory(ctx, request.Target, snapshot.Directory) {
 		return finish("unavailable")
 	}
-	if request.Operation != "apply" {
+	if request.Operation != "apply" && request.Operation != "history-delete" {
 		return emit("done", "ok", snapshot, false)
 	}
 	if err := emit("prepared", "", snapshot, false); err != nil {
@@ -247,7 +267,11 @@ func runNativeBash(ctx context.Context, connection *net.UnixConn, request Reques
 	case <-ctx.Done():
 		return finish("unavailable")
 	}
-	if err := writeNativeRecord(connection, 4, request.RequestID, request.Replacement.Text, uint32(request.Replacement.Cursor)); err != nil {
+	var mutation []any
+	if request.Operation == "apply" {
+		mutation = append(mutation, request.Replacement.Text, uint32(request.Replacement.Cursor))
+	}
+	if err := writeNativeRecord(connection, 4, append([]any{request.RequestID}, mutation...)...); err != nil {
 		return finish("unknown")
 	}
 	confirmed, err := readNativeRecord(connection, 5)
@@ -259,6 +283,9 @@ func runNativeBash(ctx context.Context, connection *net.UnixConn, request Reques
 		return finish("unknown")
 	}
 	if status == 1 {
+		if request.Operation == "history-delete" {
+			return emit("done", "history-removed-from-reader", nil, true)
+		}
 		return emit("done", "applied", nil, true)
 	}
 	if status == 2 {

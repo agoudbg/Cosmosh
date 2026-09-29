@@ -3,6 +3,7 @@ package editor
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -65,6 +66,48 @@ func TestNativeHistoryRemainsExplicitAndBounded(t *testing.T) {
 		if _, err := readNativeSnapshot(bytes.NewReader(nativeSnapshotFrame(t, 4, fields...)), request); err == nil {
 			t.Fatal("invalid native history accepted")
 		}
+	}
+}
+
+func TestNativeBashExactHistoryDeletionSnapshotHasOneReaderRecord(t *testing.T) {
+	namespace := "abcdef01-2345-6789-abcd-ef0123456789:2"
+	target := "echo exact  "
+	request := Request{Operation: "history-delete", PromptGeneration: 7,
+		Expected: &Snapshot{PromptGeneration: 7, EditorMode: "emacs",
+			History: &History{Status: "ok", Namespace: &namespace, Entries: []string{target}}}}
+	for _, fields := range [][]any{
+		{uint8(1), namespace, uint32(1), target},
+		{uint8(1), namespace, uint32(0)},
+	} {
+		observation, err := readNativeSnapshot(bytes.NewReader(nativeSnapshotFrame(t, 4, fields...)), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matchesExpected(request, *observation) != (len(observation.History.Entries) == 1) {
+			t.Fatal("exact membership and deletion preflight disagreed")
+		}
+	}
+	for _, fields := range [][]any{
+		{uint8(2), namespace, uint32(1), target},
+		{uint8(1), namespace, uint32(2), target, "another command"},
+		{uint8(3), "", uint32(0)},
+	} {
+		observation, err := readNativeSnapshot(bytes.NewReader(nativeSnapshotFrame(t, 4, fields...)), request)
+		if err == nil && matchesExpected(request, *observation) {
+			t.Fatal("partial, broad or private history authorized deletion")
+		}
+	}
+}
+
+func TestNativeBashUnsafeHistoryIsExplicitlyUnsupported(t *testing.T) {
+	request := Request{Operation: "history-delete", PromptGeneration: 7}
+	frame := nativeSnapshotFrame(t, 4, uint8(4), "", uint32(0))
+	if _, err := readNativeSnapshot(bytes.NewReader(frame), request); !errors.Is(err, errNativeHistoryUnsafe) {
+		t.Fatalf("unsafe history did not refuse before authorization: %v", err)
+	}
+	request.Operation = "history"
+	if _, err := readNativeSnapshot(bytes.NewReader(frame), request); err == nil || errors.Is(err, errNativeHistoryUnsafe) {
+		t.Fatal("ordinary history read accepted a deletion-only refusal frame")
 	}
 }
 

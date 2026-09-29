@@ -23,9 +23,7 @@ flowchart TB
 
 仅供 Backend 使用的编辑器`native-completion`操作要求 Fish、输入／CWD／原生权限、`includeDirectory: true`和完整匹配的`expected`快照，不允许替换内容。原始回调的导出环境只保留在远端 socket 协议中，不属于`ShellEditorSnapshot`。独立的`native-completions`结果包含`ShellNativeCompletionResult`：`ok`／`partial`最多携带 128 项`{ token, value, detail }`，`timeout`／`unavailable`不携带候选。这些结果不能作为输入修改、历史移除或普通快照的确认。`ShellCompletionCandidate`增加`argument`展示类型，不新增前端请求或 Electron IPC 通道，菜单接入仍待完成。
 
-私有助手请求通过现有`editor-request`进程支持 Fish 的`history`和`history-delete`。这两个仅供 Backend 使用的操作要求独立历史权限和`includeDirectory: false`；观察包含提示符／模式元数据和`ShellNativeHistory`，不能附带当前输入或 CWD。私密模式结果不含命名空间或记录。删除要求`expected`包含一条完整原生记录和命名空间，不允许`replacement`，且须在原生精确查询确认记录存在后再次授权。`history-removed-from-reader`只确认当前行编辑器不再返回目标，历史文件是否更新始终未确认，也不能替代输入修改的`applied`结果。Fish 声明`history-read`，Backend 在原生历史同步及绑定来源的移除操作中调用这些接口，不增加 Electron IPC 通道。
-
-Bash 原生回调已有有界私有历史读取原语，但公开`ShellHistorySource`与`shell-history-remove`路径目前仍仅接受 Fish。Bash 历史来源启用与删除尚待完成，当前 WebSocket 协议不发布 Bash 历史视图。
+私有`editor-request`进程为 Bash、Zsh 和 Fish 提供`history`及`history-delete`。这两个仅供 Backend 使用的操作要求独立历史权限和`includeDirectory: false`；观察包含提示符／模式元数据和`ShellNativeHistory`，不附带当前输入或 CWD。私密模式结果不含命名空间或记录。删除要求`expected`包含一条完整原生记录和命名空间，不允许`replacement`，并在原生成员与来源检查后另行取得有序授权。`history-removed-from-reader`只确认原始读取器不再返回目标，不能确认历史文件持久化，也不能替代输入修改的`applied`结果。符合条件的三种 Shell 均声明`history-read`；Backend 使用这些操作同步原生历史并执行绑定来源的移除，不增加 Electron IPC 通道。候选编号补全菜单接入仍待第 13 步完成。
 
 `ShellPathQueryRequest`/`ShellPathQueryResult`定义已安装助手固定`path-query`命令的私有 stdin/stdout JSON，不是由前端指定的 Shell 命令，也不增加 Electron IPC 通道。请求包含字面目录、文件名前缀和有界匹配选项，结果包含完整文件名记录与固定来源状态。旧 SSH 补全消息不能查询或填写远端路径，仅接受快照的路径草稿等待候选标识菜单迁移。
 
@@ -197,8 +195,8 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
   - `credential-fill`只包含不超过 128 个字符的非空操作`token`，不携带凭据
 - 服务端到客户端：
   - `ready`、`output`、`telemetry`、仅供本地终端使用的`history`、`pong`、`error`、`exit`
-  - SSH `shell-history { view }`：`ok`／`partial`包含`{ id, shell: 'fish', namespace }`和从新到旧的完整记录；`disabled`／`unsupported`／`unavailable`／`private`的`source`为`null`且无记录。
-  - `shell-history-remove-result { requestId, sourceId, status }`：状态为`removed-from-reader`、`stale`、`unavailable`或`unknown`。当前行编辑器中的移除确认不代表原生历史文件已更新。
+  - SSH `shell-history { view }`：`ok`／`partial`包含`{ id, shell: 'bash' | 'zsh' | 'fish', namespace }`及按最新优先排列的完整原生记录；`disabled`／`unsupported`／`unavailable`／`private`的`source`为`null`且无记录。
+  - `shell-history-remove-result { requestId, sourceId, status }`：状态为`removed-from-reader`、`stale`、`unavailable`、`unsupported`或`unknown`。当前读取器中的移除确认不代表原生历史文件已更新。
   - `completion-response`，包含 `requestId`、`replacePrefixLength` 与排序后的候选 `items`
   - `credential-fill-offer`包含`{ token, expiresAt }`或`null`；`credential-fill-result`包含标识与`filled`或`rejected`状态，拒绝原因包括`stale`、`expired`、`disabled`、`unavailable`、`failed`，不返回密码
   - `bootstrap-status`，用于侧通道 Remote Bootstrap 安装/探测状态

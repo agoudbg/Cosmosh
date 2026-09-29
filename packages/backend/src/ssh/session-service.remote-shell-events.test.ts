@@ -123,7 +123,7 @@ type RemoteShellEventSessionHarness = {
   loginPassword: string | null;
   remoteEnhancementsRuntimeState: 'pending' | 'active' | 'disabled';
   remoteEnhancementsRuntimeContract: {
-    shell: 'bash' | 'fish';
+    shell: 'bash' | 'zsh' | 'fish';
     helperVersion: string;
     protocolVersion: number;
     capabilities: RemoteShellCapability[];
@@ -1253,7 +1253,7 @@ test('history opt-out during handshake and unsupported shells never execute a na
 
   const unsupported = createHistoryServiceHarness(t);
   t.after(() => unsupported.service.clearRemoteHistory(unsupported.session));
-  unsupported.session.shellContext = { ...unsupported.session.shellContext, shell: 'bash' };
+  unsupported.session.shellContext = { ...unsupported.session.shellContext, shell: 'sh' };
   unsupported.service.scheduleHistorySync(unsupported.session.sessionId, { immediate: true });
   await unsupported.service.syncRemoteHistory(unsupported.session.sessionId);
   assert.equal(unsupported.channels.length, 0);
@@ -1287,6 +1287,63 @@ test('native observations replace namespace and private state without reusing so
   assert.deepEqual(lastHistoryView(messages), { status: 'private', source: null, entries: [] });
   assert.deepEqual(session.recentCommands, []);
   assert.ok(commands.every((command) => !command.includes('multi') && !command.includes('trailing')));
+});
+
+test('Bash and Zsh publish their actual native source under history-only permission', async (t) => {
+  for (const shell of ['bash', 'zsh'] as const) {
+    const { session, service, channels, messages } = createHistoryServiceHarness(t);
+    t.after(() => service.clearRemoteHistory(session));
+    session.remoteEnhancementsRuntimeContract!.shell = shell;
+    session.shellContext = {
+      ...session.shellContext,
+      shell,
+      permissions: { input: false, cwd: false, paths: false, nativeCompletion: false, history: true },
+      editorBinding: {
+        ...session.shellContext.editorBinding!,
+        notification: shell === 'bash' ? { callback: 'readline' } : { fd: 13, inode: '100' },
+      },
+    };
+    const pending = service.syncRemoteHistory(session.sessionId);
+    await Promise.resolve();
+    assert.equal(channels.length, 1);
+    assert.equal(channels[0].request.target.shell, shell);
+    assert.equal(channels[0].request.includeDirectory, false);
+    completeHistory(channels[0], ['echo native 中🐟  '], 'ok', 'opaque-native-source');
+    await pending;
+    const view = lastHistoryView(messages);
+    assert.equal(view.source?.shell, shell);
+    assert.deepEqual(view.entries, ['echo native 中🐟  ']);
+    service.applyEnhancementSettings({
+      revision: 1,
+      values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsHistoryEnabled: false },
+    });
+    assert.deepEqual(lastHistoryView(messages), { status: 'disabled', source: null, entries: [] });
+    await service.syncRemoteHistory(session.sessionId);
+    assert.equal(channels.length, 1);
+  }
+});
+
+test('known native removal limitations preserve the record and report an explicit unsupported result', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness(t);
+  t.after(() => service.clearRemoteHistory(session));
+  const read = service.syncRemoteHistory(session.sessionId);
+  await Promise.resolve();
+  completeHistory(channels[0], ['echo keep']);
+  await read;
+  const sourceId = lastHistoryView(messages).source!.id;
+  const removal = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo keep'));
+  await Promise.resolve();
+  assert.equal(channels[1].request.operation, 'history-delete');
+  channels[1].reply({ phase: 'ready' });
+  channels[1].reply({ phase: 'done', status: 'unsupported' });
+  await removal;
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo keep']);
+  assert.deepEqual(messages.filter((message) => message.type === 'shell-history-remove-result').at(-1), {
+    type: 'shell-history-remove-result',
+    requestId: 'remove-1',
+    sourceId,
+    status: 'unsupported',
+  });
 });
 
 test('revocation clears queued and active native work, including an SSH callback delivered after cancellation', async (t) => {

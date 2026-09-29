@@ -67,7 +67,7 @@ func readNativeHistory(input io.Reader) (*History, error) {
 		}
 		return history, nil
 	}
-	if history.Status != "ok" {
+	if history.Status != "ok" && history.Status != "partial" {
 		return nil, errors.New("invalid-history")
 	}
 	history.Namespace = &fields[1]

@@ -30,6 +30,7 @@ __cosmosh_zsh_editor_prepare() {
   __COSMOSH_EDITOR_AVAILABLE=false
   if [[ "${__COSMOSH_EDITOR_OWNER_PID:-}" != "$$" ]]; then
     __COSMOSH_EDITOR_OWNER_PID=$$
+    builtin typeset -g +x __COSMOSH_ZSH_HISTORY_POLICY_UNTRUSTED=false
     __COSMOSH_EDITOR_NONCE="$__COSMOSH_SHELL_INSTANCE_ID"
     __COSMOSH_EDITOR_START="$("$__COSMOSH_EDITOR_BINARY" editor-identity "$$" 2>/dev/null)" || __COSMOSH_EDITOR_START=
     __COSMOSH_EDITOR_NOTIFY_INODE=
@@ -55,6 +56,9 @@ __cosmosh_zsh_editor_prepare() {
      [[ "$(command locale charmap 2>/dev/null)" = UTF-8 ]] && __cosmosh_zsh_native_prepare; then
     __COSMOSH_EDITOR_AVAILABLE=true
   fi
+  # This reads configuration and namespace metadata only, even with history permission disabled.
+  # Native privacy flags are preserved; an observed file-only ignore policy cannot be reconstructed later.
+  builtin cosmosh_editor_apply history-state >/dev/null 2>&1 || :
   __cosmosh_emit_remote_shell_event editor-state
   return 0
 }
@@ -145,12 +149,13 @@ __cosmosh_zsh_editor_observe() {
   local -a __cosmosh_request __cosmosh_response
   local __cosmosh_input=0 __cosmosh_line= __cosmosh_point= __cosmosh_pwd= __cosmosh_home=
   __cosmosh_request=("${(@f)$("$__COSMOSH_EDITOR_BINARY" editor-widget mode "$__COSMOSH_SHELL_INSTANCE_ID" zsh "$__COSMOSH_SHELL_OWNER_PID" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs 2>/dev/null)}")
-  [[ "$#__cosmosh_request" = 6 ]] || return 0
+  [[ "$#__cosmosh_request" = 6 || ( "$#__cosmosh_request" = 8 && "$__cosmosh_request[2]" = history-delete ) ]] || return 0
   # Input received while the permission handshake ran must be consumed by the real editor first.
   if ! __cosmosh_zsh_editor_supported; then __cosmosh_zsh_editor_reject "$__cosmosh_request[1]"; return 0; fi
   case "$__cosmosh_request[2]" in
     context) ;;
     snapshot|apply) __cosmosh_input=1; __cosmosh_line="$BUFFER"; __cosmosh_point="$CURSOR" ;;
+    history|history-delete) __cosmosh_zsh_editor_history; return 0 ;;
     *) return 0 ;;
   esac
   if [[ "$__cosmosh_request[3]" = 1 ]]; then __cosmosh_pwd="$PWD"; __cosmosh_home="${HOME-}"; fi
@@ -189,6 +194,57 @@ __cosmosh_zsh_editor_observe() {
       builtin printf '%s\0' "$BUFFER" "$CURSOR" "$__cosmosh_pwd" "$__cosmosh_home" |
         "$__COSMOSH_EDITOR_BINARY" editor-widget confirm "$__COSMOSH_SHELL_INSTANCE_ID" zsh "$__COSMOSH_SHELL_OWNER_PID" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$__cosmosh_request[1]" 1 "$__cosmosh_request[3]" >/dev/null 2>&1
     fi
+  fi
+  return 0
+}
+
+__cosmosh_zsh_editor_history_frame() {
+  # Shell-owned arrays preserve exact multiline records; no record is an external process argument.
+  if [[ "$__cosmosh_history_status" = private ]]; then
+    builtin printf 'private\0\0'
+    return 0
+  fi
+  builtin printf '%s\0%s\0' "$__cosmosh_history_status" "$__cosmosh_history_namespace"
+  if (( $#__cosmosh_history_entries )); then builtin printf '%s\0' "${__cosmosh_history_entries[@]}"; fi
+  builtin printf '0\0'
+}
+
+__cosmosh_zsh_editor_history() {
+  builtin emulate -L zsh -o noxtrace -o localtraps
+  builtin trap '' DEBUG
+  builtin typeset +x __cosmosh_history_status= __cosmosh_history_namespace=
+  # With the builtin prefix, Zsh parses an array initializer as a function declaration.
+  builtin typeset -a +x __cosmosh_history_entries
+  __cosmosh_history_entries=()
+  builtin typeset +x __cosmosh_prompt_generation="$__COSMOSH_PROMPT_GENERATION"
+  builtin typeset +x __cosmosh_input_epoch="$__cosmosh_request[4]" __cosmosh_input_sequence="$__cosmosh_request[5]"
+  builtin typeset +x __cosmosh_request_id="$__cosmosh_request[1]"
+  builtin typeset +x __cosmosh_history_target= __cosmosh_history_expected_namespace= __cosmosh_history_operation=history
+  if [[ "$__cosmosh_request[2]" = history-delete ]]; then
+    __cosmosh_history_operation=history-match
+    __cosmosh_history_expected_namespace="$(builtin printf '%s' "$__cosmosh_request[7]" | command base64 -d 2>/dev/null)" || return 0
+    # A fixed sentinel preserves every trailing newline in the selected native record.
+    __cosmosh_history_target="$(builtin printf '%s' "$__cosmosh_request[8]" | command base64 -d 2>/dev/null && builtin printf '.')" || return 0
+    __cosmosh_history_target="${__cosmosh_history_target%.}"
+  fi
+  if ! __cosmosh_zsh_editor_supported || ! builtin cosmosh_editor_apply "$__cosmosh_history_operation"; then
+    __cosmosh_zsh_editor_reject "$__cosmosh_request_id"; return 0
+  fi
+  __cosmosh_response=("${(@f)$(__cosmosh_zsh_editor_history_frame |
+    "$__COSMOSH_EDITOR_BINARY" editor-widget history "$__COSMOSH_SHELL_INSTANCE_ID" zsh "$__COSMOSH_SHELL_OWNER_PID" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$__cosmosh_request_id" 2>/dev/null)}")
+  if [[ "$__cosmosh_request[2]" != history-delete || "$#__cosmosh_response" != 1 || "$__cosmosh_response[1]" != apply ]]; then
+    return 0
+  fi
+  if ! __cosmosh_zsh_editor_supported; then __cosmosh_zsh_editor_reject "$__cosmosh_request_id"; return 0; fi
+  # The native operation rechecks reader/namespace/exact records, consumes the ordered grant,
+  # and removes only safe native nodes while signals are masked. No save hook or file I/O runs.
+  builtin typeset __cosmosh_history_result=0
+  builtin cosmosh_editor_apply history-delete || __cosmosh_history_result=$?
+  if [[ "$__cosmosh_history_result" = 0 ]]; then
+    __cosmosh_zsh_editor_history_frame |
+      "$__COSMOSH_EDITOR_BINARY" editor-widget history-confirm "$__COSMOSH_SHELL_INSTANCE_ID" zsh "$__COSMOSH_SHELL_OWNER_PID" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$__cosmosh_request_id" >/dev/null 2>&1
+  elif [[ "$__cosmosh_history_result" = 1 ]]; then
+    __cosmosh_zsh_editor_reject "$__cosmosh_request_id"
   fi
   return 0
 }

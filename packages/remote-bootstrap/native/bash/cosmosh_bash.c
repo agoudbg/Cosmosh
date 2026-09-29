@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/random.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -34,15 +35,18 @@ struct builtin {
 };
 typedef struct history_entry { char *line; char *timestamp; void *data; } HIST_ENTRY;
 typedef int (*idle_hook)(void);
+typedef void (*terminal_hook)(void);
 
-enum { MAX_FRAME = 256 * 1024, COSMOSH_MAX_INPUT = 8192, MAX_PATH = 4096, MAX_HISTORY = 200, HISTORY_BYTES = 65536 };
-enum { READCMD = 0x8, TERMPREPPED = 0x4 };
+enum { MAX_FRAME = 256 * 1024, COSMOSH_MAX_INPUT = 8192, MAX_PATH = 4096, MAX_HISTORY = 200, HISTORY_BYTES = 65536,
+  DELETE_SCAN_ENTRIES = 10000, DELETE_SCAN_BYTES = 8 * 1024 * 1024, DELETE_MATCHES = 200 };
+enum { READCMD = 0x8, TERMPREPPED = 0x4, SIGHANDLER = 0x8000 };
 /* Nested key readers, search, macros, completion, signal handling, and finished readers cannot observe input. */
 static const unsigned long permitted_states = 0x2 | READCMD | TERMPREPPED | 0x2000 | 0x40000;
 
 static struct {
   char *(*variable)(const char *);
   idle_hook *hook, *signal_hook, *startup_hook;
+  terminal_hook *deprep;
   void **isearch_context;
   int (*isearch_cleanup)(void *, int);
   unsigned long *state;
@@ -53,26 +57,35 @@ static struct {
   int (*begin_undo)(void), (*end_undo)(void), (*delete_text)(int, int), (*insert_text)(const char *);
   void (*redisplay)(void);
   HIST_ENTRY **(*history_list)(void);
+  HIST_ENTRY *(*current_history)(void);
+  int (*where_history)(void), (*history_set_pos)(int);
+  int (*delete_history_range)(int, int);
 } api;
 
 typedef struct { unsigned char data[MAX_FRAME + 4]; size_t length, offset; int error; } packet;
 static packet incoming, outgoing, captured, comparison;
 static idle_hook previous_hook, previous_startup_hook;
+static terminal_hook previous_deprep;
 static pid_t owner;
 static uint64_t generation;
 static char instance[37], start_time[21], request_id[37];
 static char input_epoch[37];
+static char history_target[COSMOSH_MAX_INPUT + 1], history_file[MAX_PATH + 1], history_size[65];
+static uint64_t history_revision;
+static int history_policy_seen, history_policy_enabled, history_previous_length;
+static int history_untrusted;
 static uint64_t input_sequence;
 static int socket_fd = -1, armed, entered, phase, operation, include_directory;
 static int startup_seen, loaded, retired;
 static struct timespec started;
 static int on_idle(void);
 static int on_startup(void);
+static void on_deprep(void);
 
 /** Recheck callback ownership at each observation, including changes made by a prior startup hook. */
 static int owns_hooks(void) {
   return loaded && !retired && owner == getpid() && api.hook && *api.hook == on_idle &&
-    api.startup_hook && *api.startup_hook == on_startup;
+    api.startup_hook && *api.startup_hook == on_startup && api.deprep && *api.deprep == on_deprep;
 }
 
 /** Return a validated decimal metadata value; user command text never enters this parser. */
@@ -121,6 +134,7 @@ static void reset_exchange(void) {
   clear_packet(&incoming); clear_packet(&outgoing); clear_packet(&captured); clear_packet(&comparison);
   memset(request_id, 0, sizeof(request_id));
   memset(input_epoch, 0, sizeof(input_epoch)); input_sequence = 0;
+  memset(history_target, 0, sizeof(history_target));
 }
 
 /** Append bounded bytes; an overflow invalidates the entire message. */
@@ -235,11 +249,69 @@ static int capture_directory(packet *value) {
   return !value->error;
 }
 
-/** Read only Bash's in-memory accepted history, newest first; disabled/private storage exposes no records. */
+/** Rotate opaque source identity when storage policy changes or the list contracts. */
+static int history_namespace(char *namespace, size_t capacity) {
+  const char *file = api.variable("HISTFILE"), *size = api.variable("HISTSIZE");
+  size_t file_length = file ? strnlen(file, MAX_PATH + 1) : 0;
+  size_t size_length = size ? strnlen(size, sizeof(history_size)) : 0;
+  if (file_length > MAX_PATH || size_length >= sizeof(history_size) || history_revision == UINT64_MAX) return 0;
+  int enabled = *api.history_enabled, length = *api.history_length;
+  if (length < 0 || length > 10000000) return 0;
+  if (!history_policy_seen || enabled != history_policy_enabled || length < history_previous_length ||
+      strcmp(file ? file : "", history_file) || strcmp(size ? size : "", history_size)) {
+    history_revision++;
+    memcpy(history_file, file ? file : "", file_length + 1);
+    memcpy(history_size, size ? size : "", size_length + 1);
+    history_policy_enabled = enabled;
+    history_policy_seen = 1;
+  }
+  history_previous_length = length;
+  int written = snprintf(namespace, capacity, "%s:%llu", instance, (unsigned long long)history_revision);
+  return written > 0 && (size_t)written < capacity;
+}
+
+/** Refuse partial deletion when the complete original reader exceeds its bounded scan. */
+static int exact_history_matches(const char *target, int *matches, int *temporary) {
+  int length = *api.history_length;
+  HIST_ENTRY **list = api.history_list();
+  size_t bytes = 0;
+  *matches = 0;
+  *temporary = 0;
+  if (history_untrusted || length < 0 || length > DELETE_SCAN_ENTRIES || (length && !list)) return 0;
+  for (int index = length - 1; index >= 0; index--) {
+    const char *entry = list[index] ? list[index]->line : NULL;
+    if (!entry) return 0;
+    if (list[index]->data) *temporary = 1;
+    size_t size = strnlen(entry, COSMOSH_MAX_INPUT + 1);
+    if (size > COSMOSH_MAX_INPUT || bytes + size > DELETE_SCAN_BYTES) return 0;
+    bytes += size;
+    if (strcmp(entry, target) == 0 && ++*matches > DELETE_MATCHES) return 0;
+  }
+  return 1;
+}
+
+/** Read Bash's accepted in-memory history, newest first; exact deletion reads one target. */
 static int capture_history(packet *value) {
   const char *file = api.variable("HISTFILE");
+  char namespace[64];
+  if (history_untrusted || !history_namespace(namespace, sizeof(namespace))) return 0;
   if (!*api.history_enabled || !file || !*file) {
     number(value, 3, 1); text(value, "", MAX_PATH); number(value, 0, 4); return !value->error;
+  }
+  if (operation == 5) {
+    int matches, temporary;
+    if (!exact_history_matches(history_target, &matches, &temporary)) return 0;
+    int offset = api.where_history();
+    if (offset < 0 || offset > *api.history_length) return 0;
+    if (temporary || (offset < *api.history_length &&
+        strcmp(api.history_list()[offset]->line, history_target) == 0)) {
+      /* Readline may hold unsubmitted edits in history entries or write the active line back. */
+      number(value, 4, 1); text(value, "", 63); number(value, 0, 4);
+      return !value->error;
+    }
+    number(value, 1, 1); text(value, namespace, 63); number(value, matches ? 1 : 0, 4);
+    if (matches) text(value, history_target, COSMOSH_MAX_INPUT);
+    return !value->error;
   }
   HIST_ENTRY **list = api.history_list();
   int length = *api.history_length, count = 0, partial = 0;
@@ -250,6 +322,8 @@ static int capture_history(packet *value) {
     if (length - index > 2000) { partial = 1; break; }
     uint32_t ignored;
     const char *entry = list[index] ? list[index]->line : NULL;
+    /* Readline replaces edited recalled entries and stores their undo list in data. */
+    if (list[index] && list[index]->data) { partial = 1; continue; }
     if (!entry || !*entry || *entry == ' ') continue;
     size_t bytes = strnlen(entry, COSMOSH_MAX_INPUT + 1);
     if (count == MAX_HISTORY || total + bytes > HISTORY_BYTES) { partial = 1; break; }
@@ -257,7 +331,7 @@ static int capture_history(packet *value) {
     entries[count++] = entry;
     total += bytes;
   }
-  number(value, partial ? 2 : 1, 1); text(value, instance, 36); number(value, (unsigned)count, 4);
+  number(value, partial ? 2 : 1, 1); text(value, namespace, 63); number(value, (unsigned)count, 4);
   for (int index = 0; index < count; index++) text(value, entries[index], COSMOSH_MAX_INPUT);
   return !value->error;
 }
@@ -267,7 +341,7 @@ static int capture_snapshot(packet *value) {
   int input = operation == 2 || operation == 3;
   begin_packet(value, 3);
   number(value, generation, 8); number(value, 1, 1);
-  number(value, (input ? 1 : 0) | (include_directory ? 2 : 0) | (operation == 4 ? 4 : 0), 1);
+  number(value, (input ? 1 : 0) | (include_directory ? 2 : 0) | ((operation == 4 || operation == 5) ? 4 : 0), 1);
   if (input) {
     uint32_t cursor;
     if (!*api.line || !characters(*api.line, COSMOSH_MAX_INPUT, *api.point, 1, &cursor) || *api.end < 0 ||
@@ -275,7 +349,7 @@ static int capture_snapshot(packet *value) {
     text(value, *api.line, COSMOSH_MAX_INPUT); number(value, cursor, 4);
   }
   if (include_directory && !capture_directory(value)) return 0;
-  if (operation == 4 && !capture_history(value)) return 0;
+  if ((operation == 4 || operation == 5) && !capture_history(value)) return 0;
   return finish_packet(value);
 }
 
@@ -343,6 +417,50 @@ static int apply_record(packet *value) {
   return finish_packet(&outgoing);
 }
 
+/** Use Bash's own range deletion so its session-history counter stays consistent. */
+static int delete_history_record(packet *value) {
+  char id[37];
+  if (!read_text(value, id, sizeof(id)) || value->offset != value->length ||
+      strcmp(id, request_id) || operation != 5) return 0;
+  sigset_t blocked, previous;
+  sigfillset(&blocked);
+  if (sigprocmask(SIG_BLOCK, &blocked, &previous)) return 0;
+  int fd = order_lock(input_epoch, input_sequence);
+  int unchanged = fd >= 0 && eligible() && capture_snapshot(&comparison) &&
+    comparison.length == captured.length && memcmp(comparison.data, captured.data, captured.length) == 0;
+  int offset = api.where_history();
+  if (offset < 0 || offset > *api.history_length ||
+      (offset < *api.history_length && strcmp(api.history_list()[offset]->line, history_target) == 0)) unchanged = 0;
+  unsigned status = 2;
+  int matches = 0, temporary = 0;
+  if (unchanged && !exact_history_matches(history_target, &matches, &temporary)) unchanged = 0;
+  if (unchanged && !temporary && matches > 0 && order_consume(fd, input_epoch, input_sequence, request_id)) {
+    status = 3;
+    int removed = 0;
+    for (int index = *api.history_length - 1; index >= 0; index--) {
+      HIST_ENTRY **list = api.history_list();
+      if (strcmp(list[index]->line, history_target)) continue;
+      int before = *api.history_length;
+      if (!api.delete_history_range(index, index) || *api.history_length != before - 1) break;
+      if (index < offset) offset--;
+      removed++;
+    }
+    /* GNU History does not adjust history_offset when removing a range. Keep the
+     * same logical entry selected, or the new end position for an empty draft.
+     */
+    int position_valid = api.history_set_pos(offset);
+    int remaining, final_temporary;
+    if (position_valid && removed == matches &&
+        exact_history_matches(history_target, &remaining, &final_temporary) &&
+        remaining == 0 && !final_temporary) status = 1;
+  }
+  if (fd >= 0) close(fd);
+  sigprocmask(SIG_SETMASK, &previous, NULL);
+  begin_packet(&outgoing, 5); number(&outgoing, status, 1);
+  phase = 3;
+  return finish_packet(&outgoing);
+}
+
 /** Consume exactly one complete private message; unknown operations close the exchange without reading input. */
 static int handle_record(void) {
   incoming.offset = 4;
@@ -354,9 +472,15 @@ static int handle_record(void) {
     if (!read_text(&incoming, request_id, sizeof(request_id)) || !order_uuid(request_id) ||
         !read_text(&incoming, input_epoch, sizeof(input_epoch)) || !order_uuid(input_epoch)) return 0;
     input_sequence = read_number(&incoming, 8);
+    if (operation == 5 && (!read_text(&incoming, history_target, sizeof(history_target)) || !*history_target ||
+        *history_target == ' ')) return 0;
     if (incoming.error ||
-        incoming.offset != incoming.length || operation < 1 || operation > 4 || include_directory > 1 ||
-        (operation == 4 && include_directory)) return 0;
+        incoming.offset != incoming.length || operation < 1 || operation > 5 || include_directory > 1 ||
+        ((operation == 4 || operation == 5) && include_directory)) return 0;
+    if (operation == 5) {
+      uint32_t ignored;
+      if (!characters(history_target, COSMOSH_MAX_INPUT, 0, 0, &ignored)) return 0;
+    }
     sigset_t blocked, previous;
     sigfillset(&blocked);
     if (sigprocmask(SIG_BLOCK, &blocked, &previous)) return 0;
@@ -367,10 +491,11 @@ static int handle_record(void) {
     if (!valid) return 0;
     memcpy(outgoing.data, captured.data, captured.length);
     outgoing.length = captured.length; outgoing.offset = 0; outgoing.error = 0;
-    phase = operation == 3 ? 2 : 3;
+    phase = operation == 3 || operation == 5 ? 2 : 3;
     return 1;
   }
-  return phase == 2 && opcode == 4 && apply_record(&incoming);
+  return phase == 2 && opcode == 4 &&
+    (operation == 5 ? delete_history_record(&incoming) : apply_record(&incoming));
 }
 
 /** Progress bounded nonblocking I/O. No read, write, connect or desktop authorization can suspend the Shell. */
@@ -414,6 +539,7 @@ static void progress_exchange(void) {
  * restoring the old search text. Other states are never cleared speculatively.
  */
 static int on_startup(void) {
+  if (loaded && owner == getpid() && *api.editing_mode != 1) history_untrusted = 1;
   if (armed && !startup_seen && owns_hooks() && !*api.executing_builtin && !*api.running_trap &&
       variable_equals("__COSMOSH_BASH_PRIMARY", "1") && variable_equals("__COSMOSH_BASH_PREEXEC_READY", "1") &&
       decimal(api.variable("__COSMOSH_PROMPT_GENERATION")) == generation) {
@@ -425,6 +551,13 @@ static int on_startup(void) {
     }
   }
   return previous_startup_hook ? previous_startup_hook() : 0;
+}
+
+/** Signal cleanup can discard undo provenance while leaving an unsubmitted edit in history. */
+static void on_deprep(void) {
+  if (loaded && owner == getpid() && (*api.state & SIGHANDLER) && api.current_history())
+    history_untrusted = 1;
+  if (previous_deprep) previous_deprep();
 }
 
 /** Chain the prior hook, then observe only a qualified idle reader; recursive callbacks do no work. */
@@ -478,6 +611,7 @@ int cosmosh_editor_builtin_load(char *name) {
   SYMBOL(variable, "get_string_value"); SYMBOL(hook, "rl_event_hook"); SYMBOL(state, "rl_readline_state");
   SYMBOL(signal_hook, "rl_signal_event_hook");
   SYMBOL(startup_hook, "rl_startup_hook"); SYMBOL(isearch_context, "_rl_iscxt"); SYMBOL(isearch_cleanup, "_rl_isearch_cleanup");
+  SYMBOL(deprep, "rl_deprep_term_function");
   SYMBOL(line, "rl_line_buffer"); SYMBOL(point, "rl_point"); SYMBOL(end, "rl_end");
   SYMBOL(editing_mode, "rl_editing_mode"); SYMBOL(input, "rl_instream");
   SYMBOL(promptvars, "promptvars");
@@ -485,13 +619,23 @@ int cosmosh_editor_builtin_load(char *name) {
   SYMBOL(dispatching, "rl_dispatching");
   SYMBOL(begin_undo, "rl_begin_undo_group"); SYMBOL(end_undo, "rl_end_undo_group");
   SYMBOL(delete_text, "rl_delete_text"); SYMBOL(insert_text, "rl_insert_text"); SYMBOL(redisplay, "rl_redisplay");
-  SYMBOL(history_list, "history_list"); SYMBOL(history_length, "history_length"); SYMBOL(history_enabled, "enable_history_list");
+  SYMBOL(history_list, "history_list"); SYMBOL(current_history, "current_history");
+  SYMBOL(history_length, "history_length"); SYMBOL(history_enabled, "enable_history_list");
+  SYMBOL(where_history, "where_history"); SYMBOL(history_set_pos, "history_set_pos");
+  SYMBOL(delete_history_range, "bash_delete_history_range");
 #undef SYMBOL
+  /* A separately loaded module copy must not reuse an earlier source revision. */
+  uint64_t seed;
+  if (getrandom(&seed, sizeof(seed), GRND_NONBLOCK) != sizeof(seed)) return 0;
+  history_revision = seed & (UINT64_MAX >> 1);
+  if (decimal(api.variable("__COSMOSH_PROMPT_GENERATION")) != 1) history_untrusted = 1;
   owner = getpid(); armed = 0;
   previous_hook = *api.hook;
   previous_startup_hook = *api.startup_hook;
+  previous_deprep = *api.deprep;
   *api.hook = on_idle;
   *api.startup_hook = on_startup;
+  *api.deprep = on_deprep;
   loaded = 1;
   return 1;
 }
@@ -501,9 +645,11 @@ void cosmosh_editor_builtin_unload(char *name) {
   (void)name;
   armed = 0; reset_exchange();
   loaded = 0;
-  if ((api.hook && *api.hook != on_idle) || (api.startup_hook && *api.startup_hook != on_startup)) retired = 1;
+  if ((api.hook && *api.hook != on_idle) || (api.startup_hook && *api.startup_hook != on_startup) ||
+      (api.deprep && *api.deprep != on_deprep)) retired = 1;
   if (api.hook && *api.hook == on_idle) *api.hook = previous_hook;
   if (api.startup_hook && *api.startup_hook == on_startup) *api.startup_hook = previous_startup_hook;
+  if (api.deprep && *api.deprep == on_deprep) *api.deprep = previous_deprep;
 }
 
 static char *const documentation[] = { "Configure the Cosmosh nonblocking primary-prompt adapter.", NULL };

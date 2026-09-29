@@ -19,8 +19,8 @@ var fullRemoteShellCapabilities = []string{
 	"prompt-ready",
 }
 
-var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "line-state", "editor-state", "input-snapshot", "input-apply")
-var bashRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "editor-state", "input-snapshot", "input-apply")
+var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "line-state", "editor-state", "input-snapshot", "input-apply", "history-read")
+var bashRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "editor-state", "input-snapshot", "input-apply", "history-read")
 var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "editor-state", "input-snapshot", "input-apply", "history-read", "native-completion")
 
 var degradedRemoteShellCapabilities = []string{
@@ -350,15 +350,24 @@ fi
 const zshHelperHooks = `
 if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
   __cosmosh_zsh_precmd() {
-    __cosmosh_prompt_ready "$?"
+    builtin typeset __cosmosh_precmd_status=$?
+    builtin emulate -L zsh -o noxtrace -o localtraps
+    builtin trap '' DEBUG
+    # User DEBUG output must not enter metadata command substitutions or duration arithmetic.
+    # LOCAL_TRAPS restores the user's handler after this callback completes.
+    __cosmosh_prompt_ready "$__cosmosh_precmd_status"
     __COSMOSH_ZSH_REPORTED_PWD="$PWD"
     __COSMOSH_ZSH_REPORTED_HOME="${HOME-}"
     __cosmosh_zsh_editor_prepare || :
   }
   __cosmosh_zsh_preexec() {
+    builtin emulate -L zsh -o noxtrace -o localtraps
+    builtin trap '' DEBUG
     __cosmosh_emit_command_start "$1"
   }
   __cosmosh_zsh_chpwd() {
+    builtin emulate -L zsh -o noxtrace -o localtraps
+    builtin trap '' DEBUG
     # Invalidate immediately, including asynchronous traps while ZLE is idle.
     # Publishing a new directory still requires a separate idle editor observation.
     __COSMOSH_ZSH_REPORTED_PWD="$PWD"
@@ -367,6 +376,8 @@ if [ "${__COSMOSH_REMOTE_SHELL_HOOK_INSTALLED:-0}" != "1" ]; then
     return 0
   }
   __cosmosh_zsh_line_pre_redraw() {
+    builtin emulate -L zsh -o noxtrace -o localtraps
+    builtin trap '' DEBUG
     if [ "${__COSMOSH_ZSH_REPORTED_PWD-}" != "$PWD" ] ||
        [ "${__COSMOSH_ZSH_REPORTED_HOME-}" != "${HOME-}" ]; then
       __cosmosh_zsh_chpwd

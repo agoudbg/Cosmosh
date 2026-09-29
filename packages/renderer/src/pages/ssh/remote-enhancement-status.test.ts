@@ -89,8 +89,21 @@ test('private, partial and unsupported history use the native source result with
   assert.equal(model.features[1].reason, 'historyPartial');
   assert.ok(!JSON.stringify(model).includes('sensitive'));
   assert.ok(!JSON.stringify(model).includes('private-name'));
-  input.context!.shell = 'bash';
+  input.context!.shell = 'sh';
   assert.equal(resolveEnhancementStatus(input).features[1].reason, 'unsupported');
+});
+
+test('qualified history sources use their actual Shell and reject retained data from another Shell', () => {
+  for (const shell of ['bash', 'zsh', 'fish'] as const) {
+    const input = createEnhancementStatusFixture();
+    input.context!.shell = shell;
+    input.historyView = { status: 'ok', source: { id: 'native-source', shell, namespace: 'reader' }, entries: [] };
+    assert.equal(resolveEnhancementStatus(input).features[1].reason, 'historyReady');
+    input.historyView.source!.shell = shell === 'fish' ? 'bash' : 'fish';
+    assert.equal(resolveEnhancementStatus(input).features[1].reason, 'historyUnavailable');
+    input.context!.capabilities = input.context!.capabilities.filter((item) => item !== 'history-read');
+    assert.equal(resolveEnhancementStatus(input).features[1].reason, 'unsupported');
+  }
 });
 
 test('helper failure codes explain supported causes and do not guess the operating system', () => {

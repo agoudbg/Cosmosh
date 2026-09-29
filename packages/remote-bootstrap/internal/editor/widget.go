@@ -81,13 +81,15 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 			return errors.New("request-unavailable")
 		}
 		statePath, err := inputorder.Path(reply.InputBoundary.Epoch)
-		if err != nil { return errors.New("request-unavailable") }
+		if err != nil {
+			return errors.New("request-unavailable")
+		}
 		directory := "0"
 		if reply.IncludeDirectory {
 			directory = "1"
 		}
 		if reply.Operation == "history-delete" {
-			if target.Shell != "fish" || reply.IncludeDirectory || reply.History == nil ||
+			if (target.Shell != "fish" && target.Shell != "zsh") || reply.IncludeDirectory || reply.History == nil ||
 				!validHistory(*reply.History) || reply.History.Status != "ok" || len(reply.History.Entries) != 1 {
 				return errors.New("invalid-widget")
 			}
@@ -102,7 +104,7 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 		return err
 	}
 	if message.Phase == "history" || message.Phase == "history-confirm" {
-		if len(args) != 8 || target.Shell != "fish" || !uuidPattern.MatchString(args[7]) {
+		if len(args) != 8 || (target.Shell != "fish" && target.Shell != "zsh") || !uuidPattern.MatchString(args[7]) {
 			return errors.New("invalid-widget")
 		}
 		history, err := readNativeHistory(input)

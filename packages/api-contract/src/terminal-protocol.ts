@@ -116,7 +116,7 @@ export type ShellNativeHistory = {
 };
 
 /** One current native history source. The opaque ID changes when its permission or namespace lifetime ends. */
-export type ShellHistorySource = { id: string; shell: 'fish'; namespace: string };
+export type ShellHistorySource = { id: string; shell: ShellEditorTarget['shell']; namespace: string };
 
 /** Exact newest-first native records, or an explicit state with no retained private history. */
 export type ShellHistoryView =
@@ -128,7 +128,7 @@ export type ShellHistoryRemovalResult = {
   type: 'shell-history-remove-result';
   requestId: string;
   sourceId: string;
-  status: 'removed-from-reader' | 'stale' | 'unavailable' | 'unknown';
+  status: 'removed-from-reader' | 'stale' | 'unsupported' | 'unavailable' | 'unknown';
 };
 
 /** A requested, editor-owned observation, retained only in session memory. */

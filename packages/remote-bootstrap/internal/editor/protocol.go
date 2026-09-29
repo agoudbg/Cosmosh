@@ -69,15 +69,15 @@ type Snapshot struct {
 
 // Request is the private SSH-exec stdin protocol. Apply always includes the exact expected observation.
 type Request struct {
-	RequestID        string        `json:"requestId"`
+	RequestID        string              `json:"requestId"`
 	InputBoundary    inputorder.Boundary `json:"inputBoundary"`
-	Target           Target        `json:"target"`
-	Operation        string        `json:"operation"`
-	PromptGeneration uint64        `json:"promptGeneration"`
-	IncludeDirectory bool          `json:"includeDirectory"`
-	Notification     *Notification `json:"notification,omitempty"`
-	Expected         *Snapshot     `json:"expected,omitempty"`
-	Replacement      *Buffer       `json:"replacement,omitempty"`
+	Target           Target              `json:"target"`
+	Operation        string              `json:"operation"`
+	PromptGeneration uint64              `json:"promptGeneration"`
+	IncludeDirectory bool                `json:"includeDirectory"`
+	Notification     *Notification       `json:"notification,omitempty"`
+	Expected         *Snapshot           `json:"expected,omitempty"`
+	Replacement      *Buffer             `json:"replacement,omitempty"`
 }
 
 // Message is one framed helper response. Failure codes never include request text or raw errors.
@@ -137,12 +137,13 @@ func validRequest(request Request) bool {
 			request.Expected.PromptGeneration == request.PromptGeneration && request.Expected.Directory.Physical != nil &&
 			request.Expected.Buffer.Cursor == utf8.RuneCountInString(request.Expected.Buffer.Text)
 	case "history-delete":
-		return request.Target.Shell == "fish" && !request.IncludeDirectory && request.Replacement == nil &&
+		return (request.Target.Shell == "fish" || request.Target.Shell == "bash" || request.Target.Shell == "zsh") &&
+			!request.IncludeDirectory && request.Replacement == nil &&
 			request.Expected != nil && validSnapshot(*request.Expected, false, false, true) &&
 			request.Expected.PromptGeneration == request.PromptGeneration &&
 			request.Expected.History.Status == "ok" && len(request.Expected.History.Entries) == 1
 	case "history":
-		return (request.Target.Shell == "fish" || request.Target.Shell == "bash") && !request.IncludeDirectory && request.Expected == nil && request.Replacement == nil
+		return (request.Target.Shell == "fish" || request.Target.Shell == "bash" || request.Target.Shell == "zsh") && !request.IncludeDirectory && request.Expected == nil && request.Replacement == nil
 	case "context":
 		return request.Expected == nil && request.Replacement == nil
 	case "snapshot":

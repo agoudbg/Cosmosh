@@ -1969,7 +1969,9 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       !session.disposed &&
       session.shellContext.permissions.history &&
       session.remoteEnhancementsRuntimeState === 'active' &&
-      session.shellContext.shell === 'fish' &&
+      (session.shellContext.shell === 'bash' ||
+        session.shellContext.shell === 'zsh' ||
+        session.shellContext.shell === 'fish') &&
       session.shellContext.shellInstanceId !== null &&
       session.shellContext.capabilities.includes('history-read')
     );
@@ -2082,6 +2084,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         return;
       }
       const previous = session.historyView?.source;
+      const shell = session.shellContext.shell;
+      if (shell !== 'bash' && shell !== 'zsh' && shell !== 'fish') return;
       const sameSource =
         previous?.namespace === history.namespace &&
         session.historyOwnerInstanceId === session.shellContext.shellInstanceId;
@@ -2089,7 +2093,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         status: history.status,
         source: {
           id: sameSource && previous ? previous.id : randomUUID(),
-          shell: 'fish',
+          shell,
           namespace: history.namespace,
         },
         entries: normalizeShellHistory(history.entries),
@@ -2213,7 +2217,9 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
             ? 'unknown'
             : result?.status === 'stale'
               ? 'stale'
-              : 'unavailable',
+              : result?.status === 'unsupported'
+                ? 'unsupported'
+                : 'unavailable',
       );
     } finally {
       session.historyMutationInFlight = false;

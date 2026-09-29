@@ -192,11 +192,7 @@ export const normalizeEditorSnapshot = (value: unknown, request: ShellEditorRequ
     result.buffer = buffer;
   }
   if (includeHistory) {
-    if (
-      (request.target.shell !== 'fish' && !(request.target.shell === 'bash' && request.operation === 'history')) ||
-      request.includeDirectory
-    )
-      return null;
+    if (request.includeDirectory) return null;
     const history = normalizeNativeHistoryObservation(value.history);
     if (!history) return null;
     result.history = history;
