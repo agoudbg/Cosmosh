@@ -491,7 +491,7 @@ func TestRunInstallsZshRemoteShellHelperHooks(t *testing.T) {
 	assertFileContains(t, helperPath, "autoload -Uz +X add-zle-hook-widget")
 	assertFileContains(t, helperPath, "add-zle-hook-widget -d line-pre-redraw __cosmosh_zsh_line_pre_redraw")
 	assertFileContains(t, helperPath, "precmd_functions=(${precmd_functions[@]:#__cosmosh_zsh_precmd})")
-	assertFileContains(t, helperPath, `__COSMOSH_CAPABILITIES_JSON='["cwd","command-start","command-end","foreground-command","prompt-ready","cwd-invalidated","line-state","editor-state","input-snapshot","input-apply","history-read"]'`)
+	assertFileContains(t, helperPath, `__COSMOSH_CAPABILITIES_JSON='["cwd","command-start","command-end","foreground-command","prompt-ready","cwd-invalidated","line-state","editor-state","input-snapshot","input-apply","directory-read","history-read"]'`)
 	assertTextOrder(t, readFileString(t, helperPath), "add-zle-hook-widget line-pre-redraw", "__cosmosh_emit_remote_shell_event integration-ready")
 }
 
@@ -663,6 +663,19 @@ func TestRunInstallsShAshDegradedPromptHooks(t *testing.T) {
 			}
 			assertTextOrder(t, readFileString(t, helperPath), "PS1='$(__cosmosh_prompt_ready_for_ps1", "__cosmosh_emit_remote_shell_event integration-ready")
 		})
+	}
+}
+
+func TestHelperCapabilitiesDeclareFreshDirectoryReads(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		if !containsString(HelperCapabilities(shell), "directory-read") {
+			t.Fatalf("%s must advertise fresh original-Shell directory reads", shell)
+		}
+	}
+	for _, shell := range []string{"sh", "ash"} {
+		if containsString(HelperCapabilities(shell), "directory-read") {
+			t.Fatalf("%s must not advertise an unavailable original-Shell directory read", shell)
+		}
 	}
 }
 

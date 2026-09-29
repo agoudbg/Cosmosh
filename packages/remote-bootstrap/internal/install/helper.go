@@ -19,9 +19,9 @@ var fullRemoteShellCapabilities = []string{
 	"prompt-ready",
 }
 
-var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "line-state", "editor-state", "input-snapshot", "input-apply", "history-read")
-var bashRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "editor-state", "input-snapshot", "input-apply", "history-read")
-var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "editor-state", "input-snapshot", "input-apply", "history-read", "native-completion")
+var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "line-state", "editor-state", "input-snapshot", "input-apply", "directory-read", "history-read")
+var bashRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "editor-state", "input-snapshot", "input-apply", "directory-read", "history-read")
+var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "editor-state", "input-snapshot", "input-apply", "directory-read", "history-read", "native-completion")
 
 var degradedRemoteShellCapabilities = []string{
 	"cwd",
