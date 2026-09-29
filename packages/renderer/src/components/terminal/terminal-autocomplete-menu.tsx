@@ -137,7 +137,7 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
           return Math.max(0, Math.min(activeIndex, items.length - 1));
         },
         reset: () => {
-          setActiveIndex(0);
+          if (activeIndex !== 0) setActiveIndex(0);
         },
       }),
       [activeIndex, items],

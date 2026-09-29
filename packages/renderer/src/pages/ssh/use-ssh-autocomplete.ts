@@ -154,6 +154,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    * @returns Nothing.
    */
   const setInteractionMode = React.useCallback((mode: AutocompleteInteractionMode): void => {
+    if (interactionModeRef.current === mode) return;
     interactionModeRef.current = mode;
     setAutocompleteFocused(mode === 'focused');
   }, []);
@@ -191,7 +192,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
     if (!isActive || connectionState !== 'connected' || !terminalAutoCompleteEnabled) {
       clearScheduledAutocompleteRequest();
       setInteractionMode('passive');
-      setAutocompleteItems([]);
+      setAutocompleteItems((items) => (items.length === 0 ? items : []));
       autocompleteMenuRef.current?.reset();
       setAutocompleteAnchor(null);
       autocompleteReplacePrefixLengthRef.current = 0;
@@ -209,15 +210,17 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
    * @returns Nothing.
    */
   const closeAutocomplete = React.useCallback(() => {
-    setInteractionMode('passive');
     clearScheduledAutocompleteRequest();
     pendingTypingRequestPaneSetRef.current.clear();
-    setAutocompleteItems([]);
-    autocompleteMenuRef.current?.reset();
-    setAutocompleteAnchor(null);
+    // Invalidate request authority before any optional UI setter or imperative reset can throw.
     autocompleteReplacePrefixLengthRef.current = 0;
     latestAutocompleteRequestIdRef.current = '';
     latestAutocompleteRequestKeyRef.current = '';
+    setInteractionMode('passive');
+    // Repeated input must not render a new empty list or retrigger the menu's reset effect.
+    setAutocompleteItems((items) => (items.length === 0 ? items : []));
+    autocompleteMenuRef.current?.reset();
+    setAutocompleteAnchor(null);
   }, [clearScheduledAutocompleteRequest, setInteractionMode]);
 
   React.useLayoutEffect(() => {
@@ -576,8 +579,6 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
         closeAutocomplete();
         return { shouldRequest: false, shouldClose: true };
       }
-      // Any real input invalidates the displayed candidates before an echo or delayed response arrives.
-      if (paneId === activePaneIdRef.current) closeAutocomplete();
       let shouldRequest = false;
       let shouldClose = false;
       let canTrackCommandPrefix = true;
@@ -592,6 +593,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
           localAutocompleteCommandPrefixByPaneRef.current.delete(paneId);
           localAutocompletePrefixNeedsRenderedContextByPaneRef.current.add(paneId);
           pendingTypingRequestPaneSetRef.current.delete(paneId);
+          if (paneId === activePaneIdRef.current) closeAutocomplete();
           return {
             shouldRequest: false,
             shouldClose: true,
@@ -634,6 +636,8 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       }
 
       const shouldQueueTypingRequest = shouldRequest && !shouldClose;
+      // Finish input bookkeeping before touching optional UI, but invalidate candidates synchronously.
+      if (paneId === activePaneIdRef.current) closeAutocomplete();
       if (shouldQueueTypingRequest) {
         pendingTypingRequestPaneSetRef.current.add(paneId);
       }

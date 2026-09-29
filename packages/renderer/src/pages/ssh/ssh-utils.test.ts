@@ -11,6 +11,7 @@ import {
   containsTerminalControlContent,
   createTerminalPasteWarningRequest,
   flattenCommandForTerminalInput,
+  forwardTerminalInput,
   reconcileSecondaryPaneRuntimes,
   resetTerminalForNewPtySession,
   resolveAutocompleteCommandPrefix,
@@ -21,6 +22,99 @@ import {
 } from './ssh-utils';
 
 const require = createRequire(import.meta.url);
+
+test('ordinary input is forwarded once before optional UI work, preserving submission identity', () => {
+  const events: string[] = [];
+  const messages: string[] = [];
+  const socket = {
+    readyState: WebSocket.OPEN,
+    send: (message: string): void => {
+      events.push('send');
+      messages.push(message);
+    },
+  };
+  forwardTerminalInput({
+    socket,
+    paneId: 'pane-1',
+    data: '中🐟\t\r\x03',
+    submissionToken: 'opaque-submission',
+    updateAutocomplete: () => {
+      events.push('ui');
+    },
+  });
+  assert.deepEqual(events, ['send', 'ui']);
+  assert.deepEqual(
+    messages.map((message) => JSON.parse(message)),
+    [{ type: 'input', data: '中🐟\t\r\x03', submissionToken: 'opaque-submission' }],
+  );
+});
+
+test('optional UI failures cannot drop input or copy private exception text into logs', (context) => {
+  const warn = context.mock.method(console, 'warn', () => undefined);
+  for (const paneId of ['pane-1', 'pane-2']) {
+    const messages: string[] = [];
+    const socket = {
+      readyState: WebSocket.OPEN,
+      send: (message: string): void => {
+        messages.push(message);
+      },
+    };
+    forwardTerminalInput({
+      socket,
+      paneId,
+      data: 'PRIVATE_FIXTURE_INPUT',
+      updateAutocomplete: () => {
+        throw new Error('PRIVATE_FIXTURE_EXCEPTION');
+      },
+    });
+    assert.deepEqual(
+      messages.map((message) => JSON.parse(message)),
+      [{ type: 'input', data: 'PRIVATE_FIXTURE_INPUT' }],
+    );
+  }
+  assert.equal(warn.mock.callCount(), 2);
+  assert.equal(JSON.stringify(warn.mock.calls.map((call) => call.arguments)).includes('PRIVATE_FIXTURE'), false);
+  assert.deepEqual(
+    warn.mock.calls.map((call) => call.arguments[1]),
+    [{ paneId: 'pane-1' }, { paneId: 'pane-2' }],
+  );
+});
+
+test('closed input transports do not send or retry, while transport errors remain observable', () => {
+  let updates = 0;
+  const unavailable = {
+    readyState: WebSocket.CLOSED,
+    send: (): void => assert.fail('Closed transport must not send'),
+  };
+  for (const socket of [null, unavailable]) {
+    forwardTerminalInput({
+      socket,
+      paneId: 'pane-1',
+      data: 'x',
+      updateAutocomplete: () => {
+        updates += 1;
+      },
+    });
+  }
+  assert.equal(updates, 2);
+  const error = new Error('Transport failure');
+  const broken = {
+    readyState: WebSocket.OPEN,
+    send: (): never => {
+      throw error;
+    },
+  };
+  assert.throws(
+    () =>
+      forwardTerminalInput({
+        socket: broken,
+        paneId: 'pane-1',
+        data: 'x',
+        updateAutocomplete: () => assert.fail('Transport failure must propagate'),
+      }),
+    error,
+  );
+});
 
 test('history insertion accepts only unchanged single-line text and never terminal control keys', () => {
   for (const command of ['printf "hello"  ', '中文😀', '--help', "echo '; $value'", '  echo spaced  '])

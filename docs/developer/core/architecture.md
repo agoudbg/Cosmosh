@@ -81,6 +81,7 @@ The SSH sidebar's Enhancement Status dialog derives read-only diagnostics from t
 - Uses `window.electron` bridge only (no direct Node API usage).
 - Creates SSH/local terminal sessions and SFTP browser/download/file-operation sessions through backend APIs.
 - Connects terminal data channels through WebSocket and renders with `xterm.js`.
+- Primary and secondary pane input share `forwardTerminalInput`. Submission context is invalidated before transport; optional autocomplete UI updates run synchronously after the send and cannot discard a key by throwing. Diagnostics identify only the pane, without command or exception text. Closing an empty menu preserves state identity to prevent redundant React updates during fast typing.
 - Non-home renderer pages, including SSH and the CodeMirror-backed settings editor, are lazy-loaded to keep heavyweight assets out of the default startup path.
 - Renderer bootstrap hydrates settings from local cache first, then refreshes canonical values from backend in background.
 - Development StrictMode is opt-in via `VITE_ENABLE_STRICT_MODE=true` to reduce duplicate effect execution during local performance profiling.

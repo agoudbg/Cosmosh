@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client';
 
 import { TerminalAutocompleteMenu } from '../../../components/terminal/terminal-autocomplete-menu';
 import type { TerminalPaneRuntime } from '../ssh-types';
+import { forwardTerminalInput } from '../ssh-utils';
 import { useSshAutocomplete } from '../use-ssh-autocomplete';
 
 type FixtureSettings = {
@@ -23,6 +24,8 @@ type FixtureController = {
   messages: RecordedMessage[];
   setInputAllowed: (allowed: boolean) => void;
   setHistoryEnabled: (enabled: boolean) => void;
+  failNextMenuReset: () => void;
+  accept: (index: number) => void;
   transportCallbackChanges: number;
   reset: (settings?: Partial<FixtureSettings>) => Promise<void>;
   show: () => void;
@@ -115,8 +118,15 @@ export const AutocompleteFixture = (): React.ReactNode => {
       } as WebSocket;
       paneRuntimeMapRef.current.set(paneId, { terminal, socket });
       const input = terminal.onData((data) => {
-        current.current.applyAutocompleteInputData(paneId, data);
-        messages.push({ paneId, payload: { type: 'input', data } });
+        forwardTerminalInput({
+          socket,
+          paneId,
+          data,
+          updateAutocomplete: () => {
+            const state = current.current.applyAutocompleteInputData(paneId, data);
+            if (state.shouldClose) current.current.closeAutocompleteRef.current();
+          },
+        });
       });
       const keydown = (event: KeyboardEvent): void =>
         current.current.handleAutocompleteTerminalKeyDownRef.current(event, paneId);
@@ -140,6 +150,15 @@ export const AutocompleteFixture = (): React.ReactNode => {
       messages,
       setInputAllowed: (allowed) => setSettings((previous) => ({ ...previous, inputAllowed: allowed })),
       setHistoryEnabled: (enabled) => setSettings((previous) => ({ ...previous, historyEnabled: enabled })),
+      failNextMenuReset: () => {
+        const menu = current.current.autocompleteMenuRef.current!;
+        const reset = menu.reset;
+        menu.reset = () => {
+          menu.reset = reset;
+          throw new Error('Controlled optional menu failure');
+        };
+      },
+      accept: (index) => current.current.acceptAutocompleteAtIndex(index),
       transportCallbackChanges: 0,
       reset: async (next = {}) => {
         for (const paneId of runtimes.keys()) current.current.resetAutocompletePaneState(paneId);

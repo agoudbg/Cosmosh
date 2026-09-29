@@ -16,7 +16,7 @@ import {
   toResolvedTargetSnapshot,
 } from './ssh-target';
 import type { ResolvedTerminalTarget, ServerInboundMessage, TerminalPaneRuntime } from './ssh-types';
-import { resetTerminalForNewPtySession, sendClientMessage } from './ssh-utils';
+import { forwardTerminalInput, resetTerminalForNewPtySession, sendClientMessage } from './ssh-utils';
 import {
   applyTerminalCharacterWidthCompatibilityMode,
   createTerminalInstance,
@@ -592,18 +592,16 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
       }
 
       const submissionToken = preparePaneInput(paneId, data);
-      const autocompleteInputState = applyAutocompleteInputData(paneId, data);
-      if (autocompleteInputState.shouldClose) {
-        closeAutocompleteRef.current();
-      }
-
-      if (socket) {
-        sendClientMessage(socket, {
-          type: 'input',
-          data,
-          ...(submissionToken ? { submissionToken } : {}),
-        });
-      }
+      forwardTerminalInput({
+        socket,
+        paneId,
+        data,
+        submissionToken,
+        updateAutocomplete: () => {
+          const autocompleteInputState = applyAutocompleteInputData(paneId, data);
+          if (autocompleteInputState.shouldClose) closeAutocompleteRef.current();
+        },
+      });
     });
     const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {
       handleAutocompleteTerminalKeyDownRef.current(event, paneId);

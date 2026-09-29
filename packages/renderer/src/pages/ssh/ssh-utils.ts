@@ -410,12 +410,47 @@ export const formatTrafficRate = (bytesPerSecond: number | null): string => {
  * @param payload Serialized client payload.
  * @returns Nothing.
  */
-export const sendClientMessage = (socket: WebSocket, payload: ClientOutboundMessage): void => {
+export const sendClientMessage = (
+  socket: Pick<WebSocket, 'readyState' | 'send'>,
+  payload: ClientOutboundMessage,
+): void => {
   if (socket.readyState !== WebSocket.OPEN) {
     return;
   }
 
   socket.send(JSON.stringify(payload));
+};
+
+/** One pane's ordinary input and the optional suggestion UI update that follows it. */
+type TerminalInputDispatch = {
+  socket: Pick<WebSocket, 'readyState' | 'send'> | null;
+  paneId: string;
+  data: string;
+  submissionToken?: string;
+  updateAutocomplete: () => void;
+};
+
+/**
+ * Forwards original input exactly once before running optional autocomplete UI work.
+ * The caller must invalidate submission context first. No asynchronous gap is introduced between
+ * forwarding and candidate invalidation. UI exceptions cannot discard an already accepted key.
+ * @param input Pane transport, unchanged data, submission identity and optional UI update.
+ * @returns Nothing. Transport errors propagate; UI failures are reported without input or error text.
+ */
+export const forwardTerminalInput = (input: TerminalInputDispatch): void => {
+  if (input.socket) {
+    sendClientMessage(input.socket, {
+      type: 'input',
+      data: input.data,
+      ...(input.submissionToken ? { submissionToken: input.submissionToken } : {}),
+    });
+  }
+  try {
+    input.updateAutocomplete();
+  } catch {
+    // Exceptions from optional callbacks may contain command text; never copy them into logs.
+    console.warn('[ssh][input] Failed to update optional autocomplete.', { paneId: input.paneId });
+  }
 };
 
 /**

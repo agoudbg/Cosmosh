@@ -81,6 +81,7 @@ SSH 侧栏的增强状态窗口根据当前窗格的连接、ShellContext、原�
 - 仅通过 `window.electron` bridge 访问能力（不直接使用 Node API）。
 - 通过后端 API 创建 SSH/本地终端会话与 SFTP 浏览、下载、文件操作会话。
 - 通过 WebSocket 建立终端数据通道，并由 `xterm.js` 渲染。
+- 主窗格与分屏共用`forwardTerminalInput`。发送前先使提交相关的目录状态失效；可选补全界面在发送后同步更新，其异常不能导致字符丢失。诊断只包含窗格身份，不包含命令或异常文本。关闭空菜单时保持状态引用，避免快速输入触发多余的 React 更新。
 - 非 Home 的渲染页（包括 SSH 与基于 CodeMirror 的设置编辑器）采用懒加载，避免重型资源进入默认启动路径。
 - Renderer 启动优先从本地缓存水合设置，再在后台向 backend 拉取权威值并同步覆盖。
 - 开发态 StrictMode 改为通过 `VITE_ENABLE_STRICT_MODE=true` 显式开启，降低本地性能排查时重复 effect 执行带来的干扰。

@@ -9,6 +9,7 @@ import { openTerminalSessionSocket } from './ssh-session-connectors';
 import type { ResolvedTerminalTarget, ServerInboundMessage, TerminalPaneRuntime } from './ssh-types';
 import {
   applyTerminalRuntimeOptions,
+  forwardTerminalInput,
   reconcileSecondaryPaneRuntimes,
   resetTerminalForNewPtySession,
   sendClientMessage,
@@ -241,19 +242,16 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
         }
 
         const submissionToken = preparePaneInput(paneId, data);
-        const autocompleteInputState = applyAutocompleteInputData(paneId, data);
-        if (autocompleteInputState.shouldClose) {
-          closeAutocompleteRef.current();
-        }
-
-        const socket = runtime.socket;
-        if (socket) {
-          sendClientMessage(socket, {
-            type: 'input',
-            data,
-            ...(submissionToken ? { submissionToken } : {}),
-          });
-        }
+        forwardTerminalInput({
+          socket: runtime.socket,
+          paneId,
+          data,
+          submissionToken,
+          updateAutocomplete: () => {
+            const autocompleteInputState = applyAutocompleteInputData(paneId, data);
+            if (autocompleteInputState.shouldClose) closeAutocompleteRef.current();
+          },
+        });
       });
 
       const disposeSelectionChange = terminal.onSelectionChange(() => {

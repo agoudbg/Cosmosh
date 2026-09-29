@@ -3,6 +3,11 @@
 async (page) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   const results = [];
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.text().includes('[ssh][input]')) pageErrors.push(message.text());
+  });
   const check = (condition, message) => {
     if (!condition) throw new Error(message);
   };
@@ -32,6 +37,29 @@ async (page) => {
     await page.locator('[data-terminal-autocomplete="focused"]').waitFor();
   };
   await page.waitForFunction(() => !!window.terminalInteractionFixture);
+  for (const settings of [{}, { inputAllowed: false }, { enabled: false }]) {
+    await reset(settings);
+    const input = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.repeat(12);
+    await page.keyboard.type(input);
+    check((await inputs()).join('') === input, 'Rapid typing lost or changed a character: ' + JSON.stringify(settings));
+    check(pageErrors.length === 0, 'Rapid typing caused a renderer error: ' + pageErrors.join('; '));
+  }
+  results.push('rapid character delivery with readable, paused and disabled suggestions');
+  await reset();
+  await show();
+  await page.evaluate(() => window.terminalInteractionFixture.failNextMenuReset());
+  // An input event reaches xterm onData without the earlier keydown dismissal path.
+  await page.keyboard.insertText('x');
+  check((await inputs()).join('') === 'x', 'Optional menu failure dropped or duplicated input');
+  await page.evaluate(() => {
+    window.terminalInteractionFixture.respond();
+    window.terminalInteractionFixture.accept(0);
+  });
+  check((await inputs()).join('') === 'x', 'Failed menu reset retained authority to apply an old candidate');
+  check((await page.locator('[data-terminal-autocomplete]').count()) === 0, 'Old response reopened the failed menu');
+  check(pageErrors.length === 1 && pageErrors[0].includes('[ssh][input]'), 'Controlled UI failure diagnostics: ' + JSON.stringify(pageErrors));
+  pageErrors.length = 0;
+  results.push('optional UI failure preserves input and invalidates old replies and candidate actions');
   for (const [key, expected] of [
     ['Tab', '\t'],
     ['ArrowUp', '\x1b[A'],
@@ -245,5 +273,6 @@ async (page) => {
   });
   await page.screenshot({ path: '.playwright-cli/terminal-autocomplete-narrow.png' });
   results.push('popup remains in bounds after viewport resize');
+  check(pageErrors.length === 0, 'Renderer errors: ' + pageErrors.join('; '));
   return { passed: results.length, scenarios: results };
 }
