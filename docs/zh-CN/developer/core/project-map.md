@@ -94,13 +94,13 @@ flowchart TB
 - `packages/remote-bootstrap/internal/editor/history.go`验证有界的原生历史观察。Fish 钩子在传输前过滤私密记录；`editor-protocol.ts`与`ShellEditorController.history`／`deleteHistory`执行 Backend 独立权限边界。已有工作进程授权原生精确移除，并将当前行编辑器的目标消失与输入修改、文件更新分开报告。`fish-history.live-test.ts`验证原始 Shell 和原生保存失败。`ssh/session-service.ts`负责来源编号及缓存替换；前端分屏 reducer 和`SSHSidebar`负责移除范围提示。`tests/terminal-history.*`在浏览器中验证生产 reducer 和侧栏。
 - `completion/remote-path-query.ts`负责有界结构化 SSH 目录边界及逐会话查询取消与缓存；`completion/snapshot-paths.ts`将一次完整私有编辑器观察转为已经引用的字面路径草稿。`packages/remote-bootstrap/internal/paths`使用 Go 标准库读取目录。`path-query.live-test.ts`覆盖实际 SSH 文件名、大目录、权限、超时与取消及重新确认的目录观察。旧路径来源现在仅服务本地终端。
 - `src/terminal/editor-controller.ts`负责每会话的单个私有快照、操作和合并后的上下文恢复；`editor-protocol.ts`校验输入、Unicode 和权限数据边界，并维护固定的 Fish 传输边界而不保留输入文本。`src/ssh/editor-exec.ts`负责有界 stdin/JSON SSH 传输。`src/terminal/integration/editor-fixture.ts`为`editor-bridge.live-test.ts`（Bash）、`zsh-editor.live-test.ts`和`fish-editor.live-test.ts`共享实际帮助程序安装与观察。
-- `packages/remote-bootstrap/internal/editor`负责 Linux 进程及通知身份、私有 socket 和仅传递数据的编辑器协议；`internal/install/editor_bash.go`、`editor_zsh.go`及`editor_fish.go`负责生成各 Shell 适配器。Fish 通知在发布支持的 Linux amd64/arm64 架构上使用 pidfd。`scripts/terminal-fixture/install_fish.py`仅在一次性测试镜像中验证并安装固定的官方 Fish 运行时。
+- `packages/remote-bootstrap/internal/editor`负责 Linux 进程及通知身份、私有 socket 和仅传递数据的编辑器协议；`internal/install/editor_bash.go`、`editor_zsh.go`及`editor_fish.go`负责生成各 Shell 适配器。`internal/session`负责协议 v1 帧、原始登录 Shell 的 PTY、有序输入送达确认、调整尺寸，以及主 SSH exec 通道关闭时的清理。Fish 通知在发布支持的 Linux amd64/arm64 架构上使用 pidfd。`scripts/terminal-fixture/install_fish.py`仅在一次性测试镜像中验证并安装固定的官方 Fish 运行时。
 
 - **角色**：内部 API + 会话编排运行时。
 - **关键目录**：
   - `src/http/routes`：设置、SSH 实体、SFTP 会话/任务操作、端口转发规则与本地终端动作 REST 路由。
   - `src/audit`：本地优先审计领域（脱敏、保留策略、查询模型与写入服务）。
-  - `src/ssh`：SSH 认证/会话逻辑（`ssh2`、known-host 信任、遥测、钥匙链凭据解析）、流式 OSC 777 parser/信任 gate、结构化命令生命周期消费，以及供 shell 与非 shell transport 共用的已认证连接 helper。该 helper 会为每条 transport 创建新的 proxy socket，并支持 attempt 级压缩策略与取消信号。
+  - `src/ssh`：SSH 认证/会话逻辑（`ssh2`、known-host 信任、遥测、钥匙链凭据解析）、流式 OSC 777 parser/信任 gate、结构化命令生命周期消费，以及供 shell 与非 shell transport 共用的已认证连接 helper。`terminal-transport.ts`负责本次连接的输入序号、助手帧通道、送达等待和启动前回退边界；`session-service.ts`只会为校验通过的已安装助手选择该路径。连接 helper 会为每条 transport 创建新的 proxy socket，并支持 attempt 级压缩策略与取消信号。
   - `src/remote-bootstrap`：交互 shell 打开前的远端增强编排。它通过五分钟 success-only cache 合并并发 manifest fetch，使用与交互 client 隔离的临时 SSH transport 探测远端平台，校验安装状态，按需注入下载 wrapper，返回可信 helper 契约，转发 `bootstrap-status` 并记录 bootstrap 终态审计。
   - `src/port-forward`：SSH 端口转发规则校验、SOCKS5 解析与活动运行时会话服务。
   - `src/sftp`：SFTP 浏览、下载、文件操作、任务调度与远端归档会话逻辑。`session-service.ts` 负责会话授权/生命周期与普通 `ssh2.sftp` 操作；`task-scheduler.ts` 负责每会话 total/heavy/mutation admission、POSIX path claim、绝对 deadline、取消信号与仅驻留内存的任务快照；`archive-service.ts` 在调度器独占 claim 下负责固定 POSIX 命令构造、能力探测、异步归档状态、暂存/提交、冲突合并、取消、审计与清理。单文件传输继续使用既有短期内存字节进度记录。

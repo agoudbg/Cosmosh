@@ -439,14 +439,21 @@ sequenceDiagram
     BOOT-->>SSH: Validated installed contract
   end
   SSH->>AUX: Begin temporary transport teardown
-  SSH->>PRIMARY: Open PTY as first session channel
-  PRIMARY-->>SSH: Login messages + integration-ready OSC
+  alt 已校验的 ready 契约包含 binaryPath
+    SSH->>PRIMARY: 无外层 PTY 的 exec cosmosh-bootstrap session
+    PRIMARY-->>SSH: hello（会话协议 1）
+    SSH->>PRIMARY: start（epoch、TERM、行列数）
+    PRIMARY-->>SSH: 登录 Shell 的 PTY 启动后返回 ready
+  else 增强关闭或 start 前确认不可用
+    SSH->>PRIMARY: 普通 shell() PTY，增强禁用
+  end
+  PRIMARY-->>SSH: 可用时传输 Shell 输出与 integration-ready OSC
   UI->>SSH: Attach /ws/ssh/{sessionId}
   SSH-->>UI: ready + bootstrap/runtime status + buffered output
 ```
 
 - 主 SSH transport 会先完成认证，但在 bootstrap 结束前不创建任何 channel。第一次真正需要远端命令时，backend 才会使用相同凭据、host-key 策略、压缩设置与代理策略懒创建第二条已认证 transport。每条使用代理的 transport 都会获得独立 socket。
-- 所有 bootstrap probe/install/status `exec` channel 都只运行在临时 transport。Backend 会在主 client 调用 `client.shell(...)` 前启动其关闭流程，底层 socket 的实际关闭可以异步完成。因此交互 PTY 是主 transport 的第一个 session channel，既能保留 OpenSSH/PAM 登录消息（例如 Debian MOTD），也能让新安装的 profile hook 在同一个首次 shell 中生效。
+- Bootstrap probe/install/status `exec`通道仍只运行在临时 transport。主 transport 打开终端通道前，Backend 会启动临时 transport 的关闭；底层 socket 可以稍后关闭。已校验的 ready 契约含有`binaryPath`时，主 transport 的首个 session 通道是无外层 PTY 的`exec`，运行已安装助手的`session`命令。助手自建 PTY 并启动用户登录 Shell。这会改变 sshd MOTD、PAM tty 与 utmp 行为，不能保证这些登录消息。增强关闭或发送`start`前确认不可用时，会以增强禁用状态使用普通`client.shell(...)`。发送`start`后启动结果仍不明确，则连接失败，不启动第二个 Shell，也不重放输入。
 - 开关关闭或 manifest 缺失／无效时不会创建临时 transport。其解密得到的登录密码会被丢弃，永远不会复制到 session state、状态 payload 或审计 metadata。
 - Backend 会在下载前查询已安装 binary。只有 manifest version 与 asset SHA-256、受支持 protocol、helper 内容与 profile hook 均为最新时才跳过下载；旧 binary 缺失新字段时会被视为不兼容并重装。PTY 创建前会再次读取 status 复验安装。
 - 校验成功的 manifest 会缓存五分钟，并由并发 session 共享同一个 in-flight 加载。失败结果不会缓存。取消单个 session 只会停止该 session 的等待，不会取消其它 session 正在等待的共享 manifest 请求。
@@ -456,7 +463,15 @@ sequenceDiagram
 - Renderer 会为每个 pane 分别保存 bootstrap 状态、运行时信任状态、可信 cwd/line state、telemetry、生命周期状态与最多 200 条远端增强调试记录。启用 Settings `remoteEnhancementsDebugEnabled` 后，终端右键菜单会显示来源 pane 的`远端增强调试`；浮层跟随活动 pane，绝不会用 primary pane 数据代替。
 - Renderer 只会在可信 `command-start` 到达后，从自身已渲染的 xterm 行重建仅含命令的时间线标签；helper 事件 payload 仍然只携带已清洗的可执行文件名。Prompt 身份 metadata 会在保留前丢弃，时间线标签不会进入调试历史或传输协议。
 - 调试浮层只记录状态/事件 payload，不记录 terminal `input`、terminal `output`、密码、私钥材料或完整屏幕输出。
-- Terminal `ready`、`output`、telemetry、history、completion 与 shell-state 消息都与 bootstrap 进度彼此独立。
+- Terminal `ready`、`output`、telemetry、history、completion 与 shell-state 消息都与 bootstrap 进度彼此独立。成帧会话启动后，即使关闭增强数据，也不会关闭其终端传输。
+
+### 8.2.0 本次连接的输入送达
+
+成帧终端传输与 OSC 777 Shell 观察协议 v3 相互独立。其协议版本为`1`：远端助手发送`hello`，Backend 发送含 UUID epoch、初始`TERM`及尺寸的`start`，然后助手在私有 PTY 上启动登录 Shell 并发送`ready`。助手恢复登录`argv[0]`、控制终端和前台进程组；`TERM`、`SSH_TTY`及继承的工作目录传给 Shell。外层 SSH exec 没有 PTY。连接中断时助手会终止子进程，终端输出结束后才上报退出；信号退出报告`128+signal`，不提供单独的信号字段。
+
+进入`ready`后，每次非空输入写入，包括粘贴和凭据填写，都会拆为不超过 64 KiB 的批次，并在同一 epoch 下分配连续的安全整数序号。输入与输出字节以 Base64 放入换行分隔的 JSON 帧，每帧上限为 96 KiB。助手校验 epoch 和序号，只有完整批次写入 PTY 主端后才发送`delivered`。这表示送达远端 PTY，不表示 Shell 或前台程序已经消费。Backend 最多保留 1 MiB 待确认输入；助手接收队列最多 4,096 帧、1 MiB。无效帧、超载、PTY 部分写入失败及断线都会关闭会话，不重放字节。尺寸调整帧在同一有序通道中排在先前输入之后。本传输不会自行保存输入或输出、记录原始输入，或把输入放入进程参数及调试事件；Shell 原生历史保存和普通终端输出中的 OSC 元数据不受影响。
+
+送达确认是后续 Shell 自有空闲观察与精确菜单填写的前提；单凭送达确认尚不会开启自动恢复或候选标识菜单。增强关闭时，普通原始 SSH 仍使用`shell()`。新传输已通过三个 Shell、凭据输入、任务控制、Ctrl+D／退出、断线和前台编辑器的真实 SSH 场景检查；独立 Bash 原生适配器及三种 Shell 的最终输入消费检查仍未完成。
 
 ### 8.2.1 远端 Shell 事件协议
 
@@ -531,7 +546,7 @@ Backend 状态模型：
 - Renderer 在发送提交前立即停用来源分屏的目录。Backend 回显不含文本的`submissionToken`，避免已经在途的旧上下文重新启用目录操作。收到输入不代表 Shell 已处理连续输入：在忙碌、初始化、已有提交或其他 Shell 中再次提交，以及一次消息包含多个提交边界（CRLF 计为一次），都会在后端保留`requiresEditorConfirmation`。仅收到提示符不能恢复。Zsh 和符合条件的 Fish 配置通过独立于键盘通道的观察恢复；Fish 额外保留不确定按键边界直到重连。发布完整功能之前，仍须完成 Bash 的恢复工作。
 - 默认范围设置按持久化版本更新实时会话。关闭 CWD 权限会清理缓存并拒绝 cwd 事件；关闭输入权限会停止增强输入跟踪、候选请求和渲染命令捕获，普通终端输入输出继续工作。历史/路径设置各自对应权限。原生补全默认主动查询，菜单尚未接入，选择关闭会撤销来源权限。关闭全局增强会禁用运行时，再次开启需要重连。设置读取保留在可选初始化的 15 秒预算中，失败时普通 SSH 仍可连接。
 - 迁移边界：Bash、Zsh 和 Fish 已声明`editor-state`、`input-snapshot`和`input-apply`，实际可用性独立检查。结构化目录读取、仅接受快照的候选草稿及独立 Fish 原生来源已实现，Fish 原生历史及独立权限已接入。旧 SSH 菜单不再查询或填写远端路径，原生 Tab 行为保持不变。原生查询模式可以保存，前端候选编号接入与查询时机控制仍属后续变更。每个消费者必须使用实际观察中重新确认的原始 Shell PWD/HOME，复核归属与权限，无法确认时拒绝操作。终端到 SFTP 的使用时确认仍须在消费者迁移中完成。长期保存的`ready`元数据不能证明目录始终是最新状态。
-- 输入顺序仍是发布前必须解决的依赖：某一时刻的原生编辑器观察，不能证明之前的 SSH 输入已经到达伪终端。本机写入回调、等待时间和本地空输入队列都不足以确认送达。精确菜单接入与自动恢复还必须要求远端输入送达确认；当前私有编辑器测试只证明原生观察和修改本身的行为。
+- 成帧会话现已确认先前输入到达远端 PTY 主端。普通 SSH 通道上的本机写入回调、等待时间和空的本地队列仍无法提供这种证明。精确菜单接入和自动恢复还须把已送达的 epoch／序号绑定到后续 Shell 自身的空闲观察及最终比较；当前私有编辑器测试只证明原生观察和修改本身的行为。
 - 每个 session 都持有明确的 `pending`、`active` 或 `disabled` 增强运行状态、PTY 创建前校验得到的契约，以及会在激活、禁用或 session 销毁时清理的握手 timer。
 - 每个`SshLiveSession`保存已确认目录／前台状态，以及最近的 command id、清洗后的可执行命令名、exit code 和 duration。唯一的结构化`command-start`驱动命令计数与历史刷新；缺少该能力时，Enter 边界只更新计数并触发 Shell 自有历史刷新，不保留输入文本。
 - `ShellContext.cwd`是唯一可供远端操作使用的目录来源。待确认报告仅保留在后端，在对应`promptGeneration`到达时启用；缺失、过期或被输入打断的配对保持目录不可用。Sh/Ash 每次无代数提示都需要新报告，提交或暂停会清除待确认报告。`lastKnownCwd`仅供显示。逻辑路径用于显示，物理路径和 HOME 用于文件操作。物理目录由继承实际 Shell 工作目录的外部`pwd -P`读取，避免内置命令返回已删除目录的缓存；只移除该程序输出的最后一个换行。未设置或非绝对 HOME、物理目录读取失败均保留 null，不裁剪目录字符。Bash 在用户`PROMPT_COMMAND`之后报告，并保留用户钩子接收到的退出状态。

@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssh-server bash zsh fish git zsh-autosuggestions zsh-syntax-highlighting python3 ca-certificates \
+    && apt-get install -y --no-install-recommends openssh-server bash zsh fish git vim-tiny zsh-autosuggestions zsh-syntax-highlighting python3 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd \
     && useradd --create-home --shell /bin/bash cosmosh-bash \

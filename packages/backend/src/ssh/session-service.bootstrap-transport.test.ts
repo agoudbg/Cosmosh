@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import test from 'node:test';
 
 import { DEFAULT_SETTINGS_VALUES, type ShellContext } from '@cosmosh/api-contract';
@@ -9,6 +10,7 @@ import type { I18nInstance } from '../i18n-bridge.js';
 import type { RemoteBootstrapResult, RemoteBootstrapStatus } from '../remote-bootstrap/service.js';
 import type { OpenSshClientResult, SshClientLifecycleMonitor, SshServerWithKeychain } from './connect.js';
 import { SshSessionService } from './session-service.js';
+import { DeliveredTerminal, type SshTerminalStream } from './terminal-transport.js';
 
 type OpenShellHarness = {
   openShell(
@@ -30,7 +32,7 @@ type OpenShellHarness = {
     | {
         type: 'ready';
         client: Client;
-        stream: ClientChannel;
+        stream: SshTerminalStream;
         loginPassword: string | null;
         streamLifecycleMonitor: {
           isClosed(): boolean;
@@ -327,7 +329,7 @@ for (const scenario of ['settings-failure', 'disabled-during-connect'] as const)
   });
 }
 
-test('SshSessionService keeps the primary transport exec-free so Debian MOTD reaches the first shell', async () => {
+test('SshSessionService with disabled enhancements preserves the ordinary first-shell login path', async () => {
   const primaryOperations: string[] = [];
   const flow: string[] = [];
   const output: string[] = [];
@@ -370,6 +372,88 @@ test('SshSessionService keeps the primary transport exec-free so Debian MOTD rea
   assert.deepEqual(flow, ['bootstrap:exec', 'bootstrap:end', 'primary:shell']);
   assert.equal(output.join(''), motd);
 });
+
+for (const mode of ['ready', 'before-start', 'after-start'] as const) {
+  test('SshSessionService chooses a single terminal with forwarder outcome ' + mode, async () => {
+    const operations: string[] = [];
+    const client = createPrimaryClient(operations, [], 'ordinary login');
+    const channel = Object.assign(new EventEmitter(), {
+      stderr: new PassThrough(),
+      writableLength: 0,
+      destroyed: false,
+      /** @returns Nothing; mirrors a real SSH channel's one close event. */
+      destroy(): void {
+        if (!this.destroyed) {
+          this.destroyed = true;
+          channel.emit('close');
+        }
+      },
+      /** @param text Private protocol request. @returns Accepted transport state. */
+      write(text: string): boolean {
+        const value = JSON.parse(text) as { type: string; epoch: string };
+        assert.equal(value.type, 'start');
+        queueMicrotask(() => {
+          if (mode === 'after-start') this.destroy();
+          else
+            channel.emit('data', Buffer.from(JSON.stringify({ type: 'ready', epoch: value.epoch, pid: 123 }) + '\n'));
+        });
+        return true;
+      },
+    });
+    Object.assign(client, {
+      /** @param command Installed helper path. @param _options Exec options. @param callback Channel callback. @returns Nothing. */
+      exec(command: string, _options: unknown, callback: (error: Error | null, channel?: ClientChannel) => void): void {
+        operations.push('exec');
+        assert.equal(command, "'/installed/helper' session");
+        if (mode === 'before-start') callback(new Error('unavailable'));
+        else {
+          callback(null, channel as unknown as ClientChannel);
+          queueMicrotask(() => channel.emit('data', Buffer.from('{"type":"hello","protocol":1}\n')));
+        }
+      },
+    });
+    const serviceContext = {
+      openAuthenticatedClient: async (): Promise<OpenSshClientResult> => ({
+        type: 'ready',
+        client,
+        loginPassword: null,
+        lifecycleMonitor: createLifecycleMonitor(),
+        proxyMetadata: { mode: 'off', protocol: 'direct' },
+      }),
+    };
+    const harness = SshSessionService.prototype as unknown as OpenShellHarness;
+    const result = await harness.openShell.call(serviceContext, {} as SshServerWithKeychain, {
+      cols: 120,
+      rows: 32,
+      term: 'xterm-256color',
+      connectTimeoutSec: 15,
+      strictHostKey: true,
+      enableSshCompression: false,
+      trustedFingerprintSet: new Set<string>(),
+      t: translate,
+      onOutput: () => undefined,
+      beforeShellOpen: async () => ({
+        state: 'ready',
+        source: 'current',
+        contract: {
+          shell: 'bash',
+          helperVersion: 'fixture-v3',
+          protocolVersion: 3,
+          capabilities: ['cwd'],
+          binaryPath: '/installed/helper',
+        },
+      }),
+    });
+    assert.deepEqual(operations, mode === 'before-start' ? ['exec', 'shell'] : ['exec']);
+    assert.equal(result.type, mode === 'after-start' ? 'failed' : 'ready');
+    if (result.type === 'ready') {
+      assert.equal(result.stream instanceof DeliveredTerminal, mode === 'ready');
+      assert.equal(result.remoteBootstrapResult.state, mode === 'ready' ? 'ready' : 'disabled');
+      result.stream.close();
+      result.streamLifecycleMonitor.release();
+    }
+  });
+}
 
 test('SshSessionService captures a shell stream close before session handoff resumes', async () => {
   const primaryClient = createPrimaryClient([], [], 'unused', true);

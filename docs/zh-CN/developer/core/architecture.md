@@ -49,22 +49,23 @@ flowchart LR
 
 ### Backend 进程 (`packages/backend/src/index.ts`)
 
-- 可选 Fish 原生候选在原始编辑器完成私有观察后，通过单次请求的独立子进程查询。导出环境只经过远端私有 socket，Backend 只接收有界的字面候选数据。查询加载已保存的非交互配置，使用独立进程组，不连接 PTY，并受期限与取消约束。共享设置注册表提供关闭／主动查询／自动查询选项；已保存配置和前端缓存通过同一个规范化函数保留已有的关闭选择。候选编号菜单接入和远端输入送达证明仍是发布前提。具体边界见`runtime/ssh-terminal.md`中的原生来源说明。
+- 可选 Fish 原生候选在原始编辑器完成私有观察后，通过单次请求的独立子进程查询。导出环境只经过远端私有 socket，Backend 只接收有界的字面候选数据。查询加载已保存的非交互配置，使用独立进程组，不连接 PTY，并受期限与取消约束。共享设置注册表提供关闭／主动查询／自动查询选项；已保存配置和前端缓存通过同一个规范化函数保留已有的关闭选择。输入送达传输已实现；候选编号菜单接入和 Shell 自身的输入消费确认仍是发布前提。具体边界见`runtime/ssh-terminal.md`中的原生来源说明。
 
 - 增强消费者共享 Backend 持有的逐会话`ShellContext`，其中不包含输入文本。协议 v3 绑定原始 Shell 身份，分别记录能力和权限，用代数使异步工作失效。默认范围设置按数据库版本传播，可选初始化失败仍保留普通 SSH。Renderer 按分屏保留最新元数据。
 - 原始交互 Shell 的 CWD 报告与提示符代数配对后才能使用。逻辑路径、物理路径和 HOME 分开保存，过期目录仅供显示。补全与终端到 SFTP 的操作使用当前物理目录，并保留符号链接后的父目录片段交由远端解析。不再从屏幕文字或另开的登录 Shell 获取 CWD。
-- SSH 与本地 PTY 输入直接转发，不保留用于历史记录或预测目录变化的命令缓冲。补全历史来自 Shell 自身的历史来源，排除解释器和数据库程序的输入记录。
+- SSH 与本地 PTY 输入只做转发，不保存命令行缓冲来推断历史或目录变化。Linux 助手通过校验时，`ssh/terminal-transport.ts`让 SSH 输入经过本次连接专用的远端 PTY，并记录送达序号。确认只表示完整输入批次已写入 PTY 主端，不表示 Shell 已经消费。普通 SSH 与本地 PTY 仍走原有路径。补全历史来自 Shell 自身来源。
 - SSH 历史任务共享由`remoteEnhancementsHistoryEnabled`控制的权限周期，与历史建议展示开关分开。关闭权限、助手失效和断开连接都会取消定时器及远端通道，并清空会话副本；重新开启后，过期结果也不能重新出现。前端参数不能覆盖这两项已保存设置。SSH 只使用已验证的原始 Fish 原生来源。来源编号绑定 Shell 身份、历史库名称和权限周期，每次观察替换全部缓存。不支持的 Shell 不会降级读取猜测文件。
 - 私有 Fish 历史操作复用原始编辑器经过身份检查的回调，不取得输入或 CWD。它们在 Shell 内过滤临时私密记录，并在该 Shell 的生命周期内保留对自定义历史策略的不可信判定。原生精确移除要求再次授权，只报告原始行编辑器中已确认的目标消失；原生保存无法确认历史文件是否更新。侧栏在用户确认范围后发送完整记录和所显示来源编号。请求、来源或分屏变化会使待处理操作失效；多行或控制字符记录只能完整复制。
 - 显式编辑器请求使用独立的 Backend 内存控制器和单次请求 Go 工作进程。Bash 目前要求编辑器已经可用；Zsh 使用经过身份检查的匿名管道通知和只读 ZLE 观察。Fish 4.0.1 使用固定的 pidfd 信号及经过验证的原生按键配置，要求用户已经关闭原生自动建议；未知输入边界持续暂停直到重连。私有 socket 校验 UID、进程和 PTY 身份；替换操作要求完整观察匹配、最新权限及客户端检查和 Shell 最终回执。文本不进入公开`ShellContext`或 OSC 调试历史。支持的模式、时限和剩余消费者接入见`runtime/ssh-terminal.md`中的私有编辑器交互说明。
 - 精确补全位置使用 Unicode 码点。Backend 将有界字面修改绑定到会话中的限时快照，只对外提供用于展示的候选标识；对应 Shell 的引号规则保证文件名字面含义及无关后续内容完整。复杂语法不产生精确候选。前端接入仍为独立迁移，每次填写之后仍须经过私有编辑器确认。
-- 远端目录补全使用已安装 Go 助手的有界 stdin/JSON 查询，先匹配再限制结果，并使用逐会话短时缓存。仅接受快照的路径草稿保留同一次观察中的 CWD/HOME 与引号语义。在候选标识迁移完成前，旧 SSH 菜单不再查询远端路径。远端输入送达确认仍是可靠恢复和最终启用精确菜单的前提。
+- 远端目录补全使用已安装 Go 助手的有界 stdin/JSON 查询，先匹配再限制结果，并使用逐会话短时缓存。仅接受快照的路径草稿保留同一次观察中的 CWD/HOME 与引号语义。在候选标识迁移完成前，旧 SSH 菜单不再查询远端路径。新增的送达确认仍需与 Shell 自身的观察结果绑定，才能支持可靠恢复与精确菜单。
 - 注册幂等的优雅关闭流程，覆盖运行时信号与致命进程事件。
 - 暴露仅由 Main 关闭守卫使用、受内部 token 保护的运行时连接汇总/关闭操作；renderer 不获得批量断开 bridge。
 - 关闭顺序固定：先停 WS 会话服务，再关闭 HTTP 监听，最后断开 Prisma/SQLite 连接句柄。
 - Windows 终止信号（`SIGBREAK`）与 POSIX 信号共用同一路径，降低数据库文件锁残留概率。
 - 本地终端 profile 发现改为短时内存缓存 + 并行探测，降低 Home/Settings 首次加载时重复扫描带来的等待。
-- 主 SSH transport 认证成功后、交互 PTY 打开前，若全局与服务器级开关允许，`SshSessionService` 会通过 `RemoteBootstrapService` 执行远端增强 ensure。远端命令使用按需懒创建的临时 SSH transport，并复用相同的凭据、host-trust、压缩与代理策略；主 transport 调用 `shell()` 前会先启动临时 transport 的优雅关闭。这样主 transport 永远不会创建 bootstrap `exec` channel，既保留服务端登录消息，也能让新安装的 profile hook 在首次交互 shell 中生效。Backend 负责 manifest 加载、远端探测、已安装状态校验、按需下载编排、状态转发、运行时事件门禁与审计记录；`packages/remote-bootstrap` 负责远端用户级 Go 安装器，以及由 Go 生成的 helper 协议/能力契约。Manifest URL 优先来自 `COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL`，其次是 packaged CI resource，未打包开发运行则再回退到仅开发使用的 `remote-bootstrap-dev` 默认值。正式 tag release 包指向版本化 release manifest；`main` 包指向固定的 `remote-bootstrap-dev` prerelease manifest；分支名包含 `remote-bootstrap` 的 push 构建可以指向分支专用临时 prerelease manifest，用于端到端 CI 测试。已安装契约为最新时跳过 asset 下载；ensure 失败会启动临时 transport 的关闭、禁用本次会话的增强数据，但不会阻止已认证的主 transport 打开普通 shell。
+- 主 SSH transport 认证后，`SshSessionService`通过`RemoteBootstrapService`执行可选的远端增强 ensure。探测、安装和状态命令使用独立认证的临时 transport，并复用相同凭据、主机信任、压缩与代理策略；主 transport 打开终端通道前会先启动临时 transport 的关闭。Backend 负责 manifest 加载、远端探测、已安装状态校验、按需下载、状态转发、运行时门禁和审计。`packages/remote-bootstrap`负责用户级安装器、生成的 Shell helper 和本次连接专用的 PTY 转发器。Manifest 来源与发布通道详见`runtime/ssh-terminal.md`。
+- 已校验契约处于`ready`且包含`binaryPath`时，主 transport 通过无外层 PTY 的`exec`通道运行`cosmosh-bootstrap session`；完成`hello`/`start`后，助手在自建 PTY 上启动原始登录 Shell。这种通道形式不保证 sshd MOTD、PAM tty 消息或 utmp 行为。发送`start`前助手不可用时，Backend 会禁用增强并打开普通`shell()` PTY；发送`start`后启动结果不明确则连接失败，不重放输入，也不启动第二个 Shell。增强关闭时，普通原始 SSH 路径不变。当前安装契约可跳过下载；ensure 失败仍允许普通 Shell 路径。
 - `RemoteShellEventOscParser` 将可见输出与 helper 事件拆开后，`SshSessionService` 仍会保留原始 PTY 顺序，并按有序 frame 转发，而不是按类型重新分组。因此，位于 `command-start` 之前的输入回显与换行会先进入 renderer xterm，再捕获命令 marker 几何信息。WebSocket 未 attach 时，两类 frame 共用一个有界且保持到达顺序的队列；attach 会先发送当前控制状态，再按原顺序回放保留的 frame。
 - `RemoteBootstrapService` 会合并并发 manifest 加载，并只缓存校验成功结果五分钟。Session 取消只停止单个等待者，不会中止共享请求；失败加载可立即重试。
 - 启动阶段在 `initializeDatabase(...)` 内执行幂等 Prisma migration 文件同步，因此无论是安装后首次启动还是后续每次启动，都会在开放 HTTP 路由前将本地数据库结构收敛到当前后端契约。
@@ -199,7 +200,7 @@ sequenceDiagram
 ## 5. 运行时能力
 
 - SSH 与本地终端会话使用 WebSocket 数据通道承载终端 I/O。
-- 当 Settings `remoteEnhancementsEnabled`、服务器记录 `remoteEnhancementsEnabled` 与 manifest URL 均允许时，SSH 会话会在主 transport 认证后、PTY 创建前 ensure 用户级远端增强运行时。第一次需要远端命令时才会懒创建独立 bootstrap transport；所有 probe/install/status `exec` channel 都只运行在该 transport，并在 `shell()` 成为主 transport 的第一个 session channel 前启动关闭。这个可选的 shell 打开前路径对设置读取、manifest I/O、bootstrap transport/proxy 建连和 exec 工作共享同一个 15 秒总预算。超时会取消活动工作、销毁临时 client，并以 `BOOTSTRAP_ENSURE_TIMEOUT` 打开普通 PTY。开关关闭时会上报 `REMOTE_ENHANCEMENTS_DISABLED`；缺少 manifest 配置会在创建任何 bootstrap transport 或远端 probe 前作为明确失败状态上报。Backend 会先查询已安装 Go binary；version、manifest asset SHA-256、protocol、helper 与 profile 状态均匹配时跳过下载，状态缺失或属于旧格式时触发重装并在安装后复验。正式 tag release 安装包、`main` 构建产物以及显式启用发布路径的 remote-bootstrap 分支构建，可以通过 packaged `remote-bootstrap/manifest-url.json` 资源提供默认 manifest URL，而 `COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL` 仍是显式 override。未打包开发运行在没有 override 或 packaged resource 时使用 `remote-bootstrap-dev`。普通 PR 与分支构建默认不打入 manifest URL。Go 安装器只写入远端用户 XDG/home 文件与 shell profile hook；模块契约见 `packages/remote-bootstrap/README.md`。
+- 当 Settings `remoteEnhancementsEnabled`、服务器记录 `remoteEnhancementsEnabled`与 manifest URL 均允许时，SSH 会话在主 transport 认证后 ensure 用户级远端增强运行时。独立 bootstrap transport 承担全部 probe/install/status `exec`通道，并在主 transport 打开终端通道前启动关闭。可选 ensure 的设置读取、manifest I/O、代理／SSH 建连和 exec 工作共用 15 秒预算；超时会取消工作，并以`BOOTSTRAP_ENSURE_TIMEOUT`允许普通 PTY。开关关闭时上报`REMOTE_ENHANCEMENTS_DISABLED`；缺少 manifest 配置会在创建 bootstrap transport 或远端探测前失败。已安装 binary 的版本、资产 SHA-256、协议、helper 与 profile 状态均匹配时跳过下载；缺失或旧格式触发重装及复验。正式发布、`main`构建和显式启用发布路径的 remote-bootstrap 分支构建可提供打包的 manifest 资源，`COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL`仍是显式覆盖；未打包开发运行默认使用`remote-bootstrap-dev`。安装器只写远端用户 XDG/home 文件与 Shell hook。契约为 ready 时，主 transport 运行无外层 PTY 的 session 助手；具体边界见`packages/remote-bootstrap/README.md`。
 
 - 远端帮助程序使用`pending` → `active` / `disabled`状态机。初始化成功且当前权限允许时进入`pending`；10 秒内收到匹配的`integration-ready`才能启用消费，否则以`HELPER_HANDSHAKE_TIMEOUT`禁用。协议 v3 事件必须匹配已安装版本、原始 Shell 身份和准确的能力集合。其他身份会暂停 ShellContext 可用状态，等待原始提示恢复。Manifest/安装/设置失败或原始帮助程序不匹配时保留普通 SSH，并禁用帮助程序派生状态。
 - Renderer 为每个 pane 分别保存当前 backend 运行状态与最多 200 条诊断历史，因此长会话淘汰旧事件后仍保留权威的当前诊断状态。结构化命令生命周期驱动 backend 命令计数/history 刷新及 pane-local xterm 命令时间线。Backend 命令计数/history 刷新可以保留原始 Enter 解析作为降级路径，但 renderer 时间线没有本地 fallback：只有通过认证且处于 active 状态的 helper 声明 `command-start` 时才显示。

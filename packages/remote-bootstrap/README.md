@@ -51,12 +51,21 @@ sequenceDiagram
   end
   AUX-->>RB: Emit bootstrap-status JSON lines
   SSH->>AUX: Begin temporary transport teardown
-  SSH->>PRIMARY: Open PTY as the first session channel
-  PRIMARY-->>SSH: Login messages and helper handshake
+  alt Validated ready contract with binaryPath
+    SSH->>PRIMARY: No-PTY exec cosmosh-bootstrap session
+    PRIMARY-->>SSH: hello (session protocol 1)
+    SSH->>PRIMARY: start (epoch, TERM, rows, cols)
+    PRIMARY-->>SSH: ready after login Shell starts on helper PTY
+  else Disabled or unavailable before start
+    SSH->>PRIMARY: Ordinary shell() PTY with enhancements disabled
+  end
+  PRIMARY-->>SSH: Shell output and optional helper handshake
   SSH-->>UI: Forward bootstrap and runtime status over SSH WebSocket
 ```
 
-The interactive terminal transport is separate from the bootstrap side channel, not only its output stream. `SshSessionService` authenticates the primary client first, then lazily creates a temporary client only if `RemoteBootstrapService` requests a remote command. The temporary client reuses the same credential, host-key, compression, and proxy policy but receives its own proxy socket; all bounded `ssh2 exec` work stays on that client, and backend begins its teardown before the primary opens its first channel through `shell()`. Actual socket closure may complete asynchronously. This preserves OpenSSH/PAM login messages such as Debian MOTD while allowing a newly installed profile hook to load immediately. The complete optional pre-PTY ensure stays behind a shared 15-second budget; expiry stops waiting for proxy preparation, aborts active session work, destroys the temporary client, and opens an ordinary PTY with Remote Enhancements disabled. Validated manifests use a five-minute success-only cache and concurrent sessions share one in-flight request; cancelling one session does not cancel that shared request for other waiters. Installer output is parsed as JSON lines and never enters the xterm stream.
+The interactive terminal transport is separate from the bootstrap side channel. `SshSessionService` authenticates the primary client first, then lazily creates a temporary client only if `RemoteBootstrapService` needs a probe/install/status command. That client reuses credential, host-key, compression and proxy policies with its own proxy socket; its teardown begins before the primary opens a terminal channel. Actual socket closure may complete later. With a validated ready contract and `binaryPath`, the primary instead opens a no-PTY `exec` for `cosmosh-bootstrap session`. The helper's `hello`/`start` handshake precedes a user login Shell on its own PTY. This path does not guarantee sshd MOTD, PAM tty messages or utmp behavior. If unavailable before `start`, Backend opens an ordinary `shell()` PTY with enhancements disabled; an uncertain result after `start` fails without another Shell or input replay. Disabled enhancements keep the ordinary raw SSH path. The optional ensure has a shared 15-second budget; expiry aborts temporary work and permits an ordinary PTY. Validated manifests use a five-minute success-only cache. Installer JSON status never enters the terminal output.
+
+The session transport uses protocol `1`, independent of OSC 777 Shell protocol v3. Input/output bytes are Base64 in newline-delimited JSON frames capped at 96 KiB; each input chunk is at most 64 KiB. One UUID epoch and consecutive safe-integer input sequences bind all writes. `delivered` is emitted only after the full chunk reaches the helper-owned PTY master; it does not assert Shell consumption. Backend permits at most 1 MiB of unacknowledged input; the helper limits its queued receive work to 4,096 frames and 1 MiB. Resize and exit share this connection-scoped channel. The helper restores login `argv[0]`, `TERM`, `SSH_TTY`, controlling terminal, foreground process group and inherited working directory. Connection loss closes the child. This transport does not persist input or output, log raw input, or put input into process arguments or debug events. Shell-native history and OSC metadata in normal terminal output remain unaffected. Turning off enhancement data after startup does not close the terminal transport. Delivery alone does not activate the later precise menu or Shell-consumption recovery.
 
 ## Directory Layout
 
@@ -75,6 +84,10 @@ packages/remote-bootstrap/
     wrapper/
       wrapper.go
       wrapper_test.go
+    session/
+      protocol.go
+      session_linux.go
+      THIRD_PARTY_NOTICES.txt
   go.mod
 ```
 
@@ -280,7 +293,8 @@ Common failure codes include:
 - `umask 077` and `0700`/`0600` default modes keep new bootstrap files user-private; atomic profile repair retains an existing profile's mode.
 - Temporary wrapper/download directories are cleaned up on exit, interrupt, and termination signals.
 - The installer does not require root and does not write outside the remote user's home/XDG paths.
-- Bootstrap exec channels are confined to a temporary SSH transport. Its decrypted completion secret is discarded, and success, failure, or timeout starts teardown before the primary client opens its interactive PTY; lifecycle guards remain attached until actual close.
+- `internal/session` uses `github.com/creack/pty` v1.1.24. Its license notice is distributed in `internal/session/THIRD_PARTY_NOTICES.txt`, embedded in the helper binary, and displayed by `cosmosh-bootstrap licenses`.
+- Bootstrap probe/install/status exec channels are confined to a temporary SSH transport. Its decrypted completion secret is discarded, and success, failure, or timeout starts teardown before the primary client opens its terminal channel; lifecycle guards remain attached until actual close. A validated helper starts a separate primary no-PTY exec only for the framed terminal session.
 - Backend status/audit metadata should stay secret-free; the bootstrap contract never needs SSH credentials or private key material.
 
 ## Build and Test

@@ -11,7 +11,7 @@ import type {
 } from '@cosmosh/api-contract';
 import { DEFAULT_SETTINGS_VALUES } from '@cosmosh/api-contract';
 import type { PrismaClient } from '@prisma/client';
-import { type Client, type ClientChannel } from 'ssh2';
+import { type Client } from 'ssh2';
 import { type RawData } from 'ws';
 
 import type { AuditEventService } from '../audit/service.js';
@@ -73,6 +73,7 @@ import { executeShellEditorRequest, type ShellEditorResult } from './editor-exec
 import { executeBoundedSshCommand } from './exec.js';
 import type { SshProxyMetadata } from './proxy.js';
 import { RemoteShellEventOscParser, type RemoteShellEventStreamFrame } from './remote-shell-events.js';
+import { openDeliveredTerminal, type SshTerminalStream } from './terminal-transport.js';
 
 type GetDbClient = () => PrismaClient;
 
@@ -135,7 +136,7 @@ type OpenShellResult =
   | {
       type: 'ready';
       client: Client;
-      stream: ClientChannel;
+      stream: SshTerminalStream;
       loginPassword: string | null;
       lifecycleMonitor: SshClientLifecycleMonitor;
       streamLifecycleMonitor: SshShellStreamLifecycleMonitor;
@@ -163,7 +164,7 @@ type SshLiveSession = TerminalManagedSessionBase & {
   requestId?: string;
   loginAuditId: string | null;
   client: Client;
-  stream: ClientChannel;
+  stream: SshTerminalStream;
   telemetryInterval: NodeJS.Timeout | null;
   lastNetworkSample: {
     rxBytesTotal: number;
@@ -267,8 +268,8 @@ const readAbortSignalError = (signal: AbortSignal): Error => {
  * @param stream Newly opened interactive shell stream.
  * @returns Monitor that closes the callback-to-session-registration event gap.
  */
-const createSshShellStreamLifecycleMonitor = (stream: ClientChannel): SshShellStreamLifecycleMonitor => {
-  let closed = false;
+const createSshShellStreamLifecycleMonitor = (stream: SshTerminalStream): SshShellStreamLifecycleMonitor => {
+  let closed = stream.destroyed === true;
   const handleClose = (): void => {
     closed = true;
   };
@@ -1626,6 +1627,15 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.sendRemoteEnhancementRuntimeStatus(session);
   }
 
+  /**
+   * Contains synchronous transport failures at the WebSocket boundary without exposing input.
+   * @param session Session whose write or resize failed. @returns Nothing; no input is replayed.
+   */
+  private handleTerminalWriteFailure(session: SshLiveSession): void {
+    console.warn('[ssh][terminal] Terminal transport write failed.', { sessionId: session.sessionId });
+    this.disposeSession(session.sessionId, 'ws.sshStreamClosed');
+  }
+
   protected handleClientMessage(session: SshLiveSession, rawPayload: RawData): void {
     const message = normalizeTerminalClientMessage(rawPayload);
 
@@ -1674,7 +1684,12 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         session.commandCount += Math.max(1, submittedInputCount);
         this.scheduleHistorySync(session.sessionId);
       }
-      session.stream.write(message.data);
+      try {
+        session.stream.write(message.data);
+      } catch {
+        this.handleTerminalWriteFailure(session);
+        return;
+      }
       this.scheduleEditorContextRefresh(session);
       return;
     }
@@ -1682,7 +1697,11 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     if (message.type === 'resize') {
       const cols = clampTerminalSize(message.cols, 120, 20, 400);
       const rows = clampTerminalSize(message.rows, 32, 10, 200);
-      session.stream.setWindow(rows, cols, 0, 0);
+      try {
+        session.stream.setWindow(rows, cols, 0, 0);
+      } catch {
+        this.handleTerminalWriteFailure(session);
+      }
       return;
     }
 
@@ -2362,10 +2381,9 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   }
 
   /**
-   * Authenticates the primary SSH transport, completes isolated pre-shell setup, then opens its PTY.
-   *
-   * The callback deliberately receives no Client. This type-level boundary guarantees that
-   * bootstrap cannot consume PAM login messages by opening an exec channel on the primary transport.
+   * Authenticates the primary transport, completes isolated setup, then opens its terminal.
+   * Bootstrap commands never share this transport. Enabled, current helpers own the child
+   * PTY through a private exec channel; unavailable pre-start helpers use ordinary SSH shell.
    *
    * @param server SSH server record with resolved keychain material.
    * @param options Terminal dimensions, transport policy, pre-shell setup, and output sink.
@@ -2471,6 +2489,43 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         const term = options.term.trim() || 'xterm-256color';
 
         try {
+          if (remoteBootstrapResult.state === 'ready' && remoteBootstrapResult.contract.binaryPath) {
+            const forwarded = await openDeliveredTerminal(client, remoteBootstrapResult.contract.binaryPath, {
+              cols,
+              rows,
+              term,
+              onOutput: options.onOutput,
+            });
+            if (settled) {
+              if (forwarded.status === 'ready') forwarded.stream.close();
+              return;
+            }
+            if (forwarded.status === 'ready') {
+              const streamLifecycleMonitor = createSshShellStreamLifecycleMonitor(forwarded.stream);
+              settle({
+                type: 'ready',
+                client,
+                stream: forwarded.stream,
+                loginPassword,
+                lifecycleMonitor,
+                streamLifecycleMonitor,
+                proxyMetadata,
+                remoteBootstrapResult,
+              });
+              return;
+            }
+            if (forwarded.status === 'failed') {
+              handleClientError(
+                new Error('Remote terminal start was not confirmed; reconnect to start a new session.'),
+              );
+              return;
+            }
+            remoteBootstrapResult = {
+              state: 'disabled',
+              code: 'INPUT_TRANSPORT_UNAVAILABLE',
+              message: 'Remote input transport is unavailable; the ordinary SSH terminal remains available.',
+            };
+          }
           client.shell({ term, cols, rows }, { env: { ...REMOTE_SHELL_UTF8_ENV } }, (error, stream) => {
             if (error) {
               settle({

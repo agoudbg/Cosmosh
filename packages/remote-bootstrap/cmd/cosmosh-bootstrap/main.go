@@ -12,6 +12,7 @@ import (
 	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/editor"
 	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/install"
 	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/paths"
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/session"
 )
 
 // main dispatches remote bootstrap install and status commands.
@@ -26,6 +27,14 @@ func main() {
 		runInstall(os.Args[2:])
 	case "status":
 		runStatus(os.Args[2:])
+	case "licenses":
+		fmt.Print(session.ThirdPartyNotices)
+	case "session":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGPIPE)
+		defer stop()
+		if err := session.RunStandardIO(ctx); err != nil {
+			os.Exit(1)
+		}
 	case "editor-request":
 		// SSH channel teardown must allow the worker to clean its owned socket before exiting.
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGPIPE)

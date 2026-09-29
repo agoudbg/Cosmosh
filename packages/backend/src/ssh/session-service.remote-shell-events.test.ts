@@ -185,6 +185,38 @@ const createSessionHarness = (
   ...overrides,
 });
 
+test('input and resize transport exceptions close only their session and never expose payloads', (t) => {
+  for (const message of [
+    { type: 'input', data: 'private-password' },
+    { type: 'resize', rows: 32, cols: 120 },
+  ]) {
+    const session = createSessionHarness();
+    session.stream = Object.assign(
+      {
+        write: () => {
+          throw new Error('private-password');
+        },
+      },
+      {
+        setWindow: () => {
+          throw new Error('private-password');
+        },
+      },
+    );
+    const closed: string[] = [];
+    const warnings: unknown[][] = [];
+    const log = t.mock.method(console, 'warn', (...values: unknown[]) => warnings.push(values));
+    const service = Object.assign(Object.create(SshSessionService.prototype), {
+      disposeSession: (id: string) => closed.push(id),
+    }) as RemoteShellEventServiceHarness;
+    assert.doesNotThrow(() => service.handleClientMessage(session, Buffer.from(JSON.stringify(message))));
+    assert.deepEqual(closed, [session.sessionId]);
+    assert.equal(warnings.length, 1);
+    assert.equal(JSON.stringify(warnings).includes('private-password'), false);
+    log.mock.restore();
+  }
+});
+
 /**
  * Creates a normalized remote shell event payload for gate tests.
  *
@@ -786,6 +818,7 @@ test('SshSessionService disables a pending runtime when the helper contract mism
 
 test('SshSessionService resets remote shell state when Remote Enhancements runtime is disabled', () => {
   const serviceHarness = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;
+  const writes: string[] = [];
   const event = createRemoteShellEvent();
   const session = createSessionHarness({
     lastCommandDurationMs: 25,
@@ -800,9 +833,18 @@ test('SshSessionService resets remote shell state when Remote Enhancements runti
     remoteEnhancementsRuntimeState: 'active',
     remoteShellForegroundCommand: 'vim',
     remoteShellReady: true,
+    stream: Object.assign(
+      { write: (data: string) => writes.push(data) },
+      {
+        close: () => assert.fail('Permission revocation cannot close the terminal transport'),
+        destroy: () => assert.fail('Permission revocation cannot destroy the terminal transport'),
+      },
+    ),
   });
 
   serviceHarness.disableRemoteEnhancementsRuntime(session, 'TEST_DISABLED', 'disabled for test');
+  serviceHarness.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'input', data: 'ordinary input' })));
+  assert.deepEqual(writes, ['ordinary input']);
 
   assert.equal(session.remoteEnhancementsRuntimeState, 'disabled');
   assert.equal(session.remoteEnhancementsRuntimeCode, 'TEST_DISABLED');
