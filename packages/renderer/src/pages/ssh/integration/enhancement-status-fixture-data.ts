@@ -16,6 +16,7 @@ export const createEnhancementStatusFixture = (): EnhancementStatusInput => ({
     helperVersion: 'fixture-helper',
     protocolVersion: 3,
     capabilities: ['cwd', 'input-snapshot', 'input-apply', 'directory-read', 'history-read', 'native-completion'],
+    editorAvailable: true,
     permissions: { cwd: true, input: true, history: true, paths: true, nativeCompletion: true },
     status: 'ready',
     reason: null,

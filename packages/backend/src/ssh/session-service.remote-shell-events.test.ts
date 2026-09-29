@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { Duplex, PassThrough } from 'node:stream';
 import test, { type TestContext } from 'node:test';
@@ -15,6 +16,8 @@ import type { Client, ClientChannel } from 'ssh2';
 
 import type { RemoteBootstrapResult, RemoteBootstrapStatus } from '../remote-bootstrap/service.js';
 import type { DefaultSettingsSnapshot } from '../settings/read.js';
+import { emptyPathResult, RemotePathQueryController } from '../terminal/completion/remote-path-query.js';
+import { SnapshotCompletionController } from '../terminal/completion/snapshot-completion.js';
 import {
   createCredentialFillState,
   type CredentialFillState,
@@ -114,6 +117,7 @@ const createOrderedTerminal = (t: TestContext, onInput: (data: string) => void =
 type RemoteShellEventSessionHarness = {
   shellContext: ShellContextState;
   editorController?: ShellEditorController;
+  completionController?: SnapshotCompletionController;
   editorContextTimeout?: NodeJS.Timeout;
   client?: Client;
   stream?: { write(data: string): void };
@@ -256,6 +260,88 @@ const createSessionHarness = (
   socket: null,
   disposed: false,
   ...overrides,
+});
+
+test('optional WebSocket notification failures never prevent ordered input or retain private candidates', async (t) => {
+  const session = createSessionHarness({
+    remoteEnhancementsRuntimeState: 'active',
+    credentialFillState: observeCredentialFillOutput(createCredentialFillState(), 'Password: ', Date.now()),
+    loginPassword: 'fixture-only',
+  });
+  session.shellContext = {
+    ...session.shellContext,
+    shell: 'zsh',
+    shellInstanceId: randomUUID(),
+    status: 'ready',
+    reason: null,
+    promptGeneration: 1,
+    capabilities: ['input-snapshot', 'input-apply'],
+    editorBinding: {
+      pid: 42,
+      startTime: '100',
+      promptGeneration: 1,
+      triggerNonce: randomUUID(),
+      notification: { fd: 19, inode: '100' },
+    },
+  };
+  const writes: string[] = [];
+  const attempted: string[] = [];
+  const warnings: unknown[][] = [];
+  let failPublications = false;
+  const terminal = createOrderedTerminal(t, (data) => writes.push(data));
+  session.stream = terminal;
+  session.socket = {
+    OPEN: 1,
+    readyState: 1,
+    send: (payload) => {
+      const message = JSON.parse(payload) as SshTerminalServerMessage;
+      attempted.push(message.type);
+      if (failPublications) throw new Error('private-payload-in-socket-error');
+    },
+  };
+  const service = Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness;
+  const editor = new ShellEditorController(
+    () => session.shellContext,
+    async () => ({
+      status: 'ok',
+      snapshot: { promptGeneration: 1, editorMode: 'emacs', buffer: { text: 'git st', cursor: 6 } },
+    }),
+    () => terminal,
+    () => {},
+  );
+  session.editorController = editor;
+  const completion = new SnapshotCompletionController({
+    editor,
+    paths: new RemotePathQueryController(async () => emptyPathResult('ok')),
+    context: () => session.shellContext,
+    readSettings: async () => ({
+      ...DEFAULT_SETTINGS_VALUES,
+      terminalNativeCompletionMode: 'off',
+      terminalAutoCompletePathEnabled: false,
+    }),
+    history: () => null,
+    publish: (message) => service.sendServerMessage(session, message),
+  });
+  session.completionController = completion;
+  t.after(() => {
+    completion.invalidate(true, false);
+    if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
+  });
+  await completion.query({ type: 'completion-query', trigger: 'manual', requestId: randomUUID() });
+  assert.equal(completion.busy, true);
+  attempted.length = 0;
+  failPublications = true;
+  t.mock.method(console, 'warn', (...values: unknown[]) => warnings.push(values));
+  assert.doesNotThrow(() =>
+    service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'input', data: 'private-input' }))),
+  );
+  assert.deepEqual(writes, ['private-input']);
+  assert.deepEqual(attempted, ['completion-update', 'shell-context', 'credential-fill-offer']);
+  assert.equal(completion.busy, false);
+  assert.equal(session.credentialFillState.offer, null);
+  assert.equal(session.shellContext.status, 'paused');
+  assert.equal(warnings.length, 3);
+  assert.equal(JSON.stringify(warnings).includes('private-'), false);
 });
 
 test('input and resize transport exceptions close only their session and never expose payloads', (t) => {

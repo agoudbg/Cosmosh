@@ -393,6 +393,7 @@ const SSH: React.FC<SSHProps> = ({
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
+    terminalNativeCompletionMode: settingsValues.terminalNativeCompletionMode,
     terminalAutoCompletePromptRegex,
     terminalBracketedPasteEnabled,
     characterWidthCompatibilityModeEnabled,
@@ -459,7 +460,7 @@ const SSH: React.FC<SSHProps> = ({
       setPrimaryPaneContainer,
       resolveHostFingerprintPrompt,
       dismissSelectionBar,
-      acceptAutocompleteAtIndex,
+      acceptAutocompleteCandidate,
       focusAutocomplete,
       fillLoginPassword,
     },
@@ -1564,7 +1565,7 @@ const SSH: React.FC<SSHProps> = ({
           `settings.options.terminalAutoCompleteFocusShortcut.${terminalAutoCompleteFocusShortcut}`,
         )}
         onFocusList={focusAutocomplete}
-        onItemSelect={acceptAutocompleteAtIndex}
+        onItemSelect={acceptAutocompleteCandidate}
       />
 
       {connectionState === 'connected' && terminalSearchOpen ? (

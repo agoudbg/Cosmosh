@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS_VALUES, type ShellContext, type SshTerminalServerMessage } from '@cosmosh/api-contract';
+import { DEFAULT_SETTINGS_VALUES, type SshTerminalServerMessage } from '@cosmosh/api-contract';
 
 import { RemoteShellEventOscParser } from '../../ssh/remote-shell-events.js';
 import { SshSessionService } from '../../ssh/session-service.js';
@@ -7,12 +7,12 @@ import {
   type CredentialFillState,
   observeCredentialFillOutput,
 } from '../credential-fill.js';
-import { createShellContext, resolveShellPermissions } from '../shell-context.js';
+import { createShellContext, resolveShellPermissions, type ShellContextState } from '../shell-context.js';
 
 /** Minimal live-session fields touched by the production credential and input handlers. */
 export type CredentialTestSession = {
   remoteShellEventParser: RemoteShellEventOscParser;
-  shellContext: ShellContext;
+  shellContext: ShellContextState;
   sessionId: string;
   loginPassword: string | null;
   credentialFillState: CredentialFillState;

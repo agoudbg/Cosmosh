@@ -74,7 +74,8 @@ flowchart TB
 - **关键目录**：
   - `src/pages`：功能页面（`Home`、`SSH`、`SFTP`、`Settings`、`SettingsEditor`等）。Home 负责 SSH 服务器、钥匙链与端口转发管理界面。
   - `src/pages/ssh`：SSH 终端 controller 与纯运行时 helper。`use-ssh-core.ts` 编排 pane 路由；primary/secondary hook 分别持有独立 session 资源；`ssh-pane-state.ts` 归并全部 pane 级 transport/helper 消息；`ssh-command-markers.ts` 负责待确认/已确认 xterm marker 生命周期与 pane-local 命令时间线模型；`TerminalCommandTimeline.tsx` 渲染可信的右侧命令轨道。
-  - `src/pages/ssh/integration`及`tests/terminal-autocomplete.*`：仅供浏览器测试使用的终端交互环境及可重复执行的 Playwright 检查。使用实际的 xterm、Hook 和菜单，仅隔离 WebSocket 边界；应用入口不会导入这些文件。
+  - `src/pages/ssh/integration`、`tests/terminal-autocomplete.html`及`tests/terminal-completion.browser.cjs`：仅供浏览器测试使用的终端交互环境及可重复执行的 Playwright 检查。使用实际的 xterm、Hook 和菜单，仅隔离 WebSocket 边界；应用入口不会导入这些文件。
+  - `src/pages/ssh/use-ssh-completion.ts`负责逐分屏查询意图、取消和按不透明编号填写。`terminal-completion-state.ts`校验响应身份／修订号，将等待中的填写与展示候选分开保存。这两个模块替代`use-ssh-autocomplete.ts`，新消息不重建当前输入或 CWD。
   - `src/pages/sftp`：SFTP 页面子模块。`SFTP.tsx` 保持为 tab 级编排入口；该目录负责浏览器式 UI 编排、动作/拖拽菜单、目录/树/详情面板、归档 Dialog 与归档任务轮询、固定行虚拟化辅助函数与测试，以及 prompt、偏好设置、选择模型、键盘快捷键、拖拽、预览动作、renderer 并发/串行任务通道、失败注意状态、字节进度展示等 controller hooks 和共享 SFTP 辅助函数。`src/lib/api/sftp-task-runtime.ts`负责 typed client wrapper 使用的固定接纳 session 任务轮询。
   - `src/pages/settings-editor`：基于 CodeMirror 的设置 JSON 编辑器模块，包含 schema 诊断、补全、悬浮详情与编辑器生命周期封装。
   - `src/components/CloseWindowConfirmationDialog.tsx`与`src/components/EditorCloseConfirmationDialog.tsx`：分别为 Main 持有的活动会话关闭决策与未保存编辑草稿提供共享 Renderer 确认界面。
@@ -86,12 +87,13 @@ flowchart TB
 
 ### `packages/backend`
 
-- `completion/native-completion.ts`验证独立 Fish 查询结果，并生成绑定快照的字面修改。`ShellEditorController.nativeCompletion`将请求绑定到已缓存观察及独立权限。`remote-bootstrap/internal/editor/completion*.go`与嵌入的`fish-completion.fish`负责仅在远端传递环境、进程隔离、限制和取消。`native-completion.live-test.ts`验证实际 SSH 来源，菜单消费者尚待接入。
+- `completion/native-completion.ts`验证独立 Fish 查询结果，并生成标为`source: 'fish'`的快照字面修改。`ShellEditorController.nativeCompletion`将请求绑定到已缓存观察及独立权限。`remote-bootstrap/internal/editor/completion*.go`与嵌入的`fish-completion.fish`负责仅在远端传递环境、进程隔离、限制和取消。`native-completion.live-test.ts`验证实际 SSH 来源。
 
 - `src/terminal/shell-context.ts`：原始 Shell 身份、权限、代数与配对提示符的目录状态。未确认报告仅留在后端，传输快照只包含可用目录和仅供显示的上次目录，不存储当前输入或凭据。
 - `src/terminal/integration/helper-identity.live-test.ts`：真实安装器/SSH 测试，覆盖重复 source、嵌套 Shell、独立终端及非交互式运行不输出事件。
 - `src/terminal/completion/snapshot-edits.ts`负责受限的字面单词识别、码点修改范围和 Shell 引号处理。会话编辑器控制器持有会过期的候选标识及私有完整替换内容。`completion-edits.live-test.ts`通过三种实际 Shell 编辑器验证字面参数字节与后续内容保留。
 - `completion/snapshot-suggestions.ts`负责有界、从新到旧的历史整理、基于快照的静态资料修改，以及按完整修改排序去重。`completion/matching.ts`为各来源提供字面 Unicode 匹配。原生历史读取与生命周期接入由独立模块负责。
+- `completion/snapshot-completion.ts`负责每个 SSH 会话中的单个累积查询／填写周期、已保存设置检查、稳定候选编号、来源状态和取消。替换查询须等待远端清理，私有编辑器等待与后台上下文／历史任务相互协调。`snapshot-completion.test.ts`使用真实编辑器／来源控制器，仅隔离 SSH／设置边界；`path-cleanup.test.ts`验证延迟关闭确认和有界来源停用。
 - `packages/remote-bootstrap/internal/editor/history.go`验证有界的原生历史观察。Bash 与 Zsh 原生模块在传输前过滤私密记录，Fish 钩子执行自身的原生隐私策略。`editor-protocol.ts`与`ShellEditorController.history`／`deleteHistory`执行 Backend 独立权限边界。工作进程在原始 Shell 的预检匹配后授权单条完整记录，并将当前读取器中已确认的目标消失与文件更新分开报告。`bash-history.live-test.ts`、`zsh-history.live-test.ts`和`fish-history.live-test.ts`通过实际 Shell 验证读取及绑定来源的移除。
 - `completion/remote-path-query.ts`负责有界结构化 SSH 目录边界及逐会话查询取消与缓存；`completion/snapshot-paths.ts`将一次完整私有编辑器观察转为已经引用的字面路径草稿。`packages/remote-bootstrap/internal/paths`使用 Go 标准库读取目录。`path-query.live-test.ts`覆盖实际 SSH 文件名、大目录、权限、超时与取消及重新确认的目录观察。旧路径来源现在仅服务本地终端。
 - `src/terminal/editor-controller.ts`负责每会话的单个私有快照、操作、合并后的上下文恢复、送达等待，以及原始 PID／输入边界精确检查。`editor-protocol.ts`校验输入、Unicode 和权限数据边界，维护固定的 Fish 按键／粘贴边界而不保留输入文本。`src/ssh/editor-exec.ts`负责有界 stdin/JSON SSH 交互，仅在预备观察匹配后请求有序修改授权。`src/terminal/integration/editor-fixture.ts`为 Bash、Zsh 和 Fish 实测共享生产环境的送达传输、实际助手安装与观察。

@@ -36,6 +36,11 @@ import {
   type TerminalManagedSessionBase,
 } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
+import { createRemotePathExecutor, RemotePathQueryController } from '../terminal/completion/remote-path-query.js';
+import {
+  SnapshotCompletionController,
+  unavailableCompletionUpdate,
+} from '../terminal/completion/snapshot-completion.js';
 import { normalizeShellHistory } from '../terminal/completion/snapshot-suggestions.js';
 import {
   createCredentialFillState,
@@ -186,6 +191,7 @@ type SshLiveSession = TerminalManagedSessionBase & {
   credentialFillState: CredentialFillState;
   shellContext: ShellContextState;
   editorController?: ShellEditorController;
+  completionController?: SnapshotCompletionController;
   editorContextTimeout?: NodeJS.Timeout;
   enhancementsAllowed: boolean;
   loginPassword: string | null;
@@ -858,12 +864,14 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     if (this.enhancementSettingsSnapshot && snapshot.revision < this.enhancementSettingsSnapshot.revision) return;
     this.enhancementSettingsSnapshot = snapshot;
     for (const session of this.sessions.values()) {
+      session.completionController?.settingsChanged(snapshot.values);
       const previous = session.shellContext;
       session.shellContext = updateShellPermissions(
         previous,
         resolveShellPermissions(snapshot.values, session.enhancementsAllowed),
       );
       if (session.shellContext !== previous) {
+        session.completionController?.invalidate(true);
         session.editorController?.invalidate();
         session.shellContext = requireShellEditorConfirmation(session.shellContext);
       }
@@ -886,7 +894,76 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    * @returns Nothing.
    */
   private sendShellContext(session: SshLiveSession): void {
-    this.sendServerMessage(session, { type: 'shell-context', context: getShellContextSnapshot(session.shellContext) });
+    session.completionController?.contextChanged();
+    this.sendOptionalServerMessage(session, {
+      type: 'shell-context',
+      context: getShellContextSnapshot(session.shellContext),
+    });
+  }
+
+  /**
+   * Owns one opaque completion menu and short-lived path cache for this original SSH Shell.
+   * @param session Authenticated live owner. @returns Its controller, or null without qualified editor transport.
+   */
+  private getCompletionController(session: SshLiveSession): SnapshotCompletionController | null {
+    const editor = this.getEditorController(session);
+    const binaryPath = session.remoteEnhancementsRuntimeContract?.binaryPath;
+    if (!editor || !binaryPath || !(session.stream instanceof DeliveredTerminal)) return null;
+    session.completionController ??= new SnapshotCompletionController({
+      editor,
+      paths: new RemotePathQueryController(createRemotePathExecutor(session.client, binaryPath)),
+      context: () => session.shellContext,
+      readSettings: async () => {
+        const snapshot = await readDefaultSettingsSnapshot(this.getDbClient());
+        this.applyEnhancementSettings(snapshot);
+        return this.enhancementSettingsSnapshot?.values ?? snapshot.values;
+      },
+      history: () =>
+        session.historyView?.source && session.historyOwnerInstanceId !== session.shellContext.shellInstanceId
+          ? null
+          : (session.historyView ?? null),
+      publish: (message) => this.sendServerMessage(session, message),
+      onIdle: () => {
+        this.scheduleEditorContextRefresh(session);
+        if (session.historySyncPending) {
+          session.historySyncPending = false;
+          this.scheduleHistorySync(session.sessionId);
+        }
+      },
+    });
+    return session.completionController;
+  }
+
+  /**
+   * Dispatches only normalized intent/identifiers. Actual input and all preferences are read by Backend.
+   * @param session Original SSH owner. @param message Opaque menu action.
+   * @returns Nothing; source cleanup never delays ordinary input forwarding.
+   */
+  private handleSnapshotCompletion(
+    session: SshLiveSession,
+    message: Extract<
+      TerminalClientInboundMessage,
+      { type: 'completion-query' | 'completion-cancel' | 'completion-accept' }
+    >,
+  ): void {
+    if (message.type === 'completion-cancel') {
+      session.completionController?.cancel(message.requestId);
+      return;
+    }
+    const controller = this.getCompletionController(session);
+    if (!controller) {
+      this.sendOptionalServerMessage(
+        session,
+        message.type === 'completion-query'
+          ? unavailableCompletionUpdate(message.requestId, session.shellContext.revision)
+          : { type: 'completion-accept-result', requestId: message.requestId, status: 'unavailable' },
+      );
+      return;
+    }
+    if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
+    session.editorContextTimeout = undefined;
+    if (message.type === 'completion-query') void controller.query(message);
+    else void controller.accept(message);
   }
 
   /**
@@ -923,12 +1000,14 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       session.disposed ||
       session.remoteEnhancementsRuntimeState !== 'active' ||
       state.status !== 'paused' ||
+      session.completionController?.busy ||
       !state.editorBinding?.notification ||
       (!state.permissions.cwd && !state.permissions.input)
     )
       return;
     session.editorContextTimeout = setTimeout(() => {
       session.editorContextTimeout = undefined;
+      if (session.completionController?.busy) return;
       void this.getEditorController(session)?.refreshContext();
     }, 120);
     session.editorContextTimeout.unref();
@@ -999,6 +1078,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   }
 
   protected onSessionAttached(session: SshLiveSession): void {
+    session.completionController?.invalidate(true, false);
     session.editorController?.invalidate();
     session.shellContext = { ...session.shellContext, revision: session.shellContext.revision + 1 };
     session.shellContext = requireShellEditorConfirmation(session.shellContext);
@@ -1613,6 +1693,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.sendShellContext(session);
     this.clearRemoteEnhancementHandshakeTimeout(session);
     session.remoteEnhancementsRuntimeState = 'disabled';
+    session.completionController?.invalidate(true);
     this.clearRemoteHistory(session);
     session.remoteEnhancementsRuntimeCode = code;
     session.editorController?.invalidate();
@@ -1648,6 +1729,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
+      session.completionController?.invalidate();
       session.editorController?.invalidate();
       const previousStatus = session.shellContext.status;
       session.shellContext = invalidateShellInput(session.shellContext, message.data, message.submissionToken);
@@ -1711,6 +1793,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'shell-history-remove') {
+      session.completionController?.invalidate();
       void this.deleteRemoteHistoryEntry(session, message);
       return;
     }
@@ -1722,12 +1805,23 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       return;
     }
 
+    if (
+      message.type === 'completion-query' ||
+      message.type === 'completion-cancel' ||
+      message.type === 'completion-accept'
+    ) {
+      this.handleSnapshotCompletion(session, message);
+      return;
+    }
+
     if (message.type === 'credential-fill') {
+      session.completionController?.invalidate();
       void this.fillLoginPassword(session, message.token);
       return;
     }
 
     if (message.type === 'editor-snapshot' || message.type === 'editor-apply') {
+      session.completionController?.invalidate();
       void this.handleEditorRequest(session, message);
       return;
     }
@@ -1743,7 +1837,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
    */
   private sendCredentialFillOffer(session: SshLiveSession): void {
     const offer = session.credentialFillState.offer;
-    this.sendServerMessage(session, {
+    this.sendOptionalServerMessage(session, {
       type: 'credential-fill-offer',
       offer: isFillableLoginPassword(session.loginPassword) && offer && offer.expiresAt > Date.now() ? offer : null,
     });
@@ -1880,6 +1974,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   ): void {
     this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
       beforeExit: (session, reason) => {
+        session.completionController?.invalidate(true, false);
         this.clearRemoteHistory(session);
         if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
         session.editorContextTimeout = undefined;
@@ -2004,6 +2099,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   private publishRemoteHistory(session: SshLiveSession, view: ShellHistoryView): void {
     session.historyView = view;
     session.historyOwnerInstanceId = view.source ? (session.shellContext.shellInstanceId ?? undefined) : undefined;
+    session.completionController?.historyChanged();
     session.recentCommands = [...view.entries].reverse();
     // The legacy insertion route cannot safely send multiline/control records as terminal bytes.
     // Precise snapshot candidates will use the complete native view directly.
@@ -2060,6 +2156,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     if (!signal) return;
 
     if (session.historySyncInFlight || session.historyMutationInFlight) {
+      session.historySyncPending = true;
+      return;
+    }
+    if (session.completionController?.busy) {
       session.historySyncPending = true;
       return;
     }

@@ -12,7 +12,7 @@ import type {
 import { advanceFishInputBoundary, type FishInputBoundary } from './editor-protocol.js';
 
 /** Backend-only pending report; a directory becomes usable only at its matching original-Shell prompt. */
-export type ShellContextState = ShellContext & {
+export type ShellContextState = Omit<ShellContext, 'editorAvailable'> & {
   /** Fixed framing metadata only; prevents querying Fish during an unfinished paste/key sequence. */
   fishInputBoundary?: FishInputBoundary;
   pendingDirectory?: { directory: ShellDirectoryContext; promptGeneration: number | null } | null;
@@ -29,12 +29,25 @@ export type ShellContextState = ShellContext & {
 };
 
 /**
- * Excludes unconfirmed reports from transport snapshots.
+ * Distinguishes an owned original adapter from a helper's static capability advertisement.
+ * A paused context may retain its adapter so an operation can obtain a fresh native confirmation.
+ * @param state Backend-owned identity and private binding.
+ * @returns Whether this original prompt has a qualified notification target, independent of permission.
+ */
+const hasCurrentShellEditor = (state: ShellContextState): boolean =>
+  !!state.shellInstanceId &&
+  state.promptGeneration !== null &&
+  !!state.editorBinding &&
+  state.editorBinding.promptGeneration === state.promptGeneration &&
+  state.editorBinding.notification !== undefined;
+
+/**
+ * Excludes unconfirmed reports and private binding details from transport snapshots.
  * @param state Backend-owned state.
  * @returns Public, confirmed context metadata only.
  */
 export const getShellContextSnapshot = (state: ShellContextState): ShellContext => {
-  const context = { ...state };
+  const context = { ...state, editorAvailable: hasCurrentShellEditor(state) };
   delete context.pendingDirectory;
   delete context.requiresEditorConfirmation;
   delete context.editorBinding;
@@ -323,19 +336,25 @@ export const applyShellContextEvent = (
  * @param capability Requested helper capability.
  * @returns Whether a consumer may attempt the operation; editor application must still verify its live buffer.
  */
-export const canUseShellCapability = (context: ShellContext, capability: RemoteShellCapability): boolean => {
+export const canUseShellCapability = (
+  context: ShellContext | ShellContextState,
+  capability: RemoteShellCapability,
+): boolean => {
   if (context.status !== 'ready' || !context.capabilities.includes(capability)) return false;
+  const editorAvailable = 'editorAvailable' in context ? context.editorAvailable : hasCurrentShellEditor(context);
   if (capability === 'cwd') return context.permissions.cwd && context.cwd !== null;
-  if (capability === 'input-snapshot' || capability === 'input-apply') return context.permissions.input;
+  if (capability === 'input-snapshot' || capability === 'input-apply')
+    return context.permissions.input && editorAvailable;
   if (capability === 'directory-read')
-    return context.permissions.paths && context.permissions.cwd && context.cwd !== null;
+    return context.permissions.paths && context.permissions.cwd && context.cwd !== null && editorAvailable;
   if (capability === 'history-read') return context.permissions.history;
   if (capability === 'native-completion')
     return (
       context.permissions.nativeCompletion &&
       context.permissions.input &&
       context.permissions.cwd &&
-      context.cwd !== null
+      context.cwd !== null &&
+      editorAvailable
     );
   return true;
 };

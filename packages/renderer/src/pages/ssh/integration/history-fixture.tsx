@@ -15,6 +15,7 @@ const context: ShellContext = {
   helperVersion: 'fixture',
   protocolVersion: 3,
   capabilities: ['history-read'],
+  editorAvailable: false,
   permissions: { history: true, input: false, cwd: false, paths: false, nativeCompletion: false },
   status: 'paused',
   reason: 'input-submitted',

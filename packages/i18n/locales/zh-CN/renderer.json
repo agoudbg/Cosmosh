@@ -1425,6 +1425,12 @@
     "authTypePassword": "密码",
     "authTypePlaceholder": "选择认证方式",
     "autocomplete": {
+      "apply": {
+        "stale": "填写前输入已发生变化，请重新选择建议。",
+        "unavailable": "Shell 未能确认此次修改，请检查当前输入后再试。",
+        "unknown": "无法确认填写结果，请检查当前输入；Cosmosh 不会重复填写。",
+        "unsupported": "当前 Shell 配置无法安全填写此建议，仍可使用原生 Tab 补全。"
+      },
       "command": "命令",
       "focusedHint": "↑ ↓ 选择 · Esc 返回输入",
       "focusHint": "{shortcut} 选择建议",

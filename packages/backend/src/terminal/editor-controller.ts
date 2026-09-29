@@ -67,6 +67,36 @@ export class ShellEditorController {
     private readonly confirm: (expected: ShellContextState, snapshot: ShellEditorSnapshot | null) => void,
   ) {}
 
+  /** @returns Text-free input identity, including bytes still awaiting delivery, or null without the original owner. */
+  get inputBoundary(): ShellInputBoundary | null {
+    const transport = this.transport();
+    if (!transport || transport.originalShellPID !== this.state().editorBinding?.pid) return null;
+    const delivery = transport.inputDelivery;
+    return { epoch: delivery.epoch, sequence: delivery.sent };
+  }
+
+  /**
+   * Waits for current editor/context cleanup without borrowing its observation or canceling background history.
+   * Callers must recheck their original input identity immediately before dispatching another operation.
+   * @param signal Owning query lifetime; cancellation only releases this waiter.
+   * @returns Whether all previously queued work finished before cancellation.
+   */
+  async waitForIdle(signal: AbortSignal): Promise<boolean> {
+    while (!signal.aborted && (this.contextRefresh || this.inFlight)) {
+      const pending = this.contextRefresh ?? this.inFlight!.finished;
+      await new Promise<void>((resolve) => {
+        /** @returns Nothing; removes this waiter's listener even when cleanup finishes after cancellation. */
+        const finish = (): void => {
+          signal.removeEventListener('abort', finish);
+          resolve();
+        };
+        signal.addEventListener('abort', finish, { once: true });
+        void pending.then(finish, finish);
+      });
+    }
+    return !signal.aborted;
+  }
+
   /**
    * Invalidates data before user input, changed permissions, helper state or teardown.
    * Cancellation also revokes any unused mutation authority through the ordered terminal.

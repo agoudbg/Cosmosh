@@ -79,7 +79,7 @@ type UseSshPrimarySessionParams = {
   refreshSelectionAnchor: () => string | null;
   onTerminalSelectionChange: (selectionText: string) => void;
   clearSelectionOverlay: () => void;
-  applyAutocompleteInputData: (paneId: string, data: string) => { shouldRequest: boolean; shouldClose: boolean };
+  applyAutocompleteInputData: (paneId: string, data: string) => void;
   closeAutocompleteRef: React.RefObject<() => void>;
   handleAutocompleteTerminalKeyDownRef: React.RefObject<(event: KeyboardEvent, paneId: string) => void>;
   notifyHardwareAccelerationContextLoss: () => void;
@@ -597,10 +597,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
         paneId,
         data,
         submissionToken,
-        updateAutocomplete: () => {
-          const autocompleteInputState = applyAutocompleteInputData(paneId, data);
-          if (autocompleteInputState.shouldClose) closeAutocompleteRef.current();
-        },
+        updateAutocomplete: () => applyAutocompleteInputData(paneId, data),
       });
     });
     const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {

@@ -13,6 +13,7 @@ import { createI18n, type Locale } from '../i18n-bridge.js';
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
 import { createLocalPathProvider } from '../terminal/completion/path-providers.js';
+import { unavailableCompletionUpdate } from '../terminal/completion/snapshot-completion.js';
 import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
@@ -421,6 +422,20 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       });
       return;
     }
+
+    if (message.type === 'completion-query') {
+      this.sendOptionalServerMessage(session, unavailableCompletionUpdate(message.requestId, 0));
+      return;
+    }
+    if (message.type === 'completion-accept') {
+      this.sendOptionalServerMessage(session, {
+        type: 'completion-accept-result',
+        requestId: message.requestId,
+        status: 'unavailable',
+      });
+      return;
+    }
+    if (message.type === 'completion-cancel') return;
 
     if (message.type === 'history-delete') {
       const command = message.command.trim();

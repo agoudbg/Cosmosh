@@ -140,7 +140,18 @@ test('input invalidates pending operations without retaining text and submission
 });
 
 test('capability advertisement and each permission independently restrict enhancement operations', () => {
-  const ready = readyContext();
+  const ready = applyShellContextEvent(
+    readyContext(),
+    event({
+      event: 'editor-state',
+      promptGeneration: 1,
+      available: true,
+      pid: 42,
+      startTime: '100',
+      triggerNonce: 'owned',
+      notification: { callback: 'readline' },
+    }),
+  );
   assert.equal(canUseShellCapability(ready, 'input-snapshot'), true);
   assert.equal(canUseShellCapability(ready, 'native-completion'), false);
   assert.equal(canUseShellCapability(ready, 'directory-read'), false, 'a permission cannot invent a helper capability');
@@ -161,6 +172,77 @@ test('capability advertisement and each permission independently restrict enhanc
       resolveShellPermissions({ ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsEnabled: false }, true),
     ).every((value) => value === false),
   );
+});
+
+test('adapter revocation keeps confirmed CWD while public editor availability becomes false', () => {
+  let state = createShellContext('session', resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true), true);
+  state = applyShellContextEvent(state, event({ shell: 'fish' }));
+  state = applyShellContextEvent(state, event({ shell: 'fish', event: 'cwd', cwd: '/fixture', promptGeneration: 1 }));
+  state = applyShellContextEvent(state, event({ shell: 'fish', event: 'prompt-ready', promptGeneration: 1 }));
+  const unavailable = applyShellContextEvent(
+    state,
+    event({
+      shell: 'fish',
+      event: 'editor-state',
+      promptGeneration: 1,
+      available: false,
+      pid: 42,
+      startTime: '100',
+      triggerNonce: 'revoked',
+    }),
+  );
+  const publicState = getShellContextSnapshot(unavailable);
+  assert.equal(publicState.status, 'ready');
+  assert.deepEqual(publicState.cwd, state.cwd);
+  assert.equal(publicState.editorAvailable, false);
+  assert.equal('editorBinding' in publicState, false);
+  assert.equal(canUseShellCapability(publicState, 'cwd'), true);
+  for (const capability of ['input-snapshot', 'input-apply', 'directory-read', 'native-completion'] as const)
+    assert.equal(
+      canUseShellCapability({ ...publicState, capabilities: [...publicState.capabilities, capability] }, capability),
+      false,
+    );
+});
+
+test('owned paused adapters remain queryable metadata and never export private notification identity', () => {
+  const ready = readyContext();
+  assert.equal(getShellContextSnapshot(ready).editorAvailable, false);
+  const owned = applyShellContextEvent(
+    ready,
+    event({
+      event: 'editor-state',
+      promptGeneration: 1,
+      available: true,
+      pid: 42,
+      startTime: '100',
+      triggerNonce: 'owned',
+      notification: { callback: 'readline' },
+    }),
+  );
+  assert.equal(getShellContextSnapshot(owned).editorAvailable, true);
+  const paused = { ...owned, status: 'paused' as const, reason: 'waiting-for-prompt' as const };
+  assert.equal(getShellContextSnapshot(paused).editorAvailable, true);
+  assert.equal(canUseShellCapability(paused, 'input-apply'), false, 'availability does not skip confirmation');
+  assert.equal(getShellContextSnapshot({ ...owned, promptGeneration: 2 }).editorAvailable, false);
+  assert.equal(
+    getShellContextSnapshot({ ...owned, editorBinding: { ...owned.editorBinding!, notification: undefined } })
+      .editorAvailable,
+    false,
+  );
+  assert.equal(getShellContextSnapshot(suspendShellContext(owned, 'foreign-shell')).editorAvailable, false);
+  const revoked = applyShellContextEvent(
+    owned,
+    event({
+      event: 'editor-state',
+      promptGeneration: 1,
+      available: false,
+      pid: 42,
+      startTime: '100',
+      triggerNonce: 'revoked',
+    }),
+  );
+  assert.equal(getShellContextSnapshot(revoked).editorAvailable, false);
+  assert.deepEqual(revoked.cwd, owned.cwd);
 });
 
 test('a post-prompt directory mutation only invalidates the current generation', () => {

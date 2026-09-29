@@ -235,6 +235,20 @@ export abstract class BaseTerminalSessionService<
     session.socket.send(JSON.stringify(payload));
   }
 
+  /**
+   * Keeps optional observer notifications from interrupting input forwarding or private cleanup.
+   * @param session Live notification owner.
+   * @param payload Current optional state; terminal output keeps its ordinary transport path.
+   * @returns Nothing; a failed notification is not replayed and diagnostics contain its type only.
+   */
+  protected sendOptionalServerMessage(session: TSession, payload: TOutboundMessage): void {
+    try {
+      this.sendServerMessage(session, payload);
+    } catch {
+      console.warn('[terminal][notification] Failed to publish optional state.', { type: payload.type });
+    }
+  }
+
   protected flushPendingOutput(session: TSession, createOutputMessage: (data: string) => TOutboundMessage): void {
     while (session.pendingOutput.length > 0) {
       const data = session.pendingOutput.shift();

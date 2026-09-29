@@ -40,6 +40,7 @@ import {
 } from './ssh-types';
 import {
   compilePromptPrefixRegex,
+  forwardTerminalInput,
   resolveTerminalPaneCloseTransition,
   sendClientMessage,
   shouldReconnectTerminalPaneOnActivation,
@@ -53,7 +54,7 @@ import {
   type TerminalWebglAddonRuntime,
   type TerminalWebLinksSettings,
 } from './terminal-addons';
-import { useSshAutocomplete } from './use-ssh-autocomplete';
+import { useSshAutocomplete } from './use-ssh-completion';
 import { useSshMirrorPanes } from './use-ssh-mirror-panes';
 import { useSshPrimarySession } from './use-ssh-primary-session';
 import { useSshSelectionBar } from './use-ssh-selection-bar';
@@ -212,6 +213,7 @@ export type UseSshCoreParams = {
   terminalAutoCompleteMinChars: number;
   terminalAutoCompleteMaxItems: number;
   terminalAutoCompleteFuzzyMatch: boolean;
+  terminalNativeCompletionMode: SettingsValues['terminalNativeCompletionMode'];
   terminalAutoCompletePromptRegex: string;
   terminalBracketedPasteEnabled: boolean;
   characterWidthCompatibilityModeEnabled: boolean;
@@ -403,12 +405,12 @@ export type SshCoreActions = {
    */
   dismissSelectionBar: () => void;
   /**
-   * Accepts one autocomplete candidate by list index.
+   * Accepts the exact opaque candidate selected in the rendered menu.
    *
-   * @param index Candidate index in current suggestion list.
+   * @param candidateId Identity captured by the rendered suggestion row.
    * @returns Nothing.
    */
-  acceptAutocompleteAtIndex: (index: number) => void;
+  acceptAutocompleteCandidate: (candidateId: string) => void;
   /** Gives the suggestion list keyboard ownership without moving DOM focus out of xterm. */
   focusAutocomplete: () => void;
   /** Requests the selected pane's saved login password using its opaque prompt token. */
@@ -446,26 +448,6 @@ export type UseSshCoreResult = {
  */
 export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   /**
-   * Reads the latest trusted line-state calibration for one pane.
-   *
-   * @param paneId Source pane id.
-   * @returns Latest line-state metadata, or `null` when unsupported/stale.
-   */
-  const getPaneLineState = React.useCallback((paneId: string) => {
-    return paneStateMapRef.current[paneId]?.lineState ?? null;
-  }, []);
-
-  /**
-   * Reads the latest helper-reported working directory for one pane.
-   *
-   * @param paneId Source pane id.
-   * @returns Trusted absolute cwd, or `null` before a cwd event is received.
-   */
-  const getPaneTrustedCwd = React.useCallback((paneId: string): string | null => {
-    return paneStateMapRef.current[paneId]?.trustedCwd ?? null;
-  }, []);
-
-  /**
    * Reads the source pane immediately, including between activation and React's next render.
    * @param paneId Pane that owns the selected text.
    * @returns Confirmed metadata only while the original Shell remains usable.
@@ -495,6 +477,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
     terminalAutoCompletePromptRegex,
+    terminalNativeCompletionMode,
     terminalBracketedPasteEnabled,
     characterWidthCompatibilityModeEnabled,
     terminalClipboardProvider,
@@ -744,10 +727,6 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     dispatchPaneStateReducer(action);
   }, []);
 
-  React.useEffect(() => {
-    paneStateMapRef.current = paneStateMap;
-  }, [paneStateMap]);
-
   React.useLayoutEffect(() => {
     historyReadAllowedRef.current = remoteEnhancementsHistoryEnabled;
     if (connectionIntent.target?.type !== 'local-terminal')
@@ -854,10 +833,11 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     focusAutocomplete,
     autocompleteAnchor,
     autocompleteMenuRef,
-    acceptAutocompleteAtIndex,
+    acceptAutocompleteCandidate,
     applyAutocompleteInputData,
     resetAutocompletePaneState,
-    notifyAutocompleteOutputEchoRef,
+    handleAutocompleteContext,
+    handleCompletionAcceptResult,
     closeAutocompleteRef,
     handleAutocompleteTerminalKeyDownRef,
     handleCompletionResponse,
@@ -879,20 +859,14 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalAutoCompleteMinChars,
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
-    terminalAutoCompletePromptRegex,
     wrapperRef,
     terminalContainerRef,
     terminalRef,
     activePaneIdRef,
     paneRuntimeMapRef,
-    getPaneLineState,
-    getPaneTrustedCwd,
-    beforeInput: (paneId, input) => preparePaneInput(paneId, input),
-    canReadPaneInput: (paneId) =>
-      remoteEnhancementsInputEnabled &&
-      (connectionIntent.target?.type === 'local-terminal' ||
-        (paneStateMapRef.current[paneId]?.shellContext?.status === 'ready' &&
-          paneStateMapRef.current[paneId]?.shellContext?.permissions.input === true)),
+    terminalNativeCompletionMode,
+    getPaneContext: (paneId) => paneStateMapRef.current[paneId]?.shellContext ?? null,
+    notifyWarning,
   });
 
   /**
@@ -946,19 +920,22 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       if (payload.type === 'shell-history' && !historyReadAllowedRef.current) return;
       if (payload.type === 'output') {
         terminal.write(payload.data);
-        notifyAutocompleteOutputEchoRef.current(paneId);
         return;
       }
 
-      if (payload.type === 'completion-response') {
+      if (payload.type === 'completion-update') {
         handleCompletionResponse(payload, paneId);
+        return;
+      }
+      if (payload.type === 'completion-accept-result') {
+        handleCompletionAcceptResult(payload, paneId);
         return;
       }
 
       const receivedAt = Date.now();
       const paneRuntime = paneRuntimeMapRef.current.get(paneId);
       if (payload.type === 'shell-context') {
-        resetAutocompletePaneState(paneId);
+        handleAutocompleteContext(paneId, payload.context);
         if (!payload.context.permissions.input && paneRuntime) clearTerminalCommandMarkers(paneRuntime);
       }
       if (
@@ -1004,9 +981,9 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     [
       dispatchPaneState,
       handleCompletionResponse,
-      notifyAutocompleteOutputEchoRef,
+      handleCompletionAcceptResult,
+      handleAutocompleteContext,
       paneRuntimeMapRef,
-      resetAutocompletePaneState,
     ],
   );
 
@@ -1405,16 +1382,19 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
         return false;
       }
 
-      const submissionToken = preparePaneInput(activePaneIdRef.current, data);
-      sendClientMessage(socket, {
-        type: 'input',
+      const paneId = activePaneIdRef.current;
+      const submissionToken = preparePaneInput(paneId, data);
+      forwardTerminalInput({
+        socket,
+        paneId,
         data,
-        ...(submissionToken ? { submissionToken } : {}),
+        submissionToken,
+        updateAutocomplete: () => applyAutocompleteInputData(paneId, data),
       });
 
       return true;
     },
-    [activePaneIdRef, preparePaneInput, socketRef],
+    [activePaneIdRef, applyAutocompleteInputData, preparePaneInput, socketRef],
   );
 
   /**
@@ -1738,7 +1718,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       setPrimaryPaneContainer,
       resolveHostFingerprintPrompt,
       dismissSelectionBar,
-      acceptAutocompleteAtIndex,
+      acceptAutocompleteCandidate,
       focusAutocomplete,
       fillLoginPassword,
     },

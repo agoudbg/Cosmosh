@@ -1,4 +1,4 @@
-import type { TerminalCompletionItem } from '@cosmosh/api-contract';
+import type { ShellCompletionCandidate } from '@cosmosh/api-contract';
 import classNames from 'classnames';
 import { Clock3, Command, File, Folder, ListTree, ToggleRight } from 'lucide-react';
 import React from 'react';
@@ -8,7 +8,7 @@ import { ContextMenuShortcut } from '../ui/context-menu';
 import { menuStyles } from '../ui/menu-styles';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
-type TerminalAutocompleteItem = TerminalCompletionItem;
+type TerminalAutocompleteItem = ShellCompletionCandidate;
 
 type TerminalAutocompleteMenuProps = {
   open: boolean;
@@ -21,13 +21,13 @@ type TerminalAutocompleteMenuProps = {
   panelWidth: number;
   renderAbove: boolean;
   items: TerminalAutocompleteItem[];
-  onItemSelect: (index: number) => void;
+  onItemSelect: (candidateId: string) => void;
 };
 
 type TerminalAutocompleteMenuHandle = {
   moveNext: () => void;
   movePrevious: () => void;
-  getActiveIndex: () => number;
+  getActiveId: () => string | null;
   reset: () => void;
 };
 
@@ -41,7 +41,7 @@ const resolveItemIcon = (item: TerminalAutocompleteItem): React.ReactNode => {
   }
 
   if (item.kind === 'path') {
-    return item.insertText.endsWith('/') ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />;
+    return item.label.endsWith('/') ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />;
   }
 
   if (item.kind === 'subcommand') {
@@ -68,12 +68,16 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
     },
     ref,
   ) => {
-    const [activeIndex, setActiveIndex] = React.useState<number>(0);
+    const [activeId, setActiveId] = React.useState<string | null>(null);
+    const activeIndex = Math.max(
+      0,
+      items.findIndex((item) => item.id === activeId),
+    );
     const listId = React.useId();
     const itemElementRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
-    React.useEffect(() => {
-      setActiveIndex(0);
+    React.useLayoutEffect(() => {
+      setActiveId((previous) => (items.some((item) => item.id === previous) ? previous : (items[0]?.id ?? null)));
     }, [items]);
 
     React.useEffect(() => {
@@ -118,26 +122,35 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
       ref,
       () => ({
         moveNext: () => {
-          setActiveIndex((previous) => (items.length <= 0 ? 0 : (previous + 1) % items.length));
+          setActiveId(
+            (previous) =>
+              items[
+                (Math.max(
+                  0,
+                  items.findIndex((item) => item.id === previous),
+                ) +
+                  1) %
+                  items.length
+              ]?.id ?? null,
+          );
         },
         movePrevious: () => {
-          setActiveIndex((previous) => {
-            if (items.length <= 0) {
-              return 0;
-            }
-
-            return previous - 1 < 0 ? items.length - 1 : previous - 1;
-          });
+          setActiveId(
+            (previous) =>
+              items[
+                (Math.max(
+                  0,
+                  items.findIndex((item) => item.id === previous),
+                ) +
+                  items.length -
+                  1) %
+                  items.length
+              ]?.id ?? null,
+          );
         },
-        getActiveIndex: () => {
-          if (items.length <= 0) {
-            return 0;
-          }
-
-          return Math.max(0, Math.min(activeIndex, items.length - 1));
-        },
+        getActiveId: () => items[activeIndex]?.id ?? null,
         reset: () => {
-          if (activeIndex !== 0) setActiveIndex(0);
+          setActiveId(null);
         },
       }),
       [activeIndex, items],
@@ -185,7 +198,7 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
               {items.map((item, index) => {
                 const isActive = focused && index === activeIndex;
                 const detailText =
-                  item.detail?.trim() ||
+                  (item.detailI18nKey ? t(item.detailI18nKey) : item.detail?.trim()) ||
                   t(item.source === 'history' ? 'ssh.autocomplete.history' : 'ssh.autocomplete.command');
 
                 return (
@@ -205,8 +218,8 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
                           'w-full justify-start overflow-hidden text-left',
                           isActive && 'bg-menu-control-hover',
                         )}
-                        onMouseEnter={() => setActiveIndex(index)}
-                        onClick={() => onItemSelect(index)}
+                        onMouseEnter={() => setActiveId(item.id)}
+                        onClick={() => onItemSelect(item.id)}
                       >
                         <span className={menuStyles.leadingIconSlot}>{resolveItemIcon(item)}</span>
                         <span className="min-w-0 flex-1 truncate">{item.label}</span>

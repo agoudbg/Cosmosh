@@ -46,6 +46,7 @@ test('native completion normalizes bounded fields without retaining unsolicited 
 test('native results replace the complete current token and preserve earlier exact input', () => {
   const drafts = buildNativeCompletionDrafts(snapshot, result('feature/main'));
   assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].source, 'fish');
   assert.deepEqual(buildShellCompletionReplacement(snapshot.buffer!, drafts[0].edit), {
     text: "git switch 'feature/main'",
     cursor: 25,

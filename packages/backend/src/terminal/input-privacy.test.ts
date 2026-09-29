@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { DEFAULT_SETTINGS_VALUES, type ShellContext } from '@cosmosh/api-contract';
+import { DEFAULT_SETTINGS_VALUES } from '@cosmosh/api-contract';
 
 import { LocalTerminalSessionService } from '../local-terminal/session-service.js';
 import { SshSessionService } from '../ssh/session-service.js';
 import type { CredentialFillState } from './credential-fill.js';
-import { createShellContext, resolveShellPermissions } from './shell-context.js';
+import { createShellContext, resolveShellPermissions, type ShellContextState } from './shell-context.js';
 
 /** Input-only session shape; transport writes and timer scheduling are isolated boundaries. */
 type InputSession = {
-  shellContext: ShellContext;
+  shellContext: ShellContextState;
   sessionId: string;
   completionLineBuffer: string;
   completionRecentCommands: string[];

@@ -67,15 +67,20 @@ export const normalizePathQueryResult = (value: unknown): ShellPathQueryResult |
  * @param client Existing SSH transport. @param binaryPath Validated installed absolute helper path.
  * @returns A bounded cancellable structured-query executor.
  */
-export const createRemotePathExecutor =
-  (client: Client, binaryPath: string): RemotePathExecutor =>
-  async (request, signal) => {
+export const createRemotePathExecutor = (client: Client, binaryPath: string): RemotePathExecutor => {
+  let cleanupUnconfirmed = false;
+  return async (request, signal) => {
+    if (cleanupUnconfirmed || signal.aborted) return emptyPathResult(signal.aborted ? 'cancelled' : 'unavailable');
     const command = "'" + binaryPath.replaceAll("'", "'\\''") + "' path-query";
     const output = await executeBoundedSshCommand(client, command, {
       stdin: JSON.stringify(request),
       timeoutMs: 3500,
       maxOutputBytes: 1024 * 1024,
       signal,
+      cleanupTimeoutMs: 1750,
+      onCleanupTimeout: () => {
+        cleanupUnconfirmed = true;
+      },
     });
     if (signal.aborted) return emptyPathResult('cancelled');
     if (output === null) return emptyPathResult('unavailable');
@@ -85,6 +90,7 @@ export const createRemotePathExecutor =
       return emptyPathResult('unavailable');
     }
   };
+};
 
 /**
  * One session's bounded path source. Equal queries coalesce; a different query cancels its predecessor.

@@ -190,11 +190,14 @@ Although terminal stream messages are not Electron IPC channels, they are part o
 
 - Client to server (`/ws/ssh/{sessionId}` and `/ws/local-terminal/{sessionId}`):
   - `input`, `resize`, `ping`, `close`; `history-delete` remains local-terminal-only
+  - `completion-query { requestId, trigger }`, where trigger is `typing` or `manual`; `completion-cancel { requestId }`; `completion-accept { requestId, snapshotId, candidateId }`. IDs must be canonical lowercase UUID v4 and extra keys are rejected. Queries carry no input, CWD hint, edit or preference override. Acceptance has a new request ID; cancellation may identify the current query or pending acceptance.
   - SSH `shell-history-remove { requestId, sourceId, command }`: both IDs are UUIDs and command is one exact bounded native record. Backend requires the current source and cached membership; client-provided namespace/path selectors are never accepted.
   - `completion-request` with `requestId`, `linePrefix`, `cursorIndex`, optional `workingDirectoryHint`, optional `limit`, optional `fuzzyMatch`, optional source filters (`includeHistory`, `includeBuiltInCommands`, `includePathSuggestions`), and `trigger` (`typing` or `manual`)
   - `credential-fill` with a nonempty opaque `token` of at most 128 characters; no credential payload
 - Server to client:
   - `ready`, `output`, `telemetry`, local-only `history`, `pong`, `error`, `exit`
+  - `completion-update { requestId, snapshotId, contextRevision, status, complete, sources, items }`: cumulative display-only items for one snapshot, or `snapshotId: null` without an available snapshot. Status is `ready`, `stale`, `unavailable`, `unsupported` or `unknown`; `sources` always contains `history`, `metadata`, `paths` and `native`, each with `loading`, `ok`, `partial`, `disabled`, `unsupported`, `unavailable`, `timeout` or `private`. Renderer requires its current request and exact context revision before displaying candidates.
+  - `completion-accept-result { requestId, status }`: `applied`, `stale`, `unavailable`, `unsupported` or `unknown`. Application only changes the original editor buffer. `unknown` after authorization never permits automatic retry.
   - SSH `shell-history { view }`: `ok`/`partial` includes `{ id, shell: 'bash' | 'zsh' | 'fish', namespace }` and exact newest-first native entries; `disabled`/`unsupported`/`unavailable`/`private` contains `source: null` and no entries.
   - `shell-history-remove-result { requestId, sourceId, status }`: `removed-from-reader`, `stale`, `unavailable`, `unsupported` or `unknown`. A reader-only success never confirms a native history-file update.
   - `completion-response` with `requestId`, `replacePrefixLength`, and ranked completion `items`
@@ -202,6 +205,7 @@ Although terminal stream messages are not Electron IPC channels, they are part o
   - `bootstrap-status` for side-channel Remote Bootstrap install/probe status
   - `remote-enhancement-runtime-status` with backend-owned state (`pending`, `active`, or `disabled`), optional `helperVersion`, `protocolVersion`, `capabilities`, `code`, and `message`
   - `shell-context` carries latest backend-owned ShellContext identity, capabilities, permissions, usability/reason and generations, without input or credentials. Sent on attach and meaningful transitions, outside historical event buffering.
+    - `editorAvailable` is a required boolean derived from the original adapter's matching prompt binding. It is false before an adapter is available or after revocation, independent of a ready CWD or advertised capabilities. Private binding details are not serialized; each requested operation still verifies the actual native reader and ordered input.
   - `remote-shell-event` carries OSC 777 Shell state; every v3 event requires `shellInstanceId`, `helperVersion`, integer `protocolVersion`, `capabilities`, `shell`, `event`, and `timestamp`
 
 Remote shell event union rules:
@@ -213,14 +217,13 @@ Remote shell event union rules:
 
 Completion item contract notes:
 
-- `items[].source` includes `history`, `inshellisense`, and runtime-computed `runtime`.
-- `items[].kind` includes command-spec/history categories and runtime paths (`path`).
-- Runtime candidates cover paths only. Credentials use their own offer/request/result messages and cannot be included in completion items.
+- New `completion-update.items` use `ShellCompletionCandidate`: opaque `id`, `label`, nullable `detail`, optional `detailI18nKey`, `source` and `kind`. Sources are `history`, `inshellisense`, `runtime` for paths, and `fish` for isolated native results. Kinds include `argument` and `path` as well as command/spec/history categories. No insertion text, score or edit range is sent.
+- Credentials use their own offer/request/result messages and cannot be included in completion items. Legacy `completion-request`/`completion-response` types remain until their separate retirement; the new consumer sends only opaque actions.
 - The shared WebSocket message boundary rejects disposed/unregistered sessions and replaced or closing peers. SSH validates the current offer and persisted permission again immediately before filling; local terminals reject credential fill as `unavailable`.
 
 Current implementation note:
 
-- Completion messages are handled in `SshSessionService` and `LocalTerminalSessionService` via shared normalization in `terminal/shared.ts` and shared ranking engine in `terminal/completion/engine.ts`.
+- `terminal/shared.ts` normalizes both routes. SSH creates one `SnapshotCompletionController` per qualified original Shell. It reads persisted settings for query and acceptance, preserves existing candidate IDs as slow sources finish, and uses the original delivered input boundary for all editor work. Local terminals return `unavailable` for new query/accept actions and safely ignore cancellation; ordinary input remains available.
 - `remote-enhancement-runtime-status` and `remote-shell-event` are SSH-only and never appear on local-terminal sessions. A successful pre-shell Bootstrap ensure starts the runtime as `pending`; a matching `integration-ready` event within 10 seconds changes it to `active`. Ensure failure, `BOOTSTRAP_ENSURE_TIMEOUT`, `HELPER_HANDSHAKE_TIMEOUT`, or any live contract mismatch changes it to `disabled`. Renderer keeps the latest runtime status separately from bounded event history and must treat it as diagnostics, not as authority to reconstruct backend helper state.
 - `remote-shell-event` must not carry passwords, secrets, full output, command lines or input buffers. Dynamic cwd/command fields use canonical Base64 inside JSON and are validated before forwarding. Backend caps decoded JSON at 32 KiB and encoded OSC at 48 KiB, strips Cosmosh OSC, and passes non-Cosmosh OSC unchanged.
 - Renderer routes the complete server message union through the source pane's runtime/reducer. Completion responses, password prompts, status, telemetry, errors, exits, debug events, reconnect, and command markers must never fall back to primary/active pane state implicitly.

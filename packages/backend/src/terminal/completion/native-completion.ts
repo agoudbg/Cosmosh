@@ -89,7 +89,7 @@ export const buildNativeCompletionDrafts = (
     const edit = { start: context.word.start, end: context.word.end, text };
     const replacement = buildShellCompletionReplacement(snapshot.buffer, edit);
     if (!replacement || replacement.text === snapshot.buffer.text) continue;
-    drafts.push({ label: value, detail: entry.detail, source: 'runtime', kind: 'argument', edit });
+    drafts.push({ label: value, detail: entry.detail, source: 'fish', kind: 'argument', edit });
   }
   return drafts;
 };

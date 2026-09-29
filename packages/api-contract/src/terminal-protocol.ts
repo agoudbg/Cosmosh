@@ -224,6 +224,8 @@ export type ShellContext = {
   helperVersion: string | null;
   protocolVersion: number | null;
   capabilities: RemoteShellCapability[];
+  /** An original-Shell adapter is bound for this prompt; each operation still rechecks the live reader and input. */
+  editorAvailable: boolean;
   permissions: ShellPermissions;
   status: ShellContextStatus;
   reason: ShellContextReason | null;
@@ -290,6 +292,41 @@ export type ShellCompletionCandidate = {
   kind: 'command' | 'subcommand' | 'option' | 'argument' | 'history' | 'path';
 };
 
+/** Opaque actions; the Renderer supplies neither current input nor replacement text. */
+export type TerminalCompletionClientMessage =
+  | { type: 'completion-query'; requestId: string; trigger: 'typing' | 'manual' }
+  | { type: 'completion-cancel'; requestId: string }
+  | { type: 'completion-accept'; requestId: string; snapshotId: string; candidateId: string };
+
+/** Independent source outcome; a slow or disabled source does not erase other candidates. */
+export type TerminalCompletionSourceStatus =
+  'loading' | 'ok' | 'partial' | 'disabled' | 'unsupported' | 'unavailable' | 'timeout' | 'private';
+
+/** Per-source state for the cumulative candidate list belonging to one private snapshot. */
+export type TerminalCompletionSources = Record<
+  'history' | 'metadata' | 'paths' | 'native',
+  TerminalCompletionSourceStatus
+>;
+
+/** Cumulative display data; private edits remain in the owning Backend session. */
+export type TerminalCompletionUpdate = {
+  type: 'completion-update';
+  requestId: string;
+  snapshotId: string | null;
+  contextRevision: number;
+  status: 'ready' | 'stale' | 'unavailable' | 'unsupported' | 'unknown';
+  complete: boolean;
+  sources: TerminalCompletionSources;
+  items: ShellCompletionCandidate[];
+};
+
+/** Acknowledgement of a one-use candidate application; accepting never submits a command. */
+export type TerminalCompletionAcceptResult = {
+  type: 'completion-accept-result';
+  requestId: string;
+  status: 'applied' | 'stale' | 'unavailable' | 'unsupported' | 'unknown';
+};
+
 /** Legacy completion candidate transferred over a terminal WebSocket. */
 export type TerminalCompletionItem = {
   id: string;
@@ -304,6 +341,7 @@ export type TerminalCompletionItem = {
 
 /** Renderer-to-Backend messages supported by interactive terminal sessions. */
 export type TerminalClientMessage =
+  | TerminalCompletionClientMessage
   | { type: 'input'; data: string; submissionToken?: string }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'close' }
@@ -329,6 +367,8 @@ export type TerminalClientMessage =
 
 /** Messages common to local and SSH terminal WebSocket sessions. */
 export type TerminalServerMessage =
+  | TerminalCompletionUpdate
+  | TerminalCompletionAcceptResult
   | {
       type: 'editor-snapshot-result';
       requestId: string;

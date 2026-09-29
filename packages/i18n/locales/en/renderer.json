@@ -1425,6 +1425,12 @@
     "authTypePassword": "Password",
     "authTypePlaceholder": "Select auth type",
     "autocomplete": {
+      "apply": {
+        "stale": "The input changed before this suggestion could be filled. Select a fresh suggestion.",
+        "unavailable": "The Shell could not confirm this edit. Check the current input before trying again.",
+        "unknown": "The fill result could not be confirmed. Check the current input; Cosmosh will not repeat the edit.",
+        "unsupported": "This Shell configuration cannot safely fill the suggestion. Native Tab completion is still available."
+      },
       "command": "Command",
       "focusedHint": "↑ ↓ to select · Esc to return to typing",
       "focusHint": "{shortcut} to select suggestions",

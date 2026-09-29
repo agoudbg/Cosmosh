@@ -190,11 +190,14 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 
 - 客户端到服务端（`/ws/ssh/{sessionId}` 与 `/ws/local-terminal/{sessionId}`）：
   - `input`、`resize`、`ping`、`close`；`history-delete`仅供本地终端使用
+  - `completion-query { requestId, trigger }`的触发方式为`typing`或`manual`；另有`completion-cancel { requestId }`与`completion-accept { requestId, snapshotId, candidateId }`。编号必须是规范的小写 UUID v4，额外字段会被拒绝。查询不携带输入、CWD 提示、修改内容或设置覆盖。填写使用新的请求编号；取消可以指定当前查询或等待中的填写。
   - SSH `shell-history-remove { requestId, sourceId, command }`：两个编号均为 UUID，命令是一条有界的完整原生记录。Backend 要求当前来源及缓存成员匹配，不接受前端指定历史库或文件路径。
   - `completion-request`，包含`requestId`、`linePrefix`、`cursorIndex`、可选`workingDirectoryHint`、可选`limit`、可选`fuzzyMatch`、可选来源过滤字段（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`）、`trigger`（`typing`或`manual`）
   - `credential-fill`只包含不超过 128 个字符的非空操作`token`，不携带凭据
 - 服务端到客户端：
   - `ready`、`output`、`telemetry`、仅供本地终端使用的`history`、`pong`、`error`、`exit`
+  - `completion-update { requestId, snapshotId, contextRevision, status, complete, sources, items }`包含同一快照的累积展示候选；没有可用快照时`snapshotId: null`。状态为`ready`、`stale`、`unavailable`、`unsupported`或`unknown`；`sources`固定包含`history`、`metadata`、`paths`、`native`，各自状态为`loading`、`ok`、`partial`、`disabled`、`unsupported`、`unavailable`、`timeout`或`private`。前端只展示当前请求且上下文修订号完全相同的候选。
+  - `completion-accept-result { requestId, status }`的状态为`applied`、`stale`、`unavailable`、`unsupported`或`unknown`。填写只改变原始编辑器输入；授权后出现`unknown`时不允许自动重试。
   - SSH `shell-history { view }`：`ok`／`partial`包含`{ id, shell: 'bash' | 'zsh' | 'fish', namespace }`及按最新优先排列的完整原生记录；`disabled`／`unsupported`／`unavailable`／`private`的`source`为`null`且无记录。
   - `shell-history-remove-result { requestId, sourceId, status }`：状态为`removed-from-reader`、`stale`、`unavailable`、`unsupported`或`unknown`。当前读取器中的移除确认不代表原生历史文件已更新。
   - `completion-response`，包含 `requestId`、`replacePrefixLength` 与排序后的候选 `items`
@@ -202,6 +205,7 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
   - `bootstrap-status`，用于侧通道 Remote Bootstrap 安装/探测状态
   - `remote-enhancement-runtime-status`，包含 backend 持有的状态（`pending`、`active` 或 `disabled`），以及可选 `helperVersion`、`protocolVersion`、`capabilities`、`code` 与 `message`
   - `shell-context`携带 Backend 最新的 ShellContext 身份、能力、权限、可用状态/原因及代数，不包含输入或凭据。附加连接与重要状态转换时发送，不进入历史事件缓冲。
+    - `editorAvailable`是必填布尔值，由原始适配器匹配当前提示符的绑定推导。适配器尚不可用或能力已撤销时为`false`，独立于已就绪的 CWD 和能力声明。私有绑定细节不会序列化；每次请求仍要确认实际原生编辑状态和有序输入。
   - `remote-shell-event`携带 OSC 777 Shell 状态；每条 v3 事件必须包含`shellInstanceId`、`helperVersion`、整数`protocolVersion`、`capabilities`、`shell`、`event`与`timestamp`
 
 远端 shell event union 规则：
@@ -213,13 +217,13 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 
 补全候选契约说明：
 
-- `items[].source` 目前包含 `history`、`inshellisense` 与运行时计算来源 `runtime`。
-- `items[].kind`在命令规范／历史分类之外包含运行时路径分类`path`；凭据不能进入补全候选。
+- 新的`completion-update.items`使用`ShellCompletionCandidate`：不透明`id`、`label`、可为空的`detail`、可选`detailI18nKey`、`source`及`kind`。来源为`history`、`inshellisense`、表示路径的`runtime`以及表示独立原生结果的`fish`。类型在命令／资料／历史分类之外包含`argument`与`path`。不传递填写文本、分值或修改范围。
+- 旧`completion-request`／`completion-response`类型保留至单独清理；新消费者只发送不透明操作。凭据不能进入补全候选。
 - 凭据使用独立的操作提示／请求／结果消息。共享 WebSocket 入口拒绝已释放／未注册会话和被替换／正在关闭的连接。SSH 在填入前再次检查操作标识与持久化权限；本地终端以`unavailable`拒绝凭据操作。
 
 当前实现说明：
 
-- 补全消息在 `SshSessionService` 与 `LocalTerminalSessionService` 中处理，输入规范化由 `terminal/shared.ts` 统一，排序引擎由 `terminal/completion/engine.ts` 共享。
+- `terminal/shared.ts`统一规范化两类请求。SSH 为每个合格的原始 Shell 创建一个`SnapshotCompletionController`，在查询与填写时读取已保存设置，慢来源返回后保持已有候选编号，并将全部编辑器操作绑定原始终端已送达的输入边界。本地终端对新查询／填写返回`unavailable`，安全忽略取消，普通输入继续可用。
 - `remote-enhancement-runtime-status` 与 `remote-shell-event` 仅用于 SSH session，不会出现在 local-terminal session。交互 shell 打开前的 Bootstrap ensure 成功后，运行时以 `pending` 开始；10 秒内到达且匹配的 `integration-ready` 会切换为 `active`。Ensure 失败、`BOOTSTRAP_ENSURE_TIMEOUT`、`HELPER_HANDSHAKE_TIMEOUT` 或 live 契约不匹配都会切换为 `disabled`。Renderer 会把最新运行状态与有界事件历史分别保存，并且只能将其用于诊断，不得据此重建 backend helper 状态。
 - `remote-shell-event`不得携带密码、secret、完整输出、命令行或输入缓冲区。动态 cwd/command 字段在 JSON 内使用规范 Base64，校验后才转发。Backend 将解码 JSON 限制在 32 KiB、编码 OSC 限制在 48 KiB，剥离 Cosmosh OSC，原样传递非 Cosmosh OSC。
 - Renderer 会把完整 server message union 路由到来源 pane 的 runtime/reducer。补全响应、密码提示、状态、telemetry、错误、退出、调试事件、重连与命令 marker 都不得隐式回退到 primary/active pane 状态。

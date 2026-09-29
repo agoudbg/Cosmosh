@@ -114,6 +114,8 @@ export const resolveSnapshotSuggestions = (
 /**
  * Ranks all currently available sources and deduplicates by the exact resulting input and cursor.
  * Identical display labels alone do not prove that two edits do the same thing.
+ * Qualified Fish results know the current command's argument semantics, so their native order precedes
+ * generic history, metadata and filesystem guesses. Other sources keep their existing match/recency scoring.
  * @param buffer Owning snapshot. @param drafts Available source drafts. @param limit Bounded menu size.
  * @returns Deterministic applicable edits; invalid or unchanged replacements are excluded.
  */
@@ -124,12 +126,17 @@ export const rankSnapshotSuggestions = (
 ): ShellCompletionDraft[] => {
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(128, Math.floor(limit))) : 16;
   const sourceOrder = { runtime: 0, fish: 1, history: 2, inshellisense: 3 };
-  const sorted = [...drafts].sort(
-    (left, right) =>
+  const sorted = [...drafts].sort((left, right) => {
+    const nativePriority = Number(left.source !== 'fish') - Number(right.source !== 'fish');
+    if (nativePriority !== 0) return nativePriority;
+    // Stable sort preserves the Shell's relevance ordering, including ties and exact-edit duplicates.
+    if (left.source === 'fish' && right.source === 'fish') return 0;
+    return (
       (right.score ?? 0) - (left.score ?? 0) ||
       sourceOrder[left.source] - sourceOrder[right.source] ||
-      left.label.localeCompare(right.label),
-  );
+      left.label.localeCompare(right.label)
+    );
+  });
   const seen = new Set<string>();
   const result: ShellCompletionDraft[] = [];
   for (const draft of sorted) {

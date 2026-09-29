@@ -1,7 +1,13 @@
 import '@xterm/xterm/css/xterm.css';
 import '../../../index.css';
 
-import type { SettingsValues, TerminalClientMessage } from '@cosmosh/api-contract';
+import type {
+  SettingsValues,
+  ShellContext,
+  TerminalClientMessage,
+  TerminalCompletionAcceptResult,
+  TerminalCompletionUpdate,
+} from '@cosmosh/api-contract';
 import { Terminal } from '@xterm/xterm';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -9,7 +15,7 @@ import { createRoot } from 'react-dom/client';
 import { TerminalAutocompleteMenu } from '../../../components/terminal/terminal-autocomplete-menu';
 import type { TerminalPaneRuntime } from '../ssh-types';
 import { forwardTerminalInput } from '../ssh-utils';
-import { useSshAutocomplete } from '../use-ssh-autocomplete';
+import { useSshAutocomplete } from '../use-ssh-completion';
 
 type FixtureSettings = {
   inputAllowed: boolean;
@@ -22,6 +28,10 @@ type FixtureSettings = {
 type RecordedMessage = { paneId: string; payload: TerminalClientMessage };
 type FixtureController = {
   messages: RecordedMessage[];
+  warnings: string[];
+  directInput: (data: string) => void;
+  context: (changes: Partial<ShellContext>) => void;
+  acceptResult: (status: TerminalCompletionAcceptResult['status']) => void;
   setInputAllowed: (allowed: boolean) => void;
   setHistoryEnabled: (enabled: boolean) => void;
   failNextMenuReset: () => void;
@@ -29,7 +39,7 @@ type FixtureController = {
   transportCallbackChanges: number;
   reset: (settings?: Partial<FixtureSettings>) => Promise<void>;
   show: () => void;
-  respond: () => void;
+  respond: (changes?: Partial<TerminalCompletionUpdate>) => void;
   focusPane: (paneId: string) => void;
   alternate: (enabled: boolean) => Promise<void>;
   output: (data: string) => Promise<void>;
@@ -65,8 +75,29 @@ export const AutocompleteFixture = (): React.ReactNode => {
   const terminalRef = React.useRef<Terminal>(null);
   const activePaneIdRef = React.useRef('pane-1');
   const paneRuntimeMapRef = React.useRef(new Map<string, Pick<TerminalPaneRuntime, 'terminal' | 'socket'>>());
+  const warningsRef = React.useRef<string[]>([]);
+  const contextRef = React.useRef<ShellContext>({
+    sessionId: 'fixture-session',
+    shellInstanceId: '94eb0ed9-993f-4517-925a-d28e5139fce0',
+    shell: 'bash',
+    helperVersion: 'fixture',
+    protocolVersion: 3,
+    capabilities: ['input-snapshot', 'input-apply'],
+    editorAvailable: true,
+    permissions: { input: true, history: true, cwd: false, paths: false, nativeCompletion: false },
+    status: 'ready',
+    reason: null,
+    revision: 1,
+    inputGeneration: 0,
+    submissionToken: null,
+    promptGeneration: 1,
+    cwdGeneration: 0,
+    cwd: null,
+    lastKnownCwd: null,
+  });
   const autocomplete = useSshAutocomplete({
-    canReadPaneInput: () => settings.inputAllowed,
+    getPaneContext: () => contextRef.current,
+    notifyWarning: (message) => warningsRef.current.push(message),
     isActive: settings.isActive,
     connectionState: settings.connected ? 'connected' : 'failed',
     terminalAutoCompleteEnabled: settings.enabled && settings.inputAllowed,
@@ -78,14 +109,12 @@ export const AutocompleteFixture = (): React.ReactNode => {
     terminalAutoCompleteMinChars: 1,
     terminalAutoCompleteMaxItems: 8,
     terminalAutoCompleteFuzzyMatch: false,
-    terminalAutoCompletePromptRegex: '',
+    terminalNativeCompletionMode: 'off',
     wrapperRef,
     terminalContainerRef,
     terminalRef,
     activePaneIdRef,
     paneRuntimeMapRef,
-    getPaneLineState: () => null,
-    getPaneTrustedCwd: () => null,
   });
   const current = React.useRef(autocomplete);
   React.useLayoutEffect(() => {
@@ -122,10 +151,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
           socket,
           paneId,
           data,
-          updateAutocomplete: () => {
-            const state = current.current.applyAutocompleteInputData(paneId, data);
-            if (state.shouldClose) current.current.closeAutocompleteRef.current();
-          },
+          updateAutocomplete: () => current.current.applyAutocompleteInputData(paneId, data),
         });
       });
       const keydown = (event: KeyboardEvent): void =>
@@ -148,6 +174,28 @@ export const AutocompleteFixture = (): React.ReactNode => {
     focusPane('pane-1');
     window.terminalInteractionFixture = {
       messages,
+      warnings: warningsRef.current,
+      directInput: (data) => {
+        const paneId = activePaneIdRef.current;
+        forwardTerminalInput({
+          socket: runtimes.get(paneId)!.socket,
+          paneId,
+          data,
+          updateAutocomplete: () => current.current.applyAutocompleteInputData(paneId, data),
+        });
+      },
+      context: (changes) => {
+        contextRef.current = { ...contextRef.current, ...changes };
+        current.current.handleAutocompleteContext(activePaneIdRef.current, contextRef.current);
+      },
+      acceptResult: (status) => {
+        const request = [...messages].reverse().find((entry) => entry.payload.type === 'completion-accept');
+        if (!request || request.payload.type !== 'completion-accept') throw new Error('No accepted suggestion');
+        current.current.handleCompletionAcceptResult(
+          { type: 'completion-accept-result', requestId: request.payload.requestId, status },
+          request.paneId,
+        );
+      },
       setInputAllowed: (allowed) => setSettings((previous) => ({ ...previous, inputAllowed: allowed })),
       setHistoryEnabled: (enabled) => setSettings((previous) => ({ ...previous, historyEnabled: enabled })),
       failNextMenuReset: () => {
@@ -158,35 +206,50 @@ export const AutocompleteFixture = (): React.ReactNode => {
           throw new Error('Controlled optional menu failure');
         };
       },
-      accept: (index) => current.current.acceptAutocompleteAtIndex(index),
+      accept: (index) =>
+        current.current.acceptAutocompleteCandidate(current.current.autocompleteItems[index]?.id ?? null),
       transportCallbackChanges: 0,
       reset: async (next = {}) => {
         for (const paneId of runtimes.keys()) current.current.resetAutocompletePaneState(paneId);
         setSettings({ ...defaults, ...next });
+        contextRef.current = {
+          ...contextRef.current,
+          editorAvailable: true,
+          status: 'ready',
+          reason: null,
+          revision: 1,
+          sessionId: 'fixture-session',
+          shellInstanceId: '94eb0ed9-993f-4517-925a-d28e5139fce0',
+          promptGeneration: 1,
+        };
+        warningsRef.current.length = 0;
         messages.length = 0;
         focusPane('pane-1');
         for (const pane of paneRuntimeMapRef.current.values()) {
           await new Promise<void>((resolve) => pane.terminal.write('\x1b[?1049l\x1bc$ gi', resolve));
         }
       },
-      show: () => current.current.scheduleAutocompleteRequestRef.current(activePaneIdRef.current, 'manual'),
-      respond: () => {
-        const request = [...messages].reverse().find((entry) => entry.payload.type === 'completion-request');
-        if (!request || request.payload.type !== 'completion-request') throw new Error('No completion request');
+      show: () => current.current.scheduleAutocompleteRequestRef.current(activePaneIdRef.current, 'typing'),
+      respond: (changes = {}) => {
+        const request = [...messages].reverse().find((entry) => entry.payload.type === 'completion-query');
+        if (!request || request.payload.type !== 'completion-query') throw new Error('No completion request');
         current.current.handleCompletionResponse(
           {
-            type: 'completion-response',
+            type: 'completion-update',
             requestId: request.payload.requestId,
-            replacePrefixLength: 2,
+            snapshotId: 'f29c8bcf-f1ba-4a11-9aa8-b81dce3e0375',
+            contextRevision: contextRef.current.revision,
+            status: 'ready',
+            complete: true,
+            sources: { history: 'ok', metadata: 'disabled', paths: 'disabled', native: 'disabled' },
             items: ['git status', 'git stash'].map((label, index) => ({
-              id: `fixture-${index}`,
+              id: `10e2fbb0-d264-40f0-a99c-a28290ce324${index}`,
               label,
-              insertText: label,
               detail: 'Fixture history',
               source: 'history',
               kind: 'history',
-              score: 10 - index,
             })),
+            ...changes,
           },
           request.paneId,
         );
@@ -237,7 +300,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
         renderAbove={false}
         items={autocomplete.autocompleteItems}
         onFocusList={autocomplete.focusAutocomplete}
-        onItemSelect={autocomplete.acceptAutocompleteAtIndex}
+        onItemSelect={autocomplete.acceptAutocompleteCandidate}
       />
     </div>
   );
