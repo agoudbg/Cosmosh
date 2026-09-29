@@ -242,6 +242,7 @@ export type SshCoreState = {
   telemetryState: SshTelemetryState;
   historyView: ShellHistoryView | null;
   historyRemoval: SshPaneState['historyRemoval'];
+  shellContext: SshPaneState['shellContext'];
   remoteBootstrapStatus: RemoteBootstrapStatus | null;
   remoteEnhancementRuntimeStatus: RemoteEnhancementRuntimeStatus | null;
   remoteEnhancementsDebugEvents: RemoteEnhancementsDebugEvent[];
@@ -1697,6 +1698,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       telemetryState,
       historyView,
       historyRemoval: remoteEnhancementsHistoryEnabled ? activePaneState.historyRemoval : null,
+      shellContext: activePaneState.shellContext,
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
       remoteEnhancementsDebugEvents,

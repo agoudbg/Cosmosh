@@ -119,6 +119,8 @@ Terminal text selection interactions in SSH pages must follow these rules:
 
 ## 7.1 SSH Split-Pane And Command Timeline Standard
 
+- The SSH sidebar provides an Enhancement Status action independently of the debug setting. Its shared Dialog identifies the active pane, distinguishes permission preference from actual availability, uses plain-language reasons, and keeps its close button reachable at narrow or short viewports. Pane/tab changes close the dialog without remounting xterm. Opening it performs no remote read and displays no command/history text.
+
 - Explanatory history tooltips use the shared `TooltipContent interactive={false}` option so the portal's positioning wrapper cannot intercept adjacent row actions. Other tooltip surfaces retain their existing pointer behavior.
 
 - Native history lists show their current source and a specific reason when empty or unavailable. Source changes, permission revocation and pane switches invalidate pending removal confirmations. Fish removal confirmation explains exact-text matches, shared history and the unconfirmed history-file update; result copy reports only what the original Shell confirmed. Records containing line breaks or terminal control characters offer complete copying with insert/run disabled. Never flatten native history text into a different command.

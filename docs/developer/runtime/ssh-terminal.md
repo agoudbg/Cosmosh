@@ -402,6 +402,14 @@ COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL="<manifest-url>" pnpm dev:main
 
 ### 8.2 Session Flow
 
+Directory opt-out clears current/last-known context metadata and prevents navigation from using it. Previously received diagnostic events may remain in the bounded pane debug history; the permission does not erase every past report or unload the remote helper.
+
+For repeatable status UI checks, open `/tests/terminal-enhancement-status.html` in the existing renderer test server and run `playwright-cli run-code --filename=packages/renderer/tests/terminal-enhancement-status.browser.cjs`. The production selector and dialog consume fixture observations only; this verifies browser behavior, not Electron/SSH transport or new completion activation.
+
+The per-server enhancement gate is captured when a terminal is opened. Changing that server setting requires opening a new connection from the server list; retrying the existing tab preserves its original connection intent. Fish support copy names the verified 4.0.1/native-key profile and the requirement to disable native autosuggestions, without inferring which condition failed from a generic unavailable result.
+
+The SSH sidebar exposes **Enhancement Status** without requiring debug mode. Connection failure takes precedence over retained runtime metadata. A successful empty native-history view remains available even when input/CWD are paused or disabled. Logical-only CWD is partial; last-known CWD never appears as current. Global/server opt-outs, missing helper, contract mismatch, timeout, unsupported capability and unconfirmed editor have separate explanations. Re-enabling the global helper switch requires a new connection. The CWD permission stops using directory metadata in current context, but an installed helper may still emit reports. Precise filling, remote path menu candidates and Fish native menu candidates remain explicitly unavailable until their consumers are connected; this diagnostic UI does not activate them. Prompt-regex settings remain while the legacy completion consumer still uses them.
+
 ```mermaid
 sequenceDiagram
   participant UI as Renderer SSH Page

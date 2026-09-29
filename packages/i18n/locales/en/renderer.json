@@ -510,7 +510,7 @@
         "title": "Allow Local Terminal Clipboard Access"
       },
       "remoteEnhancementsCwdEnabled": {
-        "description": "Allow Cosmosh enhancements to use the remote Shell directory for paths and file navigation.",
+        "description": "Use the current Shell directory for file navigation. Turning this off clears the current directory state and stops its use for navigation. Earlier diagnostic reports may remain in memory, and the installed helper may still send directory reports.",
         "title": "Read Current Shell Directory"
       },
       "remoteEnhancementsDebugEnabled": {
@@ -518,15 +518,15 @@
         "title": "Remote Enhancements Debug"
       },
       "remoteEnhancementsEnabled": {
-        "description": "Allow Cosmosh to install remote enhancement helpers for SSH sessions. Turning this off may degrade or disable some terminal features.",
+        "description": "Allow Cosmosh to install and use the remote enhancement helper for SSH sessions. Turning this off disables enhancements in existing connections. Reconnect after enabling them again; ordinary terminal input remains available.",
         "title": "Remote Enhancements"
       },
       "remoteEnhancementsHistoryEnabled": {
-        "description": "Allow Cosmosh to read remote command history for history lists and suggestions. Turning this off stops reads and clears the copies in local memory. Shell history and the arrow keys remain available.",
+        "description": "Allow Cosmosh to read the current Shell's native history into local memory for history lists and suggestions. Turning this off stops reads and clears those copies. Shell history and the arrow keys remain available.",
         "title": "Read Shell History"
       },
       "remoteEnhancementsInputEnabled": {
-        "description": "Allow compatible Shells to share the command being edited with Cosmosh for suggestions. It stays in local memory and is not logged, saved, or sent to a cloud service.",
+        "description": "Allow compatible Shells to share the command being edited with Cosmosh. Commands may contain sensitive arguments. Cosmosh processes this data in local memory without logging, saving or cloud upload. Turning this off disables suggestions that require input reads.",
         "title": "Read Current Command Input"
       },
       "serverProxyMode": {
@@ -655,7 +655,7 @@
         "title": "Fill Saved Login Password"
       },
       "terminalAutoCompletePathEnabled": {
-        "description": "Include file and directory path suggestions in the auto-complete menu.",
+        "description": "Allow file and directory suggestions. Remote file candidates are not yet connected to the SSH menu; local terminal suggestions remain available.",
         "title": "Auto Complete Path Suggestions"
       },
       "terminalAutoCompletePromptRegex": {
@@ -770,7 +770,7 @@
         "title": "Minimum Contrast Ratio"
       },
       "terminalNativeCompletionEnabled": {
-        "description": "Allow a compatible Fish helper to generate native suggestions in a separate worker. Shell completion scripts may run commands; disabled by default.",
+        "description": "Control permission for Fish native suggestions. Native candidates are not yet connected to this menu; native Tab is unaffected. Completion scripts may run tools or access the network.",
         "title": "Fish Native Suggestions"
       },
       "terminalRightClickAction": {
@@ -1486,6 +1486,60 @@
     "emptyTags": "No added tags",
     "enableSshCompression": "SSH Transport Compression",
     "enableSshCompressionTooltip": "When enabled, Cosmosh asks the server to compress SSH transport data. Keep it off by default unless the connection is bandwidth-constrained.",
+    "enhancementStatus": {
+      "close": "Close",
+      "description": "Current status for terminal {index}. Permissions and availability are shown separately.",
+      "features": {
+        "directory": "Current directory",
+        "history": "Shell history",
+        "input": "Current command input",
+        "nativeCompletion": "Fish native suggestions",
+        "paths": "File suggestions"
+      },
+      "fishSupport": "Fish enhancements are currently verified with Fish 4.0.1, a compatible native key configuration, and Fish's gray inline suggestions turned off. Custom key bindings or history filters can make individual features unavailable.",
+      "permissionAllowed": "Allowed",
+      "permissionDisabled": "Off",
+      "reasons": {
+        "commandRunning": "The Shell is running a command. Its command editor is not currently confirmed.",
+        "connecting": "Connecting to the server.",
+        "directoryConfirmed": "The current Shell directory is confirmed.",
+        "directoryLogicalOnly": "The Shell's displayed directory is known. Its actual filesystem path has not been confirmed.",
+        "directoryRequired": "Current directory permission is required for this source.",
+        "directoryUnknown": "Connected, but the current directory has not been confirmed.",
+        "disconnected": "The terminal connection has ended. Reconnect to obtain current status.",
+        "foreignShell": "A different Shell or environment is active. The original Shell has not been confirmed.",
+        "globalDisabled": "Remote Enhancements is off in Settings. Ordinary terminal input remains available.",
+        "helperConnected": "The helper is connected. Each feature's availability is listed below.",
+        "helperMismatch": "The installed helper does not match this Cosmosh version. Reconnect to check and update it.",
+        "helperTimeout": "The helper did not respond in time. Ordinary terminal input remains available; reconnect to try again.",
+        "helperUnavailable": "The helper is unavailable for this connection. Ordinary terminal input remains available.",
+        "historyPartial": "History was read from the current Shell, but the list is incomplete.",
+        "historyPrivate": "The current Shell uses private mode or has no enabled history source. No history is read.",
+        "historyReady": "History was read from the current Shell. An empty list can be a valid result.",
+        "historyUnavailable": "No current history observation is available. The Shell configuration may limit this feature.",
+        "inputRequired": "Current command input permission is required for this source.",
+        "nativeMenuPending": "Fish native candidates are not yet connected to this menu. Native Tab completion remains available.",
+        "pathMenuPending": "Remote file candidates are not yet connected to this menu.",
+        "permissionDisabled": "This feature or its required permission is off for this connection.",
+        "reconnectRequired": "Enhancements were disabled for this connection. Reconnect after enabling them.",
+        "serverDisabled": "This connection was opened with Remote Enhancements off. Enable it in the server settings, then open a new connection from the server list.",
+        "suggestionsDisabled": "Terminal Auto Complete is off in Settings.",
+        "unsupported": "The current Shell has not provided a supported capability for this feature.",
+        "unsupportedEditor": "The current command editor configuration is not supported.",
+        "verifiedEditingPending": "Verified suggestion filling is not yet enabled for this connection.",
+        "waitingEditor": "The original Shell's command editor has not been confirmed. Ordinary input remains available.",
+        "waitingHelper": "The helper has not yet been confirmed for this connection."
+      },
+      "settingsHint": "Manage read permissions in Settings > Advanced > Runtime. Suggestion sources are in Settings > Terminal > Auto Complete.",
+      "states": {
+        "available": "Available",
+        "disabled": "Off",
+        "partial": "Partial",
+        "paused": "Paused",
+        "unavailable": "Unavailable"
+      },
+      "title": "Enhancement Status"
+    },
     "historyAddToCurrentTerminal": "Add to current terminal",
     "historyAddToTerminalMenu": "Add to terminal...",
     "historyCommandsEmpty": "No recent commands",

@@ -74,6 +74,8 @@ flowchart LR
 
 ### Renderer 进程 (`packages/renderer/src`)
 
+SSH 侧栏的增强状态窗口根据当前窗格的连接、ShellContext、原生历史视图和当前设置生成只读说明。它不发起远端操作，不保留输入或历史文本，并在切换当前窗格或标签页时关闭。能力声明、权限偏好、已确认的观察结果和已启用的功能分别解释。
+
 - 仅通过 `window.electron` bridge 访问能力（不直接使用 Node API）。
 - 通过后端 API 创建 SSH/本地终端会话与 SFTP 浏览、下载、文件操作会话。
 - 通过 WebSocket 建立终端数据通道，并由 `xterm.js` 渲染。

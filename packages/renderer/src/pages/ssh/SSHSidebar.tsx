@@ -45,6 +45,7 @@ import { MAX_TERMINAL_PANES, type SshTelemetryState } from './ssh-types';
 import { canInsertHistoryCommand, formatCpuPercent, formatMemoryUsage, formatTrafficRate } from './ssh-utils';
 
 type SSHSidebarProps = {
+  enhancementStatus?: React.ReactNode;
   telemetryState: SshTelemetryState;
   historyView: ShellHistoryView | null;
   historyRemoval: SshPaneState['historyRemoval'];
@@ -69,6 +70,7 @@ type SSHSidebarProps = {
  * and sidebar UI composition.
  *
  * @param props Sidebar telemetry and command handlers.
+ * @param props.enhancementStatus Optional read-only status action for the active remote pane.
  * @param props.telemetryState Current SSH telemetry snapshot.
  * @param props.historyView Native history view; null only for the local terminal's legacy list.
  * @param props.historyRemoval Latest action bound to the current pane and source.
@@ -86,6 +88,7 @@ type SSHSidebarProps = {
  * @returns Sidebar JSX subtree.
  */
 export const SSHSidebar: React.FC<SSHSidebarProps> = ({
+  enhancementStatus,
   telemetryState,
   historyView,
   historyRemoval,
@@ -135,6 +138,7 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
 
   return (
     <div className="flex w-[300px] min-w-[300px] shrink-0 flex-col items-center justify-between gap-2.5 overflow-auto">
+      {enhancementStatus}
       <div
         className={classNames(
           sidebarCardStyle,

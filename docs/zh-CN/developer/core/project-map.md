@@ -67,6 +67,8 @@ flowchart TB
 
 ### `packages/renderer`
 
+- `src/pages/ssh/remote-enhancement-status.ts`生成不含命令文本的逐项功能诊断；`RemoteEnhancementsStatus.tsx`使用共享界面组件展示当前窗格的状态窗口。单元测试和浏览器测试覆盖过期连接状态、独立历史权限、部分目录信息和窗格切换。
+
 - **角色**：React UI 层。
 - **关键目录**：
   - `src/pages`：功能页面（`Home`、`SSH`、`SFTP`、`Settings`、`SettingsEditor`等）。Home 负责 SSH 服务器、钥匙链与端口转发管理界面。

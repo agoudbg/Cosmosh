@@ -29,6 +29,7 @@ import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
 import type { SshConnectionIntent, TabIconColorKey, TabIconKey } from '../types/tabs';
 import { RemoteEnhancementsDebugPanel } from './ssh/RemoteEnhancementsDebugPanel';
+import { RemoteEnhancementsStatus } from './ssh/RemoteEnhancementsStatus';
 import { INTERNAL_TERMINAL_TEXT_DRAG_MIME, type TerminalSelectionSettings } from './ssh/ssh-types';
 import {
   canInsertHistoryCommand,
@@ -418,6 +419,7 @@ const SSH: React.FC<SSHProps> = ({
       telemetryState,
       historyView,
       historyRemoval,
+      shellContext,
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
       remoteEnhancementsDebugEvents,
@@ -1651,6 +1653,22 @@ const SSH: React.FC<SSHProps> = ({
       ) : null}
 
       <SSHSidebar
+        enhancementStatus={
+          isActive && connectionIntent.lastResolvedSnapshot?.type === 'ssh-server' ? (
+            <RemoteEnhancementsStatus
+              key={activePaneId}
+              paneNumber={terminalPaneIds.indexOf(activePaneId) + 1}
+              input={{
+                connectionState,
+                serverEnabled: connectionIntent.lastResolvedSnapshot.remoteEnhancementsEnabled,
+                context: shellContext,
+                runtimeStatus: remoteEnhancementRuntimeStatus,
+                historyView,
+                settings: settingsValues,
+              }}
+            />
+          ) : null
+        }
         telemetryState={telemetryState}
         historyView={historyView}
         historyRemoval={historyRemoval}

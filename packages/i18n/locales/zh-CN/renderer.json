@@ -510,7 +510,7 @@
         "title": "允许本地终端访问本地剪贴板"
       },
       "remoteEnhancementsCwdEnabled": {
-        "description": "允许 Cosmosh 增强功能使用远端 Shell 目录，提供路径建议和文件导航。",
+        "description": "允许 Cosmosh 使用当前 Shell 目录进行文件导航。关闭后清空当前目录状态并停止用于导航。先前收到的诊断信息可能仍保留在内存中，已安装助手也可能继续发送目录报告。",
         "title": "读取 Shell 当前目录"
       },
       "remoteEnhancementsDebugEnabled": {
@@ -518,15 +518,15 @@
         "title": "远端增强调试"
       },
       "remoteEnhancementsEnabled": {
-        "description": "允许 Cosmosh 为 SSH 会话安装远端增强帮助程序来增强终端功能。如果关闭远端增强，部分终端功能可能降级或无法使用。",
+        "description": "允许 Cosmosh 为 SSH 会话安装和使用远端增强助手。关闭后，现有连接的增强功能停用；重新开启后需要重新连接，普通终端输入仍可使用。",
         "title": "远端增强"
       },
       "remoteEnhancementsHistoryEnabled": {
-        "description": "允许 Cosmosh 读取远端命令历史，供历史列表和建议使用。关闭后停止读取并清空本机内存中的历史副本，不影响 Shell 自身的历史和上下键。",
+        "description": "允许 Cosmosh 将当前 Shell 的原生历史读取到本机内存，供历史列表和建议使用。关闭后停止读取并清空这些副本，不影响 Shell 自身的历史和上下键。",
         "title": "读取 Shell 历史"
       },
       "remoteEnhancementsInputEnabled": {
-        "description": "允许受支持的 Shell 将正在编辑的命令提供给 Cosmosh 生成建议。内容只保留在本机内存中，不记入日志、不保存，也不发送到云端。",
+        "description": "允许受支持的 Shell 将正在编辑的命令提供给 Cosmosh。命令可能含有敏感参数，Cosmosh 只在本机内存中处理，不记入日志、不保存、不发送到云端。关闭后停用需要读取输入的建议。",
         "title": "读取当前命令输入"
       },
       "serverProxyMode": {
@@ -655,7 +655,7 @@
         "title": "填入已保存的登录密码"
       },
       "terminalAutoCompletePathEnabled": {
-        "description": "在自动补全面板中包含文件与目录路径建议。",
+        "description": "允许提供文件与目录建议。远端文件候选尚未接入 SSH 菜单，本地终端的路径建议仍可使用。",
         "title": "自动补全路径建议"
       },
       "terminalAutoCompletePromptRegex": {
@@ -770,7 +770,7 @@
         "title": "最小对比度"
       },
       "terminalNativeCompletionEnabled": {
-        "description": "允许受支持的 Fish 帮助程序在独立进程中生成原生建议。Shell 补全脚本可能运行命令，默认关闭。",
+        "description": "控制 Fish 原生建议的查询权限。此菜单暂未接入原生候选，原生 Tab 不受影响。补全脚本可能执行工具或访问网络。",
         "title": "Fish 原生建议"
       },
       "terminalRightClickAction": {
@@ -1486,6 +1486,60 @@
     "emptyTags": "暂无已添加的标签",
     "enableSshCompression": "SSH 传输压缩",
     "enableSshCompressionTooltip": "启用后，Cosmosh 会请求服务器压缩 SSH 传输数据。除非连接带宽受限，否则建议保持默认关闭。",
+    "enhancementStatus": {
+      "close": "关闭",
+      "description": "终端 {index} 的当前状态。读取权限与实际可用情况分别显示。",
+      "features": {
+        "directory": "当前目录",
+        "history": "Shell 历史",
+        "input": "当前命令输入",
+        "nativeCompletion": "Fish 原生建议",
+        "paths": "文件建议"
+      },
+      "fishSupport": "Fish 增强目前已验证 Fish 4.0.1 及兼容的原生按键配置，还要求关闭 Fish 自带的灰色行内建议。自定义按键或历史过滤规则可能让部分功能暂不可用。",
+      "permissionAllowed": "已允许",
+      "permissionDisabled": "已关闭",
+      "reasons": {
+        "commandRunning": "Shell 正在执行命令，当前尚未确认命令编辑界面。",
+        "connecting": "正在连接服务器。",
+        "directoryConfirmed": "已确认当前 Shell 所在的目录。",
+        "directoryLogicalOnly": "已取得 Shell 显示的目录，尚未确认它对应的实际文件路径。",
+        "directoryRequired": "此来源需要允许读取当前目录。",
+        "directoryUnknown": "连接已建立，但尚未确认当前目录。",
+        "disconnected": "终端连接已结束，重新连接后可获取当前状态。",
+        "foreignShell": "当前进入了其他 Shell 或环境，尚未确认原 Shell 已恢复。",
+        "globalDisabled": "设置中的远端增强已关闭，普通终端输入仍可使用。",
+        "helperConnected": "助手已连接，各项功能的可用情况如下。",
+        "helperMismatch": "已安装的助手与当前 Cosmosh 版本不匹配，重新连接时会检查并更新。",
+        "helperTimeout": "助手未在规定时间内响应，普通终端输入仍可使用，可重新连接后重试。",
+        "helperUnavailable": "此连接的助手不可用，普通终端输入仍可使用。",
+        "historyPartial": "已读取当前 Shell 的历史，但列表不完整。",
+        "historyPrivate": "当前 Shell 处于私密模式，或未启用历史来源，没有读取历史。",
+        "historyReady": "已读取当前 Shell 的历史。列表为空也可能是正常结果。",
+        "historyUnavailable": "当前没有可用的历史读取结果，Shell 配置可能限制了这项功能。",
+        "inputRequired": "此来源需要允许读取当前命令输入。",
+        "nativeMenuPending": "Fish 原生候选尚未接入此菜单，仍可在终端按 Tab 使用原生补全。",
+        "pathMenuPending": "远端文件候选尚未接入此菜单。",
+        "permissionDisabled": "此连接的功能开关或所需权限已关闭。",
+        "reconnectRequired": "此连接的增强功能已停用，重新开启后需要重新连接。",
+        "serverDisabled": "此连接创建时未启用远端增强。在服务器设置中开启后，请从服务器列表重新打开连接。",
+        "suggestionsDisabled": "设置中的终端自动补全已关闭。",
+        "unsupported": "当前 Shell 未提供此功能所需的受支持能力。",
+        "unsupportedEditor": "当前命令编辑器配置不受支持。",
+        "verifiedEditingPending": "此连接尚未启用经过核对的建议填写。",
+        "waitingEditor": "尚未确认原 Shell 的命令编辑界面，普通输入仍可使用。",
+        "waitingHelper": "尚未确认此连接的助手状态。"
+      },
+      "settingsHint": "读取权限位于“设置 → 高级 → 运行时”；建议来源位于“设置 → 终端 → 自动补全”。",
+      "states": {
+        "available": "可用",
+        "disabled": "已关闭",
+        "partial": "部分可用",
+        "paused": "已暂停",
+        "unavailable": "暂不可用"
+      },
+      "title": "增强状态"
+    },
     "historyAddToCurrentTerminal": "添加到当前终端",
     "historyAddToTerminalMenu": "添加到终端...",
     "historyCommandsEmpty": "暂无最近命令",

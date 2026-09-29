@@ -74,6 +74,8 @@ Development and packaging intentionally use different native targets. The Main a
 
 ### Renderer Process (`packages/renderer/src`)
 
+The SSH sidebar's Enhancement Status dialog derives read-only diagnostics from the active pane's transport, ShellContext, native history view and current settings. It starts no remote work, retains no input/history text, and closes when the active pane or tab changes. Advertised capabilities and permission preferences are distinguished from confirmed observations and enabled consumers.
+
 - Uses `window.electron` bridge only (no direct Node API usage).
 - Creates SSH/local terminal sessions and SFTP browser/download/file-operation sessions through backend APIs.
 - Connects terminal data channels through WebSocket and renders with `xterm.js`.

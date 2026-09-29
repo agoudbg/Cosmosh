@@ -67,6 +67,8 @@ flowchart TB
 
 ### `packages/renderer`
 
+- `src/pages/ssh/remote-enhancement-status.ts` resolves text-free per-feature diagnostics; `RemoteEnhancementsStatus.tsx` renders the active-pane status dialog through shared UI wrappers. Its unit and browser fixtures cover stale transport state, independent history permission, partial directory information and pane changes.
+
 - **Role**: React UI layer.
 - **Key folders**:
   - `src/pages`: feature pages (`Home`, `SSH`, `SFTP`, `Settings`, `SettingsEditor`, etc.). Home owns the SSH server, keychain, and port-forwarding management surfaces.
