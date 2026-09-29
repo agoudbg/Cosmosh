@@ -418,7 +418,14 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
             rawNotification.signal === 'URG' &&
             Object.keys(rawNotification).length === 1
           ? { signal: 'URG' as const }
-          : null;
+          : shell === 'bash' &&
+              rawNotification &&
+              typeof rawNotification === 'object' &&
+              'callback' in rawNotification &&
+              rawNotification.callback === 'readline' &&
+              Object.keys(rawNotification).length === 1
+            ? { callback: 'readline' as const }
+            : null;
     if (
       promptGeneration === null ||
       pid === null ||
@@ -430,7 +437,7 @@ export const normalizeRemoteShellEvent = (value: unknown): RemoteShellEventMessa
         !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(value.triggerNonce)) ||
       (value.available && (value.triggerNonce === '' || value.startTime === '')) ||
       (rawNotification !== undefined && notification === null) ||
-      ((shell === 'zsh' || shell === 'fish') && value.available && notification === null)
+      ((shell === 'bash' || shell === 'zsh' || shell === 'fish') && value.available && notification === null)
     )
       return null;
     return {

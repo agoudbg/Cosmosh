@@ -8,12 +8,25 @@ import type { ClientChannel } from 'ssh2';
 
 import { executeShellEditorRequest } from '../../ssh/editor-exec.js';
 import { executeBoundedSshCommand } from '../../ssh/exec.js';
-import { EditorFixture, installFixtureEditor } from './editor-fixture.js';
+import { type EditorEvent, EditorFixture, installFixtureEditor } from './editor-fixture.js';
 import { openFixtureTerminal } from './fixture-client.js';
 
 const installedBinary = '/home/cosmosh-bash/.local/share/cosmosh/bootstrap/bin/cosmosh-bootstrap';
 
 before(() => installFixtureEditor('bash'));
+
+/** @param state Actual original-Shell metadata. @returns A request using its advertised native callback. */
+const snapshotRequest = (state: EditorEvent): ShellEditorRequest => {
+  assert.deepEqual(state.notification, { callback: 'readline' });
+  return {
+    requestId: randomUUID(),
+    operation: 'snapshot',
+    promptGeneration: state.promptGeneration,
+    includeDirectory: false,
+    notification: state.notification,
+    target: { instanceId: state.shellInstanceId, shell: 'bash', pid: state.pid, startTime: state.startTime },
+  };
+};
 
 test(
   'real Bash editor captures Unicode, applies data atomically, and preserves native undo',
@@ -63,7 +76,7 @@ test(
 );
 
 test(
-  'real Bash rejects PS2, read, vi command mode, and removed bindings without executing text',
+  'real Bash native callback rejects PS2, nested read, and vi mode without executing text',
   { timeout: 60_000 },
   async (t) => {
     const terminal = await openFixtureTerminal('bash');
@@ -84,9 +97,9 @@ test(
     await fixture.prompt(generation);
     const vi = await fixture.run('set -o vi');
     assert.equal(vi.available, false, 'Bash vi keymaps currently keep native behavior with the editor bridge paused');
-    await fixture.run('set -o emacs');
-    const disabled = await fixture.run('bind -m emacs-standard -r "\\e[997;$__COSMOSH_EDITOR_NONCE~"');
-    assert.equal(disabled.available, false);
+    const restored = await fixture.run('set -o emacs');
+    assert.deepEqual(restored.notification, { callback: 'readline' });
+    assert.equal((await fixture.request('snapshot')).status, 'ok');
     assert.equal(
       await executeBoundedSshCommand(terminal.client, 'test ! -e /tmp/cosmosh-editor-must-not-execute && printf safe'),
       'safe',
@@ -112,23 +125,36 @@ test(
         'ok',
         'nonzero previous status must not terminate a successful widget under errexit',
       );
-      terminal.write('\x1b[997;' + state.triggerNonce + '~');
-      await delay(200);
-      state = await fixture.run(String.raw`builtin printf "LATE_KEY_ALIVE:%s\n" "$?"`);
-      assert.match(terminal.readOutput(), /LATE_KEY_ALIVE:1\r?\n/u);
+      const cancelled = new AbortController();
+      const late = await executeShellEditorRequest(terminal.client, installedBinary, snapshotRequest(state), {
+        signal: cancelled.signal,
+        isCurrent: () => true,
+        trigger: () => cancelled.abort(),
+      });
+      assert.equal(late.status, 'unavailable');
+      state = await fixture.run(String.raw`builtin printf "CANCELLED_CALLBACK_ALIVE:%s\n" "$?"`);
+      assert.match(terminal.readOutput(), /CANCELLED_CALLBACK_ALIVE:1\r?\n/u);
       assert.equal(terminal.readOutput().includes('\r\nERR_TRAP_FIRED\r\n'), false);
-      await fixture.run('. /home/cosmosh-bash/.config/cosmosh/bootstrap/helper.sh');
-      const count = terminal.write(
-        String.raw`builtin bind -m emacs-standard -X | command grep -c __cosmosh_bash_editor; builtin printf "BIND_COUNT_END\n"` +
-          '\r',
-      );
-      await terminal.waitFor(/2\r?\nBIND_COUNT_END/u, count);
-      await fixture.prompt(state.promptGeneration + 1);
+      for (let iteration = 0; iteration < 2; iteration++) {
+        state = await fixture.run('. /home/cosmosh-bash/.config/cosmosh/bootstrap/helper.sh');
+        assert.deepEqual(state.notification, { callback: 'readline' });
+        const offset = terminal.write(
+          String.raw`builtin printf '\nNATIVE_BINDINGS_BEGIN\n'; builtin bind -m emacs-standard -X; builtin printf 'NATIVE_BINDINGS_END\n'; if builtin cosmosh_editor status; then builtin printf 'NATIVE_STATUS:owned\n'; else builtin printf 'NATIVE_STATUS:missing\n'; fi` +
+            '\r',
+        );
+        await terminal.waitFor(
+          /\r?\nNATIVE_BINDINGS_BEGIN\r?\nNATIVE_BINDINGS_END\r?\nNATIVE_STATUS:owned\r?\n/u,
+          offset,
+        );
+        await fixture.prompt(state.promptGeneration);
+        assert.equal((await fixture.request('snapshot')).status, 'ok');
+      }
       await fixture.run('bind() { :; }; . /home/cosmosh-bash/.config/cosmosh/bootstrap/helper.sh');
-      terminal.write('echo binding-still-owned');
+      terminal.write('echo native-callback-still-owned');
       const shadowedBind = await fixture.request('snapshot');
       assert.equal(shadowedBind.status, 'ok');
-      if (shadowedBind.status === 'ok') assert.equal(shadowedBind.snapshot.buffer?.text, 'echo binding-still-owned');
+      if (shadowedBind.status === 'ok')
+        assert.equal(shadowedBind.snapshot.buffer?.text, 'echo native-callback-still-owned');
       const shadowGeneration = fixture.collect()!.promptGeneration;
       terminal.write('\x03');
       await fixture.prompt(shadowGeneration);
@@ -159,7 +185,8 @@ test(
       await fixture.run('set +xT; unset __COSMOSH_BASH_PREV_DEBUG_CMD; unset -f printf; enable -n printf');
       terminal.write('echo private-disabled-printf');
       const disabled = await fixture.request('snapshot');
-      assert.equal(disabled.status, 'unavailable', 'disabled builtin must fail closed without external printf argv');
+      assert.equal(disabled.status, 'ok', 'native input capture must not depend on the Shell printf builtin');
+      if (disabled.status === 'ok') assert.equal(disabled.snapshot.buffer?.text, 'echo private-disabled-printf');
       terminal.write('\x03');
     } finally {
       await executeBoundedSshCommand(terminal.client, 'rm -f -- ' + tracePath + ' ' + printfPath);
@@ -219,13 +246,7 @@ test(
     terminal.write('\x03');
     state = await fixture.prompt(state.promptGeneration);
     const controller = new AbortController();
-    const request: ShellEditorRequest = {
-      requestId: randomUUID(),
-      operation: 'snapshot',
-      promptGeneration: state.promptGeneration,
-      includeDirectory: false,
-      target: { instanceId: state.shellInstanceId, shell: 'bash', pid: state.pid, startTime: state.startTime },
-    };
+    const request = snapshotRequest(state);
     const cancelled = await executeShellEditorRequest(terminal.client, installedBinary, request, {
       signal: controller.signal,
       isCurrent: () => true,
@@ -244,65 +265,82 @@ test(
 );
 
 test(
-  'real editor endpoints reject competing workers and same-user foreign widgets without losing ownership',
+  'real native editor endpoints reject competing workers and same-user foreign clients without losing ownership',
   { timeout: 60_000 },
   async (t) => {
     const terminal = await openFixtureTerminal('bash');
     t.after(() => terminal.close());
     const fixture = new EditorFixture(terminal);
     const state = await fixture.prompt();
-    const request: ShellEditorRequest = {
-      requestId: randomUUID(),
-      operation: 'snapshot',
-      promptGeneration: state.promptGeneration,
-      includeDirectory: false,
-      target: { instanceId: state.shellInstanceId, shell: 'bash', pid: state.pid, startTime: state.startTime },
-    };
+    const request = snapshotRequest(state);
+    const reading = terminal.write("builtin read -e -p $'\\nNATIVE_READER_WAIT>' fixture_read\r");
+    await terminal.waitFor(/\r?\nNATIVE_READER_WAIT>/u, reading);
+    const controller = new AbortController();
     let ready = (): void => {};
     const waiting = new Promise<void>((resolve) => {
       ready = resolve;
     });
     const pending = executeShellEditorRequest(terminal.client, installedBinary, request, {
-      signal: new AbortController().signal,
+      signal: controller.signal,
       isCurrent: () => true,
       trigger: ready,
     });
-    await Promise.race([
-      waiting,
-      pending.then(() => {
-        throw new Error('First worker did not become ready');
-      }),
-    ]);
-    const second = await executeShellEditorRequest(
-      terminal.client,
-      installedBinary,
-      { ...request, requestId: randomUUID() },
-      {
-        signal: new AbortController().signal,
-        isCurrent: () => true,
-        trigger: () => {
-          throw new Error('Competing worker must not obtain the endpoint');
+    try {
+      await Promise.race([
+        waiting,
+        pending.then(() => {
+          throw new Error('First worker did not become ready');
+        }),
+      ]);
+      const second = await executeShellEditorRequest(
+        terminal.client,
+        installedBinary,
+        { ...request, requestId: randomUUID() },
+        {
+          signal: new AbortController().signal,
+          isCurrent: () => true,
+          trigger: () => {
+            throw new Error('Competing worker must not obtain the endpoint');
+          },
         },
-      },
-    );
-    assert.equal(second.status, 'unavailable');
-    const foreign = await executeBoundedSshCommand(
-      terminal.client,
-      installedBinary +
-        ' editor-widget mode ' +
-        state.shellInstanceId +
-        ' bash ' +
-        state.pid +
-        ' ' +
-        state.startTime +
-        ' ' +
-        state.promptGeneration +
-        ' emacs && printf WRONG || printf rejected',
-    );
-    assert.equal(foreign, 'rejected', 'an independent SSH exec has no ancestry in the original PTY Shell');
-    terminal.write('\x1b[997;' + state.triggerNonce + '~');
-    const result = await pending;
-    assert.equal(result.status, 'ok', 'legitimate widget still owns the original endpoint after both rejections');
+      );
+      assert.equal(second.status, 'unavailable');
+      const foreign = await executeBoundedSshCommand(terminal.client, 'python3 -', {
+        timeoutMs: 1_000,
+        // Speak the actual native hello, so rejection cannot pass merely because the old JSON
+        // widget protocol is incompatible. Without the peer check, this receives an opcode-2 request.
+        stdin: [
+          'import os, socket, struct',
+          `packet = struct.pack(">BBIQ", 1, 1, ${state.pid}, ${state.promptGeneration})`,
+          `for value in [${JSON.stringify(state.shellInstanceId)}, ${JSON.stringify(state.startTime)}]:`,
+          '    raw = value.encode("ascii")',
+          '    packet += struct.pack(">I", len(raw)) + raw',
+          'with socket.socket(socket.AF_UNIX) as peer:',
+          '    peer.settimeout(0.75)',
+          `    peer.connect("/tmp/cosmosh-editor-" + str(os.getuid()) + "/${state.shellInstanceId}.sock")`,
+          '    try:',
+          '        peer.sendall(struct.pack(">I", len(packet)) + packet)',
+          '        response = peer.recv(1)',
+          '    except (BrokenPipeError, ConnectionResetError):',
+          '        response = b""',
+          '    print("rejected" if response == b"" else "WRONG", end="")',
+        ].join('\n'),
+      });
+      assert.equal(foreign, 'rejected', 'an independent SSH exec has no ancestry in the original PTY Shell');
+      assert.equal(
+        await executeBoundedSshCommand(
+          terminal.client,
+          'test -S /tmp/cosmosh-editor-$(id -u)/' + state.shellInstanceId + '.sock && printf owned',
+        ),
+        'owned',
+        'both rejections must preserve the original in-flight endpoint',
+      );
+    } finally {
+      controller.abort();
+      await pending;
+    }
+    terminal.write('\x03');
+    await fixture.prompt(state.promptGeneration);
     assert.equal((await fixture.request('snapshot')).status, 'ok');
   },
 );
@@ -312,13 +350,7 @@ test('real worker cleans its socket after abrupt SSH channel closure', { timeout
   t.after(() => terminal.close());
   const fixture = new EditorFixture(terminal);
   const state = await fixture.prompt();
-  const request: ShellEditorRequest = {
-    requestId: randomUUID(),
-    operation: 'snapshot',
-    promptGeneration: state.promptGeneration,
-    includeDirectory: false,
-    target: { instanceId: state.shellInstanceId, shell: 'bash', pid: state.pid, startTime: state.startTime },
-  };
+  const request = snapshotRequest(state);
   const channel = await new Promise<ClientChannel>((resolve, reject) => {
     terminal.client.exec(installedBinary + ' editor-request', (error, stream) => {
       if (error) reject(error);
@@ -353,35 +385,34 @@ test('real worker cleans its socket after abrupt SSH channel closure', { timeout
   assert.equal((await fixture.request('snapshot')).status, 'ok');
 });
 
-test('real editor refuses a private key that the PTY would interpret as a signal', { timeout: 60_000 }, async (t) => {
-  const terminal = await openFixtureTerminal('bash');
-  t.after(() => terminal.close());
-  const fixture = new EditorFixture(terminal);
-  await fixture.prompt();
-  const state = await fixture.run('stty intr 9');
-  let triggered = false;
-  const request: ShellEditorRequest = {
-    requestId: randomUUID(),
-    operation: 'snapshot',
-    promptGeneration: state.promptGeneration,
-    includeDirectory: false,
-    target: { instanceId: state.shellInstanceId, shell: 'bash', pid: state.pid, startTime: state.startTime },
-  };
-  const result = await executeShellEditorRequest(terminal.client, installedBinary, request, {
-    signal: new AbortController().signal,
-    isCurrent: () => true,
-    trigger: () => {
-      triggered = true;
-      terminal.write('\x1b[997;' + state.triggerNonce + '~');
-    },
-  });
-  assert.equal(result.status, 'unavailable');
-  assert.equal(triggered, false, 'terminal line discipline must be checked before any private PTY bytes');
-  await fixture.run('stty intr ^C');
-  const restored = await fixture.request('snapshot');
-  assert.equal(restored.status, 'ok');
-  if (restored.status === 'ok') assert.equal(restored.snapshot.buffer?.text, '');
-});
+test(
+  'real Bash native callback ignores PTY signal-key remapping and never injects input',
+  { timeout: 60_000 },
+  async (t) => {
+    const terminal = await openFixtureTerminal('bash');
+    t.after(() => terminal.close());
+    const fixture = new EditorFixture(terminal);
+    await fixture.prompt();
+    const state = await fixture.run('stty intr 9');
+    const request = snapshotRequest(state);
+    terminal.write('echo unchanged');
+    const result = await executeShellEditorRequest(terminal.client, installedBinary, request, {
+      signal: new AbortController().signal,
+      isCurrent: () => true,
+      trigger: () => {},
+    });
+    assert.equal(result.status, 'ok');
+    if (result.status === 'ok') assert.deepEqual(result.snapshot.buffer, { text: 'echo unchanged', cursor: 14 });
+    const context = await fixture.request('context');
+    assert.equal(context.status, 'ok');
+    if (context.status === 'ok') assert.equal('buffer' in context.snapshot, false);
+    terminal.write('\x15');
+    await fixture.run('stty intr ^C');
+    const restored = await fixture.request('snapshot');
+    assert.equal(restored.status, 'ok');
+    if (restored.status === 'ok') assert.equal(restored.snapshot.buffer?.text, '');
+  },
+);
 
 test(
   'real Bash preserves user prompt status and order under errexit and cancellation',

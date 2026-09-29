@@ -37,9 +37,10 @@ type Target struct {
 // Notification identifies a private pipe or a fixed, normally ignored Fish signal.
 // It carries no input; the editor independently decides whether a request can read or edit.
 type Notification struct {
-	FD     int    `json:"fd,omitempty"`
-	Inode  string `json:"inode,omitempty"`
-	Signal string `json:"signal,omitempty"`
+	Callback string `json:"callback,omitempty"`
+	FD       int    `json:"fd,omitempty"`
+	Inode    string `json:"inode,omitempty"`
+	Signal   string `json:"signal,omitempty"`
 }
 
 // Buffer contains a complete line and a Unicode codepoint cursor offset shared by all adapters.
@@ -137,7 +138,7 @@ func validRequest(request Request) bool {
 			request.Expected.PromptGeneration == request.PromptGeneration &&
 			request.Expected.History.Status == "ok" && len(request.Expected.History.Entries) == 1
 	case "history":
-		return request.Target.Shell == "fish" && !request.IncludeDirectory && request.Expected == nil && request.Replacement == nil
+		return (request.Target.Shell == "fish" || request.Target.Shell == "bash") && !request.IncludeDirectory && request.Expected == nil && request.Replacement == nil
 	case "context":
 		return request.Expected == nil && request.Replacement == nil
 	case "snapshot":
@@ -155,11 +156,13 @@ func validRequest(request Request) bool {
 // validNotification prevents either out-of-band adapter from falling back to terminal key injection.
 func validNotification(shell string, notification *Notification) bool {
 	switch shell {
+	case "bash":
+		return notification != nil && notification.Callback == "readline" && notification.Signal == "" && notification.FD == 0 && notification.Inode == ""
 	case "zsh":
-		return notification != nil && notification.Signal == "" &&
+		return notification != nil && notification.Callback == "" && notification.Signal == "" &&
 			notification.FD >= 3 && notification.FD <= 1048575 && ticksPattern.MatchString(notification.Inode)
 	case "fish":
-		return notification != nil && notification.Signal == "URG" &&
+		return notification != nil && notification.Callback == "" && notification.Signal == "URG" &&
 			notification.FD == 0 && notification.Inode == ""
 	default:
 		return notification == nil

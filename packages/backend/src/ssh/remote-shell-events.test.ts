@@ -143,6 +143,27 @@ test('Fish editor notifications accept only the fixed harmless signal and no des
     assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...event, shell })), []);
 });
 
+test('Bash requires an explicit native callback and never silently falls back to key injection', () => {
+  const event = {
+    ...RUNTIME_CONTRACT,
+    shell: 'bash',
+    event: 'editor-state',
+    promptGeneration: 1,
+    timestamp: 1,
+    pid: 42,
+    startTime: '1234',
+    available: true,
+    triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+    capabilities: [...RUNTIME_CONTRACT.capabilities, 'editor-state', 'input-snapshot'],
+    notification: { callback: 'readline' },
+  };
+  assert.equal(new RemoteShellEventOscParser().parse(encodeCosmoshOsc(event)).length, 1);
+  for (const notification of [undefined, null, { callback: 'signal' }, { callback: 'readline', signal: 'URG' }])
+    assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...event, notification })), []);
+  for (const shell of ['zsh', 'fish', 'sh'])
+    assert.deepEqual(new RemoteShellEventOscParser().parse(encodeCosmoshOsc({ ...event, shell })), []);
+});
+
 test('v3 rejects missing/invalid instance identity and legacy protocol without leaking envelope text', () => {
   for (const fields of [
     { shellInstanceId: undefined },

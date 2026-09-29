@@ -28,7 +28,12 @@ export const editorBinaryPath = (shell: FixtureShell): string =>
 
 /** @param shell Disposable fixture account. @returns Nothing after building and installing the actual Go helper. */
 export const installFixtureEditor = async (shell: FixtureShell): Promise<void> => {
-  execFileSync('go', ['build', '-o', binary, './cmd/cosmosh-bootstrap'], {
+  execFileSync(process.execPath, [path.join(workspace, 'scripts/build-bash-native.mjs'), '--if-stale'], {
+    cwd: workspace,
+    timeout: 600_000,
+    stdio: 'pipe',
+  });
+  execFileSync('go', ['build', '-tags=cosmosh_native', '-o', binary, './cmd/cosmosh-bootstrap'], {
     cwd: path.join(workspace, 'packages/remote-bootstrap'),
     env: { ...process.env, GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' },
     timeout: 60_000,

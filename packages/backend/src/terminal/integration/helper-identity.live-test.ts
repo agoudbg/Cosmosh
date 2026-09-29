@@ -28,7 +28,12 @@ const binary = path.join(workspace, '.cosmosh/terminal-fixture/cosmosh-bootstrap
 
 before(() => {
   // Build the actual installer; only disposable loopback fixture accounts receive it.
-  execFileSync('go', ['build', '-o', binary, './cmd/cosmosh-bootstrap'], {
+  execFileSync(process.execPath, [path.join(workspace, 'scripts/build-bash-native.mjs'), '--if-stale'], {
+    cwd: workspace,
+    timeout: 600_000,
+    stdio: 'pipe',
+  });
+  execFileSync('go', ['build', '-tags=cosmosh_native', '-o', binary, './cmd/cosmosh-bootstrap'], {
     cwd: path.join(workspace, 'packages/remote-bootstrap'),
     env: { ...process.env, GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' },
     timeout: 60_000,

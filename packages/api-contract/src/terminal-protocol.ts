@@ -100,7 +100,7 @@ export type ShellEditorTarget = {
 };
 
 /** Private Shell wake-up metadata; contains no command or terminal input. */
-export type ShellEditorNotification = { fd: number; inode: string } | { signal: 'URG' };
+export type ShellEditorNotification = { fd: number; inode: string } | { signal: 'URG' } | { callback: 'readline' };
 
 /** Complete input buffer with a Unicode codepoint cursor offset; never persisted or included in OSC/debug events. */
 export type ShellEditorBuffer = { text: string; cursor: number };

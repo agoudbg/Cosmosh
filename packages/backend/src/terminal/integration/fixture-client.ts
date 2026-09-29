@@ -199,7 +199,7 @@ export class FixtureTerminal {
 /**
  * Authenticate against a pinned, loopback-only fixture and open a real PTY.
  * @param shell Fixture account and Shell to exercise.
- * @param executable Optional fixed fixture version path, restricted to the dedicated installed Fish runtime.
+ * @param executable Optional versioned fixture runtime; Bash can also use COSMOSH_FIXTURE_BASH_EXECUTABLE.
  * @param options Explicit fixture configuration, applied before the native reader starts.
  * @returns A session whose owner must close it in test cleanup.
  */
@@ -213,6 +213,7 @@ export async function openFixtureTerminal(
     fishHistoryDataDirectory?: string;
   } = {},
 ): Promise<FixtureTerminal> {
+  executable ??= shell === 'bash' ? process.env.COSMOSH_FIXTURE_BASH_EXECUTABLE : undefined;
   if (
     (options.disableFishAutosuggestions ||
       options.privateFishHistory ||
@@ -223,7 +224,10 @@ export async function openFixtureTerminal(
     throw new Error('Startup fixture configuration requires a versioned Fish runtime.');
   if (
     executable !== undefined &&
-    (shell !== 'fish' || !/^\/opt\/cosmosh-fixture\/fish-[0-9.]+\/runtime\/bin\/fish$/u.test(executable))
+    !(
+      (shell === 'fish' && /^\/opt\/cosmosh-fixture\/fish-[0-9.]+\/runtime\/bin\/fish$/u.test(executable)) ||
+      (shell === 'bash' && /^\/opt\/cosmosh-fixture\/bash-[0-9.]+\/bin\/bash$/u.test(executable))
+    )
   )
     throw new Error('Unsupported fixture Shell version path.');
   if (
@@ -274,7 +278,13 @@ export async function openFixtureTerminal(
           ? "env XDG_DATA_HOME='" + options.fishHistoryDataDirectory + "' "
           : '';
         client.exec(
-          environment + executable + ' --interactive' + (options.privateFishHistory ? ' --private' : '') + initializer,
+          shell === 'bash'
+            ? executable + ' --noprofile --rcfile /home/cosmosh-bash/.bashrc -i'
+            : environment +
+                executable +
+                ' --interactive' +
+                (options.privateFishHistory ? ' --private' : '') +
+                initializer,
           {
             pty: { term: 'xterm-256color', cols: 120, rows: 32 },
             env: { LANG: 'C.UTF-8', LC_CTYPE: 'C.UTF-8' },

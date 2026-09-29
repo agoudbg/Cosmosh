@@ -290,7 +290,7 @@ Common failure codes include:
 - Manifest fields are treated as quoted data, never shell source.
 - Wrapper tests include adversarial version and URL cases with line breaks, shell metacharacters, and command substitutions.
 - Temporary files are created under `${TMPDIR:-/tmp}` with `mktemp`.
-- `umask 077` and `0700`/`0600` default modes keep new bootstrap files user-private; atomic profile repair retains an existing profile's mode.
+- `umask 077` and `0700`/`0600` default modes keep new bootstrap files user-private; atomic profile repair retains an existing profile's mode. The packaged Bash module is installed beside the bootstrap executable at `cosmosh-bash.so` with mode `0600`; status checks its exact embedded bytes and a later install repairs damage without following a module-path symlink.
 - Temporary wrapper/download directories are cleaned up on exit, interrupt, and termination signals.
 - The installer does not require root and does not write outside the remote user's home/XDG paths.
 - `internal/session` uses `github.com/creack/pty` v1.1.24. Its license notice is distributed in `internal/session/THIRD_PARTY_NOTICES.txt`, embedded in the helper binary, and displayed by `cosmosh-bootstrap licenses`.
@@ -310,6 +310,10 @@ Build the remote installer for Linux targets:
 ```sh
 node ../../scripts/build-remote-bootstrap-release.mjs
 ```
+
+This release build requires Docker (on Windows, Docker inside the configured WSL Debian distribution). It compiles `native/bash/cosmosh_bash.c` for Linux amd64 and arm64 in a pinned Debian Bullseye image using native GCC and the AArch64 cross compiler. The builder checks both ELF architectures, the exported `cosmosh_editor_struct`, and a maximum glibc symbol version of 2.31 before the Go binaries embed the modules. The release build fails if either module is missing or invalid. CI additionally runs native-tagged installer tests on Linux. The generated `internal/nativeassets/assets/*.so` files are ignored; fixture tests use `node ../../scripts/build-bash-native.mjs --if-stale` to reuse matching artifacts and the cached builder image.
+
+Ordinary `go test ./...` and `go run` builds omit the native module and keep Bash's native editor capability unavailable. They do not install or remove a preexisting `cosmosh-bash.so`. A tagged release binary installs its matching embedded module, reports `nativeModulePath` and `nativeModuleCurrent` in `status --shell bash`, and marks a damaged or missing module as an incomplete installation.
 
 The CI/release helper writes git-ignored files under `dist/`: `cosmosh-remote-bootstrap-linux-amd64`, `cosmosh-remote-bootstrap-linux-arm64`, and `cosmosh-remote-bootstrap-manifest.json`. Tagged release jobs stage those files as short-lived workflow artifacts, then the single release writer uploads them with the desktop packages after inventory, checksum, and provenance validation. `main` branch builds publish the same file names to the fixed `remote-bootstrap-dev` prerelease with a manifest version such as `dev-<commit-sha>`. Pushed branches whose name contains `remote-bootstrap` and manual workflow dispatch runs can publish branch-scoped temporary prereleases for end-to-end package testing; ordinary PR and feature-branch CI runs use the script for compilation and manifest validation only. The rolling channels remain intentionally replaceable, while versioned release assets are mutable only during draft assembly; see [Release Security](../../docs/developer/core/release-security.md).
 
@@ -344,12 +348,11 @@ HOME="$tmp_home" XDG_DATA_HOME="$tmp_home/data" XDG_CONFIG_HOME="$tmp_home/confi
 ## Adding a Remote Enhancement
 
 The `internal/editor` package serves private, request-scoped editor exchanges through
-`editor-request` stdin and owner-checked Unix sockets. Bash widgets use `editor-widget`;
-all input travels through stdin/socket memory rather than argv, OSC, files or logs.
-Requests expire after 1.5 seconds, including incomplete initial stdin. The adapter
-currently enables verified native Emacs editing in UTF-8 Bash and pauses for other
-bindings/modes or ambiguous typeahead. Its complete protocol, privacy rules,
-acknowledgement semantics and outstanding recovery limitation are documented in
+`editor-request` stdin and owner-checked Unix sockets. Bash's packaged loadable builtin
+observes the original Readline reader through a bounded, nonblocking idle hook and uses
+the same private worker; it never sends editor text through PTY commands or OSC events.
+The worker rejects expired or mismatched requests. Its protocol, privacy rules, and
+input-delivery acknowledgement semantics are documented in
 `docs/developer/runtime/ssh-terminal.md` and the synchronized Chinese page.
 
 Use this checklist when expanding the remote helper:

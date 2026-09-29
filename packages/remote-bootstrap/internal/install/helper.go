@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/nativeassets"
 )
 
 // RemoteShellProtocolVersion identifies the OSC event contract emitted by installed helpers.
@@ -61,6 +63,14 @@ func BuildHelper(shell string, version string, binaryPath string) (string, error
 	return buildPosixHelper(shell, version, binaryPath), nil
 }
 
+// nativePackaged renders an explicit capability gate without probing arbitrary filesystem modules.
+func nativePackaged() int {
+	if nativeassets.Available() {
+		return 1
+	}
+	return 0
+}
+
 func buildPosixHelper(shell string, version string, binaryPath string) string {
 	capabilities := capabilitiesJSON(HelperCapabilities(shell))
 	header := fmt.Sprintf(`# Cosmosh Remote Enhancements shell integration.
@@ -83,7 +93,9 @@ __COSMOSH_HELPER_VERSION=%s
 __COSMOSH_PROTOCOL_VERSION=%d
 __COSMOSH_CAPABILITIES_JSON=%s
 __COSMOSH_EDITOR_BINARY=%s
-`, quotePOSIX(shell), quotePOSIX(version), RemoteShellProtocolVersion, quotePOSIX(capabilities), quotePOSIX(binaryPath))
+__COSMOSH_EDITOR_MODULE=%s
+__COSMOSH_BASH_NATIVE_PACKAGED=%d
+`, quotePOSIX(shell), quotePOSIX(version), RemoteShellProtocolVersion, quotePOSIX(capabilities), quotePOSIX(binaryPath), quotePOSIX(nativeassets.Path(binaryPath)), nativePackaged())
 
 	common := `
 __cosmosh_base64_value() {
@@ -187,6 +199,9 @@ __cosmosh_emit_remote_shell_event() {
       if [ "$__COSMOSH_REMOTE_SHELL" = zsh ] && [ -n "${__COSMOSH_EDITOR_NOTIFY_INODE:-}" ]; then
         __cosmosh_json="$__cosmosh_json,\"notification\":{\"fd\":$__COSMOSH_EDITOR_NOTIFY_FD,\"inode\":\"$__COSMOSH_EDITOR_NOTIFY_INODE\"}"
       fi
+      if [ "$__COSMOSH_REMOTE_SHELL" = bash ]; then
+        __cosmosh_json="$__cosmosh_json,\"notification\":{\"callback\":\"readline\"}"
+      fi
       ;;
   esac
 
@@ -258,6 +273,7 @@ __cosmosh_bash_prompt_command() {
   __COSMOSH_BASH_PROMPT_STATUS=$?
   __COSMOSH_BASH_PREEXEC_READY=0
   __COSMOSH_BASH_PRIMARY=0
+  builtin cosmosh_editor disarm >/dev/null 2>&1 || :
   return 0
 }
 

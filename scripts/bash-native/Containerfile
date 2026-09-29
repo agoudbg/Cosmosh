@@ -1,0 +1,12 @@
+FROM debian:bullseye-slim@sha256:e5b6442dd2e9684cf5e87d8338b5968f3b348636fc0be6d7850a381e3731a2bd
+
+RUN sed -i -e '/^deb http:\/\/deb.debian.org/d' -e 's|^# deb http://snapshot.debian.org|deb http://snapshot.debian.org|' /etc/apt/sources.list \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get install -y --no-install-recommends \
+      binutils binutils-aarch64-linux-gnu gcc gcc-aarch64-linux-gnu libc6-dev libc6-dev-arm64-cross \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY build.sh /usr/local/bin/cosmosh-build-bash-native
+RUN chmod 755 /usr/local/bin/cosmosh-build-bash-native
+
+ENTRYPOINT ["/usr/local/bin/cosmosh-build-bash-native"]

@@ -91,10 +91,10 @@ flowchart TB
 - `src/terminal/integration/helper-identity.live-test.ts`：真实安装器/SSH 测试，覆盖重复 source、嵌套 Shell、独立终端及非交互式运行不输出事件。
 - `src/terminal/completion/snapshot-edits.ts`负责受限的字面单词识别、码点修改范围和 Shell 引号处理。会话编辑器控制器持有会过期的候选标识及私有完整替换内容。`completion-edits.live-test.ts`通过三种实际 Shell 编辑器验证字面参数字节与后续内容保留。
 - `completion/snapshot-suggestions.ts`负责有界、从新到旧的历史整理、基于快照的静态资料修改，以及按完整修改排序去重。`completion/matching.ts`为各来源提供字面 Unicode 匹配。原生历史读取与生命周期接入由独立模块负责。
-- `packages/remote-bootstrap/internal/editor/history.go`验证有界的原生历史观察。Fish 钩子在传输前过滤私密记录；`editor-protocol.ts`与`ShellEditorController.history`／`deleteHistory`执行 Backend 独立权限边界。已有工作进程授权原生精确移除，并将当前行编辑器的目标消失与输入修改、文件更新分开报告。`fish-history.live-test.ts`验证原始 Shell 和原生保存失败。`ssh/session-service.ts`负责来源编号及缓存替换；前端分屏 reducer 和`SSHSidebar`负责移除范围提示。`tests/terminal-history.*`在浏览器中验证生产 reducer 和侧栏。
+- `packages/remote-bootstrap/internal/editor/history.go`验证有界的原生历史观察。Fish 钩子在传输前过滤私密记录；`editor-protocol.ts`与`ShellEditorController.history`／`deleteHistory`执行 Backend 独立权限边界。工作进程授权 Fish 原生精确移除，并将当前行编辑器中已确认的目标消失与文件更新分开报告。`fish-history.live-test.ts`验证原始 Shell。Bash 原生回调能够通过私有原语读取有界的原始 Shell 历史，但 Bash 来源启用与删除尚未接入控制器或侧栏。
 - `completion/remote-path-query.ts`负责有界结构化 SSH 目录边界及逐会话查询取消与缓存；`completion/snapshot-paths.ts`将一次完整私有编辑器观察转为已经引用的字面路径草稿。`packages/remote-bootstrap/internal/paths`使用 Go 标准库读取目录。`path-query.live-test.ts`覆盖实际 SSH 文件名、大目录、权限、超时与取消及重新确认的目录观察。旧路径来源现在仅服务本地终端。
 - `src/terminal/editor-controller.ts`负责每会话的单个私有快照、操作和合并后的上下文恢复；`editor-protocol.ts`校验输入、Unicode 和权限数据边界，并维护固定的 Fish 传输边界而不保留输入文本。`src/ssh/editor-exec.ts`负责有界 stdin/JSON SSH 传输。`src/terminal/integration/editor-fixture.ts`为`editor-bridge.live-test.ts`（Bash）、`zsh-editor.live-test.ts`和`fish-editor.live-test.ts`共享实际帮助程序安装与观察。
-- `packages/remote-bootstrap/internal/editor`负责 Linux 进程及通知身份、私有 socket 和仅传递数据的编辑器协议；`internal/install/editor_bash.go`、`editor_zsh.go`及`editor_fish.go`负责生成各 Shell 适配器。`internal/session`负责协议 v1 帧、原始登录 Shell 的 PTY、有序输入送达确认、调整尺寸，以及主 SSH exec 通道关闭时的清理。Fish 通知在发布支持的 Linux amd64/arm64 架构上使用 pidfd。`scripts/terminal-fixture/install_fish.py`仅在一次性测试镜像中验证并安装固定的官方 Fish 运行时。
+- `packages/remote-bootstrap/internal/editor`负责 Linux 进程身份、私有 socket、仅传递数据的协议，以及 Bash 非阻塞二进制回调交换。`internal/install/editor_bash_native.go`、`editor_zsh.go`和`editor_fish.go`生成各 Shell 适配器。`native/bash/cosmosh_bash.c`是原始 Bash 5.1/5.2 的 Readline 空闲适配器；`internal/nativeassets`嵌入 amd64/arm64 模块，`internal/install`安装并校验自有模块。`scripts/build-bash-native.mjs`与`scripts/bash-native`基于固定的 Debian Bullseye/glibc 2.31 基线构建两个模块。`internal/session`负责协议 v1 帧、原始登录 Shell 的 PTY、有序输入送达确认、调整尺寸及清理；PTY 写入完成不证明 Shell 已消费输入。`scripts/terminal-fixture/install_fish.py`仅在一次性镜像中安装固定的 Fish；Bash 原生实测可运行单独放置的 Bash 5.1 程序，不改动 fixture 账户。
 
 - **角色**：内部 API + 会话编排运行时。
 - **关键目录**：
@@ -140,7 +140,7 @@ main/backend/renderer 作用域共用的语言 JSON 源与运行时 i18n 包。
 - `cmd/cosmosh-wrappergen`：为 `bash`、`zsh`、`fish`、`ash`、`sh` 生成 shell 专属 bootstrap wrapper。
 - `cmd/cosmosh-bootstrap`：将下载得到的 bootstrap binary 与 Go 生成的 shell helper 安装到远端用户级目录，或报告经过校验的已安装运行时契约。
 - `internal/wrapper`：校验来自 manifest 的 wrapper 输入，并用 shell-safe quoting 渲染 POSIX/fish shell source。
-- `internal/install`：负责版本化 helper 生成、符合各 shell 真实能力的 OSC 声明、helper/binary 精确校验、原子用户级安装、Bash 交互/登录 profile 覆盖、保留模式与符号链接的 profile 修复、已安装状态报告、version marker 写入以及 line-delimited `bootstrap-status` 输出。
+- `internal/install`：负责版本化 helper 生成、符合各 Shell 真实能力的 OSC 声明、helper／binary／模块精确校验、原子用户级安装、Bash 交互／登录 profile 覆盖、保留模式与符号链接的 profile 修复、已安装状态报告、version marker 写入以及逐行`bootstrap-status`输出。缺少打包模块或必要 ABI 时，Bash 原生能力明确不可用。
 
 ## 3. 功能落位规则
 

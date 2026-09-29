@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/nativeassets"
 )
 
 const (
@@ -32,17 +34,19 @@ type Options struct {
 
 // InstallationStatus describes whether the installed runtime matches this bootstrap binary.
 type InstallationStatus struct {
-	Installed       bool     `json:"installed"`
-	Version         string   `json:"version,omitempty"`
-	ProtocolVersion int      `json:"protocolVersion"`
-	Capabilities    []string `json:"capabilities"`
-	HelperCurrent   bool     `json:"helperCurrent"`
-	ProfileCurrent  bool     `json:"profileCurrent"`
-	BinarySHA256    string   `json:"binarySha256,omitempty"`
-	BinaryPath      string   `json:"binaryPath"`
-	HelperPath      string   `json:"helperPath"`
-	ProfilePath     string   `json:"profilePath"`
-	ProfilePaths    []string `json:"profilePaths"`
+	Installed           bool     `json:"installed"`
+	Version             string   `json:"version,omitempty"`
+	ProtocolVersion     int      `json:"protocolVersion"`
+	Capabilities        []string `json:"capabilities"`
+	HelperCurrent       bool     `json:"helperCurrent"`
+	ProfileCurrent      bool     `json:"profileCurrent"`
+	BinarySHA256        string   `json:"binarySha256,omitempty"`
+	BinaryPath          string   `json:"binaryPath"`
+	HelperPath          string   `json:"helperPath"`
+	ProfilePath         string   `json:"profilePath"`
+	ProfilePaths        []string `json:"profilePaths"`
+	NativeModulePath    string   `json:"nativeModulePath,omitempty"`
+	NativeModuleCurrent bool     `json:"nativeModuleCurrent"`
 }
 
 type statusLine struct {
@@ -69,6 +73,12 @@ func Run(options Options) error {
 	if err := validateOptions(options); err != nil {
 		writeStatus(options.Stdout, "install", "failed", options.Version, "INVALID_OPTIONS", err.Error())
 		return err
+	}
+	if options.Shell == "bash" {
+		if _, err := nativeassets.Payload(); err != nil && !errors.Is(err, nativeassets.ErrUnavailable) {
+			writeStatus(options.Stdout, "install", "failed", options.Version, "INVALID_NATIVE_MODULE", err.Error())
+			return err
+		}
 	}
 
 	resolvedPaths, err := resolvePaths(options.Shell)
@@ -117,9 +127,11 @@ func Status(stdout io.Writer, shell string) error {
 	options := Options{Shell: shell, Version: version}
 	helperCurrent := version != "" && helperMatches(options, resolvedPaths)
 	profileCurrent := version != "" && profileHasCurrentHook(options, resolvedPaths)
+	nativeRequired := options.Shell == "bash" && nativeassets.Available()
+	nativeCurrent := nativeRequired && nativeMatches(resolvedPaths.binaryPath)
 	binarySHA256, binaryErr := fileSHA256(resolvedPaths.binaryPath)
 	payload := InstallationStatus{
-		Installed:       binaryErr == nil && version != "" && helperCurrent && profileCurrent,
+		Installed:       binaryErr == nil && version != "" && helperCurrent && profileCurrent && (!nativeRequired || nativeCurrent),
 		Version:         version,
 		ProtocolVersion: RemoteShellProtocolVersion,
 		Capabilities:    HelperCapabilities(shell),
@@ -130,6 +142,10 @@ func Status(stdout io.Writer, shell string) error {
 		HelperPath:      resolvedPaths.helperPath,
 		ProfilePath:     resolvedPaths.profilePath,
 		ProfilePaths:    append([]string(nil), resolvedPaths.profilePaths...),
+	}
+	if options.Shell == "bash" {
+		payload.NativeModulePath = nativeassets.Path(resolvedPaths.binaryPath)
+		payload.NativeModuleCurrent = nativeCurrent
 	}
 
 	return json.NewEncoder(stdout).Encode(payload)
@@ -188,7 +204,41 @@ func isCurrentInstallation(options Options, resolvedPaths paths) bool {
 		return false
 	}
 
-	return helperMatches(options, resolvedPaths) && profileHasCurrentHook(options, resolvedPaths)
+	return helperMatches(options, resolvedPaths) && profileHasCurrentHook(options, resolvedPaths) &&
+		(options.Shell != "bash" || !nativeassets.Available() || nativeMatches(resolvedPaths.binaryPath))
+}
+
+// nativeFileTrusted rejects altered permissions, shared or substituted native code at each observation.
+func nativeFileTrusted(info os.FileInfo, size int64) bool {
+	return info.Mode() == 0o600 && info.Size() == size && nativeFileOwned(info)
+}
+
+// nativeMatches compares the embedded artifact while retaining its exact private inode identity.
+func nativeMatches(binaryPath string) bool {
+	modulePath := nativeassets.Path(binaryPath)
+	expected, err := nativeassets.Payload()
+	if err != nil {
+		return false
+	}
+	info, err := os.Lstat(modulePath)
+	if err != nil || !nativeFileTrusted(info, int64(len(expected))) {
+		return false
+	}
+	file, err := os.Open(modulePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(info, opened) || !nativeFileTrusted(opened, int64(len(expected))) {
+		return false
+	}
+	actual, err := io.ReadAll(io.LimitReader(file, int64(len(expected))+1))
+	if err != nil || !bytes.Equal(actual, expected) {
+		return false
+	}
+	current, err := os.Lstat(modulePath)
+	return err == nil && os.SameFile(info, current) && nativeFileTrusted(current, int64(len(expected)))
 }
 
 func helperMatches(options Options, resolvedPaths paths) bool {
@@ -242,6 +292,21 @@ func installFiles(options Options, resolvedPaths paths) error {
 
 	if err := copyFileAtomically(currentBinary, resolvedPaths.binaryPath, 0o700); err != nil {
 		return err
+	}
+
+	if options.Shell == "bash" {
+		modulePath := nativeassets.Path(resolvedPaths.binaryPath)
+		module, err := nativeassets.Payload()
+		switch {
+		case err == nil:
+			if err := writeFileAtomically(modulePath, module, 0o600, false); err != nil {
+				return fmt.Errorf("install Bash native module: %w", err)
+			}
+		case errors.Is(err, nativeassets.ErrUnavailable):
+			// Development builds neither install nor load an unbundled module.
+		default:
+			return fmt.Errorf("load embedded Bash native module: %w", err)
+		}
 	}
 
 	helper, err := BuildHelper(options.Shell, options.Version, resolvedPaths.binaryPath)

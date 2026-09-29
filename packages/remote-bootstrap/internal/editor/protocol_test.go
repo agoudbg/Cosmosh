@@ -42,6 +42,7 @@ func TestRequestBoundaryDoesNotExposeRejectedInput(t *testing.T) {
 		RequestID: "01234567-89ab-4def-8123-456789abcdef",
 		Target:    Target{InstanceID: "abcdef01-2345-6789-abcd-ef0123456789", Shell: "bash", PID: 23, StartTime: "1234"},
 		Operation: "snapshot", PromptGeneration: 1,
+		Notification: &Notification{Callback: "readline"},
 	}
 	encoded, _ := json.Marshal(request)
 	if _, err := ReadRequest(strings.NewReader(string(encoded))); err != nil {

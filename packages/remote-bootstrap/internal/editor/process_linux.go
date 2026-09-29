@@ -77,15 +77,15 @@ func checkTarget(target Target, foreground bool) error {
 	if err != nil || filepath.Base(executable) != target.Shell {
 		return errors.New("target-unavailable")
 	}
-	if foreground && target.Shell == "bash" && checkTriggerTerminal(target.PID, identity.terminal) != nil {
-		return errors.New("target-unavailable")
-	}
 	return nil
 }
 
 // notifyEditor writes one wake-up byte only to the same user-owned FIFO inode registered by the Shell.
 // Opening with NONBLOCK bounds missing readers; fstat prevents a reused descriptor from receiving data.
 func notifyEditor(target Target, notification Notification) error {
+	if notification.Callback == "readline" {
+		return checkTarget(target, true)
+	}
 	if notification.Signal == "URG" {
 		return signalFishEditor(target)
 	}
@@ -110,41 +110,6 @@ func writeEditorNotification(pid int, notification Notification) error {
 	}
 	if count, err := syscall.Write(fd, []byte{1}); err != nil || count != 1 {
 		return errors.New("notification-unavailable")
-	}
-	return nil
-}
-
-// triggerTerminalSupported rejects line disciplines that can consume bytes of the private key as signals or flow control.
-func triggerTerminalSupported(attributes *syscall.Termios) bool {
-	if attributes.Lflag&syscall.ICANON != 0 {
-		return false
-	}
-	const triggerAlphabet = "\x1b[997;0123456789abcdef-~"
-	for index, value := range attributes.Cc {
-		if index != syscall.VMIN && index != syscall.VTIME && value != 0 &&
-			strings.IndexByte(triggerAlphabet, value) >= 0 {
-			return false
-		}
-	}
-	return true
-}
-
-// checkTriggerTerminal inspects the original Shell stdin without reading bytes or acquiring terminal ownership.
-func checkTriggerTerminal(pid, terminal int) error {
-	fd, err := syscall.Open(fmt.Sprintf("/proc/%d/fd/0", pid), syscall.O_RDONLY|syscall.O_NOCTTY|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return err
-	}
-	defer syscall.Close(fd)
-	var stat syscall.Stat_t
-	if syscall.Fstat(fd, &stat) != nil || stat.Mode&syscall.S_IFMT != syscall.S_IFCHR ||
-		stat.Rdev != uint64(uint32(terminal)) {
-		return errors.New("terminal-unavailable")
-	}
-	var attributes syscall.Termios
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(syscall.TCGETS), uintptr(unsafe.Pointer(&attributes)))
-	if errno != 0 || !triggerTerminalSupported(&attributes) {
-		return errors.New("terminal-unavailable")
 	}
 	return nil
 }
@@ -195,6 +160,10 @@ func checkPeer(connection *net.UnixConn, target Target) error {
 	}
 	if err := checkTarget(target, false); err != nil {
 		return err
+	}
+	// Bash now connects directly from the native callback; descendants cannot impersonate its reader.
+	if target.Shell == "bash" && int(credential.Pid) != target.PID {
+		return errors.New("peer-rejected")
 	}
 	original, err := readProcess(target.PID)
 	if err != nil {

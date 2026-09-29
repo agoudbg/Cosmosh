@@ -17,11 +17,15 @@ flowchart TB
 
 可用的 Zsh 编辑器要求`notification: { fd, inode }`；可用的 Fish 编辑器严格要求`notification: { signal: 'URG' }`。这两种不含文本的通知不能混用或用于其他 Shell。Fish 通过验证后的 pidfd 发送固定信号，前端不能指定任意信号。私有 Go 工作进程报告准备完成后，Backend 再检查权限，并通过该进程的 stdin 发送`{ requestId, activate: true }`；之后才允许通知 Shell 或接受其观察结果。通知元数据、激活与私有输入都不增加 Electron IPC 通道。
 
+可用的 Bash 编辑器严格要求`notification: { callback: 'readline' }`。该回调标记不含文件描述符、信号或终端按键；Backend 激活请求后，原始 Bash 5.1/5.2 模块在正常线程的 Readline 空闲回调内轮询经过身份检查的私有工作进程。C／Go 有界二进制交换只经过远端私有 socket，不执行 Shell 文本，也不在 Readline 内等待桌面授权。激活与 PTY 写入确认本身不授权输入修改；仍须匹配准备阶段的观察、当前权限及原始 Shell 的最终确认。不增加 Renderer 或 Electron IPC 通道。
+
 ## 2. Channel 字典
 
 仅供 Backend 使用的编辑器`native-completion`操作要求 Fish、输入／CWD／原生权限、`includeDirectory: true`和完整匹配的`expected`快照，不允许替换内容。原始回调的导出环境只保留在远端 socket 协议中，不属于`ShellEditorSnapshot`。独立的`native-completions`结果包含`ShellNativeCompletionResult`：`ok`／`partial`最多携带 128 项`{ token, value, detail }`，`timeout`／`unavailable`不携带候选。这些结果不能作为输入修改、历史移除或普通快照的确认。`ShellCompletionCandidate`增加`argument`展示类型，不新增前端请求或 Electron IPC 通道，菜单接入仍待完成。
 
 私有助手请求通过现有`editor-request`进程支持 Fish 的`history`和`history-delete`。这两个仅供 Backend 使用的操作要求独立历史权限和`includeDirectory: false`；观察包含提示符／模式元数据和`ShellNativeHistory`，不能附带当前输入或 CWD。私密模式结果不含命名空间或记录。删除要求`expected`包含一条完整原生记录和命名空间，不允许`replacement`，且须在原生精确查询确认记录存在后再次授权。`history-removed-from-reader`只确认当前行编辑器不再返回目标，历史文件是否更新始终未确认，也不能替代输入修改的`applied`结果。Fish 声明`history-read`，Backend 在原生历史同步及绑定来源的移除操作中调用这些接口，不增加 Electron IPC 通道。
+
+Bash 原生回调已有有界私有历史读取原语，但公开`ShellHistorySource`与`shell-history-remove`路径目前仍仅接受 Fish。Bash 历史来源启用与删除尚待完成，当前 WebSocket 协议不发布 Bash 历史视图。
 
 `ShellPathQueryRequest`/`ShellPathQueryResult`定义已安装助手固定`path-query`命令的私有 stdin/stdout JSON，不是由前端指定的 Shell 命令，也不增加 Electron IPC 通道。请求包含字面目录、文件名前缀和有界匹配选项，结果包含完整文件名记录与固定来源状态。旧 SSH 补全消息不能查询或填写远端路径，仅接受快照的路径草稿等待候选标识菜单迁移。
 

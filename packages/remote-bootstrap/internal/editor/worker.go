@@ -218,6 +218,9 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			connection.Close()
 			continue
 		}
+		if request.Target.Shell == "bash" && request.Notification != nil && request.Notification.Callback == "readline" {
+			return runNativeBash(ctx, connection, request, authorization, emit)
+		}
 		line, readErr := readFrame(bufio.NewReaderSize(connection, 4096))
 		var widget widgetMessage
 		if readErr == nil && decodeFrame(line, &widget) == nil &&

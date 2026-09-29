@@ -3,13 +3,150 @@ package install
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/agoudbg/cosmosh/packages/remote-bootstrap/internal/nativeassets"
 )
+
+func TestRunRepairsEmbeddedBashModule(t *testing.T) {
+	module, err := nativeassets.Payload()
+	if err != nil {
+		t.Skip("this Go test binary does not embed a Bash native module")
+	}
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(homeDir, "data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, "config"))
+	options := Options{Shell: "bash", Version: "1.2.3", Stdout: &bytes.Buffer{}}
+	if err := Run(options); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := resolvePaths("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	modulePath := nativeassets.Path(resolved.binaryPath)
+	installed, err := os.ReadFile(modulePath)
+	if err != nil || !bytes.Equal(installed, module) {
+		t.Fatalf("expected exact embedded Bash module at %s: %v", modulePath, err)
+	}
+	if err := os.WriteFile(modulePath, []byte("tampered"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	statusBytes := bytes.Buffer{}
+	if err := Status(&statusBytes, "bash"); err != nil {
+		t.Fatal(err)
+	}
+	status := InstallationStatus{}
+	if err := json.Unmarshal(statusBytes.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Installed || status.NativeModuleCurrent {
+		t.Fatalf("tampered module must invalidate installation: %+v", status)
+	}
+	options.Stdout = &bytes.Buffer{}
+	if err := Run(options); err != nil {
+		t.Fatal(err)
+	}
+	installed, err = os.ReadFile(modulePath)
+	if err != nil || !bytes.Equal(installed, module) {
+		t.Fatalf("expected repaired Bash module at %s: %v", modulePath, err)
+	}
+	if runtime.GOOS != "windows" {
+		otherPath := filepath.Join(homeDir, "unrelated-module")
+		if err := os.WriteFile(otherPath, []byte("unrelated"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(modulePath); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(otherPath, modulePath); err != nil {
+			t.Fatal(err)
+		}
+		if err := Run(options); err != nil {
+			t.Fatal(err)
+		}
+		installed, err = os.ReadFile(modulePath)
+		if err != nil || !bytes.Equal(installed, module) {
+			t.Fatalf("expected owned module path repaired: %v", err)
+		}
+		other, err := os.ReadFile(otherPath)
+		if err != nil || string(other) != "unrelated" {
+			t.Fatalf("module symlink target must remain untouched: %v", err)
+		}
+		if runtime.GOOS == "linux" {
+			linkedPath := filepath.Join(homeDir, "linked-module")
+			if err := os.Link(modulePath, linkedPath); err != nil {
+				t.Fatal(err)
+			}
+			statusBytes := bytes.Buffer{}
+			if err := Status(&statusBytes, "bash"); err != nil {
+				t.Fatal(err)
+			}
+			status := InstallationStatus{}
+			if err := json.Unmarshal(statusBytes.Bytes(), &status); err != nil {
+				t.Fatal(err)
+			}
+			if status.Installed || status.NativeModuleCurrent {
+				t.Fatalf("hardlinked module must not be accepted: %+v", status)
+			}
+			if err := Run(options); err != nil {
+				t.Fatal(err)
+			}
+			linked, err := os.ReadFile(linkedPath)
+			if err != nil || !bytes.Equal(linked, module) {
+				t.Fatalf("module hardlink peer must remain untouched: %v", err)
+			}
+		}
+	}
+}
+
+func TestDevelopmentInstallLeavesExistingModuleUntouched(t *testing.T) {
+	if _, err := nativeassets.Payload(); !errors.Is(err, nativeassets.ErrUnavailable) {
+		t.Skip("this is not an untagged development bootstrap")
+	}
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(homeDir, "data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, "config"))
+	resolved, err := resolvePaths("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(resolved.binDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	modulePath := nativeassets.Path(resolved.binaryPath)
+	if err := os.WriteFile(modulePath, []byte("preexisting"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(Options{Shell: "bash", Version: "1.2.3", Stdout: &bytes.Buffer{}}); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := os.ReadFile(modulePath)
+	if err != nil || string(installed) != "preexisting" {
+		t.Fatalf("development build must leave preexisting module untouched: %v", err)
+	}
+	statusBytes := bytes.Buffer{}
+	if err := Status(&statusBytes, "bash"); err != nil {
+		t.Fatal(err)
+	}
+	status := InstallationStatus{}
+	if err := json.Unmarshal(statusBytes.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if !status.Installed || status.NativeModuleCurrent {
+		t.Fatalf("development build must report only its base installation: %+v", status)
+	}
+}
 
 func TestRunInstallsUserScopedFiles(t *testing.T) {
 	homeDir := t.TempDir()

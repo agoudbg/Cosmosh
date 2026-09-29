@@ -140,6 +140,8 @@ app/
 release/
 packages/main/release-*/
 packages/remote-bootstrap/dist/
+packages/remote-bootstrap/internal/nativeassets/assets/*.so
+packages/remote-bootstrap/internal/nativeassets/assets/.build-stamp.json
 .pnpm-store/
 **/.cosmosh/
 /.playwright-cli/
