@@ -300,6 +300,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
         renderAbove={false}
         items={autocomplete.autocompleteItems}
         onFocusList={autocomplete.focusAutocomplete}
+        onRequestList={autocomplete.requestAutocompleteFocus}
         onItemSelect={autocomplete.acceptAutocompleteCandidate}
       />
     </div>

@@ -362,14 +362,14 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
       }
       event.preventDefault();
       event.stopPropagation();
-      if (action === 'focus') setMode('focused');
+      if (action === 'focus' && modeRef.current !== 'focused') scheduleAutocompleteRequest(paneId, 'manual');
       if (action === 'request') scheduleAutocompleteRequest(paneId, 'manual');
       if (action === 'next') autocompleteMenuRef.current?.moveNext();
       if (action === 'previous') autocompleteMenuRef.current?.movePrevious();
       if (action === 'accept') acceptAutocompleteCandidate(autocompleteMenuRef.current?.getActiveId() ?? null);
       if (action === 'close') closeAutocomplete();
     },
-    [acceptAutocompleteCandidate, available, closeAutocomplete, scheduleAutocompleteRequest, setMode],
+    [acceptAutocompleteCandidate, available, closeAutocomplete, scheduleAutocompleteRequest],
   );
 
   /** @returns Nothing after granting the existing list keyboard ownership without moving focus away from xterm. */
@@ -430,6 +430,13 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
     return () => observer.disconnect();
   }, [autocompleteItems.length, closeAutocomplete, resolveAnchor]);
 
+  /** @returns Nothing after explicitly requesting all enabled sources for the current input. */
+  const requestAutocompleteFocus = React.useCallback((): void => {
+    if (modeRef.current !== 'focused')
+      scheduleAutocompleteRequest(optionsRef.current.activePaneIdRef.current, 'manual');
+    optionsRef.current.terminalRef.current?.focus();
+  }, [scheduleAutocompleteRequest]);
+
   const closeAutocompleteRef = React.useRef(closeAutocomplete);
   const scheduleAutocompleteRequestRef = React.useRef(scheduleAutocompleteRequest);
   const handleAutocompleteTerminalKeyDownRef = React.useRef(handleAutocompleteTerminalKeyDown);
@@ -446,6 +453,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams) => {
     autocompleteAnchor,
     autocompleteMenuRef,
     focusAutocomplete,
+    requestAutocompleteFocus,
     acceptAutocompleteCandidate,
     applyAutocompleteInputData,
     resetAutocompletePaneState,

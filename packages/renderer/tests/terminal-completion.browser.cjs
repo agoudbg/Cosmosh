@@ -209,7 +209,21 @@ async (page) => {
   await reset(); await show(); await page.getByRole('option', { name: 'git stash Fixture history' }).click(); await accepted(1);
   check(await page.locator('#pane-1 textarea').evaluate((element) => element === document.activeElement), 'Mouse lost terminal focus');
   check(await page.evaluate(() => window.terminalInteractionFixture.transportCallbackChanges) === 0, 'UI state recreated PTY effect callbacks');
+  check((await messages('completion-query')).length === 1, 'Clicking a candidate refreshed its identity');
   results.push('mouse and configured Enter acceptance use stable transport callbacks');
+
+  for (const entry of ['shortcut', 'button']) {
+    await reset(); await show();
+    const original = (await messages('completion-query')).at(-1);
+    if (entry === 'shortcut') await page.keyboard.press('Control+Shift+Space');
+    else await page.locator('[data-terminal-autocomplete] button').first().click();
+    const manual = (await messages('completion-query')).at(-1);
+    check(manual.trigger === 'manual' && manual.requestId !== original.requestId, 'Explicit entry reused a typing query: ' + entry);
+    await page.evaluate(() => window.terminalInteractionFixture.respond());
+    await page.locator('[data-terminal-autocomplete="focused"]').waitFor();
+    await page.keyboard.press('Tab'); await accepted(0);
+  }
+  results.push('shortcut and list button explicitly query native sources before granting menu ownership');
 
   await reset(); await show(); await focus();
   await page.screenshot({ path: '.playwright-cli/terminal-completion-focused.png' });

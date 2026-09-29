@@ -413,6 +413,8 @@ export type SshCoreActions = {
   acceptAutocompleteCandidate: (candidateId: string) => void;
   /** Gives the suggestion list keyboard ownership without moving DOM focus out of xterm. */
   focusAutocomplete: () => void;
+  /** Requests enabled sources before explicitly entering the current pane's suggestion list. */
+  requestAutocompleteFocus: () => void;
   /** Requests the selected pane's saved login password using its opaque prompt token. */
   fillLoginPassword: (token: string) => void;
 };
@@ -831,6 +833,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     autocompleteFocused,
     autocompleteInputElement,
     focusAutocomplete,
+    requestAutocompleteFocus,
     autocompleteAnchor,
     autocompleteMenuRef,
     acceptAutocompleteCandidate,
@@ -1720,6 +1723,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       dismissSelectionBar,
       acceptAutocompleteCandidate,
       focusAutocomplete,
+      requestAutocompleteFocus,
       fillLoginPassword,
     },
     refs: {

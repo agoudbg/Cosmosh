@@ -770,7 +770,7 @@
         "title": "最小对比度"
       },
       "terminalNativeCompletionMode": {
-        "description": "选择 Fish 建议的查询时机：关闭、主动进入建议列表时查询，或随输入自动查询。候选菜单暂未接入，此设置会保留供后续使用。原生 Tab 不受影响。补全脚本可能执行工具或访问网络。",
+        "description": "选择 Fish 建议的查询时机：关闭、主动进入建议列表时查询，或随输入自动查询。要求支持的 Fish 4.x 编辑器配置。查询在独立 Fish 进程中进行，使用已确认目录、已导出的环境及用户配置，不复制临时函数及未导出的会话变量。补全脚本可能执行工具或访问网络，仍可使用原生 Tab。",
         "title": "Fish 原生建议"
       },
       "terminalRightClickAction": {

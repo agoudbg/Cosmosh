@@ -16,6 +16,7 @@ type TerminalAutocompleteMenuProps = {
   inputElement: HTMLTextAreaElement | null;
   focusShortcutLabel: string;
   onFocusList: () => void;
+  onRequestList: () => void;
   anchorTop: number;
   anchorLeft: number;
   panelWidth: number;
@@ -59,6 +60,7 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
       inputElement,
       focusShortcutLabel,
       onFocusList,
+      onRequestList,
       anchorTop,
       anchorLeft,
       panelWidth,
@@ -172,7 +174,7 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
         onPointerDown={(event) => {
           // Keep IME and the first typed character in xterm, including after mouse selection.
           event.preventDefault();
-          onFocusList();
+          if (event.target instanceof Element && event.target.closest('[role="option"]')) onFocusList();
         }}
       >
         <div
@@ -183,7 +185,7 @@ const TerminalAutocompleteMenu = React.forwardRef<TerminalAutocompleteMenuHandle
             type="button"
             tabIndex={-1}
             className={classNames(menuStyles.label, 'w-full text-left')}
-            onClick={onFocusList}
+            onClick={onRequestList}
           >
             {focused
               ? t('ssh.autocomplete.focusedHint')

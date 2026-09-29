@@ -770,7 +770,7 @@
         "title": "Minimum Contrast Ratio"
       },
       "terminalNativeCompletionMode": {
-        "description": "Choose when to query Fish suggestions: off, when you focus the suggestion list, or automatically while typing. The menu connection is not available yet; your choice is saved for when it becomes available. Native Tab is unaffected. Completion scripts may run tools or access the network.",
+        "description": "Choose when to query Fish suggestions: off, when you enter the suggestion list, or automatically while typing. Requires a supported Fish 4.x editor. Queries run in a separate Fish process using the confirmed directory, exported environment and user configuration. Temporary functions and unexported session variables are not copied. Completion scripts may run tools or access the network. Native Tab remains available.",
         "title": "Fish Native Suggestions"
       },
       "terminalRightClickAction": {

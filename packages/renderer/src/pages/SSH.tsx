@@ -462,6 +462,7 @@ const SSH: React.FC<SSHProps> = ({
       dismissSelectionBar,
       acceptAutocompleteCandidate,
       focusAutocomplete,
+      requestAutocompleteFocus,
       fillLoginPassword,
     },
     refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
@@ -1565,6 +1566,7 @@ const SSH: React.FC<SSHProps> = ({
           `settings.options.terminalAutoCompleteFocusShortcut.${terminalAutoCompleteFocusShortcut}`,
         )}
         onFocusList={focusAutocomplete}
+        onRequestList={requestAutocompleteFocus}
         onItemSelect={acceptAutocompleteCandidate}
       />
 
