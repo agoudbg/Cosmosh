@@ -24,6 +24,8 @@ type widgetMessage struct {
 	PromptGeneration uint64    `json:"promptGeneration"`
 	RequestID        string    `json:"requestId,omitempty"`
 	Snapshot         *Snapshot `json:"snapshot,omitempty"`
+	// Environment remains inside the remote private socket and is never returned to the desktop.
+	Environment []string `json:"environment,omitempty"`
 }
 
 // widgetReply grants only the data requested by the desktop's current permissions.
@@ -249,8 +251,14 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			phase = "capture"
 			continue
 		}
-		includeInput := request.Operation == "snapshot" || request.Operation == "apply"
+		includeInput := request.Operation == "snapshot" || request.Operation == "apply" || request.Operation == "native-completion"
 		includeHistory := request.Operation == "history" || request.Operation == "history-delete"
+		if (request.Operation == "native-completion" && !validCompletionEnvironment(widget.Environment)) ||
+			(request.Operation != "native-completion" && widget.Environment != nil) {
+			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "unsupported"})
+			connection.Close()
+			return finish("unsupported")
+		}
 		if widget.Snapshot == nil || !validSnapshot(*widget.Snapshot, includeInput, request.IncludeDirectory, includeHistory) {
 			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "unsupported"})
 			connection.Close()
@@ -267,6 +275,18 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "stale"})
 			connection.Close()
 			return finish("stale")
+		}
+		if request.Operation == "native-completion" {
+			// Release the original reader before loading configuration or executing completion scripts.
+			err := json.NewEncoder(connection).Encode(widgetReply{Status: "ok"})
+			connection.Close()
+			release()
+			if err != nil || ctx.Err() != nil {
+				return finish("unavailable")
+			}
+			result := queryNativeCompletion(ctx, request.Target, *widget.Snapshot, widget.Environment)
+			return encoder.Encode(Message{Type: "editor", Phase: "done", RequestID: request.RequestID,
+				Status: "native-completions", Completion: &result})
 		}
 		if request.Operation != "apply" && request.Operation != "history-delete" {
 			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "ok"})

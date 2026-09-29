@@ -971,7 +971,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
               type: 'editor-snapshot-result',
               requestId: message.requestId,
               status:
-                result.status === 'ok' || result.status === 'applied' || result.status === 'history-removed-from-reader'
+                result.status === 'ok' ||
+                result.status === 'applied' ||
+                result.status === 'history-removed-from-reader' ||
+                result.status === 'native-completions'
                   ? 'unavailable'
                   : result.status,
             },
@@ -985,7 +988,12 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       this.sendServerMessage(session, {
         type: 'editor-apply-result',
         requestId: message.requestId,
-        status: result.status === 'ok' || result.status === 'history-removed-from-reader' ? 'unknown' : result.status,
+        status:
+          result.status === 'ok' ||
+          result.status === 'history-removed-from-reader' ||
+          result.status === 'native-completions'
+            ? 'unknown'
+            : result.status,
       });
   }
 

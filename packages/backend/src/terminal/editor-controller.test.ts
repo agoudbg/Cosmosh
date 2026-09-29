@@ -37,6 +37,74 @@ const snapshot: ShellEditorSnapshot = {
   directory: { logical: '/link', physical: '/actual', home: '/home/user' },
 };
 
+test('native queries require permission and discard late results after input or permission changes', async () => {
+  for (const invalidation of ['none', 'input', 'cwd', 'nativeCompletion', 'abort'] as const) {
+    let state: ShellContextState = {
+      ...readyState(),
+      shell: 'fish',
+      capabilities: ['input-snapshot', 'input-apply', 'native-completion'],
+      permissions: { ...readyState().permissions, input: true, cwd: true, nativeCompletion: true },
+      editorBinding: { ...readyState().editorBinding!, notification: { signal: 'URG' } },
+    };
+    const current: ShellEditorSnapshot = { ...snapshot, buffer: { text: 'git switch ', cursor: 11 } };
+    let queries = 0;
+    const lifetime = new AbortController();
+    const editor = new ShellEditorController(
+      () => state,
+      async (request, options) => {
+        if (request.operation === 'snapshot') return { status: 'ok', snapshot: current };
+        queries += 1;
+        assert.equal(request.operation, 'native-completion');
+        assert.deepEqual(request.expected, current);
+        options.trigger();
+        if (invalidation === 'abort') lifetime.abort();
+        else if (invalidation === 'input') {
+          editor.invalidate();
+          state = invalidateShellInput(state, 'x');
+        } else if (invalidation !== 'none')
+          state = updateShellPermissions(state, { ...state.permissions, [invalidation]: false });
+        return { status: 'native-completions', completion: { status: 'ok', entries: [] } };
+      },
+      () => assert.fail('Fish native query must not write terminal bytes'),
+      () => {},
+    );
+    const captured = await editor.snapshot();
+    assert.ok(captured.snapshotId);
+    assert.equal(
+      (await editor.nativeCompletion(captured.snapshotId!, lifetime.signal)).status,
+      invalidation === 'none' ? 'native-completions' : 'stale',
+    );
+    assert.equal(queries, 1);
+    editor.invalidate();
+  }
+});
+
+test('disabled native permission prevents query dispatch even with an available input snapshot', async () => {
+  const state: ShellContextState = {
+    ...readyState(),
+    shell: 'fish',
+    capabilities: ['input-snapshot', 'native-completion'],
+    permissions: { ...readyState().permissions, input: true, cwd: true, nativeCompletion: false },
+    editorBinding: { ...readyState().editorBinding!, notification: { signal: 'URG' } },
+  };
+  let calls = 0;
+  const editor = new ShellEditorController(
+    () => state,
+    async () => {
+      calls += 1;
+      return { status: 'ok', snapshot: { ...snapshot, buffer: { text: 'git switch ', cursor: 11 } } };
+    },
+    () => {},
+    () => {},
+  );
+  const captured = await editor.snapshot();
+  assert.deepEqual(await editor.nativeCompletion(captured.snapshotId!, new AbortController().signal), {
+    status: 'unavailable',
+  });
+  assert.equal(calls, 1);
+  editor.invalidate();
+});
+
 test('editor buffers count codepoints and reject controls, oversized input, malformed Unicode and invalid cursors', () => {
   for (const buffer of [
     { text: '🐟', cursor: 2 },

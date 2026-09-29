@@ -4,6 +4,8 @@ This disposable OpenSSH container owns three unprivileged accounts: `cosmosh-bas
 
 ## Run
 
+The fixture includes real Git for branch completion. `native-completion.live-test.ts` creates a disposable repository and saved Fish functions/completion files, checks every setup command, and verifies that slow queries leave the original reader responsive. The helper's additional Linux process tests run with `COSMOSH_TEST_FISH` set to the verified 4.0.1 executable; without that explicit path those real-Fish cases are skipped, not counted as covered.
+
 ```sh
 pnpm terminal:fixture start
 pnpm test:terminal

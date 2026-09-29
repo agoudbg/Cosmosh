@@ -19,7 +19,7 @@ var fullRemoteShellCapabilities = []string{
 
 var zshRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "line-state", "editor-state", "input-snapshot", "input-apply")
 var bashRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "editor-state", "input-snapshot", "input-apply")
-var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "editor-state", "input-snapshot", "input-apply", "history-read")
+var fishRemoteShellCapabilities = append(append([]string(nil), fullRemoteShellCapabilities...), "cwd-invalidated", "editor-state", "input-snapshot", "input-apply", "history-read", "native-completion")
 
 var degradedRemoteShellCapabilities = []string{
 	"cwd",

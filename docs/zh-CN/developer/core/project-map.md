@@ -85,6 +85,8 @@ flowchart TB
 
 ### `packages/backend`
 
+- `completion/native-completion.ts`验证独立 Fish 查询结果，并生成绑定快照的字面修改。`ShellEditorController.nativeCompletion`将请求绑定到已缓存观察及独立权限。`remote-bootstrap/internal/editor/completion*.go`与嵌入的`fish-completion.fish`负责仅在远端传递环境、进程隔离、限制和取消。`native-completion.live-test.ts`验证实际 SSH 来源，菜单消费者尚待接入。
+
 - `src/terminal/shell-context.ts`：原始 Shell 身份、权限、代数与配对提示符的目录状态。未确认报告仅留在后端，传输快照只包含可用目录和仅供显示的上次目录，不存储当前输入或凭据。
 - `src/terminal/integration/helper-identity.live-test.ts`：真实安装器/SSH 测试，覆盖重复 source、嵌套 Shell、独立终端及非交互式运行不输出事件。
 - `src/terminal/completion/snapshot-edits.ts`负责受限的字面单词识别、码点修改范围和 Shell 引号处理。会话编辑器控制器持有会过期的候选标识及私有完整替换内容。`completion-edits.live-test.ts`通过三种实际 Shell 编辑器验证字面参数字节与后续内容保留。

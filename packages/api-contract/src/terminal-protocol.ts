@@ -137,15 +137,24 @@ export type ShellEditorSnapshot = {
   history?: ShellNativeHistory;
 };
 
+/** Literal values decoded by the query Fish; descriptions are display-only, never Shell code. */
+export type ShellNativeCompletionEntry = { token: string; value: string; detail: string | null };
+
+/** Bounded isolated Fish query. Partial results reached a limit or omitted unsupported rows. */
+export type ShellNativeCompletionResult = {
+  status: 'ok' | 'partial' | 'timeout' | 'unavailable';
+  entries: ShellNativeCompletionEntry[];
+};
+
 /** Private stdin request to the bounded remote helper process. */
 export type ShellEditorRequest = {
   requestId: string;
   target: ShellEditorTarget;
-  operation: 'context' | 'snapshot' | 'apply' | 'history' | 'history-delete';
+  operation: 'context' | 'snapshot' | 'apply' | 'history' | 'history-delete' | 'native-completion';
   promptGeneration: number;
   includeDirectory: boolean;
   notification?: ShellEditorNotification;
-  /** For history-delete, exactly one native record identifies an exact match in its original namespace. */
+  /** Native completion requires the exact input/CWD snapshot; history-delete requires one native record. */
   expected?: ShellEditorSnapshot;
   replacement?: ShellEditorBuffer;
 };
@@ -274,7 +283,7 @@ export type ShellCompletionCandidate = {
   detail: string | null;
   detailI18nKey?: string;
   source: 'history' | 'inshellisense' | 'runtime' | 'fish';
-  kind: 'command' | 'subcommand' | 'option' | 'history' | 'path';
+  kind: 'command' | 'subcommand' | 'option' | 'argument' | 'history' | 'path';
 };
 
 /** Legacy completion candidate transferred over a terminal WebSocket. */

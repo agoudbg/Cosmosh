@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -120,12 +121,22 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 		_, err = fmt.Fprintln(output, "ok")
 		return err
 	}
-	if (message.Phase != "capture" && message.Phase != "confirm") || len(args) != 10 ||
+	if (message.Phase != "capture" && message.Phase != "confirm" && message.Phase != "completion") || len(args) != 10 ||
 		!uuidPattern.MatchString(args[7]) || (args[8] != "0" && args[8] != "1") || (args[9] != "0" && args[9] != "1") {
 		return errors.New("invalid-widget")
 	}
 	message.RequestID = args[7]
 	includeInput, includeDirectory := args[8] == "1", args[9] == "1"
+	if message.Phase == "completion" {
+		if target.Shell != "fish" || !includeInput || !includeDirectory {
+			return errors.New("invalid-widget")
+		}
+		message.Phase = "capture"
+		message.Environment = os.Environ()
+		if !validCompletionEnvironment(message.Environment) {
+			return errors.New("unsupported-environment")
+		}
+	}
 	raw, err := io.ReadAll(io.LimitReader(input, MaxInputBytes+2*MaxPathBytes+128))
 	if err != nil || len(raw) >= MaxInputBytes+2*MaxPathBytes+128 {
 		return errors.New("unsupported-editor")

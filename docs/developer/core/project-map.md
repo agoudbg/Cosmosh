@@ -85,6 +85,8 @@ flowchart TB
 
 ### `packages/backend`
 
+- `completion/native-completion.ts` validates isolated Fish results and produces literal snapshot edits. `ShellEditorController.nativeCompletion` binds its request to the cached observation and independent permissions. `remote-bootstrap/internal/editor/completion*.go` and the embedded `fish-completion.fish` own remote-only environment transfer, process isolation, limits and cancellation; `native-completion.live-test.ts` exercises the actual SSH source. This provider awaits the new menu consumer.
+
 - `src/terminal/shell-context.ts`: original Shell identity, permissions, generations and prompt-paired directory state. Unconfirmed reports stay backend-only; transport snapshots expose only usable and display-only last-known metadata. It stores no current input or credentials.
 - `src/terminal/integration/helper-identity.live-test.ts`: real installer/SSH tests for repeated sources, nested Shells, independent terminals and non-interactive silence.
 - `src/terminal/completion/snapshot-edits.ts` owns restricted literal word recognition, codepoint edit ranges and Shell quoting. The session editor controller owns expiring candidate IDs and private complete replacements. `completion-edits.live-test.ts` verifies literal argument bytes and suffix preservation through the actual three Shell editors.

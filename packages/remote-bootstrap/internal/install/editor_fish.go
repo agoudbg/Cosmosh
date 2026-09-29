@@ -295,6 +295,7 @@ function __cosmosh_fish_editor_observe
     builtin return 0
   end
   builtin set -l include_input 0
+  builtin set -l capture_phase capture
   builtin set -l line ''
   builtin set -l point ''
   builtin set -l directory ''
@@ -307,8 +308,11 @@ function __cosmosh_fish_editor_observe
       __cosmosh_fish_history_read "$request[1]"
       builtin return 0
     case context
-    case snapshot apply
+    case snapshot apply native-completion
       builtin set include_input 1
+      if builtin test "$request[2]" = native-completion
+        builtin set capture_phase completion
+      end
       # Keep commandline's one output newline. The Go boundary removes exactly that byte.
       builtin set line (builtin commandline --current-buffer | builtin string collect --no-trim-newlines --allow-empty)
       builtin set point (builtin commandline --cursor)
@@ -320,7 +324,7 @@ function __cosmosh_fish_editor_observe
     builtin set user_home "$HOME"
   end
   builtin set -l response (builtin printf '%s\0' "$line" "$point" "$directory" "$user_home" |
-    command "$__COSMOSH_EDITOR_BINARY" editor-widget capture "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$request[1]" "$include_input" "$request[3]" 2>/dev/null)
+    command "$__COSMOSH_EDITOR_BINARY" editor-widget "$capture_phase" "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$request[1]" "$include_input" "$request[3]" 2>/dev/null)
   if builtin test (builtin count $response) = 3; and builtin test "$response[1]" = apply
     __cosmosh_fish_editor_supported; or begin
       __cosmosh_fish_editor_reject "$request[1]"

@@ -8,6 +8,7 @@ import type {
 } from '@cosmosh/api-contract';
 
 import type { ShellEditorExecOptions, ShellEditorResult } from '../ssh/editor-exec.js';
+import { canQueryNativeCompletion } from './completion/native-completion.js';
 import { buildShellCompletionReplacement, type ShellCompletionDraft } from './completion/snapshot-edits.js';
 import {
   isFishInputBoundaryPending,
@@ -180,6 +181,20 @@ export class ShellEditorController {
     return await this.apply(snapshotId, replacement);
   }
 
+  /**
+   * Queries only the still-current snapshot; the remote worker recaptures input/CWD before copying exported environment.
+   * @param snapshotId Backend-owned input observation. @param signal Current query permission lifetime.
+   * @returns Advisory native candidates, or an explicit stale/unsupported/unavailable result.
+   */
+  async nativeCompletion(snapshotId: string, signal: AbortSignal): Promise<ShellEditorResult> {
+    const cached = this.cached;
+    if (!cached || cached.id !== snapshotId || cached.state !== this.state() || cached.expiresAt <= Date.now())
+      return { status: 'stale' };
+    if (!canQueryNativeCompletion(cached.snapshot)) return { status: 'unsupported' };
+    const result = await this.run('native-completion', cached.state, cached.snapshot, undefined, signal);
+    return this.cached !== cached || cached.expiresAt <= Date.now() ? { status: 'stale' } : result;
+  }
+
   /** @returns Whether the latest requested context was confirmed after any previous exchange finished cleanup. */
   refreshContext(): Promise<boolean> {
     this.contextRefreshRequested = true;
@@ -251,6 +266,7 @@ export class ShellEditorController {
   ): Promise<ShellEditorResult> {
     const binding = state.editorBinding;
     const includeHistory = operation === 'history' || operation === 'history-delete';
+    const nativeCompletion = operation === 'native-completion';
     const canObservePaused =
       (operation === 'context' || includeHistory) && binding?.notification !== undefined && state.status === 'paused';
     if (
@@ -264,10 +280,22 @@ export class ShellEditorController {
       (state.status !== 'ready' && !canObservePaused) ||
       (state.requiresEditorConfirmation && !canObservePaused) ||
       (includeHistory && (state.shell !== 'fish' || !state.permissions.history)) ||
+      (nativeCompletion &&
+        (state.shell !== 'fish' ||
+          !state.permissions.nativeCompletion ||
+          !state.permissions.input ||
+          !state.permissions.cwd ||
+          !state.capabilities.includes('input-snapshot'))) ||
       ((operation === 'snapshot' || operation === 'apply') && !state.permissions.input) ||
       (operation === 'context' && !state.permissions.input && !state.permissions.cwd) ||
       !state.capabilities.includes(
-        includeHistory ? 'history-read' : operation === 'apply' ? 'input-apply' : 'input-snapshot',
+        includeHistory
+          ? 'history-read'
+          : nativeCompletion
+            ? 'native-completion'
+            : operation === 'apply'
+              ? 'input-apply'
+              : 'input-snapshot',
       ) ||
       (!binding.notification && this.lockedEpoch === binding.triggerNonce)
     )
@@ -309,7 +337,8 @@ export class ShellEditorController {
       });
       if (active.injected && active.triggered && (result.status === 'unavailable' || result.status === 'unknown'))
         this.lockedEpoch = active.epoch;
-      return (this.state() !== state || active.controller.signal.aborted) && result.status === 'ok'
+      return (this.state() !== state || active.controller.signal.aborted) &&
+        (result.status === 'ok' || result.status === 'native-completions')
         ? { status: 'stale' }
         : result;
     } catch {

@@ -58,6 +58,35 @@ const clientFor = (channel: Channel, commands: string[] = []): Client =>
     },
   }) as unknown as Client;
 
+test('native completion transport accepts only the requested bounded result and no unsolicited snapshot', async () => {
+  const completion = { status: 'ok', entries: [{ token: 'feature', value: 'feature', detail: null }] };
+  for (const operation of ['native-completion', 'snapshot'] as const) {
+    for (const extra of [{}, { snapshot }, { applied: true }]) {
+      const channel = new Channel();
+      const response = executeShellEditorRequest(
+        clientFor(channel),
+        '/helper',
+        {
+          ...request,
+          operation,
+          target: { ...request.target, shell: 'fish' },
+          notification: { signal: 'URG' },
+        },
+        { signal: new AbortController().signal, isCurrent: () => true, trigger: () => {} },
+      );
+      channel.reply({ phase: 'ready' });
+      channel.reply({ phase: 'done', status: 'native-completions', completion, ...extra });
+      assert.deepEqual(
+        await response,
+        operation === 'native-completion' && Object.keys(extra).length === 0
+          ? { status: 'native-completions', completion }
+          : { status: 'unavailable' },
+      );
+      assert.ok(channel.writes.every((value) => !value.includes('"apply":true')));
+    }
+  }
+});
+
 test('native history deletion requires an exact prepared target and keeps uncertain outcomes explicit', async () => {
   const expected: ShellEditorSnapshot = {
     promptGeneration: 1,

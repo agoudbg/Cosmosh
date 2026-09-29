@@ -103,6 +103,8 @@ export type {
   ShellPathQueryResult,
   ShellEditorSnapshot,
   ShellEditorRequest,
+  ShellNativeCompletionEntry,
+  ShellNativeCompletionResult,
 } from './terminal-protocol';
 export {
   DEFAULT_TERMINAL_FORCE_SELECTION_MODIFIER,

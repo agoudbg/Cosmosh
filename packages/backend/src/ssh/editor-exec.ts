@@ -1,8 +1,9 @@
 import { StringDecoder } from 'node:string_decoder';
 
-import type { ShellEditorRequest, ShellEditorSnapshot } from '@cosmosh/api-contract';
+import type { ShellEditorRequest, ShellEditorSnapshot, ShellNativeCompletionResult } from '@cosmosh/api-contract';
 import type { Client, ClientChannel } from 'ssh2';
 
+import { normalizeNativeCompletionResult } from '../terminal/completion/native-completion.js';
 import { EDITOR_MESSAGE_MAX_BYTES, isEditorRecord, normalizeEditorSnapshot } from '../terminal/editor-protocol.js';
 
 /** Request result distinguishes rejection from a lost acknowledgement after an application decision. */
@@ -11,6 +12,7 @@ export type ShellEditorResult =
   | { status: 'applied' }
   /** Original Fish reader no longer returns the exact text; saving to its history file is unconfirmed. */
   | { status: 'history-removed-from-reader' }
+  | { status: 'native-completions'; completion: ShellNativeCompletionResult }
   | { status: 'stale' | 'unavailable' | 'unsupported' | 'unknown' };
 
 /** One transport operation's cancellation, permission and exact context checks. */
@@ -176,7 +178,23 @@ export const executeShellEditorRequest = (
                 return;
               }
             } else if (message.phase === 'done') {
-              if (message.status === 'ok' && ready && !mutating && options.isCurrent()) {
+              if (
+                message.status === 'native-completions' &&
+                request.operation === 'native-completion' &&
+                ready &&
+                options.isCurrent() &&
+                !('snapshot' in message) &&
+                !('applied' in message)
+              ) {
+                const completion = normalizeNativeCompletionResult(message.completion);
+                finish(completion ? { status: 'native-completions', completion } : { status: 'unavailable' });
+              } else if (
+                message.status === 'ok' &&
+                request.operation !== 'native-completion' &&
+                ready &&
+                !mutating &&
+                options.isCurrent()
+              ) {
                 const snapshot = normalizeEditorSnapshot(message.snapshot, request);
                 finish(snapshot ? { status: 'ok', snapshot } : { status: 'unavailable' });
               } else if (

@@ -78,12 +78,13 @@ type Request struct {
 
 // Message is one framed helper response. Failure codes never include request text or raw errors.
 type Message struct {
-	Type      string    `json:"type"`
-	Phase     string    `json:"phase"`
-	RequestID string    `json:"requestId"`
-	Status    string    `json:"status,omitempty"`
-	Snapshot  *Snapshot `json:"snapshot,omitempty"`
-	Applied   bool      `json:"applied,omitempty"`
+	Type       string                  `json:"type"`
+	Phase      string                  `json:"phase"`
+	RequestID  string                  `json:"requestId"`
+	Status     string                  `json:"status,omitempty"`
+	Snapshot   *Snapshot               `json:"snapshot,omitempty"`
+	Applied    bool                    `json:"applied,omitempty"`
+	Completion *NativeCompletionResult `json:"completion,omitempty"`
 }
 
 // ReadRequest decodes exactly one bounded JSON request and rejects unknown fields.
@@ -125,6 +126,11 @@ func validRequest(request Request) bool {
 		return false
 	}
 	switch request.Operation {
+	case "native-completion":
+		return request.Target.Shell == "fish" && request.IncludeDirectory && request.Replacement == nil &&
+			request.Expected != nil && validSnapshot(*request.Expected, true, true, false) &&
+			request.Expected.PromptGeneration == request.PromptGeneration && request.Expected.Directory.Physical != nil &&
+			request.Expected.Buffer.Cursor == utf8.RuneCountInString(request.Expected.Buffer.Text)
 	case "history-delete":
 		return request.Target.Shell == "fish" && !request.IncludeDirectory && request.Replacement == nil &&
 			request.Expected != nil && validSnapshot(*request.Expected, false, false, true) &&
@@ -208,7 +214,7 @@ func validSnapshot(snapshot Snapshot, includeInput, includeDirectory, includeHis
 // matchesExpected requires the complete original line, cursor, prompt and requested directory identity.
 func matchesExpected(request Request, captured Snapshot) bool {
 	return captured.PromptGeneration == request.PromptGeneration &&
-		((request.Operation != "apply" && request.Operation != "history-delete") || reflect.DeepEqual(request.Expected, &captured))
+		((request.Operation != "apply" && request.Operation != "history-delete" && request.Operation != "native-completion") || reflect.DeepEqual(request.Expected, &captured))
 }
 
 // mutationConfirmation keeps native history visibility distinct from an applied input buffer.
