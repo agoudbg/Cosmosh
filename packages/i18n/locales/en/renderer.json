@@ -1501,7 +1501,7 @@
         "nativeCompletion": "Fish native suggestions",
         "paths": "File suggestions"
       },
-      "fishSupport": "Fish enhancements are currently verified with Fish 4.0.1, a compatible native key configuration, and Fish's gray inline suggestions turned off. Custom key bindings or history filters can make individual features unavailable.",
+      "fishSupport": "Fish enhancements are verified with Fish 4.0.1, compatible native keys and gray inline suggestions turned off. Native Tab, search or unknown key sequences currently pause Cosmosh's directory confirmation and history reading until you reconnect. Waiting or toggling permissions does not resume them. Ordinary input, native Tab and history keys remain usable. Custom bindings or history filters can also limit support.",
       "permissionAllowed": "Allowed",
       "permissionDisabled": "Off",
       "reasons": {
@@ -1574,7 +1574,7 @@
     "historyState": {
       "disabled": "History reading is turned off in Settings.",
       "private": "This Shell is using private history.",
-      "unavailable": "History is currently unavailable. Return to the Shell prompt to retry.",
+      "unavailable": "History is unavailable. Check Enhancement Status for connection and support limits.",
       "unsupported": "Native history reading is unavailable for this Shell configuration."
     },
     "historyTerminalLabel": "Terminal {index}",
