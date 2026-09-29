@@ -12,7 +12,7 @@
  */
 
 import type { SettingsValues } from '@cosmosh/api-contract';
-import { DEFAULT_SETTINGS_VALUES } from '@cosmosh/api-contract';
+import { DEFAULT_SETTINGS_VALUES, normalizeSettingsValuesWithDefaults } from '@cosmosh/api-contract';
 import React from 'react';
 
 import { applyRuntimeSettings } from './app-settings';
@@ -82,11 +82,8 @@ const readCachedSettings = (): SettingsValues | null => {
       return null;
     }
 
-    const parsed = JSON.parse(rawPayload) as Partial<SettingsValues>;
-    return {
-      ...DEFAULT_SETTINGS_VALUES,
-      ...parsed,
-    };
+    const parsed: unknown = JSON.parse(rawPayload);
+    return normalizeSettingsValuesWithDefaults(parsed);
   } catch {
     return null;
   }

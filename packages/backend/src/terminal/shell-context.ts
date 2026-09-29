@@ -55,7 +55,7 @@ export const resolveShellPermissions = (settings: SettingsValues, serverAllowed:
     input: enabled && settings.remoteEnhancementsInputEnabled,
     history: enabled && settings.remoteEnhancementsHistoryEnabled,
     paths: enabled && settings.terminalAutoCompletePathEnabled,
-    nativeCompletion: enabled && settings.terminalNativeCompletionEnabled,
+    nativeCompletion: enabled && settings.terminalNativeCompletionMode !== 'off',
   };
 };
 

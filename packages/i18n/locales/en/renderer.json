@@ -769,8 +769,8 @@
         "placeholder": "1",
         "title": "Minimum Contrast Ratio"
       },
-      "terminalNativeCompletionEnabled": {
-        "description": "Control permission for Fish native suggestions. Native candidates are not yet connected to this menu; native Tab is unaffected. Completion scripts may run tools or access the network.",
+      "terminalNativeCompletionMode": {
+        "description": "Choose when to query Fish suggestions: off, when you focus the suggestion list, or automatically while typing. The menu connection is not available yet; your choice is saved for when it becomes available. Native Tab is unaffected. Completion scripts may run tools or access the network.",
         "title": "Fish Native Suggestions"
       },
       "terminalRightClickAction": {
@@ -959,6 +959,11 @@
         "ctrl": "Ctrl",
         "off": "Off",
         "shift": "Shift"
+      },
+      "terminalNativeCompletionMode": {
+        "automatic": "Query automatically",
+        "manual": "Query on request",
+        "off": "Off"
       },
       "terminalRightClickAction": {
         "contextMenu": "Open Context Menu",

@@ -20,7 +20,7 @@ export type EnhancementStatusInput = {
     | 'remoteEnhancementsHistoryEnabled'
     | 'terminalAutoCompleteEnabled'
     | 'terminalAutoCompletePathEnabled'
-    | 'terminalNativeCompletionEnabled'
+    | 'terminalNativeCompletionMode'
   >;
 };
 
@@ -118,7 +118,7 @@ export const resolveEnhancementStatus = (input: EnhancementStatusInput): Enhance
     input: settings.remoteEnhancementsInputEnabled,
     history: settings.remoteEnhancementsHistoryEnabled,
     paths: settings.terminalAutoCompletePathEnabled,
-    nativeCompletion: settings.terminalNativeCompletionEnabled,
+    nativeCompletion: settings.terminalNativeCompletionMode !== 'off',
   };
   /** @param id Capability to explain. @returns Its current effective state and specific reason. */
   const explain = (id: EnhancementStatusModel['features'][number]['id']): EnhancementDiagnostic => {
@@ -129,7 +129,7 @@ export const resolveEnhancementStatus = (input: EnhancementStatusInput): Enhance
       input: settings.remoteEnhancementsInputEnabled && context.permissions.input,
       history: settings.remoteEnhancementsHistoryEnabled && context.permissions.history,
       paths: settings.terminalAutoCompletePathEnabled && context.permissions.paths,
-      nativeCompletion: settings.terminalNativeCompletionEnabled && context.permissions.nativeCompletion,
+      nativeCompletion: settings.terminalNativeCompletionMode !== 'off' && context.permissions.nativeCompletion,
     };
     if (!enabled[id]) return { state: 'disabled', reason: 'permissionDisabled' };
     if ((id === 'paths' || id === 'nativeCompletion') && !settings.terminalAutoCompleteEnabled)

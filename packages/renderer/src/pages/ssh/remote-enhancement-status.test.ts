@@ -27,6 +27,17 @@ test('offline and reconnecting panes never display a retained active helper or d
   }
 });
 
+test('native query mode preserves opt-outs and never promises a connected menu', () => {
+  const input = createEnhancementStatusFixture();
+  for (const mode of ['off', 'manual', 'automatic'] as const) {
+    input.settings.terminalNativeCompletionMode = mode;
+    const feature = resolveEnhancementStatus(input).features.find((item) => item.id === 'nativeCompletion')!;
+    assert.equal(feature.allowed, mode !== 'off');
+    assert.equal(feature.reason, mode === 'off' ? 'permissionDisabled' : 'nativeMenuPending');
+    assert.notEqual(feature.state, 'available');
+  }
+});
+
 test('history is independent of paused input and directory permissions, including an empty successful read', () => {
   const input = createEnhancementStatusFixture();
   input.context = { ...input.context!, status: 'paused', reason: 'input-submitted', cwd: null };

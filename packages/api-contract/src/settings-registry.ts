@@ -94,7 +94,7 @@ export interface SettingsValues {
   remoteEnhancementsCwdEnabled: boolean;
   remoteEnhancementsInputEnabled: boolean;
   remoteEnhancementsHistoryEnabled: boolean;
-  terminalNativeCompletionEnabled: boolean;
+  terminalNativeCompletionMode: 'off' | 'manual' | 'automatic';
   remoteEnhancementsDebugEnabled: boolean;
   devToolsEnabled: boolean;
   userMenuDebugEntryEnabled: boolean;
@@ -1074,17 +1074,19 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     searchTerms: ['shell history', 'history permission', 'terminal privacy'],
   },
   {
-    key: 'terminalNativeCompletionEnabled',
-    valueType: 'boolean',
-    defaultValue: false,
-    nameI18nKey: 'settings.items.terminalNativeCompletionEnabled.title',
-    descriptionI18nKey: 'settings.items.terminalNativeCompletionEnabled.description',
+    key: 'terminalNativeCompletionMode',
+    valueType: 'string',
+    defaultValue: 'manual',
+    nameI18nKey: 'settings.items.terminalNativeCompletionMode.title',
+    descriptionI18nKey: 'settings.items.terminalNativeCompletionMode.description',
+    optionI18nNamespace: 'terminalNativeCompletionMode',
     category: SETTINGS_CATEGORIES.advanced,
     section: SETTINGS_CATEGORIES.advanced.sections.runtime,
-    control: 'switch',
-    path: 'advanced.runtime.remoteEnhancements.nativeCompletionEnabled',
-    commandActionId: 'settings.advanced.runtime.remoteEnhancements.nativeCompletionEnabled.toggle',
-    searchTerms: ['native completion', 'fish completion'],
+    control: 'select',
+    path: 'advanced.runtime.remoteEnhancements.nativeCompletionMode',
+    commandActionId: 'settings.advanced.runtime.remoteEnhancements.nativeCompletionMode.set',
+    searchTerms: ['native completion', 'fish completion', 'manual', 'automatic'],
+    options: [{ value: 'off' }, { value: 'manual' }, { value: 'automatic' }],
   },
   {
     key: 'remoteEnhancementsDebugEnabled',

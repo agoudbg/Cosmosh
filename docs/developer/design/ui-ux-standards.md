@@ -119,6 +119,8 @@ Terminal text selection interactions in SSH pages must follow these rules:
 
 ## 7.1 SSH Split-Pane And Command Timeline Standard
 
+- Fish Native Suggestions uses the existing registry-driven Select with Off, Query on Request and Query Automatically choices. New profiles default to Query on Request; existing opt-outs remain off. While menu integration is unavailable, helper text explicitly says the preference is saved for later use and distinguishes it from native Tab. Enhancement Status reports off as disabled and other modes as awaiting menu integration; a saved preference never implies a usable feature.
+
 - The SSH sidebar provides an Enhancement Status action independently of the debug setting. Its shared Dialog identifies the active pane, distinguishes permission preference from actual availability, uses plain-language reasons, and keeps its close button reachable at narrow or short viewports. Pane/tab changes close the dialog without remounting xterm. Opening it performs no remote read and displays no command/history text.
 
 - Explanatory history tooltips use the shared `TooltipContent interactive={false}` option so the portal's positioning wrapper cannot intercept adjacent row actions. Other tooltip surfaces retain their existing pointer behavior.

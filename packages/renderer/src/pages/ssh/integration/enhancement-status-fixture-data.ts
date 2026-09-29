@@ -7,7 +7,7 @@ export const createEnhancementStatusFixture = (): EnhancementStatusInput => ({
   connectionState: 'connected',
   serverEnabled: true,
   runtimeStatus: { type: 'remote-enhancement-runtime-status', state: 'active' },
-  settings: { ...DEFAULT_SETTINGS_VALUES, terminalNativeCompletionEnabled: true },
+  settings: { ...DEFAULT_SETTINGS_VALUES, terminalNativeCompletionMode: 'manual' },
   historyView: { status: 'ok', source: { id: 'source', shell: 'fish', namespace: 'fish' }, entries: [] },
   context: {
     sessionId: 'status-session',

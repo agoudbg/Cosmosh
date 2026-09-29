@@ -525,12 +525,24 @@ export const normalizeSettingsValuesStrict = (
   return { value: result as SettingsValues };
 };
 
+/**
+ * Reads stored or cached settings with current defaults and explicit legacy opt-outs preserved.
+ * @param value Untrusted settings object. @returns Valid current settings, without retired keys.
+ */
 export const normalizeSettingsValuesWithDefaults = (value: unknown): SettingsValues => {
   if (!isRecord(value)) {
     return createDefaultSettingsRecord() as SettingsValues;
   }
 
   const result = createDefaultSettingsRecord();
+
+  // A saved opt-out must survive the new manual default. An explicit malformed mode stays off;
+  // only a valid new mode can supersede the old switch. New writes use the strict current schema.
+  if ('terminalNativeCompletionMode' in value) {
+    result.terminalNativeCompletionMode = 'off';
+  } else if ('terminalNativeCompletionEnabled' in value) {
+    result.terminalNativeCompletionMode = value.terminalNativeCompletionEnabled === true ? 'manual' : 'off';
+  }
 
   for (const key of SETTINGS_KEYS) {
     if (!(key in value)) {

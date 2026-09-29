@@ -769,8 +769,8 @@
         "placeholder": "1",
         "title": "最小对比度"
       },
-      "terminalNativeCompletionEnabled": {
-        "description": "控制 Fish 原生建议的查询权限。此菜单暂未接入原生候选，原生 Tab 不受影响。补全脚本可能执行工具或访问网络。",
+      "terminalNativeCompletionMode": {
+        "description": "选择 Fish 建议的查询时机：关闭、主动进入建议列表时查询，或随输入自动查询。候选菜单暂未接入，此设置会保留供后续使用。原生 Tab 不受影响。补全脚本可能执行工具或访问网络。",
         "title": "Fish 原生建议"
       },
       "terminalRightClickAction": {
@@ -959,6 +959,11 @@
         "ctrl": "Ctrl",
         "off": "关闭",
         "shift": "Shift"
+      },
+      "terminalNativeCompletionMode": {
+        "automatic": "自动查询",
+        "manual": "主动查询",
+        "off": "关闭"
       },
       "terminalRightClickAction": {
         "contextMenu": "打开上下文菜单",
