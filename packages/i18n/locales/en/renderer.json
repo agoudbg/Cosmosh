@@ -521,6 +521,10 @@
         "description": "Allow Cosmosh to install remote enhancement helpers for SSH sessions. Turning this off may degrade or disable some terminal features.",
         "title": "Remote Enhancements"
       },
+      "remoteEnhancementsHistoryEnabled": {
+        "description": "Allow Cosmosh to read remote command history for history lists and suggestions. Turning this off stops reads and clears the copies in local memory. Shell history and the arrow keys remain available.",
+        "title": "Read Shell History"
+      },
       "remoteEnhancementsInputEnabled": {
         "description": "Allow compatible Shells to share the command being edited with Cosmosh for suggestions. It stays in local memory and is not logged, saved, or sent to a cloud service.",
         "title": "Read Current Command Input"
@@ -635,7 +639,7 @@
         "title": "Auto Complete Fuzzy Match"
       },
       "terminalAutoCompleteHistoryEnabled": {
-        "description": "Include command history suggestions in the auto-complete menu.",
+        "description": "Show command history in the auto-complete menu when history reading is allowed. This controls suggestions only; use Read Shell History to stop reading remote history.",
         "title": "Auto Complete History Suggestions"
       },
       "terminalAutoCompleteMaxItems": {
@@ -1486,13 +1490,34 @@
     "historyAddToTerminalMenu": "Add to terminal...",
     "historyCommandsEmpty": "No recent commands",
     "historyCommandsTitle": "Commands",
+    "historyCopyLabel": "Copy complete command",
     "historyDeleteLabel": "Delete command from history",
+    "historyMultilineHint": "This record contains line breaks or control characters. Copy it to review the complete command before pasting.",
+    "historyPartial": "Some history records could not be included.",
+    "historyRemoval": {
+      "pending": "Removing from the current Shell…",
+      "removed-from-reader": "No longer shown by the current Shell. The history file update could not be confirmed; the command may appear again.",
+      "stale": "History changed. Review the refreshed list before trying again.",
+      "unavailable": "Removal is currently unavailable. Try again at the Shell prompt.",
+      "unknown": "Removal could not be confirmed. The history list will refresh."
+    },
+    "historyRemovalCancel": "Cancel",
+    "historyRemovalConfirm": "Remove matches",
+    "historyRemovalDescription": "Fish removes all records with this exact command text from the selected history. Saving can also affect other terminals using the same history. Cosmosh can only confirm removal from the current Shell, not an update to the history file.",
+    "historyRemovalTitle": "Remove matching history commands?",
     "historyRunInCurrentTerminal": "Run in current terminal",
     "historyRunInTerminalMenu": "Run in...",
+    "historySource": "Fish history · {name}",
     "historySplitTerminalAndAdd": "Split terminal and add",
     "historySplitTerminalAndAddFailed": "Split terminal succeeded, but command insertion failed.",
     "historySplitTerminalAndRun": "Split terminal and run",
     "historySplitTerminalAndRunFailed": "Split terminal succeeded, but command execution failed.",
+    "historyState": {
+      "disabled": "History reading is turned off in Settings.",
+      "private": "This Shell is using private history.",
+      "unavailable": "History is currently unavailable. Return to the Shell prompt to retry.",
+      "unsupported": "Native history reading is unavailable for this Shell configuration."
+    },
     "historyTerminalLabel": "Terminal {index}",
     "hostFingerprintDialogAlgorithm": "Algorithm",
     "hostFingerprintDialogCancel": "Cancel",

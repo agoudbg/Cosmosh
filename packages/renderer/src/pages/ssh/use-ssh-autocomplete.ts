@@ -132,10 +132,20 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
   const interactionModeRef = React.useRef<AutocompleteInteractionMode>('passive');
   const [autocompleteFocused, setAutocompleteFocused] = React.useState(false);
   const [autocompleteAnchor, setAutocompleteAnchor] = React.useState<TerminalAutocompleteAnchor | null>(null);
-  const responseEligibilityRef = React.useRef({ isActive, terminalAutoCompleteEnabled, connectionState });
+  const responseEligibilityRef = React.useRef({
+    isActive,
+    terminalAutoCompleteEnabled,
+    terminalAutoCompleteHistoryEnabled,
+    connectionState,
+  });
   React.useLayoutEffect(() => {
-    responseEligibilityRef.current = { isActive, terminalAutoCompleteEnabled, connectionState };
-  }, [isActive, terminalAutoCompleteEnabled, connectionState]);
+    responseEligibilityRef.current = {
+      isActive,
+      terminalAutoCompleteEnabled,
+      terminalAutoCompleteHistoryEnabled,
+      connectionState,
+    };
+  }, [isActive, terminalAutoCompleteEnabled, terminalAutoCompleteHistoryEnabled, connectionState]);
 
   /**
    * Updates keyboard ownership synchronously, including before React renders.
@@ -209,6 +219,17 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
     latestAutocompleteRequestIdRef.current = '';
     latestAutocompleteRequestKeyRef.current = '';
   }, [clearScheduledAutocompleteRequest, setInteractionMode]);
+
+  React.useLayoutEffect(() => {
+    // Invalidate already displayed and in-flight candidates before a changed source permission can paint.
+    closeAutocomplete();
+  }, [
+    closeAutocomplete,
+    terminalAutoCompleteHistoryEnabled,
+    terminalAutoCompleteBuiltInCommandsEnabled,
+    terminalAutoCompletePathEnabled,
+    terminalAutoCompleteFuzzyMatch,
+  ]);
 
   React.useEffect(() => {
     /** Dismisses ownership when focus leaves this terminal and its suggestion surface. */
@@ -808,7 +829,10 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
         return;
       }
 
-      if (payload.items.length === 0) {
+      const items = payload.items.filter(
+        (item) => item.source !== 'history' || eligibility.terminalAutoCompleteHistoryEnabled,
+      );
+      if (items.length === 0) {
         closeAutocomplete();
         return;
       }
@@ -822,7 +846,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
         return;
       }
 
-      setAutocompleteItems(payload.items);
+      setAutocompleteItems(items);
       if (interactionModeRef.current === 'requested') setInteractionMode('focused');
       autocompleteMenuRef.current?.reset();
       setAutocompleteAnchor(anchor);

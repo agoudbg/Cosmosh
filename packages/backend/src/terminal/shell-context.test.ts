@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { DEFAULT_SETTINGS_VALUES, type RemoteShellEventMessage } from '@cosmosh/api-contract';
+import {
+  DEFAULT_SETTINGS_VALUES,
+  normalizeSettingsValuesWithDefaults,
+  type RemoteShellEventMessage,
+} from '@cosmosh/api-contract';
 
 import { isFishInputBoundaryPending } from './editor-protocol.js';
 import {
@@ -38,6 +42,23 @@ const readyContext = () => {
   context = applyShellContextEvent(context, event({ event: 'cwd', cwd: '/fixture', promptGeneration: 1 }));
   return applyShellContextEvent(context, event({ event: 'prompt-ready', promptGeneration: 1 }));
 };
+
+test('history read permission is independent of suggestion visibility and preserves old-profile defaults', () => {
+  const upgraded = normalizeSettingsValuesWithDefaults({ terminalAutoCompleteHistoryEnabled: false });
+  assert.equal(upgraded.remoteEnhancementsHistoryEnabled, true);
+  assert.equal(upgraded.terminalAutoCompleteHistoryEnabled, false);
+  for (const read of [true, false]) {
+    for (const show of [true, false]) {
+      const settings = normalizeSettingsValuesWithDefaults({
+        remoteEnhancementsHistoryEnabled: read,
+        terminalAutoCompleteHistoryEnabled: show,
+      });
+      assert.equal(resolveShellPermissions(settings, true).history, read);
+      assert.equal(resolveShellPermissions(settings, false).history, false);
+      assert.equal(resolveShellPermissions({ ...settings, remoteEnhancementsEnabled: false }, true).history, false);
+    }
+  }
+});
 
 test('nested Shell events cannot replace identity or directory, and only a newer parent prompt resumes', () => {
   const ready = readyContext();

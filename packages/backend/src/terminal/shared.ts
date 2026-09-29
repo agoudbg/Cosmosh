@@ -1,7 +1,7 @@
 import type { TerminalClientMessage } from '@cosmosh/api-contract';
 import type { RawData } from 'ws';
 
-import { normalizeEditorBuffer } from './editor-protocol.js';
+import { normalizeEditorBuffer, normalizeNativeHistoryObservation } from './editor-protocol.js';
 
 /**
  * Shared telemetry refresh interval for terminal-like sessions.
@@ -88,6 +88,19 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
         type: 'history-delete',
         command: parsed.command,
       };
+    }
+
+    if (parsed.type === 'shell-history-remove') {
+      if (
+        typeof parsed.requestId !== 'string' ||
+        !/^[a-f0-9-]{36}$/u.test(parsed.requestId) ||
+        typeof parsed.sourceId !== 'string' ||
+        !/^[a-f0-9-]{36}$/u.test(parsed.sourceId) ||
+        typeof parsed.command !== 'string' ||
+        !normalizeNativeHistoryObservation({ status: 'ok', namespace: 'fish', entries: [parsed.command] })
+      )
+        return null;
+      return { type: parsed.type, requestId: parsed.requestId, sourceId: parsed.sourceId, command: parsed.command };
     }
 
     if (

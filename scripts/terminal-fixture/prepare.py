@@ -29,9 +29,11 @@ def prepare_account(shell: str) -> None:
     ]:
         (fixture_dir / name).write_text("terminal fixture\n", encoding="utf-8")
     (fixture_dir / "directory with spaces").mkdir(exist_ok=True)
-    (fixture_dir / "linked directory").symlink_to(
-        "directory with spaces", target_is_directory=True
-    )
+    directory_link = fixture_dir / "linked directory"
+    if not directory_link.is_symlink():
+        directory_link.symlink_to("directory with spaces", target_is_directory=True)
+    elif directory_link.readlink() != Path("directory with spaces"):
+        raise ValueError("Terminal fixture directory link has an unexpected target")
     large_dir = fixture_dir / "large"
     large_dir.mkdir(exist_ok=True)
     for index in range(1000):

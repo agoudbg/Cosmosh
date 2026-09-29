@@ -1,4 +1,9 @@
-import type { ShellEditorBuffer, ShellEditorRequest, ShellEditorSnapshot } from '@cosmosh/api-contract';
+import type {
+  ShellEditorBuffer,
+  ShellEditorRequest,
+  ShellEditorSnapshot,
+  ShellNativeHistory,
+} from '@cosmosh/api-contract';
 
 /** Raw UTF-8 input bound shared with the Go helper. */
 export const EDITOR_INPUT_MAX_BYTES = 8192;
@@ -127,6 +132,44 @@ const validPath = (value: unknown): value is string =>
   Buffer.byteLength(value, 'utf8') <= 4096;
 
 /**
+ * Validates native records without trimming whitespace, splitting multiline records or changing their order.
+ * @param value Untrusted original-Shell response. @returns A bounded copy, or null without exposing input.
+ */
+export const normalizeNativeHistoryObservation = (value: unknown): ShellNativeHistory | null => {
+  if (!isEditorRecord(value) || !Array.isArray(value.entries) || value.entries.length > 200) return null;
+  if (value.status === 'private')
+    return value.namespace === null && value.entries.length === 0
+      ? { status: 'private', namespace: null, entries: [] }
+      : null;
+  if (
+    (value.status !== 'ok' && value.status !== 'partial') ||
+    typeof value.namespace !== 'string' ||
+    value.namespace.length === 0 ||
+    value.namespace.includes('\u0000') ||
+    /[\uD800-\uDFFF]/u.test(value.namespace) ||
+    Buffer.byteLength(value.namespace, 'utf8') > 4096
+  )
+    return null;
+  const entries: string[] = [];
+  let total = 0;
+  for (const entry of value.entries) {
+    if (
+      typeof entry !== 'string' ||
+      entry.length === 0 ||
+      entry.startsWith(' ') ||
+      entry.includes('\u0000') ||
+      /[\uD800-\uDFFF]/u.test(entry)
+    )
+      return null;
+    const bytes = Buffer.byteLength(entry, 'utf8');
+    total += bytes;
+    if (bytes > EDITOR_INPUT_MAX_BYTES || total > 64 * 1024) return null;
+    entries.push(entry);
+  }
+  return { status: value.status, namespace: value.namespace, entries };
+};
+
+/**
  * Enforces the request's privacy boundary on each helper observation.
  * @param value Untrusted response snapshot. @param request Requested fields and prompt generation.
  * @returns A normalized snapshot or null, never an error containing terminal text.
@@ -139,13 +182,20 @@ export const normalizeEditorSnapshot = (value: unknown, request: ShellEditorRequ
   )
     return null;
   const result: ShellEditorSnapshot = { promptGeneration: request.promptGeneration, editorMode: value.editorMode };
-  if (request.operation === 'context') {
+  const includeHistory = request.operation === 'history' || request.operation === 'history-delete';
+  if (request.operation === 'context' || includeHistory) {
     if ('buffer' in value) return null;
   } else {
     const buffer = normalizeEditorBuffer(value.buffer);
     if (!buffer) return null;
     result.buffer = buffer;
   }
+  if (includeHistory) {
+    if (request.target.shell !== 'fish' || request.includeDirectory) return null;
+    const history = normalizeNativeHistoryObservation(value.history);
+    if (!history) return null;
+    result.history = history;
+  } else if ('history' in value) return null;
   if (request.includeDirectory) {
     const directory = value.directory;
     if (

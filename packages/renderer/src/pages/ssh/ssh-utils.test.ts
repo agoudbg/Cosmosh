@@ -7,6 +7,7 @@ import type { Terminal } from '@xterm/xterm';
 
 import {
   calibrateAutocompleteCommandPrefix,
+  canInsertHistoryCommand,
   containsTerminalControlContent,
   createTerminalPasteWarningRequest,
   flattenCommandForTerminalInput,
@@ -20,6 +21,13 @@ import {
 } from './ssh-utils';
 
 const require = createRequire(import.meta.url);
+
+test('history insertion accepts only unchanged single-line text and never terminal control keys', () => {
+  for (const command of ['printf "hello"  ', '中文😀', '--help', "echo '; $value'", '  echo spaced  '])
+    assert.equal(canInsertHistoryCommand(command), true, command);
+  for (const command of ['', '  ', 'first\nsecond', 'echo\r', '\tfile', '\x1b[31m', 'echo\x7f', 'echo\u0085'])
+    assert.equal(canInsertHistoryCommand(command), false, JSON.stringify(command));
+});
 const { SerializeAddon: XtermSerializeAddon } =
   require('@xterm/addon-serialize') as typeof import('@xterm/addon-serialize');
 const { Terminal: XtermTerminal } = require('@xterm/xterm') as typeof import('@xterm/xterm');

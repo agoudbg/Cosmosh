@@ -9,6 +9,8 @@ import { EDITOR_MESSAGE_MAX_BYTES, isEditorRecord, normalizeEditorSnapshot } fro
 export type ShellEditorResult =
   | { status: 'ok'; snapshot: ShellEditorSnapshot }
   | { status: 'applied' }
+  /** Original Fish reader no longer returns the exact text; saving to its history file is unconfirmed. */
+  | { status: 'history-removed-from-reader' }
   | { status: 'stale' | 'unavailable' | 'unsupported' | 'unknown' };
 
 /** One transport operation's cancellation, permission and exact context checks. */
@@ -32,6 +34,7 @@ export const executeShellEditorRequest = (
   options: ShellEditorExecOptions,
 ): Promise<ShellEditorResult> =>
   new Promise((resolve) => {
+    const mutating = request.operation === 'apply' || request.operation === 'history-delete';
     let channel: ClientChannel | null = null;
     let channelClosed = false;
     let settled = false;
@@ -159,7 +162,7 @@ export const executeShellEditorRequest = (
                 abort();
                 return;
               }
-            } else if (message.phase === 'prepared' && ready && !authorized && request.operation === 'apply') {
+            } else if (message.phase === 'prepared' && ready && !authorized && mutating) {
               const snapshot = normalizeEditorSnapshot(message.snapshot, request);
               if (!snapshot || JSON.stringify(snapshot) !== JSON.stringify(request.expected) || !options.isCurrent()) {
                 finish({ status: 'stale' });
@@ -173,10 +176,22 @@ export const executeShellEditorRequest = (
                 return;
               }
             } else if (message.phase === 'done') {
-              if (message.status === 'ok' && ready && request.operation !== 'apply' && options.isCurrent()) {
+              if (message.status === 'ok' && ready && !mutating && options.isCurrent()) {
                 const snapshot = normalizeEditorSnapshot(message.snapshot, request);
                 finish(snapshot ? { status: 'ok', snapshot } : { status: 'unavailable' });
-              } else if (message.status === 'applied' && authorized && message.applied === true) {
+              } else if (
+                message.status === 'history-removed-from-reader' &&
+                request.operation === 'history-delete' &&
+                authorized &&
+                message.applied === true
+              ) {
+                finish({ status: 'history-removed-from-reader' });
+              } else if (
+                message.status === 'applied' &&
+                request.operation === 'apply' &&
+                authorized &&
+                message.applied === true
+              ) {
                 finish({ status: 'applied' });
               } else if (authorized) {
                 finish({ status: 'unknown' });

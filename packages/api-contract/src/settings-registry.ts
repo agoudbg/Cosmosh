@@ -93,6 +93,7 @@ export interface SettingsValues {
   remoteEnhancementsEnabled: boolean;
   remoteEnhancementsCwdEnabled: boolean;
   remoteEnhancementsInputEnabled: boolean;
+  remoteEnhancementsHistoryEnabled: boolean;
   terminalNativeCompletionEnabled: boolean;
   remoteEnhancementsDebugEnabled: boolean;
   devToolsEnabled: boolean;
@@ -1058,6 +1059,19 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     path: 'advanced.runtime.remoteEnhancements.inputEnabled',
     commandActionId: 'settings.advanced.runtime.remoteEnhancements.inputEnabled.toggle',
     searchTerms: ['current command input', 'input snapshot', 'terminal privacy'],
+  },
+  {
+    key: 'remoteEnhancementsHistoryEnabled',
+    valueType: 'boolean',
+    defaultValue: true,
+    nameI18nKey: 'settings.items.remoteEnhancementsHistoryEnabled.title',
+    descriptionI18nKey: 'settings.items.remoteEnhancementsHistoryEnabled.description',
+    category: SETTINGS_CATEGORIES.advanced,
+    section: SETTINGS_CATEGORIES.advanced.sections.runtime,
+    control: 'switch',
+    path: 'advanced.runtime.remoteEnhancements.historyEnabled',
+    commandActionId: 'settings.advanced.runtime.remoteEnhancements.historyEnabled.toggle',
+    searchTerms: ['shell history', 'history permission', 'terminal privacy'],
   },
   {
     key: 'terminalNativeCompletionEnabled',

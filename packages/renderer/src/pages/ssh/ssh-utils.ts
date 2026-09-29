@@ -328,6 +328,14 @@ export const flattenCommandForTerminalInput = (command: string): string => {
 };
 
 /**
+ * Identifies history records that can be inserted as literal terminal text without control keys.
+ * @param command Exact native history record, including significant spaces.
+ * @returns Whether the existing single-line insertion action can preserve this record.
+ */
+export const canInsertHistoryCommand = (command: string): boolean =>
+  command.trim().length > 0 && !/\p{Cc}/u.test(command);
+
+/**
  * Formats bytes in a compact terminal-style representation.
  *
  * @param value Input bytes value.

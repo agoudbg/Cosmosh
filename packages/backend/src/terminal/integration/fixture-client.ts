@@ -206,15 +206,31 @@ export class FixtureTerminal {
 export async function openFixtureTerminal(
   shell: FixtureShell,
   executable?: string,
-  options: { disableFishAutosuggestions?: boolean; initialCommand?: string } = {},
+  options: {
+    disableFishAutosuggestions?: boolean;
+    privateFishHistory?: boolean;
+    initialCommand?: string;
+    fishHistoryDataDirectory?: string;
+  } = {},
 ): Promise<FixtureTerminal> {
-  if ((options.disableFishAutosuggestions || options.initialCommand) && (!executable || shell !== 'fish'))
+  if (
+    (options.disableFishAutosuggestions ||
+      options.privateFishHistory ||
+      options.initialCommand ||
+      options.fishHistoryDataDirectory) &&
+    (!executable || shell !== 'fish')
+  )
     throw new Error('Startup fixture configuration requires a versioned Fish runtime.');
   if (
     executable !== undefined &&
     (shell !== 'fish' || !/^\/opt\/cosmosh-fixture\/fish-[0-9.]+\/runtime\/bin\/fish$/u.test(executable))
   )
     throw new Error('Unsupported fixture Shell version path.');
+  if (
+    options.fishHistoryDataDirectory !== undefined &&
+    !/^\/tmp\/cosmosh-fixture-history-[a-f0-9-]{36}$/u.test(options.fishHistoryDataDirectory)
+  )
+    throw new Error('History data directory must belong to a disposable fixture.');
   const connection = readFixtureConnection();
   const client = new Client();
   return await new Promise<FixtureTerminal>((resolve, reject) => {
@@ -253,8 +269,12 @@ export async function openFixtureTerminal(
           .filter(Boolean)
           .join('; ');
         const initializer = commands ? " --init-command '" + commands.replaceAll("'", "'\\''") + "'" : '';
+        // Fish caches its data directory during startup, so set it before launching that process.
+        const environment = options.fishHistoryDataDirectory
+          ? "env XDG_DATA_HOME='" + options.fishHistoryDataDirectory + "' "
+          : '';
         client.exec(
-          executable + ' --interactive' + initializer,
+          environment + executable + ' --interactive' + (options.privateFishHistory ? ' --private' : '') + initializer,
           {
             pty: { term: 'xterm-256color', cols: 120, rows: 32 },
             env: { LANG: 'C.UTF-8', LC_CTYPE: 'C.UTF-8' },

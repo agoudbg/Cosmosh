@@ -521,6 +521,10 @@
         "description": "允许 Cosmosh 为 SSH 会话安装远端增强帮助程序来增强终端功能。如果关闭远端增强，部分终端功能可能降级或无法使用。",
         "title": "远端增强"
       },
+      "remoteEnhancementsHistoryEnabled": {
+        "description": "允许 Cosmosh 读取远端命令历史，供历史列表和建议使用。关闭后停止读取并清空本机内存中的历史副本，不影响 Shell 自身的历史和上下键。",
+        "title": "读取 Shell 历史"
+      },
       "remoteEnhancementsInputEnabled": {
         "description": "允许受支持的 Shell 将正在编辑的命令提供给 Cosmosh 生成建议。内容只保留在本机内存中，不记入日志、不保存，也不发送到云端。",
         "title": "读取当前命令输入"
@@ -635,7 +639,7 @@
         "title": "自动补全模糊匹配"
       },
       "terminalAutoCompleteHistoryEnabled": {
-        "description": "在自动补全面板中包含历史命令建议。",
+        "description": "允许读取历史时，在自动补全面板中显示历史命令。此开关只控制建议展示；如需停止读取远端历史，请关闭“读取 Shell 历史”。",
         "title": "自动补全历史建议"
       },
       "terminalAutoCompleteMaxItems": {
@@ -1486,13 +1490,34 @@
     "historyAddToTerminalMenu": "添加到终端...",
     "historyCommandsEmpty": "暂无最近命令",
     "historyCommandsTitle": "命令",
+    "historyCopyLabel": "复制完整命令",
     "historyDeleteLabel": "从历史记录中删除命令",
+    "historyMultilineHint": "这条记录含有换行或控制字符。请先复制并检查完整命令，再粘贴使用。",
+    "historyPartial": "部分历史记录未能显示。",
+    "historyRemoval": {
+      "pending": "正在从当前 Shell 移除…",
+      "removed-from-reader": "当前 Shell 已不再显示该命令。无法确认历史文件已更新，该命令可能再次出现。",
+      "stale": "历史来源或记录已变化，请查看刷新后的列表再重试。",
+      "unavailable": "暂时无法移除，请返回 Shell 提示符后重试。",
+      "unknown": "无法确认移除结果，正在刷新历史列表。"
+    },
+    "historyRemovalCancel": "取消",
+    "historyRemovalConfirm": "移除匹配记录",
+    "historyRemovalDescription": "Fish 会从所选历史中移除所有文本完全相同的命令。保存时也可能影响使用同一份历史的其他终端。Cosmosh 只能确认当前 Shell 不再显示这些命令，无法确认历史文件已更新。",
+    "historyRemovalTitle": "移除匹配的历史命令？",
     "historyRunInCurrentTerminal": "在当前终端中运行",
     "historyRunInTerminalMenu": "在...运行",
+    "historySource": "Fish 历史 · {name}",
     "historySplitTerminalAndAdd": "拆分终端并添加",
     "historySplitTerminalAndAddFailed": "拆分终端成功，但命令插入失败。",
     "historySplitTerminalAndRun": "拆分终端并运行",
     "historySplitTerminalAndRunFailed": "拆分终端成功，但命令执行失败。",
+    "historyState": {
+      "disabled": "已在设置中关闭历史读取。",
+      "private": "当前 Shell 正在使用私密历史。",
+      "unavailable": "历史暂时不可用。返回 Shell 提示符后将重试。",
+      "unsupported": "当前 Shell 配置不支持原生历史读取。"
+    },
     "historyTerminalLabel": "终端 {index}",
     "hostFingerprintDialogAlgorithm": "算法",
     "hostFingerprintDialogCancel": "取消",

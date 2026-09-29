@@ -119,6 +119,10 @@ Terminal text selection interactions in SSH pages must follow these rules:
 
 ## 7.1 SSH Split-Pane And Command Timeline Standard
 
+- Explanatory history tooltips use the shared `TooltipContent interactive={false}` option so the portal's positioning wrapper cannot intercept adjacent row actions. Other tooltip surfaces retain their existing pointer behavior.
+
+- Native history lists show their current source and a specific reason when empty or unavailable. Source changes, permission revocation and pane switches invalidate pending removal confirmations. Fish removal confirmation explains exact-text matches, shared history and the unconfirmed history-file update; result copy reports only what the original Shell confirmed. Records containing line breaks or terminal control characters offer complete copying with insert/run disabled. Never flatten native history text into a different command.
+
 - SSH terminal split/close actions are exposed only through the terminal context menu.
 - Split progression is intentionally constrained to a fixed dense layout sequence (1 → 2 → 3 → 4 panes) to keep power-user scanning rhythm predictable.
 - Pane separators must use tokenized divider colors with lighter contrast than card boundaries.

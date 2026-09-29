@@ -19,6 +19,8 @@ Available Zsh editors require `notification: { fd, inode }`; available Fish edit
 
 ## 2. Channel Dictionary
 
+The private helper request supports Fish `history` and `history-delete` using the existing `editor-request` process. Both Backend-only operations require independent history permission and `includeDirectory: false`; observations contain prompt/mode metadata and `ShellNativeHistory`, never current input or CWD. Private mode contains no namespace or records. Deletion requires `expected` with one exact native record and namespace, no `replacement`, and a second authorization after exact native membership is confirmed. Its `history-removed-from-reader` outcome confirms only current-reader absence; file persistence is always unconfirmed. It cannot substitute for an input edit's `applied` outcome. Fish advertises `history-read`; Backend invokes these operations from native history synchronization and source-bound removal. No Electron IPC channel is added.
+
 `ShellPathQueryRequest`/`ShellPathQueryResult` describe private stdin/stdout JSON for the installed helper's fixed `path-query` command, not a renderer-controlled Shell command or new Electron IPC channel. Requests contain a literal directory/fragment and bounded matching options; results contain complete filename records and stable source statuses. The legacy SSH completion message cannot query or insert remote paths. Snapshot-only path drafts wait for the candidate-ID menu migration.
 
 Editor `cursor` fields and private completion ranges count Unicode codepoints, not UTF-16 code units. The shared `ShellCompletionCandidate` is display-only: opaque ID, label, detail, source and kind. Ranges and complete replacement buffers remain in Backend's expiring session snapshot. This type prepares the later menu migration; it adds no message or Electron IPC channel by itself, and the existing editor messages above remain until that migration.
@@ -180,14 +182,17 @@ SFTP batch payloads are generated from OpenAPI and used unchanged by renderer, m
 
 ### 3.4 Terminal WebSocket Contract (Renderer ↔ Backend)
 
-Although terminal stream messages are not Electron IPC channels, they are part of the same cross-process contract surface. `terminal-protocol.ts` is the source of truth, and the current remote helper protocol version is 2.
+Although terminal stream messages are not Electron IPC channels, they are part of the same cross-process contract surface. `terminal-protocol.ts` is the source of truth, and the current remote helper protocol version is 3.
 
 - Client to server (`/ws/ssh/{sessionId}` and `/ws/local-terminal/{sessionId}`):
-  - `input`, `resize`, `ping`, `close`, `history-delete`
+  - `input`, `resize`, `ping`, `close`; `history-delete` remains local-terminal-only
+  - SSH `shell-history-remove { requestId, sourceId, command }`: both IDs are UUIDs and command is one exact bounded native record. Backend requires the current source and cached membership; client-provided namespace/path selectors are never accepted.
   - `completion-request` with `requestId`, `linePrefix`, `cursorIndex`, optional `workingDirectoryHint`, optional `limit`, optional `fuzzyMatch`, optional source filters (`includeHistory`, `includeBuiltInCommands`, `includePathSuggestions`), and `trigger` (`typing` or `manual`)
   - `credential-fill` with a nonempty opaque `token` of at most 128 characters; no credential payload
 - Server to client:
-  - `ready`, `output`, `telemetry`, `history`, `pong`, `error`, `exit`
+  - `ready`, `output`, `telemetry`, local-only `history`, `pong`, `error`, `exit`
+  - SSH `shell-history { view }`: `ok`/`partial` includes `{ id, shell: 'fish', namespace }` and exact newest-first entries; `disabled`/`unsupported`/`unavailable`/`private` contains `source: null` and no entries.
+  - `shell-history-remove-result { requestId, sourceId, status }`: `removed-from-reader`, `stale`, `unavailable` or `unknown`. A reader-only success never confirms the native history file update.
   - `completion-response` with `requestId`, `replacePrefixLength`, and ranked completion `items`
   - `credential-fill-offer` with `{ token, expiresAt }` or `null`, and `credential-fill-result` with the token and `filled` or `rejected` status (`stale`, `expired`, `disabled`, `unavailable`, `failed`); no secret is returned
   - `bootstrap-status` for side-channel Remote Bootstrap install/probe status

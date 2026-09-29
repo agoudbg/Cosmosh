@@ -1,6 +1,8 @@
+import type { ShellHistoryView } from '@cosmosh/api-contract';
 import classNames from 'classnames';
 import {
   ArrowUpDown,
+  Copy,
   Cpu,
   MemoryStick,
   Play,
@@ -14,6 +16,16 @@ import {
 } from 'lucide-react';
 import React from 'react';
 
+import {
+  AlertDialog,
+  AlertDialogActionButton,
+  AlertDialogCancelButton,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../components/ui/alert-dialog';
 import { Button } from '../../components/ui/button';
 import {
   ContextMenu,
@@ -28,11 +40,14 @@ import {
 import { Input } from '../../components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { t } from '../../lib/i18n';
+import type { SshPaneState } from './ssh-pane-state';
 import { MAX_TERMINAL_PANES, type SshTelemetryState } from './ssh-types';
-import { formatCpuPercent, formatMemoryUsage, formatTrafficRate } from './ssh-utils';
+import { canInsertHistoryCommand, formatCpuPercent, formatMemoryUsage, formatTrafficRate } from './ssh-utils';
 
 type SSHSidebarProps = {
   telemetryState: SshTelemetryState;
+  historyView: ShellHistoryView | null;
+  historyRemoval: SshPaneState['historyRemoval'];
   terminalPaneIds: string[];
   activePaneId: string;
   canSplitTerminal: boolean;
@@ -42,7 +57,8 @@ type SSHSidebarProps = {
   onRunRecentCommand: (command: string) => void;
   onRunRecentCommandToPane: (command: string, paneId: string) => void;
   onSplitTerminalAndRunRecentCommand: (command: string) => void;
-  onDeleteRecentCommand: (command: string) => void;
+  onDeleteRecentCommand: (command: string, sourceId: string | null) => void;
+  onCopyRecentCommand: (command: string) => void;
 };
 
 /**
@@ -54,6 +70,9 @@ type SSHSidebarProps = {
  *
  * @param props Sidebar telemetry and command handlers.
  * @param props.telemetryState Current SSH telemetry snapshot.
+ * @param props.historyView Native history view; null only for the local terminal's legacy list.
+ * @param props.historyRemoval Latest action bound to the current pane and source.
+ * @param props.onCopyRecentCommand Copies the complete unchanged record, including newlines.
  * @param props.terminalPaneIds Ordered terminal pane ids.
  * @param props.activePaneId Current active terminal pane id.
  * @param props.canSplitTerminal Whether a new split terminal can be created.
@@ -68,6 +87,8 @@ type SSHSidebarProps = {
  */
 export const SSHSidebar: React.FC<SSHSidebarProps> = ({
   telemetryState,
+  historyView,
+  historyRemoval,
   terminalPaneIds,
   activePaneId,
   canSplitTerminal,
@@ -78,7 +99,30 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
   onRunRecentCommandToPane,
   onSplitTerminalAndRunRecentCommand,
   onDeleteRecentCommand,
+  onCopyRecentCommand,
 }) => {
+  const [removalSelection, setRemovalSelection] = React.useState<{
+    command: string;
+    sourceId: string;
+    paneId: string;
+  } | null>(null);
+  const sourceId = historyView?.source?.id ?? null;
+  const commands = historyView ? historyView.entries : [...telemetryState.recentCommands].reverse();
+  const removalPending = historyRemoval?.status === 'pending';
+  React.useLayoutEffect(() => {
+    setRemovalSelection(null);
+  }, [sourceId, activePaneId]);
+  /**
+   * Explains native removal's shared-history scope before sending an exact source-bound request.
+   * @param command Complete selected record. @returns Nothing.
+   */
+  const requestRemoval = (command: string): void => {
+    if (removalPending) return;
+    if (sourceId) setRemovalSelection({ command, sourceId, paneId: activePaneId });
+    else if (!historyView) onDeleteRecentCommand(command, null);
+  };
+  const emptyMessage =
+    historyView && !historyView.source ? t(`ssh.historyState.${historyView.status}`) : t('ssh.historyCommandsEmpty');
   const sidebarCardStyle = 'bg-ssh-card-bg w-full flex-1 rounded-[18px] p-1';
   const cardHiddenArea =
     'overflow-hidden hof:my-[-38px] hof:py-[42px] hof:z-20 hof:shadow-lg transition-all duration-300 ease-in-out';
@@ -131,34 +175,58 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
           </div>
         </div>
 
-        <div className="flex h-[178px] flex-col overflow-auto">
-          {telemetryState.recentCommands.length === 0 ? (
-            <div className="text-muted-text flex h-full items-center justify-center text-xs">
-              {t('ssh.historyCommandsEmpty')}
+        {historyView?.source ? (
+          <div className="text-muted-text break-words px-2 py-1 text-xs">
+            {t('ssh.historySource', { name: historyView.source.namespace })}
+          </div>
+        ) : null}
+        {historyView?.status === 'partial' ? (
+          <p className="text-muted-text px-2 py-1 text-xs">{t('ssh.historyPartial')}</p>
+        ) : null}
+        <div
+          data-terminal-history
+          className="flex h-[178px] flex-col overflow-auto"
+        >
+          {commands.length === 0 ? (
+            <div
+              className="text-muted-text flex h-full items-center justify-center px-2 text-xs"
+              role="status"
+            >
+              {emptyMessage}
             </div>
           ) : (
             <TooltipProvider delayDuration={180}>
-              {[...telemetryState.recentCommands].reverse().map((command, index) => {
+              {commands.map((command, index) => {
+                const canInsert = canInsertHistoryCommand(command);
                 const commandPreview =
                   command.length > commandPreviewMaxLength
                     ? `${command.slice(0, commandPreviewMaxLength)}...`
                     : command;
 
                 return (
-                  <ContextMenu key={`${command}-${index}`}>
+                  <ContextMenu key={`${sourceId}-${command}-${index}`}>
                     <ContextMenuTrigger asChild>
                       <div className="group relative">
-                        <Tooltip>
+                        <Tooltip disableHoverableContent>
                           <TooltipTrigger asChild>
                             <Button
-                              className={classNames(commandButtonStyle, 'min-w-0 flex-1')}
-                              onClick={() => onInsertRecentCommand(command)}
+                              className={classNames(
+                                commandButtonStyle,
+                                'aria-disabled:text-muted-text min-w-0 flex-1 aria-disabled:cursor-default',
+                              )}
+                              aria-disabled={!canInsert}
+                              onClick={() => {
+                                if (canInsert) onInsertRecentCommand(command);
+                              }}
                             >
                               <span className="block w-full truncate pr-8">{commandPreview}</span>
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent className="max-w-[420px] whitespace-pre-wrap break-all">
-                            {commandPreview}
+                          <TooltipContent
+                            interactive={false}
+                            className="max-w-[420px] whitespace-pre-wrap break-all"
+                          >
+                            {canInsert ? commandPreview : t('ssh.historyMultilineHint')}
                           </TooltipContent>
                         </Tooltip>
 
@@ -166,11 +234,12 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
                           <TooltipTrigger asChild>
                             <button
                               aria-label={t('ssh.historyDeleteLabel')}
+                              disabled={removalPending}
                               className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
                               onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
-                                onDeleteRecentCommand(command);
+                                requestRemoval(command);
                               }}
                             >
                               <X size={14} />
@@ -183,6 +252,7 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
                     <ContextMenuContent>
                       <ContextMenuItem
                         icon={Plus}
+                        disabled={!canInsert}
                         onSelect={() => onInsertRecentCommand(command)}
                       >
                         {t('ssh.historyAddToCurrentTerminal')}
@@ -190,7 +260,10 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
 
                       {shouldShowTargetTerminalSubmenu ? (
                         <ContextMenuSub>
-                          <ContextMenuSubTrigger icon={Terminal}>
+                          <ContextMenuSubTrigger
+                            icon={Terminal}
+                            disabled={!canInsert}
+                          >
                             {t('ssh.historyAddToTerminalMenu')}
                           </ContextMenuSubTrigger>
                           <ContextMenuSubContent>
@@ -218,6 +291,7 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
                       ) : shouldShowSplitAndAdd ? (
                         <ContextMenuItem
                           icon={SplitSquareHorizontal}
+                          disabled={!canInsert}
                           onSelect={() => onSplitTerminalAndInsertRecentCommand(command)}
                         >
                           {t('ssh.historySplitTerminalAndAdd')}
@@ -227,6 +301,7 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
                       <ContextMenuSeparator />
                       <ContextMenuItem
                         icon={Play}
+                        disabled={!canInsert}
                         onSelect={() => onRunRecentCommand(command)}
                       >
                         {t('ssh.historyRunInCurrentTerminal')}
@@ -234,7 +309,12 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
 
                       {shouldShowTargetTerminalSubmenu ? (
                         <ContextMenuSub>
-                          <ContextMenuSubTrigger icon={Play}>{t('ssh.historyRunInTerminalMenu')}</ContextMenuSubTrigger>
+                          <ContextMenuSubTrigger
+                            icon={Play}
+                            disabled={!canInsert}
+                          >
+                            {t('ssh.historyRunInTerminalMenu')}
+                          </ContextMenuSubTrigger>
                           <ContextMenuSubContent>
                             {terminalPaneIds.map((paneId, paneIndex) => (
                               <ContextMenuItem
@@ -260,6 +340,7 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
                       ) : shouldShowSplitAndAdd ? (
                         <ContextMenuItem
                           icon={SplitSquareHorizontal}
+                          disabled={!canInsert}
                           onSelect={() => onSplitTerminalAndRunRecentCommand(command)}
                         >
                           {t('ssh.historySplitTerminalAndRun')}
@@ -268,8 +349,15 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
 
                       <ContextMenuSeparator />
                       <ContextMenuItem
+                        icon={Copy}
+                        onSelect={() => onCopyRecentCommand(command)}
+                      >
+                        {t('ssh.historyCopyLabel')}
+                      </ContextMenuItem>
+                      <ContextMenuItem
                         icon={X}
-                        onSelect={() => onDeleteRecentCommand(command)}
+                        disabled={removalPending}
+                        onSelect={() => requestRemoval(command)}
                       >
                         {t('ssh.historyDeleteLabel')}
                       </ContextMenuItem>
@@ -280,7 +368,48 @@ export const SSHSidebar: React.FC<SSHSidebarProps> = ({
             </TooltipProvider>
           )}
         </div>
+        {historyRemoval ? (
+          <p
+            role="status"
+            className="text-muted-text px-2 py-1 text-xs"
+          >
+            {t(`ssh.historyRemoval.${historyRemoval.status}`)}
+          </p>
+        ) : null}
       </div>
+
+      <AlertDialog
+        open={
+          removalSelection !== null &&
+          removalSelection.sourceId === sourceId &&
+          removalSelection.paneId === activePaneId
+        }
+        onOpenChange={(open) => {
+          if (!open) setRemovalSelection(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('ssh.historyRemovalTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('ssh.historyRemovalDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancelButton>{t('ssh.historyRemovalCancel')}</AlertDialogCancelButton>
+            <AlertDialogActionButton
+              onClick={() => {
+                if (
+                  removalSelection?.sourceId === sourceId &&
+                  removalSelection?.paneId === activePaneId &&
+                  !removalPending
+                )
+                  onDeleteRecentCommand(removalSelection.command, removalSelection.sourceId);
+              }}
+            >
+              {t('ssh.historyRemovalConfirm')}
+            </AlertDialogActionButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className={sidebarCardStyle}>
         <span>1</span>

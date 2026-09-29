@@ -144,11 +144,11 @@ func TestFishNotificationCannotSelectArbitrarySignalsOrInjectKeys(t *testing.T) 
 func TestContextOnlySnapshotsCannotContainInput(t *testing.T) {
 	directory := &Directory{Logical: "/space \n", Home: nil, Physical: nil}
 	context := Snapshot{PromptGeneration: 1, EditorMode: "emacs", Directory: directory}
-	if !validSnapshot(context, false, true) {
+	if !validSnapshot(context, false, true, false) {
 		t.Fatal("exact directory metadata was rejected")
 	}
 	context.Buffer = &Buffer{Text: "PRIVATE_SENTINEL"}
-	if validSnapshot(context, false, true) {
+	if validSnapshot(context, false, true, false) {
 		t.Fatal("context-only operation accepted input")
 	}
 }

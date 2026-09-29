@@ -6,6 +6,138 @@ import type { RemoteShellCapability, ShellContext } from '@cosmosh/api-contract'
 import { createSshPaneState, reduceSshPaneState, type SshPaneStateMap } from './ssh-pane-state';
 import type { ServerInboundMessage } from './ssh-types';
 
+const HISTORY_CONTEXT: ShellContext = {
+  sessionId: 'native-session',
+  shellInstanceId: 'fish-owner',
+  shell: 'fish',
+  helperVersion: 'test',
+  protocolVersion: 3,
+  capabilities: ['history-read'],
+  permissions: { history: true, cwd: false, input: false, paths: false, nativeCompletion: false },
+  status: 'paused',
+  reason: 'input-submitted',
+  revision: 1,
+  inputGeneration: 0,
+  submissionToken: null,
+  promptGeneration: 1,
+  cwdGeneration: 0,
+  cwd: null,
+  lastKnownCwd: null,
+};
+const HISTORY_VIEW = {
+  status: 'ok',
+  source: { id: 'source-one', namespace: 'fish', shell: 'fish' },
+  entries: ['printf "new"  ', 'printf "two\nlines"', 'older'],
+} as const;
+/** @param state Pane map. @param payload Trusted transport message. @returns Reduced first-pane state. */
+const historyMessage = (state: SshPaneStateMap, payload: ServerInboundMessage): SshPaneStateMap =>
+  reduceSshPaneState(state, { type: 'server-message', paneId: 'first', payload, receivedAt: 1 });
+/** @returns Two connected panes with one native history owner and an exact newest-first list. */
+const historyState = (): SshPaneStateMap => {
+  let state: SshPaneStateMap = { first: createSshPaneState(), second: createSshPaneState() };
+  state = reduceSshPaneState(state, { type: 'transport-state', paneId: 'first', connectionState: 'connected' });
+  state = historyMessage(state, { type: 'shell-context', context: HISTORY_CONTEXT });
+  return historyMessage(state, {
+    type: 'shell-history',
+    view: { ...HISTORY_VIEW, entries: [...HISTORY_VIEW.entries] },
+  });
+};
+
+test('native history keeps exact newest-first records separate from legacy telemetry and other panes', () => {
+  let state = historyState();
+  assert.deepEqual(state.first.historyView?.entries, HISTORY_VIEW.entries);
+  assert.equal(state.second.historyView, null);
+  state = historyMessage(state, { type: 'history', recentCommands: ['mixed-file-record'] });
+  state = historyMessage(state, {
+    type: 'telemetry',
+    cpuUsagePercent: 1,
+    memoryUsedBytes: 1,
+    memoryTotalBytes: 2,
+    networkRxBytesPerSec: 0,
+    networkTxBytesPerSec: 0,
+    recentCommands: ['stale-telemetry-copy'],
+  });
+  assert.deepEqual(state.first.historyView?.entries, HISTORY_VIEW.entries);
+  assert.deepEqual(state.first.telemetryState.recentCommands, []);
+});
+
+test('history removal results require the same pending request, source and pane', () => {
+  let state = reduceSshPaneState(historyState(), {
+    type: 'history-removal-requested',
+    paneId: 'first',
+    sourceId: 'source-one',
+    requestId: 'request-one',
+  });
+  for (const [requestId, sourceId] of [
+    ['old-request', 'source-one'],
+    ['request-one', 'old-source'],
+  ])
+    state = historyMessage(state, {
+      type: 'shell-history-remove-result',
+      requestId,
+      sourceId,
+      status: 'removed-from-reader',
+    });
+  assert.equal(state.first.historyRemoval?.status, 'pending');
+  assert.equal(state.second.historyRemoval, null);
+  state = historyMessage(state, {
+    type: 'shell-history-remove-result',
+    requestId: 'request-one',
+    sourceId: 'source-one',
+    status: 'removed-from-reader',
+  });
+  assert.equal(state.first.historyRemoval?.status, 'removed-from-reader');
+  state = historyMessage(state, { type: 'shell-history', view: { ...HISTORY_VIEW, entries: ['older'] } });
+  assert.equal(state.first.historyRemoval?.status, 'removed-from-reader');
+  state = historyMessage(state, { type: 'shell-history', view: { status: 'private', source: null, entries: [] } });
+  assert.equal(state.first.historyRemoval, null);
+  assert.deepEqual(state.first.historyView?.entries, []);
+});
+
+test('history namespace, owner, permissions and transport changes invalidate records and actions', () => {
+  const pending = reduceSshPaneState(historyState(), {
+    type: 'history-removal-requested',
+    paneId: 'first',
+    requestId: 'request-one',
+    sourceId: 'source-one',
+  });
+  const changed = [
+    historyMessage(pending, {
+      type: 'shell-history',
+      view: { ...HISTORY_VIEW, source: { ...HISTORY_VIEW.source, id: 'source-two', namespace: 'work' }, entries: [] },
+    }),
+    historyMessage(pending, {
+      type: 'shell-context',
+      context: { ...HISTORY_CONTEXT, shellInstanceId: 'new-owner', revision: 2 },
+    }),
+    historyMessage(pending, {
+      type: 'shell-context',
+      context: { ...HISTORY_CONTEXT, permissions: { ...HISTORY_CONTEXT.permissions, history: false }, revision: 2 },
+    }),
+    reduceSshPaneState(pending, { type: 'transport-state', paneId: 'first', connectionState: 'failed' }),
+    reduceSshPaneState(pending, { type: 'history-read-permission', paneId: 'first', allowed: false }),
+  ];
+  for (let state of changed) {
+    state = historyMessage(state, {
+      type: 'shell-history-remove-result',
+      requestId: 'request-one',
+      sourceId: 'source-one',
+      status: 'removed-from-reader',
+    });
+    assert.equal(state.first.historyRemoval, null);
+    assert.deepEqual(state.first.historyView?.entries, []);
+    assert.deepEqual(state.first.telemetryState.recentCommands, []);
+  }
+  const blocked = changed.at(-1)!;
+  assert.equal(
+    historyMessage(blocked, { type: 'shell-history', view: { ...HISTORY_VIEW, entries: [...HISTORY_VIEW.entries] } })
+      .first,
+    blocked.first,
+  );
+  const enabled = reduceSshPaneState(blocked, { type: 'history-read-permission', paneId: 'first', allowed: true });
+  assert.deepEqual(enabled.first.historyView?.entries, []);
+});
+
 test('credential offers and results remain bound to their pane and one pending token', () => {
   let state: SshPaneStateMap = { first: createSshPaneState(), second: createSshPaneState() };
   state = reduceSshPaneState(state, { type: 'transport-state', paneId: 'first', connectionState: 'connected' });

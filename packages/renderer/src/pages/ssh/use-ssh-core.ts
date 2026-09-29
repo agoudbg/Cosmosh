@@ -1,4 +1,4 @@
-import type { SettingsValues, ShellDirectoryContext } from '@cosmosh/api-contract';
+import type { SettingsValues, ShellDirectoryContext, ShellHistoryView } from '@cosmosh/api-contract';
 import { type ISearchOptions, type SearchAddon } from '@xterm/addon-search';
 import type { SerializeAddon } from '@xterm/addon-serialize';
 import { type ITerminalOptions, type Terminal } from '@xterm/xterm';
@@ -202,6 +202,7 @@ export type UseSshCoreParams = {
   sshConnectionTimeoutSec: number;
   terminalAutoCompleteEnabled: boolean;
   remoteEnhancementsInputEnabled: boolean;
+  remoteEnhancementsHistoryEnabled: boolean;
   terminalAutoCompleteHistoryEnabled: boolean;
   terminalAutoCompleteBuiltInCommandsEnabled: boolean;
   terminalAutoCompletePathEnabled: boolean;
@@ -239,6 +240,8 @@ export type SshCoreState = {
   connectionError: string;
   paneConnectionStates: Record<string, SshPaneConnectionSnapshot>;
   telemetryState: SshTelemetryState;
+  historyView: ShellHistoryView | null;
+  historyRemoval: SshPaneState['historyRemoval'];
   remoteBootstrapStatus: RemoteBootstrapStatus | null;
   remoteEnhancementRuntimeStatus: RemoteEnhancementRuntimeStatus | null;
   remoteEnhancementsDebugEvents: RemoteEnhancementsDebugEvent[];
@@ -308,10 +311,11 @@ export type SshCoreActions = {
   /**
    * Sends command-history deletion request for current active session.
    *
-   * @param command Normalized command string to remove.
+   * @param command Exact native record text to remove.
+   * @param sourceId Displayed native source identity; null only for local terminals.
    * @returns Nothing.
    */
-  deleteHistoryCommand: (command: string) => void;
+  deleteHistoryCommand: (command: string, sourceId: string | null) => void;
   /**
    * Selects all text in currently active terminal.
    *
@@ -480,6 +484,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalAutoCompletePasswordEnabled,
     terminalAutoCompleteEnabled,
     remoteEnhancementsInputEnabled,
+    remoteEnhancementsHistoryEnabled,
     terminalAutoCompleteHistoryEnabled,
     terminalAutoCompleteBuiltInCommandsEnabled,
     terminalAutoCompletePathEnabled,
@@ -637,6 +642,13 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   const connectionState = activePaneState.connectionState;
   const connectionError = activePaneState.connectionError;
   const telemetryState = activePaneState.telemetryState;
+  const historyReadAllowedRef = React.useRef(remoteEnhancementsHistoryEnabled);
+  const historyView: ShellHistoryView | null =
+    connectionIntent.target?.type === 'local-terminal'
+      ? null
+      : !remoteEnhancementsHistoryEnabled
+        ? { status: 'disabled', source: null, entries: [] }
+        : (activePaneState.historyView ?? { status: 'unavailable', source: null, entries: [] });
   const remoteBootstrapStatus: RemoteBootstrapStatus | null = activePaneState.remoteBootstrapStatus;
   const remoteEnhancementRuntimeStatus: RemoteEnhancementRuntimeStatus | null =
     activePaneState.remoteEnhancementRuntimeStatus;
@@ -734,6 +746,14 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   React.useEffect(() => {
     paneStateMapRef.current = paneStateMap;
   }, [paneStateMap]);
+
+  React.useLayoutEffect(() => {
+    historyReadAllowedRef.current = remoteEnhancementsHistoryEnabled;
+    if (connectionIntent.target?.type !== 'local-terminal')
+      Object.keys(paneStateMapRef.current).forEach((paneId) =>
+        dispatchPaneState({ type: 'history-read-permission', paneId, allowed: remoteEnhancementsHistoryEnabled }),
+      );
+  }, [remoteEnhancementsHistoryEnabled, connectionIntent.target?.type, dispatchPaneState]);
 
   React.useEffect(() => {
     onTabTitleChangeRef.current = onTabTitleChange;
@@ -847,7 +867,10 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       terminalAutoCompleteEnabled &&
       remoteEnhancementsInputEnabled &&
       activePaneState.shellContext?.permissions.input !== false,
-    terminalAutoCompleteHistoryEnabled,
+    terminalAutoCompleteHistoryEnabled:
+      terminalAutoCompleteHistoryEnabled &&
+      remoteEnhancementsHistoryEnabled &&
+      activePaneState.shellContext?.permissions.history !== false,
     terminalAutoCompleteBuiltInCommandsEnabled,
     terminalAutoCompletePathEnabled,
     terminalAutoCompleteAcceptKeys,
@@ -919,6 +942,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    */
   const handlePaneServerMessage = React.useCallback(
     (paneId: string, terminal: Terminal, payload: ServerInboundMessage): void => {
+      if (payload.type === 'shell-history' && !historyReadAllowedRef.current) return;
       if (payload.type === 'output') {
         terminal.write(payload.data);
         notifyAutocompleteOutputEchoRef.current(paneId);
@@ -1455,26 +1479,38 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
    * Requests deletion of one command from active pane history source.
    *
    * @param command Command text selected in sidebar history list.
+   * @param sourceId Source captured by the displayed row, never inferred from a later list.
    * @returns Nothing.
    */
   const deleteHistoryCommand = React.useCallback(
-    (command: string) => {
-      const normalizedCommand = command.trim();
-      if (!normalizedCommand) {
-        return;
-      }
-
+    (command: string, sourceId: string | null) => {
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         return;
       }
 
-      sendClientMessage(socket, {
-        type: 'history-delete',
-        command: normalizedCommand,
-      });
+      if (resolvedTerminalTargetRef.current?.type === 'local-terminal') {
+        if (sourceId === null && command.trim())
+          sendClientMessage(socket, { type: 'history-delete', command: command.trim() });
+        return;
+      }
+      const paneId = activePaneIdRef.current;
+      const pane = paneStateMapRef.current[paneId];
+      const view = pane?.historyView;
+      if (
+        !historyReadAllowedRef.current ||
+        !sourceId ||
+        !view?.source ||
+        view.source.id !== sourceId ||
+        !view.entries.includes(command) ||
+        pane.historyRemoval?.status === 'pending'
+      )
+        return;
+      const requestId = crypto.randomUUID();
+      dispatchPaneState({ type: 'history-removal-requested', paneId, requestId, sourceId });
+      sendClientMessage(socket, { type: 'shell-history-remove', requestId, sourceId, command });
     },
-    [socketRef],
+    [socketRef, resolvedTerminalTargetRef, activePaneIdRef, dispatchPaneState],
   );
 
   /**
@@ -1659,6 +1695,8 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       connectionError,
       paneConnectionStates,
       telemetryState,
+      historyView,
+      historyRemoval: remoteEnhancementsHistoryEnabled ? activePaneState.historyRemoval : null,
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
       remoteEnhancementsDebugEvents,

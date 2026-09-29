@@ -7,6 +7,7 @@ import type {
   ShellPathQueryResult,
 } from '@cosmosh/api-contract';
 
+import { scoreCompletionMatch } from './matching.js';
 import { prepareRemotePathQuery } from './remote-path-query.js';
 import {
   buildShellCompletionReplacement,
@@ -81,12 +82,21 @@ export const resolveSnapshotPaths = async (
   if (result.status !== 'ok' && result.status !== 'partial') return { status: result.status, drafts: [] };
   const drafts: ShellCompletionDraft[] = [];
   for (const entry of result.entries) {
+    const score = scoreCompletionMatch(lookup.request.fragment, entry.name, options.fuzzyMatch);
+    if (score === 0) continue;
     const suffix = entry.name + (entry.kind === 'directory' ? '/' : '');
     const text = quoteShellPath(shell, lookup.insertPrefix + suffix);
     if (text === null) continue;
     const edit = { start: context.word.start, end: context.word.end, text };
     if (!buildShellCompletionReplacement(snapshot.buffer, edit)) continue;
-    drafts.push({ label: lookup.displayPrefix + suffix, detail: null, source: 'runtime', kind: 'path', edit });
+    drafts.push({
+      label: lookup.displayPrefix + suffix,
+      detail: null,
+      source: 'runtime',
+      kind: 'path',
+      edit,
+      score: score + (entry.kind === 'directory' ? 260 : 220),
+    });
   }
   return { status: result.status, drafts };
 };

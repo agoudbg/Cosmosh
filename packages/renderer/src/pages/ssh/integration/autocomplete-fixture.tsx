@@ -12,6 +12,7 @@ import { useSshAutocomplete } from '../use-ssh-autocomplete';
 
 type FixtureSettings = {
   inputAllowed: boolean;
+  historyEnabled: boolean;
   enabled: boolean;
   isActive: boolean;
   connected: boolean;
@@ -21,6 +22,7 @@ type RecordedMessage = { paneId: string; payload: TerminalClientMessage };
 type FixtureController = {
   messages: RecordedMessage[];
   setInputAllowed: (allowed: boolean) => void;
+  setHistoryEnabled: (enabled: boolean) => void;
   transportCallbackChanges: number;
   reset: (settings?: Partial<FixtureSettings>) => Promise<void>;
   show: () => void;
@@ -38,6 +40,7 @@ declare global {
 
 const defaults: FixtureSettings = {
   inputAllowed: true,
+  historyEnabled: true,
   enabled: true,
   isActive: true,
   connected: true,
@@ -64,7 +67,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
     isActive: settings.isActive,
     connectionState: settings.connected ? 'connected' : 'failed',
     terminalAutoCompleteEnabled: settings.enabled && settings.inputAllowed,
-    terminalAutoCompleteHistoryEnabled: true,
+    terminalAutoCompleteHistoryEnabled: settings.historyEnabled,
     terminalAutoCompleteBuiltInCommandsEnabled: true,
     terminalAutoCompletePathEnabled: false,
     terminalAutoCompleteAcceptKeys: settings.acceptKeys,
@@ -136,6 +139,7 @@ export const AutocompleteFixture = (): React.ReactNode => {
     window.terminalInteractionFixture = {
       messages,
       setInputAllowed: (allowed) => setSettings((previous) => ({ ...previous, inputAllowed: allowed })),
+      setHistoryEnabled: (enabled) => setSettings((previous) => ({ ...previous, historyEnabled: enabled })),
       transportCallbackChanges: 0,
       reset: async (next = {}) => {
         for (const paneId of runtimes.keys()) current.current.resetAutocompletePaneState(paneId);

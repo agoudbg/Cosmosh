@@ -31,6 +31,7 @@ import type { SshConnectionIntent, TabIconColorKey, TabIconKey } from '../types/
 import { RemoteEnhancementsDebugPanel } from './ssh/RemoteEnhancementsDebugPanel';
 import { INTERNAL_TERMINAL_TEXT_DRAG_MIME, type TerminalSelectionSettings } from './ssh/ssh-types';
 import {
+  canInsertHistoryCommand,
   createTerminalPasteWarningRequest,
   flattenCommandForTerminalInput,
   parseOptionalNumberSetting,
@@ -371,6 +372,8 @@ const SSH: React.FC<SSHProps> = ({
   );
 
   const sshCore = useSshCore({
+    remoteEnhancementsHistoryEnabled:
+      connectionIntent.lastResolvedSnapshot?.type !== 'ssh-server' || settingsValues.remoteEnhancementsHistoryEnabled,
     remoteEnhancementsInputEnabled:
       connectionIntent.lastResolvedSnapshot?.type !== 'ssh-server' || settingsValues.remoteEnhancementsInputEnabled,
     tabId,
@@ -413,6 +416,8 @@ const SSH: React.FC<SSHProps> = ({
       connectionState,
       paneConnectionStates,
       telemetryState,
+      historyView,
+      historyRemoval,
       remoteBootstrapStatus,
       remoteEnhancementRuntimeStatus,
       remoteEnhancementsDebugEvents,
@@ -1152,25 +1157,21 @@ const SSH: React.FC<SSHProps> = ({
   }, []);
 
   const handleDeleteRecentCommand = React.useCallback(
-    (command: string) => {
-      deleteHistoryCommand(command);
+    (command: string, sourceId: string | null) => {
+      deleteHistoryCommand(command, sourceId);
     },
     [deleteHistoryCommand],
   );
 
   /**
-   * Converts sidebar and timeline command actions into terminal input payloads.
-   *
-   * Retained timeline commands can span rendered lines; embedded newlines are
-   * flattened so the insert path never auto-submits through the PTY.
+   * Preserves a validated single-line history record when building terminal input.
    *
    * @param command Raw command text selected from history or the timeline.
    * @param shouldRun Whether command should auto-submit with Enter.
    * @returns Input payload written to terminal websocket.
    */
   const buildRecentCommandPayload = React.useCallback((command: string, shouldRun: boolean): string => {
-    const flattenedCommand = flattenCommandForTerminalInput(command);
-    return shouldRun ? `${flattenedCommand}\r` : flattenedCommand;
+    return shouldRun ? `${command}\r` : command;
   }, []);
 
   /**
@@ -1183,6 +1184,7 @@ const SSH: React.FC<SSHProps> = ({
    */
   const dispatchRecentCommandToPane = React.useCallback(
     (command: string, paneId: string, shouldRun: boolean): boolean => {
+      if (!canInsertHistoryCommand(command)) return false;
       activatePane(paneId);
       const didSend = sendInput(buildRecentCommandPayload(command, shouldRun));
       focusActiveTerminal();
@@ -1514,7 +1516,7 @@ const SSH: React.FC<SSHProps> = ({
             focusActiveTerminal();
           }}
           onInsertCommand={(paneId, command) => {
-            dispatchRecentCommandToPane(command, paneId, false);
+            dispatchRecentCommandToPane(flattenCommandForTerminalInput(command), paneId, false);
           }}
           onSelectCommand={scrollToPaneCommand}
           onSplitPane={(paneId) => {
@@ -1650,9 +1652,14 @@ const SSH: React.FC<SSHProps> = ({
 
       <SSHSidebar
         telemetryState={telemetryState}
+        historyView={historyView}
+        historyRemoval={historyRemoval}
         terminalPaneIds={terminalPaneIds}
         activePaneId={activePaneId}
         canSplitTerminal={canSplitTerminal}
+        onCopyRecentCommand={(command) => {
+          void copyTextToClipboard(command);
+        }}
         onInsertRecentCommand={handleInsertRecentCommand}
         onInsertRecentCommandToPane={handleInsertRecentCommandToPane}
         onSplitTerminalAndInsertRecentCommand={handleSplitTerminalAndInsertRecentCommand}

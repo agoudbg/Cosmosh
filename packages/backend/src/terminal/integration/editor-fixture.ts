@@ -119,7 +119,7 @@ export class EditorFixture {
    * @returns Actual remote worker and original Shell result.
    */
   async request(
-    operation: 'context' | 'snapshot' | 'apply',
+    operation: ShellEditorRequest['operation'],
     expected?: ShellEditorSnapshot,
     replacement?: ShellEditorBuffer,
     options?: Partial<ShellEditorExecOptions>,
@@ -131,7 +131,7 @@ export class EditorFixture {
       target: { instanceId: event.shellInstanceId, shell: this.shell, pid: event.pid, startTime: event.startTime },
       operation,
       promptGeneration: event.promptGeneration,
-      includeDirectory: true,
+      includeDirectory: operation !== 'history' && operation !== 'history-delete',
       ...(event.notification ? { notification: event.notification } : {}),
       ...(expected ? { expected } : {}),
       ...(replacement ? { replacement } : {}),

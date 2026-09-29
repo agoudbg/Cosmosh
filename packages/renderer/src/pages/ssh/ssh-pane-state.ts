@@ -1,4 +1,10 @@
-import type { ShellContext, TerminalCredentialFillOffer, TerminalCredentialFillResult } from '@cosmosh/api-contract';
+import type {
+  ShellContext,
+  ShellHistoryRemovalResult,
+  ShellHistoryView,
+  TerminalCredentialFillOffer,
+  TerminalCredentialFillResult,
+} from '@cosmosh/api-contract';
 
 import type { ServerInboundMessage, SshTelemetryState } from './ssh-types';
 import { DEFAULT_TELEMETRY_STATE } from './ssh-types';
@@ -26,6 +32,13 @@ export type SshPaneCommandLifecycle = {
 /** Declarative state owned by one terminal pane. */
 export type SshPaneState = {
   shellContext: ShellContext | null;
+  historyView: ShellHistoryView | null;
+  historyReadBlocked: boolean;
+  historyRemoval: {
+    requestId: string;
+    sourceId: string;
+    status: 'pending' | ShellHistoryRemovalResult['status'];
+  } | null;
   /** Keeps pre-submit snapshots unusable until Backend acknowledges this submission and returns to a prompt. */
   pendingSubmissionToken: string | null;
   connectionState: 'connecting' | 'connected' | 'failed';
@@ -54,6 +67,8 @@ export type SshPaneStateMap = Record<string, SshPaneState>;
 
 /** Actions accepted by the pane-state reducer. */
 export type SshPaneStateAction =
+  | { type: 'history-read-permission'; paneId: string; allowed: boolean }
+  | { type: 'history-removal-requested'; paneId: string; requestId: string; sourceId: string }
   | { type: 'input-submitted'; paneId: string; token: string }
   | { type: 'credential-fill-requested'; paneId: string; token: string }
   | { type: 'ensure-pane'; paneId: string }
@@ -74,6 +89,9 @@ export type SshPaneStateAction =
  */
 export const createSshPaneState = (): SshPaneState => ({
   shellContext: null,
+  historyView: null,
+  historyReadBlocked: false,
+  historyRemoval: null,
   pendingSubmissionToken: null,
   connectionState: 'connecting',
   connectionError: '',
@@ -101,6 +119,39 @@ export const createSshPaneState = (): SshPaneState => ({
  * @returns Next immutable pane-indexed state.
  */
 export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateAction): SshPaneStateMap => {
+  if (action.type === 'history-read-permission') {
+    const pane = state[action.paneId];
+    return pane
+      ? {
+          ...state,
+          [action.paneId]: {
+            ...pane,
+            historyReadBlocked: !action.allowed,
+            ...(!action.allowed ? clearedHistory(pane, 'disabled') : {}),
+          },
+        }
+      : state;
+  }
+  if (action.type === 'history-removal-requested') {
+    const pane = state[action.paneId];
+    if (
+      pane?.connectionState !== 'connected' ||
+      pane.historyView?.source?.id !== action.sourceId ||
+      pane.historyRemoval?.status === 'pending'
+    )
+      return state;
+    return {
+      ...state,
+      [action.paneId]: {
+        ...pane,
+        historyRemoval: {
+          requestId: action.requestId,
+          sourceId: action.sourceId,
+          status: 'pending',
+        },
+      },
+    };
+  }
   if (action.type === 'input-submitted') {
     const pane = state[action.paneId];
     if (!pane?.shellContext) return state;
@@ -166,6 +217,7 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
         ...(action.connectionState === 'connected'
           ? {}
           : {
+              ...clearedHistory(paneState),
               shellContext: null,
               pendingSubmissionToken: null,
               trustedCwd: null,
@@ -196,6 +248,31 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
  * @returns Updated pane state.
  */
 const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage, receivedAt: number): SshPaneState => {
+  if (payload.type === 'shell-history') {
+    if (state.connectionState !== 'connected') return state;
+    if (state.historyReadBlocked) return state;
+    if (payload.view.source && state.shellContext?.permissions.history !== true) return state;
+    return {
+      ...state,
+      historyView: payload.view,
+      historyRemoval: payload.view.source?.id === state.historyRemoval?.sourceId ? state.historyRemoval : null,
+      telemetryState: { ...state.telemetryState, recentCommands: [] },
+    };
+  }
+  if (payload.type === 'shell-history-remove-result') {
+    const pending = state.historyRemoval;
+    if (
+      pending?.status !== 'pending' ||
+      pending.requestId !== payload.requestId ||
+      pending.sourceId !== payload.sourceId ||
+      state.historyView?.source?.id !== payload.sourceId
+    )
+      return state;
+    return {
+      ...state,
+      historyRemoval: { requestId: payload.requestId, sourceId: payload.sourceId, status: payload.status },
+    };
+  }
   if (payload.type === 'shell-context') {
     const previous = state.shellContext;
     if (previous?.sessionId === payload.context.sessionId && previous.revision >= payload.context.revision)
@@ -209,6 +286,11 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
     return {
       ...state,
       shellContext: context,
+      ...(!context.permissions.history ||
+      previous?.sessionId !== context.sessionId ||
+      previous?.shellInstanceId !== context.shellInstanceId
+        ? clearedHistory(state, context.permissions.history ? 'unavailable' : 'disabled')
+        : {}),
       pendingSubmissionToken: confirmed && context.status === 'ready' ? null : pendingToken,
       trustedCwd: context.status === 'ready' && context.permissions.cwd ? (context.cwd?.physical ?? null) : null,
       promptGeneration: payload.context.promptGeneration,
@@ -249,6 +331,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   if (payload.type === 'error') {
     return {
       ...state,
+      ...clearedHistory(state),
       shellContext: null,
       pendingSubmissionToken: null,
       trustedCwd: null,
@@ -265,6 +348,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   if (payload.type === 'exit') {
     return {
       ...state,
+      ...clearedHistory(state),
       shellContext: null,
       pendingSubmissionToken: null,
       trustedCwd: null,
@@ -287,12 +371,13 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
         memoryTotalBytes: payload.memoryTotalBytes,
         networkRxBytesPerSec: payload.networkRxBytesPerSec,
         networkTxBytesPerSec: payload.networkTxBytesPerSec,
-        recentCommands: payload.recentCommands,
+        recentCommands: state.shellContext ? [] : payload.recentCommands,
       },
     };
   }
 
   if (payload.type === 'history') {
+    if (state.shellContext) return state;
     return {
       ...state,
       telemetryState: {
@@ -318,6 +403,7 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
       ...(payload.state === 'active'
         ? {}
         : {
+            ...clearedHistory(state),
             trustedCwd: null,
             promptGeneration: null,
             lineState: null,
@@ -386,6 +472,26 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
   }
 
   return nextState;
+};
+
+/**
+ * Clears native records and pending actions together without retaining copies in telemetry.
+ * @param state Pane whose native source became unusable.
+ * @param status User-visible reason for the empty list.
+ * @returns Only history-owned fields, suitable for an immutable state transition.
+ */
+const clearedHistory = (
+  state: SshPaneState,
+  status: 'disabled' | 'unavailable' = 'unavailable',
+): Pick<SshPaneState, 'historyView' | 'historyRemoval' | 'telemetryState'> => {
+  // Local terminal telemetry keeps its existing disconnect behavior; it owns no native source.
+  if (!state.shellContext && !state.historyView && status !== 'disabled')
+    return { historyView: null, historyRemoval: null, telemetryState: state.telemetryState };
+  return {
+    historyView: { status, source: null, entries: [] },
+    historyRemoval: null,
+    telemetryState: { ...state.telemetryState, recentCommands: [] },
+  };
 };
 
 /**

@@ -28,11 +28,12 @@ type widgetMessage struct {
 
 // widgetReply grants only the data requested by the desktop's current permissions.
 type widgetReply struct {
-	Status           string  `json:"status"`
-	RequestID        string  `json:"requestId,omitempty"`
-	Operation        string  `json:"operation,omitempty"`
-	IncludeDirectory bool    `json:"includeDirectory,omitempty"`
-	Replacement      *Buffer `json:"replacement,omitempty"`
+	Status           string   `json:"status"`
+	RequestID        string   `json:"requestId,omitempty"`
+	Operation        string   `json:"operation,omitempty"`
+	IncludeDirectory bool     `json:"includeDirectory,omitempty"`
+	Replacement      *Buffer  `json:"replacement,omitempty"`
+	History          *History `json:"history,omitempty"`
 }
 
 // readFrame reads one bounded JSON line without allowing an unbounded allocation.
@@ -235,8 +236,12 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			continue
 		}
 		if phase == "mode" {
+			var history *History
+			if request.Operation == "history-delete" {
+				history = request.Expected.History
+			}
 			err = json.NewEncoder(connection).Encode(widgetReply{Status: "ok", RequestID: request.RequestID,
-				Operation: request.Operation, IncludeDirectory: request.IncludeDirectory})
+				Operation: request.Operation, IncludeDirectory: request.IncludeDirectory, History: history})
 			connection.Close()
 			if err != nil {
 				return finish("unavailable")
@@ -244,28 +249,26 @@ func RunRequest(parent context.Context, input io.Reader, output io.Writer) error
 			phase = "capture"
 			continue
 		}
-		includeInput := request.Operation != "context"
-		if widget.Snapshot == nil || !validSnapshot(*widget.Snapshot, includeInput, request.IncludeDirectory) {
+		includeInput := request.Operation == "snapshot" || request.Operation == "apply"
+		includeHistory := request.Operation == "history" || request.Operation == "history-delete"
+		if widget.Snapshot == nil || !validSnapshot(*widget.Snapshot, includeInput, request.IncludeDirectory, includeHistory) {
 			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "unsupported"})
 			connection.Close()
 			return finish("unsupported")
 		}
 		if phase == "confirm" {
-			applied := widget.Snapshot.PromptGeneration == request.PromptGeneration &&
-				widget.Snapshot.Buffer != nil && *widget.Snapshot.Buffer == *request.Replacement
+			// History confirmation is an exact native search, never a bounded recent list.
+			status := mutationConfirmation(request, *widget.Snapshot)
 			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "ok"})
 			connection.Close()
-			if applied {
-				return emit("done", "applied", nil, true)
-			}
-			return finish("unknown")
+			return emit("done", status, nil, status != "unknown")
 		}
 		if !matchesExpected(request, *widget.Snapshot) {
 			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "stale"})
 			connection.Close()
 			return finish("stale")
 		}
-		if request.Operation != "apply" {
+		if request.Operation != "apply" && request.Operation != "history-delete" {
 			_ = json.NewEncoder(connection).Encode(widgetReply{Status: "ok"})
 			connection.Close()
 			return emit("done", "ok", widget.Snapshot, false)

@@ -61,6 +61,7 @@ type Snapshot struct {
 	EditorMode       string     `json:"editorMode"`
 	Buffer           *Buffer    `json:"buffer,omitempty"`
 	Directory        *Directory `json:"directory,omitempty"`
+	History          *History   `json:"history,omitempty"`
 }
 
 // Request is the private SSH-exec stdin protocol. Apply always includes the exact expected observation.
@@ -124,6 +125,13 @@ func validRequest(request Request) bool {
 		return false
 	}
 	switch request.Operation {
+	case "history-delete":
+		return request.Target.Shell == "fish" && !request.IncludeDirectory && request.Replacement == nil &&
+			request.Expected != nil && validSnapshot(*request.Expected, false, false, true) &&
+			request.Expected.PromptGeneration == request.PromptGeneration &&
+			request.Expected.History.Status == "ok" && len(request.Expected.History.Entries) == 1
+	case "history":
+		return request.Target.Shell == "fish" && !request.IncludeDirectory && request.Expected == nil && request.Replacement == nil
 	case "context":
 		return request.Expected == nil && request.Replacement == nil
 	case "snapshot":
@@ -131,7 +139,7 @@ func validRequest(request Request) bool {
 	case "apply":
 		return request.Expected != nil && request.Expected.Buffer != nil &&
 			request.Replacement != nil && validBuffer(*request.Replacement) &&
-			validSnapshot(*request.Expected, true, request.IncludeDirectory) &&
+			validSnapshot(*request.Expected, true, request.IncludeDirectory, false) &&
 			request.Expected.PromptGeneration == request.PromptGeneration
 	default:
 		return false
@@ -175,7 +183,10 @@ func validPath(value string) bool {
 }
 
 // validSnapshot validates the editor observation and its requested privacy boundary.
-func validSnapshot(snapshot Snapshot, includeInput, includeDirectory bool) bool {
+func validSnapshot(snapshot Snapshot, includeInput, includeDirectory, includeHistory bool) bool {
+	if includeHistory != (snapshot.History != nil) || (snapshot.History != nil && !validHistory(*snapshot.History)) {
+		return false
+	}
 	if snapshot.PromptGeneration == 0 || snapshot.PromptGeneration > 9007199254740991 ||
 		(snapshot.EditorMode != "emacs" && snapshot.EditorMode != "vi-insert") {
 		return false
@@ -197,5 +208,26 @@ func validSnapshot(snapshot Snapshot, includeInput, includeDirectory bool) bool 
 // matchesExpected requires the complete original line, cursor, prompt and requested directory identity.
 func matchesExpected(request Request, captured Snapshot) bool {
 	return captured.PromptGeneration == request.PromptGeneration &&
-		(request.Operation != "apply" || reflect.DeepEqual(request.Expected, &captured))
+		((request.Operation != "apply" && request.Operation != "history-delete") || reflect.DeepEqual(request.Expected, &captured))
+}
+
+// mutationConfirmation keeps native history visibility distinct from an applied input buffer.
+// No Fish observation can confirm that its history file was durably updated.
+func mutationConfirmation(request Request, captured Snapshot) string {
+	if captured.PromptGeneration != request.PromptGeneration {
+		return "unknown"
+	}
+	if request.Operation == "apply" && captured.Buffer != nil && request.Replacement != nil &&
+		captured.History == nil && *captured.Buffer == *request.Replacement {
+		return "applied"
+	}
+	if request.Operation == "history-delete" && captured.Buffer == nil && captured.History != nil &&
+		request.Expected != nil && request.Expected.History != nil {
+		history, expected := captured.History, request.Expected.History
+		if history.Status == "ok" && len(history.Entries) == 0 && history.Namespace != nil &&
+			expected.Namespace != nil && *history.Namespace == *expected.Namespace {
+			return "history-removed-from-reader"
+		}
+	}
+	return "unknown"
 }

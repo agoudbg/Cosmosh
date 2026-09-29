@@ -1,4 +1,5 @@
 import { INSHELLISENSE_COMMAND_SPECS } from './generated-inshellisense.js';
+import { scoreCompletionMatch } from './matching.js';
 import type {
   TerminalCommandSpec,
   TerminalCompletionItem,
@@ -73,44 +74,7 @@ type ParsedCommandToken = {
 };
 
 const computeSubsequenceScore = (query: string, candidate: string, fuzzyMatch: boolean): number => {
-  const normalizedQuery = normalizeToken(query);
-  const normalizedCandidate = normalizeToken(candidate);
-
-  if (!normalizedQuery || !normalizedCandidate) {
-    return 0;
-  }
-
-  if (normalizedCandidate.startsWith(normalizedQuery)) {
-    return 1_000 - Math.min(80, normalizedCandidate.length - normalizedQuery.length);
-  }
-
-  if (normalizedCandidate.includes(normalizedQuery)) {
-    return 600 - Math.min(120, normalizedCandidate.length - normalizedQuery.length);
-  }
-
-  if (!fuzzyMatch) {
-    return 0;
-  }
-
-  let queryIndex = 0;
-  let candidateIndex = 0;
-  let gapPenalty = 0;
-
-  while (queryIndex < normalizedQuery.length && candidateIndex < normalizedCandidate.length) {
-    if (normalizedQuery[queryIndex] === normalizedCandidate[candidateIndex]) {
-      queryIndex += 1;
-    } else {
-      gapPenalty += 1;
-    }
-
-    candidateIndex += 1;
-  }
-
-  if (queryIndex < normalizedQuery.length) {
-    return 0;
-  }
-
-  return Math.max(120, 260 - gapPenalty);
+  return query ? scoreCompletionMatch(query, candidate, fuzzyMatch) : 0;
 };
 
 const parseCommandTokens = (line: string, mode: TerminalTokenizerMode): ParsedCommandToken[] => {
@@ -268,6 +232,15 @@ const toCommandPathLabel = (baseCommand: string, suffixToken: string): string =>
 
 const buildCommandPath = (tokens: string[]): string => tokens.join(COMMAND_PATH_SEPARATOR).trim();
 
+/** @param command Catalogue-owned command spelling. @returns Its explicit compound aliases without normalizing user text. */
+const specCommandPaths = (command: string): string[] => {
+  const paths = [command];
+  const tokens = command.split(COMMAND_PATH_SEPARATOR).filter(Boolean);
+  if (tokens.length === 1 && tokens[0].includes('-')) paths.push(tokens[0].replaceAll('-', COMMAND_PATH_SEPARATOR));
+  if (tokens.length === 2) paths.push(tokens.join('-'));
+  return paths;
+};
+
 const SPEC_BY_COMMAND_PATH = (() => {
   const specMap = new Map<string, TerminalCommandSpec>();
 
@@ -281,36 +254,27 @@ const SPEC_BY_COMMAND_PATH = (() => {
   };
 
   INSHELLISENSE_COMMAND_SPECS.forEach((entry) => {
-    registerSpec(entry.command, entry);
-
-    const normalizedCommand = normalizeToken(entry.command);
-    const commandTokens = normalizedCommand.split(COMMAND_PATH_SEPARATOR).filter((token) => token.length > 0);
-
-    if (commandTokens.length === 1 && commandTokens[0]?.includes('-')) {
-      registerSpec(commandTokens[0].replaceAll('-', COMMAND_PATH_SEPARATOR), entry);
-    }
-
-    if (commandTokens.length === 2) {
-      registerSpec(`${commandTokens[0]}-${commandTokens[1]}`, entry);
-    }
+    specCommandPaths(entry.command).forEach((name) => registerSpec(name, entry));
   });
 
   return specMap;
 })();
 
-const resolveSpecByCommandPath = (commandPath: string): TerminalCommandSpec | undefined => {
+const resolveSpecByCommandPath = (commandPath: string, exact = false): TerminalCommandSpec | undefined => {
   const normalizedPath = normalizeToken(commandPath);
   if (!normalizedPath) {
     return undefined;
   }
 
-  return SPEC_BY_COMMAND_PATH.get(normalizedPath);
+  const spec = SPEC_BY_COMMAND_PATH.get(normalizedPath);
+  return exact && spec && !specCommandPaths(spec.command).includes(commandPath) ? undefined : spec;
 };
 
 const resolveBestSpecContext = (
   tokens: string[],
   currentTokenIndex: number,
   currentTokenValue: string,
+  exact = false,
 ): {
   spec: TerminalCommandSpec;
   matchedTokens: string[];
@@ -324,7 +288,13 @@ const resolveBestSpecContext = (
 
   for (let length = fixedTokens.length; length >= 1; length -= 1) {
     const candidateTokens = fixedTokens.slice(0, length);
-    const candidateSpec = resolveSpecByCommandPath(buildCommandPath(candidateTokens));
+    const candidateSpec =
+      exact && candidateTokens.some((token) => /[\t ]/u.test(token))
+        ? undefined
+        : resolveSpecByCommandPath(
+            exact ? candidateTokens.join(COMMAND_PATH_SEPARATOR) : buildCommandPath(candidateTokens),
+            exact,
+          );
     if (candidateSpec) {
       if (length < fixedTokens.length) {
         const nextToken = fixedTokens[length] ?? '';
@@ -341,7 +311,7 @@ const resolveBestSpecContext = (
   }
 
   const firstToken = fixedTokens[0] ?? '';
-  const rootSpec = resolveSpecByCommandPath(firstToken);
+  const rootSpec = resolveSpecByCommandPath(firstToken, exact);
   if (!rootSpec) {
     return null;
   }
@@ -356,7 +326,7 @@ const resolveBestSpecContext = (
     }
 
     if (index === 1) {
-      const compoundAliasSpec = resolveSpecByCommandPath(`${firstToken}-${token}`);
+      const compoundAliasSpec = resolveSpecByCommandPath(`${firstToken}-${token}`, exact);
       if (compoundAliasSpec) {
         matchedTokens.push(token);
         cursor = compoundAliasSpec;
@@ -364,8 +334,8 @@ const resolveBestSpecContext = (
       }
     }
 
-    const nextSubcommand = (cursor.subcommands ?? []).find(
-      (entry) => normalizeToken(entry.name) === normalizeToken(token),
+    const nextSubcommand = (cursor.subcommands ?? []).find((entry) =>
+      exact ? entry.name === token : normalizeToken(entry.name) === normalizeToken(token),
     );
 
     if (!nextSubcommand) {
@@ -424,7 +394,7 @@ const analyzeSpecArgumentContext = (
   currentOptionValueParent: string | null;
 } => {
   const commandTokenLength = matchedCommandTokens.length;
-  const completedUntil = currentTokenValue.trim().length > 0 ? currentTokenIndex : currentTokenIndex - 1;
+  const completedUntil = currentTokenIndex - 1;
   const usedOptionNames = new Set<string>();
 
   for (let index = commandTokenLength; index <= completedUntil; index += 1) {
@@ -705,9 +675,7 @@ const collectOptionValueItems = (
     return [];
   }
 
-  const valueSuggestions = Array.from(
-    new Set((optionEntry.valueSuggestions ?? []).map((entry) => entry.trim())),
-  ).filter((entry) => entry.length > 0);
+  const valueSuggestions = Array.from(new Set(optionEntry.valueSuggestions ?? [])).filter((entry) => entry.length > 0);
   if (valueSuggestions.length === 0) {
     return [];
   }
@@ -733,6 +701,51 @@ const collectOptionValueItems = (
 
   return items;
 };
+
+/**
+ * Reads the existing static command catalogue using already-decoded words, without a second Shell parse.
+ * The active word is never treated as an already completed subcommand or used option.
+ * @param tokens Literal words. @param tokenIndex Active word index. @param prefix Text before the cursor in that word.
+ * @param fuzzyMatch Allow subsequence matches. @returns Static metadata candidates, with no remote execution.
+ */
+export const resolveCommandMetadata = (
+  tokens: string[],
+  tokenIndex: number,
+  prefix: string,
+  fuzzyMatch: boolean,
+): CommandMetadataCandidate[] => {
+  if (tokenIndex === 0) return collectCommandItems(prefix, fuzzyMatch).map((item) => ({ ...item, insertion: 'words' }));
+  if (!/^[A-Za-z0-9_.+-]+$/u.test(tokens[0] ?? '')) return [];
+  const context = resolveBestSpecContext(tokens, tokenIndex, '', true);
+  if (!context) return [];
+  const usedOptionNames = new Set<string>();
+  for (let index = context.matchedTokens.length; index < tokenIndex; index += 1) {
+    const token = tokens[index];
+    if (token === '--') return [];
+    const option = context.spec.options?.find((entry) => entry.name === token);
+    if (option) {
+      usedOptionNames.add(option.name);
+      if (option.takesValue) {
+        if (index + 1 === tokenIndex)
+          return collectOptionValueItems(context.spec, option.name, prefix, fuzzyMatch).map((item) => ({
+            ...item,
+            insertion: 'literal',
+          }));
+        index += 1;
+      }
+    } else if (token.startsWith('-') || context.spec.subcommands?.length) {
+      // Unknown flags and unresolved subcommands can change the meaning of every later word.
+      return [];
+    }
+  }
+  return collectNestedItems(context.spec, prefix, fuzzyMatch, { usedOptionNames }).map((item) => ({
+    ...item,
+    insertion: 'words',
+  }));
+};
+
+/** Static metadata distinguishes one argument value from an explicitly multiword command/option snippet. */
+export type CommandMetadataCandidate = TerminalCompletionItem & { insertion: 'literal' | 'words' };
 
 /**
  * Decides whether path completion should run for the current token and command context.

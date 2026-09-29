@@ -82,6 +82,31 @@ test('path source reports unavailable and unsupported scopes without querying a 
   assert.equal(calls, 1);
 });
 
+test('path candidates obey the final matcher even when remote Unicode case folding differs', async () => {
+  const result = await resolveSnapshotPaths(
+    'bash',
+    {
+      promptGeneration: 1,
+      editorMode: 'emacs',
+      buffer: { text: 'cat find', cursor: 8 },
+      directory: { logical: '/tmp', physical: '/tmp', home: null },
+    },
+    async () => ({
+      status: 'ok',
+      scanned: 2,
+      entries: [
+        { name: 'FİND', kind: 'file' },
+        { name: 'find.txt', kind: 'file' },
+      ],
+    }),
+    { fuzzyMatch: false, limit: 10 },
+  );
+  assert.deepEqual(
+    result.drafts.map((item) => item.label),
+    ['find.txt'],
+  );
+});
+
 for (const shell of ['bash', 'zsh', 'fish'] as const) {
   test(shell + ' navigation candidates identify the exact listed directory and reject ambiguous parents', async () => {
     let queried: ShellPathQueryRequest | undefined;

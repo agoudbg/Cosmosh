@@ -4,6 +4,8 @@ import type {
   RemoteEnhancementRuntimeStatus,
   RemoteShellCapability,
   RemoteShellEventMessage,
+  ShellHistoryRemovalResult,
+  ShellHistoryView,
   SshTerminalServerMessage,
   TerminalCredentialFillResult,
 } from '@cosmosh/api-contract';
@@ -34,6 +36,7 @@ import {
   type TerminalManagedSessionBase,
 } from '../terminal/base-session-service.js';
 import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
+import { normalizeShellHistory } from '../terminal/completion/snapshot-suggestions.js';
 import {
   createCredentialFillState,
   type CredentialFillState,
@@ -45,9 +48,7 @@ import { isSupportedBashEditorInput } from '../terminal/editor-protocol.js';
 import {
   clampTerminalSize,
   computeHistorySyncDelayMs,
-  mergeTerminalRecentCommands,
   normalizeTerminalClientMessage,
-  parseTerminalHistoryOutput,
   TERMINAL_TELEMETRY_INTERVAL_MS,
   type TerminalClientInboundMessage,
 } from '../terminal/shared.js';
@@ -68,7 +69,7 @@ import {
   type SshClientLifecycleMonitor,
   type SshServerWithKeychain,
 } from './connect.js';
-import { executeShellEditorRequest } from './editor-exec.js';
+import { executeShellEditorRequest, type ShellEditorResult } from './editor-exec.js';
 import { executeBoundedSshCommand } from './exec.js';
 import type { SshProxyMetadata } from './proxy.js';
 import { RemoteShellEventOscParser, type RemoteShellEventStreamFrame } from './remote-shell-events.js';
@@ -172,6 +173,11 @@ type SshLiveSession = TerminalManagedSessionBase & {
   historySyncTimeout: NodeJS.Timeout | null;
   historySyncInFlight: boolean;
   historySyncPending: boolean;
+  /** Shared permission lifetime; revocation cancels reads/deletes and invalidates already resolved replies. */
+  historyAbortController?: AbortController;
+  historyView?: ShellHistoryView;
+  historyOwnerInstanceId?: string;
+  historyMutationInFlight?: boolean;
   lastHistorySyncStartedAtMs: number;
   commandCount: number;
   recentCommands: string[];
@@ -211,8 +217,6 @@ type ParsedRemoteTelemetry = {
 // Leading whitespace intentionally avoids writing this command into shell history on most shells.
 const TELEMETRY_COMMAND =
   ' sh -lc \'cpu=$(top -bn1 | awk -F"[, ]+" "/Cpu\\(s\\)|%Cpu\\(s\\)/ {for(i=1;i<=NF;i++){if($i==\\"id\\"){print 100-$(i-1); exit}}}"); if [ -z "$cpu" ]; then cpu=$(awk "/^cpu /{idle=$5;total=0;for(i=2;i<=NF;i++){total+=$i} if(total>0){print (total-idle)*100/total}else{print 0}}" /proc/stat); fi; mem=$(free -b | awk "/^Mem:/ {print \\$3 \\" \\" \\$2}"); net=$(awk "NR>2 {rx+=\\$2;tx+=\\$10} END {print rx \\" \\" tx}" /proc/net/dev); printf "%s\\n%s\\n%s\\n" "${cpu:-0}" "${mem:-0 0}" "${net:-0 0}"\'';
-const REMOTE_HISTORY_FETCH_COMMAND =
-  ' sh -lc \'set +e; if command -v history >/dev/null 2>&1; then history 2>/dev/null; fi; for file in "$HISTFILE" "$HOME/.bash_history" "$HOME/.zsh_history" "$HOME/.ash_history" "$HOME/.sh_history" "$HOME/.mksh_history" "$HOME/.ksh_history" "$HOME/.local/share/fish/fish_history"; do if [ -n "$file" ] && [ -f "$file" ]; then cat "$file" 2>/dev/null; fi; done; if command -v pwsh >/dev/null 2>&1; then pwsh -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi; if command -v powershell >/dev/null 2>&1; then powershell -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi\'';
 // LC_ALL is intentionally omitted so remote time, sorting, and numeric locale categories remain user-controlled.
 const REMOTE_SHELL_UTF8_ENV = {
   LANG: 'C.UTF-8',
@@ -862,6 +866,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         session.editorController?.invalidate();
         session.shellContext = requireShellEditorConfirmation(session.shellContext);
       }
+      if (!session.shellContext.permissions.history) this.clearRemoteHistory(session);
+      else if (!previous.permissions.history) this.scheduleHistorySync(session.sessionId, { immediate: true });
       if (!snapshot.values.remoteEnhancementsEnabled && session.remoteEnhancementsRuntimeState !== 'disabled') {
         this.disableRemoteEnhancementsRuntime(
           session,
@@ -897,6 +903,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         if (session.disposed || session.shellContext !== expected) return;
         session.shellContext = confirmShellEditorContext(expected, snapshot);
         this.sendShellContext(session);
+        if (!session.historyView?.source) this.scheduleHistorySync(session.sessionId);
       },
     );
     return session.editorController;
@@ -963,7 +970,10 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
           : {
               type: 'editor-snapshot-result',
               requestId: message.requestId,
-              status: result.status === 'ok' || result.status === 'applied' ? 'unavailable' : result.status,
+              status:
+                result.status === 'ok' || result.status === 'applied' || result.status === 'history-removed-from-reader'
+                  ? 'unavailable'
+                  : result.status,
             },
       );
       return;
@@ -975,7 +985,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       this.sendServerMessage(session, {
         type: 'editor-apply-result',
         requestId: message.requestId,
-        status: result.status === 'ok' ? 'unknown' : result.status,
+        status: result.status === 'ok' || result.status === 'history-removed-from-reader' ? 'unknown' : result.status,
       });
   }
 
@@ -994,6 +1004,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.sendRemoteEnhancementRuntimeStatus(session);
     this.sendShellContext(session);
     this.flushPendingStreamFrames(session);
+    this.clearRemoteHistory(session);
+    this.scheduleHistorySync(session.sessionId, { immediate: true });
     this.sendCredentialFillOffer(session);
     this.scheduleEditorContextRefresh(session);
   }
@@ -1100,6 +1112,8 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       session.remoteEnhancementsRuntimeCode = null;
       session.remoteEnhancementsRuntimeMessage = null;
       this.sendRemoteEnhancementRuntimeStatus(session);
+      // The initial connection refresh may have run while the helper was still pending.
+      this.scheduleHistorySync(session.sessionId, { immediate: true });
     }
 
     const previous = session.shellContext;
@@ -1107,6 +1121,16 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     if (session.shellContext !== previous) {
       session.editorController?.invalidate();
       this.sendShellContext(session);
+    }
+    if (session.shellContext !== previous) {
+      if (
+        event.event === 'integration-ready' ||
+        event.event === 'command-start' ||
+        (event.event === 'editor-state' && !event.available)
+      )
+        this.clearRemoteHistory(session);
+      if (event.event === 'editor-state' && event.available)
+        this.scheduleHistorySync(session.sessionId, { immediate: true });
     }
     if (event.event === 'prompt-ready' && session.shellContext === previous) return;
     if ((event.event === 'cwd' || event.event === 'cwd-invalidated') && !session.shellContext.permissions.cwd) return;
@@ -1580,6 +1604,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     this.sendShellContext(session);
     this.clearRemoteEnhancementHandshakeTimeout(session);
     session.remoteEnhancementsRuntimeState = 'disabled';
+    this.clearRemoteHistory(session);
     session.remoteEnhancementsRuntimeCode = code;
     session.editorController?.invalidate();
     session.remoteEnhancementsRuntimeMessage = message;
@@ -1658,10 +1683,12 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       return;
     }
 
-    if (message.type === 'history-delete') {
-      void this.deleteRemoteHistoryEntry(session, message.command);
+    if (message.type === 'shell-history-remove') {
+      void this.deleteRemoteHistoryEntry(session, message);
       return;
     }
+    // The unbound legacy operation belongs only to local terminals.
+    if (message.type === 'history-delete') return;
 
     if (message.type === 'completion-request') {
       void this.handleCompletionRequest(session, message);
@@ -1778,7 +1805,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
         cursorIndex: message.cursorIndex,
         limit: message.limit,
         fuzzyMatch: message.fuzzyMatch,
-        includeHistory: message.includeHistory,
+        includeHistory: this.canShowHistorySuggestions(session) && message.includeHistory !== false,
         includeBuiltInCommands: message.includeBuiltInCommands,
         // Literal remote filenames require snapshot-bound edits; the legacy PTY writer cannot accept them safely.
         includePathSuggestions: false,
@@ -1798,8 +1825,25 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       items:
         session.disposed || session.shellContext.revision !== contextRevision
           ? []
-          : localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
+          : localizeTerminalCompletionItems(
+              completionResult.items.filter(
+                (item) => item.source !== 'history' || this.canShowHistorySuggestions(session),
+              ),
+              (key) => session.t(key),
+            ),
     });
+  }
+
+  /**
+   * Separates permission to retain remote history from the user's preference to show history suggestions.
+   * @param session Candidate owner. @returns Whether a history suggestion can be published now.
+   */
+  private canShowHistorySuggestions(session: SshLiveSession): boolean {
+    return (
+      session.shellContext.permissions.history &&
+      (this.enhancementSettingsSnapshot?.values.terminalAutoCompleteHistoryEnabled ??
+        DEFAULT_SETTINGS_VALUES.terminalAutoCompleteHistoryEnabled)
+    );
   }
 
   protected disposeSession(
@@ -1809,6 +1853,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
   ): void {
     this.disposeSessionWithCommonLifecycle(sessionId, reasonKey, reasonParams, {
       beforeExit: (session, reason) => {
+        this.clearRemoteHistory(session);
         if (session.editorContextTimeout) clearTimeout(session.editorContextTimeout);
         session.editorContextTimeout = undefined;
         session.editorController?.invalidate();
@@ -1888,9 +1933,72 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     });
   }
 
+  /**
+   * Gates every history read/delete independently of renderer request flags.
+   * @param session Original session. @returns Whether history permission and the helper runtime are active.
+   */
+  private isRemoteHistoryAllowed(session: SshLiveSession): boolean {
+    return (
+      !session.disposed &&
+      session.shellContext.permissions.history &&
+      session.remoteEnhancementsRuntimeState === 'active' &&
+      session.shellContext.shell === 'fish' &&
+      session.shellContext.shellInstanceId !== null &&
+      session.shellContext.capabilities.includes('history-read')
+    );
+  }
+
+  /**
+   * Cancels this permission lifetime and removes every cached history copy before publishing an empty list.
+   * @param session Session whose permission, helper or transport ended. @returns Nothing.
+   */
+  private clearRemoteHistory(session: SshLiveSession): void {
+    if (session.historySyncTimeout) clearTimeout(session.historySyncTimeout);
+    session.historySyncTimeout = null;
+    session.historySyncPending = false;
+    session.historyAbortController?.abort();
+    session.historyAbortController = undefined;
+    const status = !session.shellContext.permissions.history
+      ? 'disabled'
+      : session.remoteEnhancementsRuntimeState === 'active' &&
+          !session.shellContext.capabilities.includes('history-read')
+        ? 'unsupported'
+        : 'unavailable';
+    this.publishRemoteHistory(session, { status, source: null, entries: [] });
+  }
+
+  /**
+   * Replaces every copy from one native observation, never merging a previous source back in.
+   * @param session Original history owner. @param view Exact newest-first native view.
+   * @returns Nothing; legacy consumers receive an explicit oldest-first conversion.
+   */
+  private publishRemoteHistory(session: SshLiveSession, view: ShellHistoryView): void {
+    session.historyView = view;
+    session.historyOwnerInstanceId = view.source ? (session.shellContext.shellInstanceId ?? undefined) : undefined;
+    session.recentCommands = [...view.entries].reverse();
+    // The legacy insertion route cannot safely send multiline/control records as terminal bytes.
+    // Precise snapshot candidates will use the complete native view directly.
+    session.completionRecentCommands = session.recentCommands.filter((entry) => !/\p{Cc}/u.test(entry));
+    this.sendServerMessage(session, { type: 'shell-history', view });
+  }
+
+  /**
+   * Creates an abort signal for the current allowed history lifetime, reused by reads and deletes.
+   * @param session Session checked at the operation boundary. @returns A live signal, or null after opt-out.
+   */
+  private getRemoteHistorySignal(session: SshLiveSession): AbortSignal | null {
+    if (!this.isRemoteHistoryAllowed(session)) return null;
+    session.historyAbortController ??= new AbortController();
+    return session.historyAbortController.signal;
+  }
+
+  /**
+   * Debounces permitted reads without allowing queued timers to outlive permission revocation.
+   * @param sessionId History owner. @param options Optional immediate refresh. @returns Nothing.
+   */
   private scheduleHistorySync(sessionId: string, options?: { immediate?: boolean }): void {
     const session = this.sessions.get(sessionId);
-    if (!session || session.disposed) {
+    if (!session || !this.isRemoteHistoryAllowed(session) || !session.shellContext.editorBinding) {
       return;
     }
 
@@ -1910,13 +2018,19 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }, delayMs);
   }
 
+  /**
+   * Rechecks the same permission lifetime after remote work before publishing any history text.
+   * @param sessionId Original session identity. @returns Completion after this read or cancellation.
+   */
   private async syncRemoteHistory(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session || session.disposed) {
       return;
     }
+    const signal = this.getRemoteHistorySignal(session);
+    if (!signal) return;
 
-    if (session.historySyncInFlight) {
+    if (session.historySyncInFlight || session.historyMutationInFlight) {
       session.historySyncPending = true;
       return;
     }
@@ -1925,20 +2039,33 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     session.lastHistorySyncStartedAtMs = Date.now();
 
     try {
-      const commands = await this.readRemoteHistory(session);
-      if (!commands) {
+      const result = await this.readRemoteHistory(session, signal);
+      if (signal.aborted || !this.isRemoteHistoryAllowed(session) || this.sessions.get(sessionId) !== session) {
         return;
       }
 
-      // Remote history is the source of truth for the commands sidebar.
-      session.recentCommands = commands;
-      session.completionRecentCommands = mergeTerminalRecentCommands(
-        session.recentCommands,
-        session.completionRecentCommands,
-      );
-      this.sendServerMessage(session, {
-        type: 'history',
-        recentCommands: [...session.recentCommands],
+      const history = result.status === 'ok' ? result.snapshot.history : null;
+      if (!history || history.status === 'private' || history.namespace === null) {
+        this.publishRemoteHistory(session, {
+          status:
+            history?.status === 'private' ? 'private' : result.status === 'unsupported' ? 'unsupported' : 'unavailable',
+          source: null,
+          entries: [],
+        });
+        return;
+      }
+      const previous = session.historyView?.source;
+      const sameSource =
+        previous?.namespace === history.namespace &&
+        session.historyOwnerInstanceId === session.shellContext.shellInstanceId;
+      this.publishRemoteHistory(session, {
+        status: history.status,
+        source: {
+          id: sameSource && previous ? previous.id : randomUUID(),
+          shell: 'fish',
+          namespace: history.namespace,
+        },
+        entries: normalizeShellHistory(history.entries),
       });
     } finally {
       session.historySyncInFlight = false;
@@ -1988,47 +2115,86 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     return this.parseTelemetryOutput(stdout);
   }
 
-  private async readRemoteHistory(session: SshLiveSession): Promise<string[] | null> {
-    const stdout = await this.executeRemoteCommand(session, REMOTE_HISTORY_FETCH_COMMAND);
-    if (stdout === null) {
-      return null;
-    }
-
-    return this.parseHistoryOutput(stdout);
+  /**
+   * Requests only the original Shell's native source, with no guessed history-file fallback.
+   * @param session Source owner. @param signal Allowed history lifetime.
+   * @returns Native observation or an explicit unavailable result.
+   */
+  private async readRemoteHistory(session: SshLiveSession, signal: AbortSignal): Promise<ShellEditorResult> {
+    return await (this.getEditorController(session)?.history(signal) ??
+      Promise.resolve({ status: 'unavailable' as const }));
   }
 
-  private parseHistoryOutput(output: string): string[] {
-    return parseTerminalHistoryOutput(output);
-  }
-
-  private async deleteRemoteHistoryEntry(session: SshLiveSession, command: string): Promise<void> {
-    const normalizedCommand = command.trim();
-    if (normalizedCommand.length === 0) {
+  /**
+   * Removes only an exact record in the source that produced the user's displayed list.
+   * @param session Original terminal. @param message Source-bound, explicitly requested removal.
+   * @returns Nothing; file persistence is never reported as confirmed.
+   */
+  private async deleteRemoteHistoryEntry(
+    session: SshLiveSession,
+    message: Extract<TerminalClientInboundMessage, { type: 'shell-history-remove' }>,
+  ): Promise<void> {
+    const socket = session.socket;
+    const view = session.historyView;
+    const signal = this.getRemoteHistorySignal(session);
+    /** @param status Exact operation outcome. @returns Nothing. */
+    const reply = (status: ShellHistoryRemovalResult['status']): void => {
+      if (!session.disposed && session.socket === socket)
+        this.sendServerMessage(session, {
+          type: 'shell-history-remove-result',
+          requestId: message.requestId,
+          sourceId: message.sourceId,
+          status,
+        });
+    };
+    if (
+      !signal ||
+      !view?.source ||
+      view.source.id !== message.sourceId ||
+      session.historyOwnerInstanceId !== session.shellContext.shellInstanceId ||
+      !view.entries.includes(message.command)
+    ) {
+      reply('stale');
       return;
     }
-
-    const escapedCommand = this.escapeShellSingleQuote(normalizedCommand);
-    // Best-effort delete across common POSIX shell history file formats.
-    const deleteCommand =
-      ' sh -lc \\' +
-      `set +e; target='${escapedCommand}'; ` +
-      'cleanup_plain(){ file="$1"; if [ -f "$file" ]; then tmp="$file.cosmosh.$$"; grep -Fvx -- "$target" "$file" > "$tmp" 2>/dev/null && mv "$tmp" "$file"; fi; }; ' +
-      'cleanup_zsh(){ file="$1"; if [ -f "$file" ]; then tmp="$file.cosmosh.$$"; awk -v target="$target" "{line=$0;cmd=line; if (match(line,/^: [0-9]+:[0-9]+;/)) {cmd=substr(line,RSTART+RLENGTH)} if (cmd==target) {next} print line}" "$file" > "$tmp" 2>/dev/null && mv "$tmp" "$file"; fi; }; ' +
-      'cleanup_plain "$HISTFILE"; cleanup_plain "$HOME/.bash_history"; cleanup_plain "$HOME/.ash_history"; cleanup_plain "$HOME/.sh_history"; cleanup_plain "$HOME/.mksh_history"; cleanup_plain "$HOME/.ksh_history"; cleanup_zsh "$HOME/.zsh_history";\'';
-
-    await this.executeRemoteCommand(session, deleteCommand);
-
-    session.recentCommands = session.recentCommands.filter((entry) => entry !== normalizedCommand);
-    session.completionRecentCommands = session.completionRecentCommands.filter((entry) => entry !== normalizedCommand);
-    this.sendServerMessage(session, {
-      type: 'history',
-      recentCommands: [...session.recentCommands],
-    });
-    this.scheduleHistorySync(session.sessionId, { immediate: true });
-  }
-
-  private escapeShellSingleQuote(value: string): string {
-    return value.replace(/'/g, "'\"'\"'");
+    if (session.historySyncInFlight || session.historyMutationInFlight) {
+      reply('unavailable');
+      return;
+    }
+    session.historyMutationInFlight = true;
+    try {
+      const result = await this.getEditorController(session)?.deleteHistory(
+        view.source.namespace,
+        message.command,
+        signal,
+      );
+      if (
+        signal.aborted ||
+        !this.isRemoteHistoryAllowed(session) ||
+        session.historyView?.source?.id !== message.sourceId
+      )
+        return;
+      if (result?.status === 'history-removed-from-reader')
+        this.publishRemoteHistory(session, {
+          ...view,
+          entries: view.entries.filter((entry) => entry !== message.command),
+        });
+      reply(
+        result?.status === 'history-removed-from-reader'
+          ? 'removed-from-reader'
+          : result?.status === 'unknown'
+            ? 'unknown'
+            : result?.status === 'stale'
+              ? 'stale'
+              : 'unavailable',
+      );
+    } finally {
+      session.historyMutationInFlight = false;
+      const refreshRequested = !signal.aborted || session.historySyncPending;
+      session.historySyncPending = false;
+      if (refreshRequested && this.isRemoteHistoryAllowed(session))
+        this.scheduleHistorySync(session.sessionId, { immediate: true });
+    }
   }
 
   private async executeRemoteCommand(
@@ -2037,6 +2203,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     options?: {
       timeoutMs?: number;
       maxOutputBytes?: number;
+      signal?: AbortSignal;
     },
   ): Promise<string | null> {
     return await executeBoundedSshCommand(session.client, command, options);

@@ -22,8 +22,8 @@ sequenceDiagram
   SSH-->>API: sessionId + wsUrl + wsToken
   API-->>UI: create-session response
   UI->>SSH: WebSocket /ws/ssh/{sessionId}?token=...
-  UI-->>SSH: input/resize/ping/history-delete/completion-request
-  SSH-->>UI: output/telemetry/history/completion-response/pong/exit
+  UI-->>SSH: input/resize/ping/shell-history-remove/completion-request
+  SSH-->>UI: output/telemetry/shell-history/shell-history-remove-result/completion-response/pong/exit
 ```
 
 ## 2. 后端会话生命周期
@@ -98,7 +98,7 @@ Locale 行为：
 - `resize`：带边界归一化的 cols/rows。
 - `ping`：心跳。
 - `close`：显式断开请求。
-- `history-delete`：请求后端删除远端 shell 历史中的选中命令。
+- `shell-history-remove`：携带所显示来源的编号和完整命令文本，请求原生精确移除。未绑定来源的`history-delete`仅供本地终端使用。
 - `completion-request`：基于当前命令前缀与光标位置请求排序后的补全候选。
 
 ### Server → Client
@@ -106,7 +106,9 @@ Locale 行为：
 - `ready`：附加确认。
 - `output`：shell stdout/stderr 输出。
 - `telemetry`：CPU/内存/网络 + 命令历史快照。
-- `history`：仅历史快照推送，用于即时 UI 同步。
+- `history`：旧本地终端历史快照；远端历史使用下述绑定来源的视图。
+- `shell-history`：携带当前来源及从新到旧的完整原生记录，或明确的空列表原因。
+- `shell-history-remove-result`：绑定请求及来源的原生移除结果；`removed-from-reader`不确认历史文件已更新。
 - `completion-response`：当前命令 token 的排序补全候选。
 - `bootstrap-status`：backend 侧通道安装器返回的远端 bootstrap 探测、下载、安装与失败状态。
 - `remote-enhancement-runtime-status`：backend 持有的 `pending`、`active` 或 `disabled` 信任状态，以及已校验 helper 契约。
@@ -117,15 +119,15 @@ Locale 行为：
 
 ### 3.1 History 同步模型
 
-- 后端命令历史来源于远端 history 探测与 shell 历史解析结果。
-- 每次 SSH 会话建立后，后端都会执行远端 history 探测并解析为标准化命令列表。
-- 远端历史来源按兼容顺序探测（shell 内建 + 常见历史文件），覆盖 Bash/Zsh/Fish/Ksh/Ash 等格式，并在可用时兼容 PowerShell PSReadLine 历史。
+- SSH 历史只通过符合条件的原始 Shell 的原生历史接口读取。目前启用的是具备已验证编辑器配置的 Fish 4.0.1；其他 Shell 或配置显示不支持或暂不可用。
+- 会话连接后，助手声明`history-read`且当前编辑器绑定可用时才刷新历史。读取会等待已有私有编辑器请求结束；等待可以取消，也不会阻塞普通 PTY 输入。
+- 每次接受原生观察后都会替换全部历史副本。来源编号绑定 Shell 身份、历史库名称和权限周期。SSH 历史不再扫描混合文件，也不再通过改写文件降级删除。
 - 程序专用输入记录（`.node_repl_history`、`.python_history`、`.sqlite_history`、`.mysql_history`及`.lesshst`）不作为 Shell 命令历史来源。
 - SSH 与本地终端输入处理器只转发 PTY 输入，不保留命令缓冲，也不把按键内容加入补全历史。密码提示和交互程序共用同一输入通道，仅凭回车无法确认 Shell 命令。历史只从 Shell 自身的历史来源读取，原始`cd`输入不会更新补全目录。
 - 当已激活的可信 helper 声明 `command-start` 时，backend 将每个唯一 `commandId` 作为命令计数与延迟 history 刷新的权威触发源。重复生命周期事件不会重复计数。
-- 只有 session 不具备已激活的结构化命令生命周期时，原始 `input` 中的提交字符（`\r` / `\n`）才触发既有的“延迟 + 节流”history 刷新，为禁用或降级 helper 保留保守 fallback。
-- history 与 telemetry 解耦：telemetry 仍为定时采样，history 可通过 `history` 事件即时推送。
-- `SSH.tsx` 的删除操作会发送 `history-delete`，后端会以 best-effort 方式清理远端历史文件后再执行同步。
+- 私密、暂不可用或不支持的观察会清空旧记录及待处理操作。关闭权限、更换 Shell、接受编辑器不可用或命令开始事件会使来源失效；重复或过期事件不会影响有效来源。
+- `shell-history`携带来源编号与从新到旧的完整记录，或明确的空列表原因。旧补全消费者使用显式转换后的从旧到新列表，并排除多行及控制字符记录；遥测消息不能让原生历史侧栏恢复旧记录。
+- 移除前的确认窗口说明精确文本匹配、共享原生历史以及无法确认文件更新的范围。`shell-history-remove`绑定所显示来源及缓存中的完整记录，结果同时绑定请求编号。多行或控制字符记录提供完整复制，填写和运行入口禁用，不会将命令压成一行。
 
 ### 3.2 自动补全模型
 
@@ -358,6 +360,8 @@ flowchart LR
 `pnpm test:terminal`运行后端共享终端／SSH 与 renderer SSH 单元测试。真实 PTY 行为使用独立入口：先执行`pnpm terminal:fixture start`启动临时 OpenSSH 容器，再运行`pnpm test:terminal:live`，最后通过`pnpm terminal:fixture stop`停止环境。
 
 测试环境使用独立的 Bash、Zsh、Fish 账户、专用生成密钥、固定校验的主机指纹和仅监听本机回环地址的端口。文件样本覆盖空格、引号、Unicode、符号链接和大目录，不挂载宿主机用户目录或生产凭据。Windows 使用 Debian WSL 内的容器运行时；Linux 默认使用 Docker，也可以通过`COSMOSH_FIXTURE_RUNTIME`选择 Podman。生命周期和环境配置见`scripts/terminal-fixture/README.md`。
+
+同一个临时容器重新启动时，账户准备脚本可以再次执行。它复用指向预期目录的符号链接，发现目标已改变时报告错误，不会覆盖现有链接。手动重新启动容器后须核对回环端口，因为容器运行时可能重新分配端口。
 
 真实测试入口在环境不可用时明确失败。单元测试通过不能证明真实 Shell、网络延迟或 Electron 交互已得到验证。
 
@@ -598,6 +602,34 @@ Fish 复用相同的私有请求、授权和确认流程，以固定的`notifica
 每个`ShellEditorController`在十秒有效的私有快照中最多保存 128 个候选替换内容。来源提供码点范围，由控制器构造完整输入，并保留范围外的所有字符。展示候选只包含不透明标识、标签、说明、类型和来源，不包含填写文本或修改范围。后续来源追加候选，不改变已有标识。按标识填写时，再次检查会话、上下文、权限、有效期，并由原始 Shell 比较完整观察结果。输入、快照替换、权限撤销、到期和会话结束都会清除关联修改。
 
 这一基础尚未接入前端菜单，旧补全消息保留至计划中的消费者迁移。`completion-edits.live-test.ts`经过真实 Bash、Zsh 和 Fish 编辑器填写，再明确执行固定的参数检查命令，核对文件名字节与未改变的后续参数；测试另行确认接受候选本身没有执行命令。
+
+#### 基于快照的历史与命令资料基础
+
+`resolveSnapshotSuggestions`使用实际编辑器输入、原生来源中从新到旧的历史，以及独立的来源开关。它直接将已解析的字词交给现有命令资料；已完成的命令和子命令名称要求精确匹配，匹配设置只用于正在编辑的字词。未知选项、未识别的子命令及结束选项的`--`都会停止资料建议。正在编辑的字词不会被当作已完成的子命令或已使用的选项。资料明确区分单个参数值与包含多个字词的片段，例如`data science`始终作为一个完整参数引用。受支持的片段保留常规命令和选项的直接写法，并按原始 Shell 引用特殊字面字符。字词修改保留全部后续参数；完整历史只在光标位于输入末尾时提供，包含多行或控制字符的记录不会生成可填写修改。
+
+`normalizeShellHistory`保留完整原文和最新的重复项，每次来源观察最多 200 项、每项 8 KiB、总计 64 KiB。原生历史适配器只提供当前 Shell 允许读取的记录；这个纯函数不会验证远端来源，也不会替来源过滤私密历史。`scoreCompletionMatch`保留有意义的空格，统一字面前缀、子串和可选的 Unicode 子序列匹配。同一历史匹配等级内，新旧顺序优先于命令长度。不匹配的路径不会获得来源加分。`rankSnapshotSuggestions`按修改后的完整文本与光标去重，同分来源顺序固定，最多保留 128 项。同名但修改不同的候选保持独立。
+
+历史权限独立于请求参数执行，直接刷新和删除请求也受限制。`remoteEnhancementsHistoryEnabled`是默认开启的独立读取权限；`terminalAutoCompleteHistoryEnabled`只控制建议展示。关闭建议展示后，已获准的历史读取和历史列表继续可用。关闭读取权限、停用助手和断开连接都会取消已排队及正在进行的历史任务，并立即清空会话中的两份历史副本。重新开启权限会创建新的取消周期；即使旧请求的 SSH 结果在关闭权限之前已经返回，也不能再次填充历史。旧设置文档保留原有建议偏好，并由共享设置注册表补齐新读取权限的默认值。关闭 SSH 通道无法撤销远端已经完成的删除。Fish 原生移除的范围见下文；不支持的 Shell 没有远端删除降级方式。
+
+前端同时检查历史读取权限和建议展示设置。修改建议来源时，已打开的菜单及其在途请求会在下一次绘制之前失效，迟到的回复不能恢复已关闭的历史建议。Fish 原生来源、精确缓存替换及绑定来源的侧栏移除已启用。快照建议函数等待候选编号菜单迁移。Bash 原生历史依赖拟议的原生适配模块：`history -p`可能修改历史，`fc`在编辑器回调中可能错误识别当前记录。Zsh 的隐私与选择性删除尚未验证合格，这两个 Shell 暂未声明原生历史能力。
+
+#### 原生 Fish 历史观察与移除
+
+私有编辑器工作进程接受仅用于 Fish 的`history`和`history-delete`操作。它们要求历史读取权限和原始 Shell 中可用的回调，与输入和 CWD 权限分开。`ShellNativeHistory`观察包含`status`（`ok`、`partial`、`private`）、实际历史命名空间和从新到旧的完整记录。历史操作不能包含当前输入或目录，输入／上下文操作不能附带历史。前端命令不能直接请求这些私有操作。Fish 声明`history-read`；会话服务通过这些操作取得原生来源，旧远端读取与删除流程已移除。
+
+Fish 适配器在原始交互进程中使用`builtin history search --null --max 200`，不读取猜测的历史文件，也不另开登录 Shell。查询之前先拒绝私密模式和显式为空的历史命名空间。发现自定义或可自动加载的`fish_should_add_to_history`后，该原始 Shell 的历史策略在整个生命周期内保持不可信，包括编辑器检查最初不可用的情况。删除函数、再次出现提示符或执行普通命令都不会解除这个隐私限制。默认以 ASCII 空格开头的记录在 Fish 内过滤，之后才进入 Go 助手，因为 Fish 可能暂时保留这类不应保存的历史。
+
+NUL 分隔保留记录内部和末尾的换行及有意义的空格；`read --delimiter ''`不受用户 IFS 分词设置影响。原生查询和逐条读取循环都必须成功完成。用户的`fish_read_limit`导致读取失败时，整个来源被拒绝，不会把截断列表报告为成功。私有解析器限制传输字节、JSON 转义大小、记录数、单项及总大小；超大记录被跳过时，保留下来的完整记录标为`partial`。取消请求会阻止控制器返回成功观察，包括已经收到`done`但 SSH 清理尚未完成的情况。工作进程时限约束整个交互，但无法中断 Fish 内部的历史文件 I/O；`--max`只限制返回条数，不限制所有底层文件访问。
+
+`history-delete`将一条完整记录及命名空间绑定到原始 Shell 身份和提示符代数。Fish 先用区分大小写的原生精确查询确认该文字存在，再通过已有私有通道检查 Backend 授权，之后才允许删除。它执行原生`history delete --exact --case-sensitive --`、调用原生`history save`，然后重复精确查询。最近历史的有限列表无法确认目标不存在；精确查询必须完整返回 NUL 分隔内容和最终成功标记。前导短横线、内部／末尾换行和有意义的空格始终作为数据处理。命名空间变化、记录不存在、私密／自定义策略或权限撤销都不能授权该操作。
+
+`history-removed-from-reader`只确认原始行编辑器不再返回该完整文字，不能确认历史文件已经更新。Fish 的保存内建命令可能在写入失败后仍返回成功；近期内存记录可能已经消失，但之前保存的文件记录仍然存在。仍可查到的旧文件记录，或授权后丢失确认，都返回`unknown`。只有输入修改使用`applied`；传输层拒绝将两种结果用于另一种操作。界面必须单独处理历史结果，并说明文件更新尚未确认。
+
+Fish 精确删除匹配当前命名空间内的所有相同文字。原生保存或后续正常退出可能更新共享历史文件，影响其他会话，因此不能描述为只删除当前连接中的一行。原始 Fish 进程缓存按名称选择的历史对象及首次解析的数据目录，修改导出的 HOME／XDG 值不会改变同一进程的来源身份。来源启用和删除界面必须表达匹配范围及文件更新的限制。
+
+`fish-history.live-test.ts`通过 SSH 验证真实 Fish 4.0.1，覆盖从新到旧的去重、精确 Unicode／多行记录、跟踪模式、前导空格隐私、私密模式、禁用历史、自定义策略移除、超大记录和原生读取上限。移除测试覆盖完整文字、命名空间变化、授权撤销、已保存记录，以及独立不可写数据目录中的旧记录和近期记录。另一个原生行编辑器验证近期文件记录可能在当前会话移除后仍存在。单元和传输测试还覆盖独立权限、未请求字段、JSON 大小、取消、延迟清理和操作结果混用。
+
+`history-session.live-test.ts`使用真实 Fish PTY 驱动生产 OSC 解析器、会话服务、控制器和 SSH 传输，验证自动发布、历史库与来源替换、精确移除、拒绝旧来源，以及输入和 CWD 读取关闭时的历史权限清理。`tests/terminal-history.browser.cjs`使用生产分屏 reducer 和侧栏，仅替代 WebSocket 边界，覆盖完整复制、多行限制、来源／分屏／权限失效、明确的移除范围、等待与结果状态、窄窗口布局。完整 Electron→Backend→SSH 验收仍是单独的计划检查。
 
 #### 有界结构化路径来源
 

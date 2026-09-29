@@ -5,7 +5,7 @@ import { normalizeEditorBuffer } from '../editor-protocol.js';
 /** Backend-only half-open replacement range, measured in Unicode codepoints. */
 export type ShellCompletionEdit = { start: number; end: number; text: string };
 /** Provider output before the owning session assigns an opaque candidate identifier. */
-export type ShellCompletionDraft = Omit<ShellCompletionCandidate, 'id'> & { edit: ShellCompletionEdit };
+export type ShellCompletionDraft = Omit<ShellCompletionCandidate, 'id'> & { edit: ShellCompletionEdit; score?: number };
 /** Literal word including its original quoting, and decoded text up to the actual cursor. */
 export type ShellLiteralWord = { start: number; end: number; value: string; prefix: string; homeRelative: boolean };
 /** A deliberately restricted simple command; unsupported syntax has no precise candidates. */

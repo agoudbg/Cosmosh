@@ -11,6 +11,9 @@ function __cosmosh_fish_editor_owned
 end
 
 function __cosmosh_fish_editor_prepare
+  # Observe privacy policy even while the editor is unavailable (for example native grey text).
+  # Removing a hook can itself leave its just-rejected command temporarily visible in history.
+  __cosmosh_fish_history_observe_policy (builtin functions --names --all)
   builtin set -g __COSMOSH_EDITOR_AVAILABLE false
   builtin set -g __COSMOSH_FISH_PROFILE_SUPPORTED 0
   builtin set -g __COSMOSH_FISH_TITLE_PENDING 1
@@ -60,6 +63,9 @@ function __cosmosh_fish_editor_install_title
     # Calling the original first preserves both incoming status and pipestatus.
     __cosmosh_fish_original_title $argv
     builtin set -l title_status $status
+    # Prompt/title code can install a history policy after prepare, even while precise editing
+    # is disabled. Observe it before the availability gate so later removal cannot reveal a private entry.
+    __cosmosh_fish_history_observe_policy (builtin functions --names --all)
     builtin set -g __COSMOSH_FISH_PROFILE_SUPPORTED 0
     builtin set -l pending "$__COSMOSH_FISH_TITLE_PENDING"
     builtin set -g __COSMOSH_FISH_TITLE_PENDING 0
@@ -103,6 +109,7 @@ function __cosmosh_fish_editor_configuration_supported
   # Functional abbreviations and user event handlers can change mappings after the title checkpoint.
   # Listing names does not autoload; never query an unregistered user hook just to inspect it.
   builtin set -l names (builtin functions --names --all)
+  __cosmosh_fish_history_observe_policy $names
   for forbidden in fish_user_key_bindings fish_should_add_to_history commandline count set return test string printf functions echo contains status breakpoint
     not builtin contains -- "$forbidden" $names; or builtin return 1
   end
@@ -280,7 +287,9 @@ function __cosmosh_fish_editor_observe
     builtin return 0
   end
   builtin set -l request (command "$__COSMOSH_EDITOR_BINARY" editor-widget mode "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs 2>/dev/null)
-  builtin test (builtin count $request) = 3; or builtin return 0
+  if builtin test (builtin count $request) != 3
+    builtin test (builtin count $request) = 5; and builtin test "$request[2]" = history-delete; or builtin return 0
+  end
   __cosmosh_fish_editor_supported; or begin
     __cosmosh_fish_editor_reject "$request[1]"
     builtin return 0
@@ -291,6 +300,12 @@ function __cosmosh_fish_editor_observe
   builtin set -l directory ''
   builtin set -l user_home ''
   switch "$request[2]"
+    case history-delete
+      __cosmosh_fish_history_delete "$request[1]" "$request[4]" "$request[5]"
+      builtin return 0
+    case history
+      __cosmosh_fish_history_read "$request[1]"
+      builtin return 0
     case context
     case snapshot apply
       builtin set include_input 1
@@ -329,6 +344,113 @@ function __cosmosh_fish_editor_observe
     builtin commandline --function end-undo-group
     builtin set -l confirmed (builtin printf '%s\0' (builtin commandline --current-buffer | builtin string collect --no-trim-newlines --allow-empty) (builtin commandline --cursor) "$directory" "$user_home" |
       command "$__COSMOSH_EDITOR_BINARY" editor-widget confirm "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$request[1]" 1 "$request[3]" 2>/dev/null)
+  end
+  builtin return 0
+end
+
+function __cosmosh_fish_history_scope
+  # Keep reads and deletes under the same original-Shell privacy and namespace decision.
+  builtin set -l namespace fish
+  if builtin set -q fish_history
+    if builtin test (builtin count $fish_history) = 0
+      builtin set namespace ''
+    else if builtin test (builtin count $fish_history) = 1
+      builtin set namespace "$fish_history[1]"
+    else
+      builtin return 1
+    end
+  end
+  if builtin test -n "$fish_private_mode"; or builtin test -z "$namespace"
+    builtin printf 'private\n'
+    builtin return 0
+  end
+  # Invalid names fall back inside Fish. Decline them instead of misidentifying the source.
+  builtin string match -rq '^[A-Za-z0-9_]+$' -- "$namespace"; or builtin return 1
+  __cosmosh_fish_history_observe_policy (builtin functions --names --all)
+  if builtin test "$__COSMOSH_FISH_HISTORY_POLICY_UNTRUSTED" = 1
+    builtin return 1
+  end
+  builtin printf 'ok\n%s\n' "$namespace"
+end
+
+function __cosmosh_fish_history_stream
+  # Native search exposes ephemeral entries. Remove default leading-space records before
+  # any helper transfer, and distinguish a complete empty search from a truncated read.
+  builtin set -l query --null --max 200
+  if builtin test (builtin count $argv) = 2
+    builtin set query --null --exact --case-sensitive --max 1 -- "$argv[2]"
+  end
+  begin
+    builtin printf 'ok\0%s\0' "$argv[1]"
+    builtin history search $query | begin
+      builtin set -l read_status 0
+      while true
+        builtin read --null --delimiter '' --local record
+        builtin set read_status $status
+        builtin test "$read_status" = 0; or break
+        if not builtin string match -rq '^ ' -- "$record"
+          builtin printf '%s\0' "$record"; or break
+        end
+      end
+      # Normal EOF is 1. User fish_read_limit failures must not masquerade as an empty history.
+      builtin test "$read_status" = 1
+    end
+    builtin set -l query_status $pipestatus
+    if builtin test "$query_status[1]" = 0; and builtin test "$query_status[2]" = 0
+      builtin printf '0\0'
+    else
+      builtin printf '1\0'
+    end
+  end 2>/dev/null
+end
+
+function __cosmosh_fish_history_read
+  builtin set -l scope (__cosmosh_fish_history_scope)
+  if builtin test "$scope[1]" = private
+    builtin printf 'private\0\0' | command "$__COSMOSH_EDITOR_BINARY" editor-widget history "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$argv[1]" >/dev/null 2>&1
+  else if builtin test (builtin count $scope) = 2; and builtin test "$scope[1]" = ok
+    __cosmosh_fish_history_stream "$scope[2]" | command "$__COSMOSH_EDITOR_BINARY" editor-widget history "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$argv[1]" >/dev/null 2>&1
+  else
+    __cosmosh_fish_editor_reject "$argv[1]"
+  end
+  builtin return 0
+end
+
+function __cosmosh_fish_history_delete
+  builtin set -l request_id "$argv[1]"
+  builtin set -l namespace (builtin printf '%s' "$argv[2]" | command base64 -d | builtin string collect --no-trim-newlines --allow-empty)
+  builtin set -l record (builtin printf '%s' "$argv[3]" | command base64 -d | builtin string collect --no-trim-newlines --allow-empty)
+  builtin set -l scope (__cosmosh_fish_history_scope)
+  if builtin test (builtin count $scope) != 2; or builtin test "$scope[1]" != ok; or \
+      builtin test (builtin count $namespace) != 1; or builtin test "$scope[2]" != "$namespace"; or \
+      builtin test (builtin count $record) != 1; or builtin test -z "$record"
+    __cosmosh_fish_editor_reject "$request_id"
+    builtin return 0
+  end
+  # An exact native search, not a capped recent list, proves the requested text is present.
+  builtin set -l response (__cosmosh_fish_history_stream "$namespace" "$record" |
+    command "$__COSMOSH_EDITOR_BINARY" editor-widget history "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$request_id" 2>/dev/null)
+  builtin test (builtin count $response) = 1; and builtin test "$response[1]" = apply; or builtin return 0
+  builtin set scope (__cosmosh_fish_history_scope)
+  if not __cosmosh_fish_editor_supported; or builtin test (builtin count $scope) != 2; or \
+      builtin test "$scope[1]" != ok; or builtin test "$scope[2]" != "$namespace"
+    __cosmosh_fish_editor_reject "$request_id"
+    builtin return 0
+  end
+  # Fish records exact-text tombstones for this namespace. Saving removes old file-backed
+  # records from subsequent native searches; the builtin does not promise durable storage.
+  builtin history delete --exact --case-sensitive -- "$record" 2>/dev/null; or builtin return 0
+  builtin history save 2>/dev/null; or builtin return 0
+  __cosmosh_fish_history_stream "$namespace" "$record" |
+    command "$__COSMOSH_EDITOR_BINARY" editor-widget history-confirm "$__COSMOSH_SHELL_INSTANCE_ID" fish "$fish_pid" "$__COSMOSH_EDITOR_START" "$__COSMOSH_PROMPT_GENERATION" emacs "$request_id" >/dev/null 2>&1
+  builtin return 0
+end
+
+function __cosmosh_fish_history_observe_policy
+  # Names include autoload candidates without executing them. The original Shell lifetime owns
+  # this privacy decision; a later prompt or erased function cannot prove older entries safe.
+  if builtin contains -- fish_should_add_to_history $argv
+    builtin set -gu __COSMOSH_FISH_HISTORY_POLICY_UNTRUSTED 1
   end
   builtin return 0
 end

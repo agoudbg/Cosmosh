@@ -105,22 +105,47 @@ export type ShellEditorNotification = { fd: number; inode: string } | { signal: 
 /** Complete input buffer with a Unicode codepoint cursor offset; never persisted or included in OSC/debug events. */
 export type ShellEditorBuffer = { text: string; cursor: number };
 
+/** Original Shell history in native newest-first order; private mode returns no namespace or records. */
+export type ShellNativeHistory = {
+  status: 'ok' | 'partial' | 'private';
+  namespace: string | null;
+  entries: string[];
+};
+
+/** One current native history source. The opaque ID changes when its permission or namespace lifetime ends. */
+export type ShellHistorySource = { id: string; shell: 'fish'; namespace: string };
+
+/** Exact newest-first native records, or an explicit state with no retained private history. */
+export type ShellHistoryView =
+  | { status: 'ok' | 'partial'; source: ShellHistorySource; entries: string[] }
+  | { status: 'disabled' | 'unsupported' | 'unavailable' | 'private'; source: null; entries: [] };
+
+/** Removal is scoped to the original reader; native history-file persistence remains unconfirmed. */
+export type ShellHistoryRemovalResult = {
+  type: 'shell-history-remove-result';
+  requestId: string;
+  sourceId: string;
+  status: 'removed-from-reader' | 'stale' | 'unavailable' | 'unknown';
+};
+
 /** A requested, editor-owned observation, retained only in session memory. */
 export type ShellEditorSnapshot = {
   promptGeneration: number;
   editorMode: 'emacs' | 'vi-insert';
   buffer?: ShellEditorBuffer;
   directory?: ShellDirectoryContext;
+  history?: ShellNativeHistory;
 };
 
 /** Private stdin request to the bounded remote helper process. */
 export type ShellEditorRequest = {
   requestId: string;
   target: ShellEditorTarget;
-  operation: 'context' | 'snapshot' | 'apply';
+  operation: 'context' | 'snapshot' | 'apply' | 'history' | 'history-delete';
   promptGeneration: number;
   includeDirectory: boolean;
   notification?: ShellEditorNotification;
+  /** For history-delete, exactly one native record identifies an exact match in its original namespace. */
   expected?: ShellEditorSnapshot;
   replacement?: ShellEditorBuffer;
 };
@@ -271,6 +296,7 @@ export type TerminalClientMessage =
   | { type: 'close' }
   | { type: 'ping' }
   | { type: 'history-delete'; command: string }
+  | { type: 'shell-history-remove'; requestId: string; sourceId: string; command: string }
   | { type: 'credential-fill'; token: string }
   | { type: 'editor-snapshot'; requestId: string }
   | { type: 'editor-apply'; requestId: string; snapshotId: string; replacement: ShellEditorBuffer }
@@ -330,6 +356,8 @@ export type TerminalServerMessage =
 /** Complete Backend-to-Renderer message contract for SSH terminal sessions. */
 export type SshTerminalServerMessage =
   | TerminalServerMessage
+  | { type: 'shell-history'; view: ShellHistoryView }
+  | ShellHistoryRemovalResult
   | RemoteBootstrapStatus
   | RemoteEnhancementRuntimeStatus
   | RemoteShellEventMessage

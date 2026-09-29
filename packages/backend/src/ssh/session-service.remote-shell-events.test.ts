@@ -7,6 +7,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   DEFAULT_SETTINGS_VALUES,
   type RemoteShellCapability,
+  type ShellEditorRequest,
+  type ShellHistoryView,
   type SshTerminalServerMessage,
 } from '@cosmosh/api-contract';
 import type { Client, ClientChannel } from 'ssh2';
@@ -48,7 +50,7 @@ type RemoteShellEventSessionHarness = {
   loginPassword: string | null;
   remoteEnhancementsRuntimeState: 'pending' | 'active' | 'disabled';
   remoteEnhancementsRuntimeContract: {
-    shell: 'bash';
+    shell: 'bash' | 'fish';
     helperVersion: string;
     protocolVersion: number;
     capabilities: RemoteShellCapability[];
@@ -68,6 +70,16 @@ type RemoteShellEventSessionHarness = {
   lastExitCode: number | null;
   lastCommandDurationMs: number | null;
   commandCount: number;
+  historySyncTimeout: NodeJS.Timeout | null;
+  historySyncInFlight: boolean;
+  historySyncPending: boolean;
+  historyAbortController?: AbortController;
+  historyView?: ShellHistoryView;
+  historyOwnerInstanceId?: string;
+  historyMutationInFlight?: boolean;
+  lastHistorySyncStartedAtMs: number;
+  recentCommands: string[];
+  completionRecentCommands: string[];
   socket: {
     OPEN: number;
     readyState: number;
@@ -161,6 +173,13 @@ const createSessionHarness = (
   lastExitCode: null,
   lastCommandDurationMs: null,
   commandCount: 0,
+  historySyncTimeout: null,
+  historySyncInFlight: false,
+  historySyncPending: false,
+  historyMutationInFlight: false,
+  lastHistorySyncStartedAtMs: 0,
+  recentCommands: [],
+  completionRecentCommands: [],
   socket: null,
   disposed: false,
   ...overrides,
@@ -323,7 +342,6 @@ test('Zsh context recovery survives client attachment and permission changes dur
 });
 
 test('editor replies respect client and permission ownership through final publication', async () => {
-  const service = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;
   const channels: Array<
     EventEmitter & {
       stderr: PassThrough;
@@ -378,6 +396,9 @@ test('editor replies respect client and permission ownership through final publi
     socket: oldSocket,
     client,
     stream: { write() {} },
+  });
+  const service = Object.assign(Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness, {
+    sessions: new Map([[session.sessionId, session]]),
   });
   session.remoteEnhancementsRuntimeContract!.binaryPath = '/verified/helper';
   session.shellContext = {
@@ -634,7 +655,6 @@ test('SshSessionService ignores remote shell events while the runtime is disable
 });
 
 test('SshSessionService preserves detached output and helper event ordering on attach', () => {
-  const serviceHarness = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;
   const sentMessages: SshTerminalServerMessage[] = [];
   const commandStart = createRemoteShellEvent({
     event: 'command-start',
@@ -644,6 +664,9 @@ test('SshSessionService preserves detached output and helper event ordering on a
   });
   const transportedCommandStart = JSON.parse(JSON.stringify(commandStart)) as RemoteShellEventMessage;
   const session = createSessionHarness({ remoteEnhancementsRuntimeState: 'active' });
+  const serviceHarness = Object.assign(Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness, {
+    sessions: new Map([[session.sessionId, session]]),
+  });
 
   serviceHarness.sendServerMessage(session, { type: 'output', data: '\r\n' });
   serviceHarness.sendServerMessage(session, commandStart);
@@ -672,10 +695,11 @@ test('SshSessionService preserves detached output and helper event ordering on a
       'output',
       'remote-shell-event',
       'output',
+      'shell-history',
       'credential-fill-offer',
     ],
   );
-  assert.deepEqual(sentMessages.slice(3, -1), [
+  assert.deepEqual(sentMessages.slice(3, -2), [
     { type: 'output', data: '\r\n' },
     transportedCommandStart,
     { type: 'output', data: 'result\r\n' },
@@ -707,7 +731,9 @@ test('SshSessionService bounds the detached stream queue by frame count and byte
 });
 
 test('SshSessionService activates only after a matching integration-ready handshake', () => {
-  const serviceHarness = SshSessionService.prototype as unknown as RemoteShellEventServiceHarness;
+  const serviceHarness = Object.assign(Object.create(SshSessionService.prototype) as RemoteShellEventServiceHarness, {
+    sessions: new Map<string, RemoteShellEventSessionHarness>(),
+  });
   const session = createSessionHarness({ remoteEnhancementsRuntimeState: 'pending' });
   serviceHarness.startRemoteEnhancementHandshakeTimeout(session, 1_000);
 
@@ -858,6 +884,573 @@ test('SshSessionService counts and refreshes each structured command id exactly 
   assert.equal(session.lastRemoteCommandId, 'cmd-2');
   assert.equal(session.lastRemoteCommand, 'pwd');
   assert.deepEqual(scheduledSessionIds, ['session-1', 'session-1']);
+});
+
+/** Production history owner exercised through a request-scoped SSH channel boundary. */
+type HistoryServiceHarness = RemoteShellEventServiceHarness & {
+  disposeSession(sessionId: string, reasonKey: string): void;
+  syncRemoteHistory(sessionId: string): Promise<void>;
+  scheduleHistorySync(sessionId: string, options?: { immediate?: boolean }): void;
+  clearRemoteHistory(session: RemoteShellEventSessionHarness): void;
+  deleteRemoteHistoryEntry(
+    session: RemoteShellEventSessionHarness,
+    message: Extract<TerminalClientInboundMessage, { type: 'shell-history-remove' }>,
+  ): Promise<void>;
+  handleCompletionRequest(
+    session: RemoteShellEventSessionHarness,
+    message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
+  ): Promise<void>;
+};
+
+/** Models the private helper protocol without replacing the editor controller or transport. */
+class HistoryChannel extends EventEmitter {
+  stderr = new PassThrough();
+  writes: string[] = [];
+  closed = false;
+  private opened = false;
+
+  constructor(private readonly callback: (error: undefined, channel: ClientChannel) => void) {
+    super();
+  }
+
+  /** @returns The authenticated request sent through private stdin. */
+  get request(): ShellEditorRequest {
+    return JSON.parse(this.writes[0]!) as ShellEditorRequest;
+  }
+
+  /** @returns Nothing; supplies ssh2's asynchronous channel callback. */
+  open(): void {
+    if (this.opened) return;
+    this.opened = true;
+    this.callback(undefined, this as unknown as ClientChannel);
+  }
+
+  /** @param data Private stdin bytes. @returns Nothing. */
+  write(data: string): void {
+    this.writes.push(data);
+  }
+
+  /** @returns Nothing; models worker EOF and transport release. */
+  end(): void {
+    this.close();
+  }
+
+  /** @returns Nothing; models forced transport closure. */
+  destroy(): void {
+    this.close();
+  }
+
+  /** @returns Nothing; emits one close event. */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.emit('close');
+  }
+
+  /** @param fields Private helper response fields. @returns Nothing. */
+  reply(fields: Record<string, unknown>): void {
+    this.emit(
+      'data',
+      Buffer.from(JSON.stringify({ type: 'editor', requestId: this.request.requestId, ...fields }) + '\n'),
+    );
+  }
+}
+
+/** @param overrides Event fields. @returns One matching original Fish helper event. */
+const fishHistoryEvent = (overrides: Partial<RemoteShellEventMessage> = {}): RemoteShellEventMessage =>
+  createRemoteShellEvent({
+    shell: 'fish',
+    capabilities: ['cwd', 'command-start', 'command-end', 'prompt-ready', 'history-read'],
+    ...overrides,
+  });
+
+/**
+ * Keeps the production controller and two-phase transport while substituting only ssh2.
+ * @param openImmediately Whether ssh2 delivers its exec callback synchronously.
+ * @returns Mutable session and request-scoped worker channels.
+ */
+const createHistoryServiceHarness = (openImmediately = true) => {
+  const messages: SshTerminalServerMessage[] = [];
+  const channels: HistoryChannel[] = [];
+  const commands: string[] = [];
+  const session = Object.assign(createSessionHarness({ remoteEnhancementsRuntimeState: 'active' }), {
+    t: (key: string) => key,
+    socket: {
+      OPEN: 1,
+      readyState: 1,
+      send: (payload: string) => messages.push(JSON.parse(payload) as SshTerminalServerMessage),
+      close: () => undefined,
+    },
+  });
+  session.remoteEnhancementsRuntimeContract = {
+    shell: 'fish',
+    helperVersion: '1.2.3',
+    protocolVersion: 3,
+    capabilities: fishHistoryEvent().capabilities,
+    binaryPath: '/verified/helper',
+  };
+  let context = createShellContext(session.sessionId, resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true), true);
+  context = applyShellContextEvent(context, fishHistoryEvent({ event: 'integration-ready' }));
+  context = applyShellContextEvent(context, fishHistoryEvent({ event: 'prompt-ready', promptGeneration: 1 }));
+  session.shellContext = applyShellContextEvent(
+    context,
+    fishHistoryEvent({
+      event: 'editor-state',
+      promptGeneration: 1,
+      available: true,
+      pid: 42,
+      startTime: '100',
+      triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+      notification: { signal: 'URG' },
+    }),
+  );
+  session.client = {
+    end: () => undefined,
+    exec: (command: string, callback: (error: undefined, channel: ClientChannel) => void) => {
+      commands.push(command);
+      const channel = new HistoryChannel(callback);
+      channels.push(channel);
+      if (openImmediately) channel.open();
+    },
+  } as unknown as Client;
+  const service = Object.assign(Object.create(SshSessionService.prototype) as HistoryServiceHarness, {
+    sessions: new Map([[session.sessionId, session]]),
+    enhancementSettingsSnapshot: null,
+    auditEventService: { logEvent: async () => undefined },
+  });
+  return { session, service, channels, messages, commands };
+};
+
+/**
+ * Completes one actual private history request.
+ * @param channel Worker channel. @param entries Exact newest-first records.
+ * @param status Native observation state. @param namespace Current Fish namespace.
+ * @returns Nothing.
+ */
+const completeHistory = (
+  channel: HistoryChannel,
+  entries: string[],
+  status: 'ok' | 'partial' | 'private' = 'ok',
+  namespace: string | null = 'fish',
+): void => {
+  assert.equal(channel.request.operation, 'history');
+  channel.reply({ phase: 'ready' });
+  channel.reply({
+    phase: 'done',
+    status: 'ok',
+    snapshot: {
+      promptGeneration: 1,
+      editorMode: 'emacs',
+      history: { status, namespace, entries },
+    },
+  });
+};
+
+/** @param sourceId Displayed source. @param command Exact displayed record. @returns Client removal request. */
+const removalRequest = (sourceId: string, command: string) =>
+  ({ type: 'shell-history-remove', requestId: 'remove-1', sourceId, command }) as const;
+
+/** @param messages Sent messages. @returns Last published native view. */
+const lastHistoryView = (messages: SshTerminalServerMessage[]): ShellHistoryView => {
+  const message = messages.filter((item) => item.type === 'shell-history').at(-1);
+  assert.ok(message?.type === 'shell-history');
+  return message.view;
+};
+
+test('native history starts only after the Fish handshake and editor binding, including a late registration', async (t) => {
+  for (const registered of [true, false]) {
+    const { session, service, channels, messages } = createHistoryServiceHarness();
+    t.after(() => service.clearRemoteHistory(session));
+    session.remoteEnhancementsRuntimeState = 'pending';
+    session.shellContext = createShellContext(
+      session.sessionId,
+      resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true),
+      true,
+    );
+    if (!registered) service.sessions.delete(session.sessionId);
+    service.scheduleHistorySync(session.sessionId, { immediate: true });
+    assert.equal(session.historySyncTimeout, null);
+    service.handleRemoteShellEvent(session, fishHistoryEvent({ event: 'integration-ready' }));
+    assert.equal(channels.length, 0);
+    service.handleRemoteShellEvent(session, fishHistoryEvent({ event: 'prompt-ready', promptGeneration: 1 }));
+    service.handleRemoteShellEvent(
+      session,
+      fishHistoryEvent({
+        event: 'editor-state',
+        promptGeneration: 1,
+        available: true,
+        pid: 42,
+        startTime: '100',
+        triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+        notification: { signal: 'URG' },
+      }),
+    );
+    if (!registered) service.sessions.set(session.sessionId, session);
+    if (session.historySyncTimeout) clearTimeout(session.historySyncTimeout);
+    session.historySyncTimeout = null;
+    const pending = service.syncRemoteHistory(session.sessionId);
+    assert.equal(channels.length, 1);
+    completeHistory(channels[0]!, ['echo earlier']);
+    await pending;
+    const view = lastHistoryView(messages);
+    assert.deepEqual(view.entries, ['echo earlier']);
+    assert.equal(view.source?.shell, 'fish');
+    service.handleRemoteShellEvent(session, fishHistoryEvent({ event: 'integration-ready' }));
+    assert.deepEqual(lastHistoryView(messages), view, 'duplicate handshake keeps the source');
+    assert.equal(channels.length, 1);
+  }
+});
+
+test('history opt-out during handshake and unsupported shells never execute a native request', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  session.remoteEnhancementsRuntimeState = 'pending';
+  session.shellContext = createShellContext(
+    session.sessionId,
+    resolveShellPermissions(DEFAULT_SETTINGS_VALUES, true),
+    true,
+  );
+  service.applyEnhancementSettings({
+    revision: 1,
+    values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsHistoryEnabled: false },
+  });
+  service.handleRemoteShellEvent(session, fishHistoryEvent({ event: 'integration-ready' }));
+  assert.equal(session.shellContext.permissions.history, false);
+  assert.equal(lastHistoryView(messages).status, 'disabled');
+  await service.syncRemoteHistory(session.sessionId);
+  assert.equal(channels.length, 0);
+
+  const unsupported = createHistoryServiceHarness();
+  t.after(() => unsupported.service.clearRemoteHistory(unsupported.session));
+  unsupported.session.shellContext = { ...unsupported.session.shellContext, shell: 'bash' };
+  unsupported.service.scheduleHistorySync(unsupported.session.sessionId, { immediate: true });
+  await unsupported.service.syncRemoteHistory(unsupported.session.sessionId);
+  assert.equal(unsupported.channels.length, 0);
+  assert.equal(unsupported.session.historySyncTimeout, null);
+});
+
+test('native observations replace namespace and private state without reusing source IDs or parsing records', async (t) => {
+  const { session, service, channels, messages, commands } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const first = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[0]!, ['multi\nline', 'echo  trailing  ']);
+  await first;
+  const original = lastHistoryView(messages);
+  assert.equal(original.status, 'ok');
+  assert.deepEqual(original.entries, ['multi\nline', 'echo  trailing  ']);
+  assert.deepEqual(session.recentCommands, ['echo  trailing  ', 'multi\nline']);
+  assert.deepEqual(session.completionRecentCommands, ['echo  trailing  ']);
+  const second = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[1]!, ['new only'], 'partial', 'project_history');
+  await second;
+  const changed = lastHistoryView(messages);
+  assert.equal(changed.status, 'partial');
+  assert.notEqual(changed.source?.id, original.source?.id);
+  assert.deepEqual(changed.entries, ['new only']);
+  const third = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[2]!, [], 'private', null);
+  await third;
+  assert.deepEqual(lastHistoryView(messages), { status: 'private', source: null, entries: [] });
+  assert.deepEqual(session.recentCommands, []);
+  assert.ok(commands.every((command) => !command.includes('multi') && !command.includes('trailing')));
+});
+
+test('revocation clears queued and active native work, including an SSH callback delivered after cancellation', async (t) => {
+  for (const openImmediately of [true, false]) {
+    const { session, service, channels, messages } = createHistoryServiceHarness(openImmediately);
+    t.after(() => service.clearRemoteHistory(session));
+    session.historyView = {
+      status: 'ok',
+      source: { id: 'old', shell: 'fish', namespace: 'fish' },
+      entries: ['echo cached'],
+    };
+    session.historyOwnerInstanceId = 'shell-1';
+    session.recentCommands = ['echo cached'];
+    session.completionRecentCommands = ['echo cached'];
+    service.scheduleHistorySync(session.sessionId);
+    assert.ok(session.historySyncTimeout);
+    const pending = service.syncRemoteHistory(session.sessionId);
+    const lifetime = session.historyAbortController!.signal;
+    service.applyEnhancementSettings({
+      revision: 1,
+      values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsHistoryEnabled: false },
+    });
+    if (!openImmediately) channels[0]!.open();
+    await pending;
+    assert.equal(lifetime.aborted, true);
+    assert.equal(channels[0]!.closed, true);
+    assert.deepEqual(lastHistoryView(messages), { status: 'disabled', source: null, entries: [] });
+    assert.deepEqual(session.recentCommands, []);
+    assert.deepEqual(session.completionRecentCommands, []);
+    assert.equal(session.historySyncTimeout, null);
+  }
+});
+
+test('off-on permission races cannot publish the old reply and eventually refresh the new lifetime', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const old = service.syncRemoteHistory(session.sessionId);
+  const oldSignal = session.historyAbortController!.signal;
+  channels[0]!.reply({ phase: 'ready' });
+  service.applyEnhancementSettings({
+    revision: 1,
+    values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsHistoryEnabled: false },
+  });
+  service.applyEnhancementSettings({ revision: 2, values: DEFAULT_SETTINGS_VALUES });
+  await old;
+  assert.equal(oldSignal.aborted, true);
+  assert.equal(JSON.stringify(messages).includes('PRIVATE_OLD_RESPONSE'), false);
+  if (session.historySyncTimeout) clearTimeout(session.historySyncTimeout);
+  session.historySyncTimeout = null;
+  const fresh = service.syncRemoteHistory(session.sessionId);
+  assert.notEqual(session.historyAbortController!.signal, oldSignal);
+  completeHistory(channels.at(-1)!, ['echo fresh']);
+  await fresh;
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo fresh']);
+});
+
+test('hiding suggestions retains native reads while renderer completion respects display permission', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const pending = service.syncRemoteHistory(session.sessionId);
+  const signal = session.historyAbortController!.signal;
+  service.applyEnhancementSettings({
+    revision: 1,
+    values: { ...DEFAULT_SETTINGS_VALUES, terminalAutoCompleteHistoryEnabled: false },
+  });
+  assert.equal(signal.aborted, false);
+  completeHistory(channels[0]!, ['echo retained']);
+  await pending;
+  session.shellContext = { ...session.shellContext, status: 'ready', reason: null };
+  const request = {
+    type: 'completion-request' as const,
+    requestId: 'display-only',
+    linePrefix: 'echo',
+    cursorIndex: 4,
+    includeHistory: true,
+    includeBuiltInCommands: false,
+    includePathSuggestions: false,
+    trigger: 'manual' as const,
+  };
+  await service.handleCompletionRequest(session, request);
+  const hidden = messages.at(-1);
+  assert.ok(hidden?.type === 'completion-response');
+  assert.deepEqual(hidden.items, []);
+  service.applyEnhancementSettings({ revision: 2, values: DEFAULT_SETTINGS_VALUES });
+  await service.handleCompletionRequest(session, request);
+  const visible = messages.at(-1);
+  assert.ok(visible?.type === 'completion-response');
+  assert.ok(visible.items.some((item) => item.source === 'history'));
+});
+
+test('stale IDs and exact records cannot authorize deletion; legacy deletion is ignored', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const read = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[0]!, ['echo exact', 'echo other']);
+  await read;
+  const sourceId = lastHistoryView(messages).source!.id;
+  await service.deleteRemoteHistoryEntry(session, removalRequest('old-source', 'echo exact'));
+  await service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo changed'));
+  assert.equal(channels.length, 1);
+  assert.deepEqual(
+    messages.filter((message) => message.type === 'shell-history-remove-result').map((message) => message.status),
+    ['stale', 'stale'],
+  );
+  service.handleClientMessage(session, Buffer.from(JSON.stringify({ type: 'history-delete', command: 'echo exact' })));
+  assert.equal(channels.length, 1);
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo exact', 'echo other']);
+});
+
+test('exact native deletion requires a prepared match and reports current-reader removal only', async (t) => {
+  const { session, service, channels, messages, commands } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const read = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[0]!, ['echo exact', 'echo other', 'echo exact']);
+  await read;
+  const sourceId = lastHistoryView(messages).source!.id;
+  const pending = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo exact'));
+  const channel = channels[1]!;
+  assert.equal(channel.request.operation, 'history-delete');
+  assert.equal(channel.request.expected?.history?.namespace, 'fish');
+  assert.deepEqual(channel.request.expected?.history?.entries, ['echo exact']);
+  channel.reply({ phase: 'ready' });
+  channel.reply({ phase: 'prepared', snapshot: channel.request.expected });
+  assert.ok(channel.writes.some((value) => value.includes('"apply":true')));
+  channel.reply({ phase: 'done', status: 'history-removed-from-reader', applied: true });
+  await pending;
+  assert.equal(messages.at(-1)?.type, 'shell-history-remove-result');
+  assert.deepEqual(messages.at(-1), {
+    type: 'shell-history-remove-result',
+    requestId: 'remove-1',
+    sourceId,
+    status: 'removed-from-reader',
+  });
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo other']);
+  assert.ok(commands.every((command) => !command.includes('echo exact')));
+});
+
+test('deletion fails closed for a changed native snapshot and leaves the displayed record', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const read = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[0]!, ['echo exact']);
+  await read;
+  const sourceId = lastHistoryView(messages).source!.id;
+  const pending = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo exact'));
+  channels[1]!.reply({ phase: 'ready' });
+  channels[1]!.reply({
+    phase: 'prepared',
+    snapshot: {
+      ...channels[1]!.request.expected,
+      history: { status: 'ok', namespace: 'different', entries: ['echo exact'] },
+    },
+  });
+  await pending;
+  assert.ok(channels[1]!.writes.every((value) => !value.includes('"apply":true')));
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo exact']);
+  assert.deepEqual(messages.at(-1), {
+    type: 'shell-history-remove-result',
+    requestId: 'remove-1',
+    sourceId,
+    status: 'stale',
+  });
+});
+
+test('read/delete competition and uncertain deletion never fabricate a removed result', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const initial = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[0]!, ['echo exact']);
+  await initial;
+  const sourceId = lastHistoryView(messages).source!.id;
+  const reading = service.syncRemoteHistory(session.sessionId);
+  await service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo exact'));
+  assert.equal(channels.length, 2, 'delete while reading cannot execute');
+  const blocked = messages.at(-1);
+  assert.ok(blocked?.type === 'shell-history-remove-result');
+  assert.equal(blocked.status, 'unavailable');
+  completeHistory(channels[1]!, ['echo exact']);
+  await reading;
+  const deleting = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo exact'));
+  channels[2]!.reply({ phase: 'ready' });
+  channels[2]!.reply({ phase: 'prepared', snapshot: channels[2]!.request.expected });
+  channels[2]!.close();
+  await deleting;
+  const uncertain = messages.at(-1);
+  assert.ok(uncertain?.type === 'shell-history-remove-result');
+  assert.equal(uncertain.status, 'unknown');
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo exact']);
+});
+
+test('history waits for an active private editor exchange and then reads the current binding', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  session.shellContext = {
+    ...session.shellContext,
+    status: 'ready',
+    reason: null,
+    requiresEditorConfirmation: false,
+    capabilities: [...session.shellContext.capabilities, 'input-snapshot'],
+  };
+  const editor = service.handleEditorRequest(session, {
+    type: 'editor-snapshot',
+    requestId: '01234567-89ab-4def-8123-456789abcdef',
+  });
+  assert.equal(channels[0]!.request.operation, 'snapshot');
+  const history = service.syncRemoteHistory(session.sessionId);
+  assert.equal(channels.length, 1, 'history waits until the editor channel releases its binding');
+  channels[0]!.reply({ phase: 'ready' });
+  channels[0]!.reply({
+    phase: 'done',
+    status: 'ok',
+    snapshot: { promptGeneration: 1, editorMode: 'emacs', buffer: { text: 'private input', cursor: 0 } },
+  });
+  await editor;
+  await Promise.resolve();
+  assert.equal(channels[1]!.request.operation, 'history');
+  completeHistory(channels[1]!, ['echo after editor']);
+  await history;
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo after editor']);
+  assert.equal(
+    JSON.stringify(messages.filter((item) => item.type === 'shell-history')).includes('private input'),
+    false,
+  );
+});
+
+test('stale editor-state cannot clear a current Fish source or abort its permission lifetime', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const read = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[0]!, ['echo current']);
+  await read;
+  const view = lastHistoryView(messages);
+  const signal = session.historyAbortController!.signal;
+  service.handleRemoteShellEvent(
+    session,
+    fishHistoryEvent({
+      event: 'editor-state',
+      promptGeneration: 0,
+      available: false,
+      pid: 42,
+      startTime: '100',
+      triggerNonce: 'abcdef01-2345-6789-abcd-ef0123456789',
+      notification: { signal: 'URG' },
+    }),
+  );
+  assert.deepEqual(lastHistoryView(messages), view);
+  assert.equal(session.historyAbortController!.signal, signal);
+  assert.equal(signal.aborted, false);
+});
+
+test('permission re-enable during cancelled deletion schedules the new history lifetime', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  const initial = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[0]!, ['echo old']);
+  await initial;
+  const sourceId = lastHistoryView(messages).source!.id;
+  const deleting = service.deleteRemoteHistoryEntry(session, removalRequest(sourceId, 'echo old'));
+  assert.equal(channels[1]!.request.operation, 'history-delete');
+  service.applyEnhancementSettings({
+    revision: 1,
+    values: { ...DEFAULT_SETTINGS_VALUES, remoteEnhancementsHistoryEnabled: false },
+  });
+  service.applyEnhancementSettings({ revision: 2, values: DEFAULT_SETTINGS_VALUES });
+  await service.syncRemoteHistory(session.sessionId);
+  assert.equal(session.historySyncPending, true);
+  await deleting;
+  assert.ok(session.historySyncTimeout, 'the new lifetime receives a refresh after old deletion cleanup');
+  clearTimeout(session.historySyncTimeout);
+  session.historySyncTimeout = null;
+  const fresh = service.syncRemoteHistory(session.sessionId);
+  completeHistory(channels[2]!, ['echo new']);
+  await fresh;
+  assert.deepEqual(lastHistoryView(messages).entries, ['echo new']);
+  assert.notEqual(lastHistoryView(messages).source?.id, sourceId);
+});
+
+test('disconnect closes active native history before session transport', async (t) => {
+  const { session, service, channels, messages } = createHistoryServiceHarness();
+  t.after(() => service.clearRemoteHistory(session));
+  let transportClosed = false;
+  session.stream = Object.assign(
+    { write: () => undefined },
+    {
+      close: () => {
+        assert.equal(channels[0]!.closed, true);
+        transportClosed = true;
+      },
+    },
+  );
+  const pending = service.syncRemoteHistory(session.sessionId);
+  service.disposeSession(session.sessionId, 'ws.clientRequestedClose');
+  await pending;
+  assert.equal(transportClosed, true);
+  assert.equal(session.disposed, true);
+  assert.equal(service.sessions.has(session.sessionId), false);
+  assert.deepEqual(session.recentCommands, []);
+  assert.equal(JSON.stringify(messages).includes('PRIVATE_LATE_CLOSE'), false);
 });
 
 test('SshSessionService stops waiting when the optional bootstrap exceeds its total connection budget', async () => {

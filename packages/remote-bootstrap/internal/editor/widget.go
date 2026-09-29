@@ -81,7 +81,43 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 		if reply.IncludeDirectory {
 			directory = "1"
 		}
-		_, err = fmt.Fprintf(output, "%s\n%s\n%s\n", reply.RequestID, reply.Operation, directory)
+		if reply.Operation == "history-delete" {
+			if target.Shell != "fish" || reply.IncludeDirectory || reply.History == nil ||
+				!validHistory(*reply.History) || reply.History.Status != "ok" || len(reply.History.Entries) != 1 {
+				return errors.New("invalid-widget")
+			}
+			namespace := base64.StdEncoding.EncodeToString([]byte(*reply.History.Namespace))
+			entry := base64.StdEncoding.EncodeToString([]byte(reply.History.Entries[0]))
+			_, err = fmt.Fprintf(output, "%s\n%s\n%s\n%s\n%s\n", reply.RequestID, reply.Operation, directory, namespace, entry)
+		} else {
+			_, err = fmt.Fprintf(output, "%s\n%s\n%s\n", reply.RequestID, reply.Operation, directory)
+		}
+		return err
+	}
+	if message.Phase == "history" || message.Phase == "history-confirm" {
+		if len(args) != 8 || target.Shell != "fish" || !uuidPattern.MatchString(args[7]) {
+			return errors.New("invalid-widget")
+		}
+		history, err := readNativeHistory(input)
+		if err != nil {
+			return err
+		}
+		if message.Phase == "history-confirm" {
+			message.Phase = "confirm"
+		} else {
+			message.Phase = "capture"
+		}
+		message.RequestID = args[7]
+		message.Snapshot = &Snapshot{PromptGeneration: generation, EditorMode: mode, History: history}
+		reply, err := exchangeWidget(message)
+		if err == nil && reply.Status == "apply" && message.Phase == "capture" {
+			_, err = fmt.Fprintln(output, "apply")
+			return err
+		}
+		if err != nil || reply.Status != "ok" {
+			return errors.New("history-unavailable")
+		}
+		_, err = fmt.Fprintln(output, "ok")
 		return err
 	}
 	if (message.Phase != "capture" && message.Phase != "confirm") || len(args) != 10 ||
@@ -125,7 +161,7 @@ func RunWidget(args []string, input io.Reader, output io.Writer) error {
 	} else if fields[2] != "" || fields[3] != "" {
 		return errors.New("invalid-widget")
 	}
-	if !validSnapshot(snapshot, includeInput, includeDirectory) {
+	if !validSnapshot(snapshot, includeInput, includeDirectory, false) {
 		return errors.New("unsupported-editor")
 	}
 	message.Snapshot = &snapshot

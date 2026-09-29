@@ -135,6 +135,36 @@ async (page) => {
     requestsBeforeOptOutInput, 'Input opt-out sent a new candidate request');
   results.push('input permission revocation preserves native input and rejects stale responses');
 
+  await reset();
+  await show();
+  await focus();
+  await page.evaluate(() => window.terminalInteractionFixture.setHistoryEnabled(false));
+  await page.waitForFunction(() => !document.querySelector('[data-terminal-autocomplete]'));
+  await page.evaluate(() => window.terminalInteractionFixture.respond());
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  check((await page.locator('[data-terminal-autocomplete]').count()) === 0, 'History opt-out restored an old menu');
+  await page.keyboard.press('Tab');
+  check((await inputs()).join('') === '\t', 'History opt-out retained keyboard ownership');
+
+  await reset();
+  await page.evaluate(() => window.terminalInteractionFixture.show());
+  await page.waitForFunction(() => window.terminalInteractionFixture.messages.some(
+    (entry) => entry.payload.type === 'completion-request'));
+  await page.evaluate(() => window.terminalInteractionFixture.setHistoryEnabled(false));
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.evaluate(() => window.terminalInteractionFixture.respond());
+  check((await page.locator('[data-terminal-autocomplete]').count()) === 0, 'History opt-out accepted an in-flight reply');
+  await page.evaluate(() => window.terminalInteractionFixture.show());
+  await page.waitForFunction(() => window.terminalInteractionFixture.messages.filter(
+    (entry) => entry.payload.type === 'completion-request').at(-1)?.payload.includeHistory === false);
+  await page.evaluate(() => window.terminalInteractionFixture.respond());
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  check((await page.locator('[data-terminal-autocomplete]').count()) === 0, 'A new reply bypassed history visibility');
+  await page.evaluate(() => window.terminalInteractionFixture.setHistoryEnabled(true));
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await show();
+  results.push('history visibility changes release keys, invalidate pending replies and allow fresh re-enable');
+
   for (const settings of [{ enabled: false }, { isActive: false }, { connected: false }]) {
     await reset(settings);
     await page.keyboard.press('Tab');

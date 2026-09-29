@@ -9,7 +9,11 @@ import type {
 
 import type { ShellEditorExecOptions, ShellEditorResult } from '../ssh/editor-exec.js';
 import { buildShellCompletionReplacement, type ShellCompletionDraft } from './completion/snapshot-edits.js';
-import { isFishInputBoundaryPending, normalizeEditorBuffer } from './editor-protocol.js';
+import {
+  isFishInputBoundaryPending,
+  normalizeEditorBuffer,
+  normalizeNativeHistoryObservation,
+} from './editor-protocol.js';
 import type { ShellContextState } from './shell-context.js';
 
 /** Explicit transport boundary, allowing state-machine tests without replacing the real editor implementation. */
@@ -87,6 +91,48 @@ export class ShellEditorController {
     this.expiryTimer = setTimeout(() => this.clearSnapshot(), 10_000);
     this.expiryTimer.unref();
     return { ...result, snapshotId };
+  }
+
+  /**
+   * Reads only original-Shell native history; input and directory permissions are not borrowed.
+   * @param signal Current history permission lifetime. @returns A private history observation or a fixed failure.
+   */
+  async history(signal: AbortSignal): Promise<ShellEditorResult> {
+    while (this.inFlight && !signal.aborted) {
+      const finished = this.inFlight.finished;
+      await new Promise<void>((resolve) => {
+        /** @returns Nothing; releases this waiter and its abort listener exactly once. */
+        const complete = (): void => {
+          signal.removeEventListener('abort', complete);
+          resolve();
+        };
+        signal.addEventListener('abort', complete, { once: true });
+        void finished.then(complete);
+      });
+    }
+    if (signal.aborted) return { status: 'unavailable' };
+    return await this.run('history', this.state(), undefined, undefined, signal);
+  }
+
+  /**
+   * Deletes exact matching text only after the original Fish verifies its namespace and native membership.
+   * @param namespace Source captured by a prior native history read. @param command Exact selected record.
+   * @param signal Current history permission lifetime.
+   * @returns Confirmed absence in the current reader (file persistence unconfirmed), or an explicit failure.
+   */
+  async deleteHistory(namespace: string, command: string, signal: AbortSignal): Promise<ShellEditorResult> {
+    const history = normalizeNativeHistoryObservation({ status: 'ok', namespace, entries: [command] });
+    if (!history) return { status: 'unavailable' };
+    const state = this.state();
+    if (state.promptGeneration === null) return { status: 'unavailable' };
+    this.clearSnapshot();
+    return await this.run(
+      'history-delete',
+      state,
+      { promptGeneration: state.promptGeneration, editorMode: 'emacs', history },
+      undefined,
+      signal,
+    );
   }
 
   /**
@@ -193,6 +239,7 @@ export class ShellEditorController {
   /**
    * @param operation Requested private scope. @param state Immutable context at dispatch.
    * @param expected Original complete observation. @param replacement Optional data-only edit.
+   * @param signal Optional source permission lifetime, independent of input permission.
    * @returns One bounded exchange after every permission and identity check.
    */
   private async run(
@@ -200,22 +247,28 @@ export class ShellEditorController {
     state: ShellContextState,
     expected?: ShellEditorSnapshot,
     replacement?: ShellEditorBuffer,
+    signal?: AbortSignal,
   ): Promise<ShellEditorResult> {
     const binding = state.editorBinding;
-    const canVerifyPausedContext =
-      operation === 'context' && binding?.notification !== undefined && state.status === 'paused';
+    const includeHistory = operation === 'history' || operation === 'history-delete';
+    const canObservePaused =
+      (operation === 'context' || includeHistory) && binding?.notification !== undefined && state.status === 'paused';
     if (
+      signal?.aborted ||
       this.inFlight ||
       (state.shell === 'fish' && isFishInputBoundaryPending(state.fishInputBoundary)) ||
       !binding ||
       !state.shellInstanceId ||
       (state.shell !== 'bash' && state.shell !== 'zsh' && state.shell !== 'fish') ||
       state.promptGeneration !== binding.promptGeneration ||
-      (state.status !== 'ready' && !canVerifyPausedContext) ||
-      (state.requiresEditorConfirmation && !canVerifyPausedContext) ||
-      (operation !== 'context' && !state.permissions.input) ||
+      (state.status !== 'ready' && !canObservePaused) ||
+      (state.requiresEditorConfirmation && !canObservePaused) ||
+      (includeHistory && (state.shell !== 'fish' || !state.permissions.history)) ||
+      ((operation === 'snapshot' || operation === 'apply') && !state.permissions.input) ||
       (operation === 'context' && !state.permissions.input && !state.permissions.cwd) ||
-      !state.capabilities.includes(operation === 'apply' ? 'input-apply' : 'input-snapshot') ||
+      !state.capabilities.includes(
+        includeHistory ? 'history-read' : operation === 'apply' ? 'input-apply' : 'input-snapshot',
+      ) ||
       (!binding.notification && this.lockedEpoch === binding.triggerNonce)
     )
       return { status: 'unavailable' };
@@ -231,12 +284,15 @@ export class ShellEditorController {
       injected: !binding.notification,
     };
     this.inFlight = active;
+    /** @returns Nothing; opt-out cancels this read without authorizing any new source. */
+    const abort = (): void => active.controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
     const request: ShellEditorRequest = {
       requestId: randomUUID(),
       operation,
       promptGeneration: binding.promptGeneration,
       target: { instanceId: state.shellInstanceId, shell: state.shell, pid: binding.pid, startTime: binding.startTime },
-      includeDirectory: state.permissions.cwd,
+      includeDirectory: !includeHistory && state.permissions.cwd,
       ...(binding.notification ? { notification: binding.notification } : {}),
       ...(expected ? { expected } : {}),
       ...(replacement ? { replacement } : {}),
@@ -253,12 +309,18 @@ export class ShellEditorController {
       });
       if (active.injected && active.triggered && (result.status === 'unavailable' || result.status === 'unknown'))
         this.lockedEpoch = active.epoch;
-      return this.state() !== state && result.status === 'ok' ? { status: 'stale' } : result;
+      return (this.state() !== state || active.controller.signal.aborted) && result.status === 'ok'
+        ? { status: 'stale' }
+        : result;
     } catch {
       // A transport implementation must not turn an optional editor failure into an unhandled rejection.
       if (active.injected && active.triggered) this.lockedEpoch = active.epoch;
-      return { status: operation === 'apply' && active.triggered ? 'unknown' : 'unavailable' };
+      return {
+        status:
+          (operation === 'apply' || operation === 'history-delete') && active.triggered ? 'unknown' : 'unavailable',
+      };
     } finally {
+      signal?.removeEventListener('abort', abort);
       if (this.inFlight === active) this.inFlight = null;
       finishOperation();
     }

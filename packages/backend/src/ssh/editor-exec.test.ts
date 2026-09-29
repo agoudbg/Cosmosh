@@ -6,6 +6,8 @@ import test from 'node:test';
 import type { ShellEditorRequest, ShellEditorSnapshot } from '@cosmosh/api-contract';
 import type { Client, ClientChannel } from 'ssh2';
 
+import { ShellEditorController } from '../terminal/editor-controller.js';
+import { createShellContext, type ShellContextState } from '../terminal/shell-context.js';
 import { executeShellEditorRequest } from './editor-exec.js';
 
 const snapshot: ShellEditorSnapshot = {
@@ -55,6 +57,90 @@ const clientFor = (channel: Channel, commands: string[] = []): Client =>
       callback(undefined, channel as unknown as ClientChannel);
     },
   }) as unknown as Client;
+
+test('native history deletion requires an exact prepared target and keeps uncertain outcomes explicit', async () => {
+  const expected: ShellEditorSnapshot = {
+    promptGeneration: 1,
+    editorMode: 'emacs',
+    history: { status: 'ok', namespace: 'fish', entries: ['begin\n echo TARGET  \nend\n'] },
+  };
+  const deletion: ShellEditorRequest = {
+    ...request,
+    target: { ...request.target, shell: 'fish' },
+    operation: 'history-delete',
+    notification: { signal: 'URG' },
+    expected,
+  };
+  for (const changed of [
+    { ...expected, history: { ...expected.history!, namespace: 'other' } },
+    { ...expected, history: { ...expected.history!, entries: [] } },
+    { ...expected, buffer: { text: 'UNSOLICITED_INPUT', cursor: 0 } },
+  ]) {
+    const channel = new Channel();
+    const response = executeShellEditorRequest(clientFor(channel), '/helper', deletion, {
+      signal: new AbortController().signal,
+      isCurrent: () => true,
+      trigger: () => {},
+    });
+    channel.reply({ phase: 'ready' });
+    channel.reply({ phase: 'prepared', snapshot: changed });
+    assert.deepEqual(await response, { status: 'stale' });
+    assert.ok(channel.writes.every((value) => !value.includes('"apply":true')));
+  }
+  for (const acknowledge of [false, true]) {
+    const channel = new Channel();
+    const commands: string[] = [];
+    const lifetime = new AbortController();
+    const response = executeShellEditorRequest(clientFor(channel, commands), '/helper', deletion, {
+      signal: lifetime.signal,
+      isCurrent: () => true,
+      trigger: () => {},
+    });
+    channel.reply({ phase: 'ready' });
+    channel.reply({ phase: 'prepared', snapshot: expected });
+    assert.ok(channel.writes.some((value) => value.includes('"apply":true')));
+    assert.ok(commands.every((value) => !value.includes('TARGET')));
+    if (acknowledge) channel.reply({ phase: 'done', status: 'history-removed-from-reader', applied: true });
+    else lifetime.abort();
+    assert.deepEqual(await response, { status: acknowledge ? 'history-removed-from-reader' : 'unknown' });
+  }
+});
+
+test('editor transport rejects a history acknowledgement for an input edit and the inverse', async () => {
+  for (const operation of ['apply', 'history-delete'] as const) {
+    const expected: ShellEditorSnapshot =
+      operation === 'apply'
+        ? snapshot
+        : {
+            promptGeneration: 1,
+            editorMode: 'emacs',
+            history: { status: 'ok', namespace: 'fish', entries: ['exact record'] },
+          };
+    const channel = new Channel();
+    const response = executeShellEditorRequest(
+      clientFor(channel),
+      '/helper',
+      {
+        ...request,
+        operation,
+        expected,
+        ...(operation === 'apply'
+          ? { replacement: snapshot.buffer }
+          : { target: { ...request.target, shell: 'fish' }, notification: { signal: 'URG' } }),
+      },
+      { signal: new AbortController().signal, isCurrent: () => true, trigger: () => {} },
+    );
+    channel.reply({ phase: 'ready' });
+    channel.reply({ phase: 'prepared', snapshot: expected });
+    assert.ok(channel.writes.some((value) => value.includes('"apply":true')));
+    channel.reply({
+      phase: 'done',
+      status: operation === 'apply' ? 'history-removed-from-reader' : 'applied',
+      applied: true,
+    });
+    assert.deepEqual(await response, { status: 'unknown' });
+  }
+});
 
 test('synchronous SSH disconnect, write and trigger failures resolve without escaping the transport boundary', async () => {
   const disconnected = {
@@ -178,6 +264,63 @@ test('cancellation waits for remote cleanup after EOF without forcing channel cl
   assert.equal(resolved, false);
   channel.emit('close');
   assert.deepEqual(await result, { status: 'unavailable' });
+});
+
+test('native history rejects a parsed done response if permission ends while SSH cleanup is pending', async () => {
+  const channel = new Channel();
+  channel.end = () => {
+    channel.ended = true;
+  };
+  const lifetime = new AbortController();
+  const state: ShellContextState = {
+    ...createShellContext(
+      'session',
+      { history: true, input: false, cwd: false, paths: false, nativeCompletion: false },
+      true,
+    ),
+    shell: 'fish',
+    shellInstanceId: request.target.instanceId,
+    status: 'ready',
+    promptGeneration: 1,
+    capabilities: ['history-read'],
+    editorBinding: {
+      pid: 42,
+      startTime: '100',
+      triggerNonce: request.requestId,
+      promptGeneration: 1,
+      notification: { signal: 'URG' },
+    },
+  };
+  const controller = new ShellEditorController(
+    () => state,
+    (request, options) => executeShellEditorRequest(clientFor(channel), '/helper', request, options),
+    () => assert.fail('history must not inject input'),
+    () => {},
+  );
+  let resolved = false;
+  const result = controller.history(lifetime.signal).then((value) => {
+    resolved = true;
+    return value;
+  });
+  const actualRequest = JSON.parse(channel.writes[0]) as ShellEditorRequest;
+  channel.reply({ requestId: actualRequest.requestId, phase: 'ready' });
+  channel.reply({
+    requestId: actualRequest.requestId,
+    phase: 'done',
+    status: 'ok',
+    snapshot: {
+      promptGeneration: 1,
+      editorMode: 'emacs',
+      history: { status: 'ok', namespace: 'fish', entries: ['echo private response'] },
+    },
+  });
+  await Promise.resolve();
+  assert.equal(channel.ended, true);
+  assert.equal(resolved, false);
+  lifetime.abort();
+  channel.emit('close');
+  assert.deepEqual(await result, { status: 'stale' });
+  assert.equal(channel.destroyed, false);
 });
 
 test('application requires exact prepared state and reports unknown when acknowledgement is lost', async () => {

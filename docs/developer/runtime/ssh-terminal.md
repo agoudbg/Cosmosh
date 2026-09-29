@@ -22,8 +22,8 @@ sequenceDiagram
   SSH-->>API: sessionId + wsUrl + wsToken
   API-->>UI: create-session response
   UI->>SSH: WebSocket /ws/ssh/{sessionId}?token=...
-  UI-->>SSH: input/resize/ping/history-delete/completion-request
-  SSH-->>UI: output/telemetry/history/completion-response/pong/exit
+  UI-->>SSH: input/resize/ping/shell-history-remove/completion-request
+  SSH-->>UI: output/telemetry/shell-history/shell-history-remove-result/completion-response/pong/exit
 ```
 
 ## 2. Backend Session Lifecycle
@@ -98,7 +98,7 @@ Locale behavior:
 - `resize`: terminal cols/rows with bounded normalization.
 - `ping`: heartbeat.
 - `close`: explicit disconnect request.
-- `history-delete`: request backend to delete a selected command from remote shell history.
+- `shell-history-remove`: request exact native removal using the displayed source ID and complete command text. The unbound `history-delete` message remains local-terminal-only.
 - `completion-request`: request ranked command suggestions for current command prefix and cursor position.
 
 ### Server → Client
@@ -106,7 +106,9 @@ Locale behavior:
 - `ready`: attach acknowledged.
 - `output`: shell stdout/stderr output.
 - `telemetry`: CPU/memory/network + command history snapshot.
-- `history`: history-only snapshot push for immediate UI sync.
+- `history`: legacy local-terminal history snapshot; remote history uses the source-bound view below.
+- `shell-history`: exact newest-first native records with their current source, or an explicit empty reason.
+- `shell-history-remove-result`: request/source-bound native removal outcome; `removed-from-reader` leaves file persistence unconfirmed.
 - `completion-response`: ranked completion candidates for the active command token.
 - `bootstrap-status`: remote bootstrap probe/download/install status from the backend side-channel installer.
 - `remote-enhancement-runtime-status`: backend-owned `pending`, `active`, or `disabled` trust state plus the validated helper contract.
@@ -117,15 +119,15 @@ Locale behavior:
 
 ### 3.1 History Synchronization Model
 
-- Backend command history is sourced from remote history probes and parsed shell history entries.
-- On every SSH session creation, backend executes remote history probes and parses shell history into normalized commands.
-- Remote history sources are probed in a compatibility order (shell builtin + common files), including Bash/Zsh/Fish/Ksh/Ash-style files and optional PowerShell PSReadLine history when available.
+- SSH history comes only from an eligible original Shell through its native history API. The currently enabled provider is Fish 4.0.1 with the verified editor profile; other Shells/configurations report unsupported or unavailable.
+- An attached session refreshes history after the helper advertises `history-read` and a current editor binding becomes available. Reads wait for any existing private editor exchange to finish; waiting is cancellable and never blocks ordinary PTY input.
+- Each accepted native observation replaces all history copies. The source ID belongs to one Shell identity, namespace and permission lifetime. No mixed-file scan or file-rewriting fallback remains in SSH history.
 - Runtime-specific input stores (`.node_repl_history`, `.python_history`, `.sqlite_history`, `.mysql_history`, and `.lesshst`) are excluded from shell command history aggregation.
 - SSH and local input handlers forward PTY bytes without retaining a command buffer or adding input to completion history. Password prompts and interactive programs share the same input stream, so Enter alone cannot establish a Shell command. History comes only from Shell-owned history sources; raw `cd` input does not change the completion directory.
 - When an active trusted helper advertises `command-start`, backend treats each unique `commandId` as the authoritative command-count and delayed history-refresh trigger. Duplicate lifecycle events do not double count.
-- Raw `input` line-submit characters (`\r` / `\n`) trigger the existing delayed + throttled history refresh only when the session has no active structured command lifecycle, preserving a conservative fallback for disabled/degraded helpers.
-- History refresh and telemetry are decoupled: telemetry stays interval-based, while history can be pushed immediately through `history` events.
-- Delete action in `SSH.tsx` sends `history-delete`; backend performs best-effort remote history file cleanup and then re-syncs history.
+- Private, unavailable or unsupported observations clear old records and pending actions. Permission revocation, Shell replacement and accepted editor-unavailable/command-start events invalidate the source; duplicate or stale events do not.
+- `shell-history` publishes exact newest-first records with a source ID, or an explicit empty reason. Legacy completion consumers receive an explicit oldest-first conversion excluding multiline/control records; telemetry cannot restore stale entries to the native sidebar.
+- Removal requires confirmation explaining exact-text matches, shared native history and unconfirmed file updates. `shell-history-remove` binds the request to the displayed source and exact cached record; its result also binds the request ID. Multiline/control records offer complete copying, with insert/run disabled rather than flattening the command.
 
 ### 3.2 Auto-Complete Model
 
@@ -360,6 +362,8 @@ When SSH session behavior is wrong, verify in order:
 The fixture owns temporary Bash, Zsh, and Fish accounts, generated test-only SSH keys, a pinned host fingerprint, and a loopback-only listener. Its files cover spaces, quotes, Unicode, symlinks, and large directories. It does not mount host homes or production credentials. Windows uses the container runtime in Debian WSL; Linux uses Docker, with Podman available through `COSMOSH_FIXTURE_RUNTIME`. See `scripts/terminal-fixture/README.md` for lifecycle and environment options.
 
 The live suite fails explicitly if the fixture is unavailable. Unit test success alone does not establish real Shell, latency, or Electron interaction coverage.
+
+Account preparation can run again when the same disposable container restarts. It reuses the expected directory symlink and rejects a changed target instead of overwriting it. Recheck the loopback port after a manual container restart because the runtime may allocate a new port.
 
 Credential regressions exercise real password input without automatic submission and real encrypted-key authentication without passphrase reuse. Tests isolate only database/transport boundaries and use the production credential handler. Unit coverage includes delayed settings, duplicate clicks, new/erased prompts, expiration, replaced sockets, session disposal, and pane-local results.
 
@@ -598,6 +602,34 @@ Literal arguments use Shell-specific single quoting. Fish escapes backslashes/ap
 Each `ShellEditorController` privately stores at most 128 candidate replacements alongside its ten-second snapshot. Providers supply codepoint ranges; the controller constructs complete buffers while preserving every character outside the range. Display candidates contain opaque IDs, labels, details, kind and source, with no insertion text or edit range. Later sources append without changing earlier identifiers. Applying an identifier repeats the existing session/context/permission/expiry checks and the original Shell's complete observation comparison. Input, snapshot replacement, revocation, expiry and teardown erase all associated edits.
 
 This foundation is not yet wired to the renderer menu: its legacy completion messages remain until the planned consumer migration. `completion-edits.live-test.ts` exercises actual Bash, Zsh and Fish editors, then explicitly executes a fixed argument-inspection command to verify filename bytes and the unchanged suffix. The tests separately assert that accepting a candidate did not execute it.
+
+#### Snapshot history and command metadata foundation
+
+`resolveSnapshotSuggestions` consumes an actual editor buffer, native newest-first history and independently enabled source flags. It reuses the bundled command catalogue with already decoded words; completed command/subcommand names match exactly, while only the active word uses the matching preference. Unknown flags, unresolved subcommands and an option-ending `--` stop metadata suggestions. The active word is not counted as a completed subcommand or an already used option. Metadata distinguishes single argument values from explicit multiword snippets: a value such as `data science` stays one quoted argument. Supported snippets preserve conventional bare command/flag spelling and quote special literal characters for the original Shell. Word edits preserve the entire suffix. A whole-history suggestion is offered only with the cursor at the end of the input; multiline/control entries cannot become applicable edits.
+
+`normalizeShellHistory` preserves exact complete entries, keeps the newest duplicate and bounds one source observation to 200 entries, 8 KiB per entry and 64 KiB total. The native history adapter provides only the current Shell's permitted records. This pure normalizer neither verifies a remote source nor filters Shell-private history on its behalf. `scoreCompletionMatch` preserves significant whitespace and scores literal prefix, substring and optional Unicode subsequence matches. Within each history match class, recency takes precedence over command length. A path that does not match receives no source bonus. `rankSnapshotSuggestions` deduplicates by the complete resulting text and cursor, with deterministic source ties and a 128-candidate ceiling. Equal labels with different edits remain distinct.
+
+History permission is enforced independently of request flags, including direct refresh and deletion requests. `remoteEnhancementsHistoryEnabled` is the separate, default-on read permission; `terminalAutoCompleteHistoryEnabled` only controls suggestion visibility. Disabling suggestion display leaves permitted history reads and the history list intact. Disabling read permission, helper disable and disconnect cancel scheduled and in-flight history work and immediately clear both session copies. Re-enabling permission starts a new cancellation lifetime; replies from a previous lifetime cannot repopulate history even if their SSH result had already resolved before the opt-out. Old settings documents retain their suggestion preference and receive the new read permission's default through the shared registry. Closing an SSH channel cannot undo a remote deletion already performed. Fish removal semantics are documented below; unsupported Shells have no remote deletion fallback.
+
+The renderer combines history read permission with the suggestion visibility setting. Changing a suggestion source invalidates the open menu and its outstanding request before the next paint; a late reply cannot restore removed history suggestions. The Fish native source, exact cache replacement and source-bound sidebar removal are active. Snapshot suggestion utilities await the candidate-ID menu migration. Bash native history depends on the proposed native adapter: `history -p` can mutate history and `fc` can misidentify the current event inside an editor callback. Zsh privacy/selective deletion remains unqualified; neither Shell advertises native history yet.
+
+#### Native Fish history observation and removal
+
+The private editor worker accepts Fish-only `history` and `history-delete` operations. They require history permission and an eligible original-Shell callback, independently of input/CWD permission. The `ShellNativeHistory` observation contains `status` (`ok`, `partial`, `private`), the actual history namespace, and complete newest-first records. History operations cannot contain an input buffer or directory; input/context operations cannot include history. No renderer command can request these private operations directly. Fish advertises `history-read`; the session service uses these operations for its native source and removes the legacy remote read/delete lifecycle.
+
+The Fish adapter uses `builtin history search --null --max 200` from the original interactive process. It never reads guessed history files or launches a second login Shell. Before searching it rejects private mode and an explicitly empty namespace. A custom or autoloadable `fish_should_add_to_history` marks this original Shell's history policy untrusted for the remainder of its lifetime, including when editor inspection is initially unavailable. Removing the function, another prompt or another ordinary command does not clear this privacy decision. Default leading-ASCII-space records are filtered inside Fish before reaching the Go helper, because Fish can temporarily retain them as ephemeral history.
+
+NUL framing preserves embedded/trailing newlines and significant whitespace; `read --delimiter ''` ignores user IFS tokenization. Both native search and the record-reading loop must complete successfully. A user `fish_read_limit` failure rejects the source instead of publishing a truncated list as success. The private parser bounds transferred bytes, JSON expansion, record count and individual/total record sizes; supported complete records survive oversized entries with `partial`. Cancellation, including after `done` while SSH cleanup is pending, prevents the controller from returning a successful history observation. The worker deadline bounds the exchange, but does not interrupt Fish's internal history-file I/O; `--max` limits returned records, not every underlying file access.
+
+`history-delete` binds one exact record and namespace to the original Shell identity and prompt generation. Fish performs an exact, case-sensitive native search for that text, then the existing private exchange rechecks Backend authorization before granting deletion. It executes native `history delete --exact --case-sensitive --`, calls native `history save`, and repeats the exact search. A bounded recent-history list cannot confirm absence; the exact query must finish with complete NUL framing and the final success marker. Leading dashes, embedded/trailing newlines and significant spaces remain data. A changed namespace, missing record, private/custom policy or revoked permission cannot authorize the operation.
+
+The result `history-removed-from-reader` confirms only that the original reader no longer returns that exact text. It never confirms persistence. Fish's save builtin can return success after an unsuccessful file write; a recent in-memory entry can disappear from the reader while its saved file record survives. An older file-backed record that remains visible, or a lost acknowledgement after authorization, returns `unknown`. Input edits alone use `applied`; the transport rejects either success result for the other operation. The UI must handle the history-specific outcome explicitly and explain that the file update remains unconfirmed.
+
+Fish exact deletion matches all equal texts in the current namespace. Native save or later normal exit can update the shared history file and affect other sessions; it cannot be described as a one-row, connection-only deletion. The original Fish process caches its named history objects and first-resolved data directory, so changing exported HOME/XDG values does not change that same process's source identity. Source activation and deletion UX must represent both the matching scope and persistence limit.
+
+`fish-history.live-test.ts` exercises actual Fish 4.0.1 over SSH, including newest-first deduplication, exact Unicode/multiline records, tracing, leading-space privacy, private mode, disabled history, custom-policy removal, oversized entries and configured native read limits. Removal tests cover exact text, changed namespaces, authorization loss, saved records and both old/recent records in an unwritable dedicated data directory. A second native reader verifies that the recent-file record can survive a current-reader removal. Unit and transport tests also cover separate permissions, unexpected fields, bounded JSON, cancellation, late cleanup and operation-specific acknowledgements.
+
+`history-session.live-test.ts` drives the production OSC parser, session service, controller and SSH transport from a real Fish PTY. It verifies automatic publication, namespace/source replacement, exact removal, stale-source rejection and permission clearing with input/CWD reads disabled. `tests/terminal-history.browser.cjs` exercises the production pane reducer and sidebar with the WebSocket boundary substituted: exact copying, multiline restrictions, source/pane/permission invalidation, explicit removal scope, pending/result states and narrow layouts. Complete Electron-to-Backend-to-SSH acceptance remains a separate planned check.
 
 #### Bounded structured path source
 
