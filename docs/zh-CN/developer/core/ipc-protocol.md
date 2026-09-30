@@ -116,7 +116,7 @@ flowchart TB
 - Backend、Main IPC 代理与 renderer HTTP 调用端必须通过 `@cosmosh/api-contract` 中生成的 `API_PATHS` 及相关合同导出访问 API，不允许硬编码路由字符串。
 - 归档 IPC 只接受生成的结构化路径、枚举和冲突决定。远端命令文本、flag、工具输出与暂存路径绝不跨越 preload 边界。
 - 未由 OpenAPI 生成的 IPC-only payload（包括 `AppMenuAction`、`SftpOpenWithApplication`、`SftpTemporaryFileWatchChange` 与 `BackendRequestTrace`）定义在 `packages/api-contract/src/ipc.ts`，供 main、preload 与 renderer 类型声明共同消费。
-- 终端 WebSocket payload 与远端增强协议常量定义在 `packages/api-contract/src/terminal-protocol.ts`；backend 与 renderer 直接导入其中的 discriminated union。
+- 终端 WebSocket payload 定义在 `packages/api-contract/src/terminal-protocol.ts`；backend 与 renderer 直接导入其中的 discriminated union。
 - `BackendRequestTrace` 仅用于开发诊断。它会在未打包开发运行中由 main-process backend proxy 填充；生产包不会采集 trace，也不会加载 DevTools extension。
 
 ### 3.1 SSH 视觉元数据字段
@@ -132,9 +132,9 @@ flowchart TB
 
 当前 SSH 安全策略相关字段：
 
-- `ApiSshCreateServerRequest` / `ApiSshUpdateServerRequest`：主机/transport 与 renderer 策略字段包括 `strictHostKey`、`enableSshCompression`、`remoteEnhancementsEnabled`、`disableCharacterWidthCompatibilityMode`、`terminalClipboardAccess` 与 proxy policy。
-- `ApiSshListServersResponse`：每个 server 条目都必须包含持久化的 `strictHostKey`、`enableSshCompression`、`remoteEnhancementsEnabled`、`disableCharacterWidthCompatibilityMode`、`terminalClipboardAccess` 与 `proxyMode`；响应缺少策略时，消费端不得通过本地默认值 fail open。
-- `ApiSshCreateSessionRequest`：可选 `strictHostKey`、`enableSshCompression` 与 `remoteEnhancementsEnabled` 会把单次尝试绑定到已解析快照。远端增强请求字段只能进一步关闭；最终权限为当前全局设置、持久化服务器字段与 `request !== false`。
+- `ApiSshCreateServerRequest` / `ApiSshUpdateServerRequest`：主机/transport 与 renderer 策略字段包括 `strictHostKey`、`enableSshCompression`、`disableCharacterWidthCompatibilityMode`、`terminalClipboardAccess` 与 proxy policy。
+- `ApiSshListServersResponse`：每个 server 条目都必须包含持久化的 `strictHostKey`、`enableSshCompression`、`disableCharacterWidthCompatibilityMode`、`terminalClipboardAccess` 与 `proxyMode`；响应缺少策略时，消费端不得通过本地默认值 fail open。
+- `ApiSshCreateSessionRequest`：可选 `strictHostKey` 与 `enableSshCompression` 会把单次尝试绑定到已解析快照。
 - 字符宽度兼容模式不会传入 SSH session create 或终端 WS 消息；renderer 会在创建 xterm 实例时应用该规则。
 
 ### 3.2 SSH 端口转发契约
@@ -168,37 +168,11 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 
 ### 3.4 终端 WebSocket 契约（Renderer ↔ Backend）
 
-终端流式消息虽然不属于 Electron IPC channel，但同样属于跨进程契约面。`terminal-protocol.ts` 是唯一来源，当前远端 helper 协议版本为 2。
+终端流式消息不属于 Electron IPC channel，但同样属于跨进程契约面。`terminal-protocol.ts` 是唯一来源。
 
-- 客户端到服务端（`/ws/ssh/{sessionId}` 与 `/ws/local-terminal/{sessionId}`）：
-  - `input`、`resize`、`ping`、`close`、`history-delete`
-  - `completion-request`，包含 `requestId`、`linePrefix`、`cursorIndex`、可选 `workingDirectoryHint`、可选 `limit`、可选 `fuzzyMatch`、可选来源过滤字段（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`、`includePasswordSuggestions`）、`trigger`（`typing` 或 `manual`）
-- 服务端到客户端：
-  - `ready`、`output`、`telemetry`、`history`、`pong`、`error`、`exit`
-  - `completion-response`，包含 `requestId`、`replacePrefixLength` 与排序后的候选 `items`
-  - `bootstrap-status`，用于侧通道 Remote Bootstrap 安装/探测状态
-  - `remote-enhancement-runtime-status`，包含 backend 持有的状态（`pending`、`active` 或 `disabled`），以及可选 `helperVersion`、`protocolVersion`、`capabilities`、`code` 与 `message`
-  - `remote-shell-event`，用于已安装 helper 通过 OSC 777 发出的运行期 shell 状态；每条事件都必须包含 `helperVersion`、整数 `protocolVersion`、`capabilities`、`shell`、`event` 与 `timestamp`
-
-远端 shell event union 规则：
-
-- `cwd` 必须包含解码后的绝对 `cwd`，并声明 `cwd` capability。
-- `command-start` 与 `foreground-command` 必须包含清洗后的 `command` 及 `commandId`；`command-end` 还必须包含整数 `exitCode` 与 `durationMs`。
-- `line-state` 必须包含 `lineLength`、`cursorIndex` 与 `promptGeneration`，不携带输入文本，目前仅由 Zsh 声明。
-- Sh/Ash 只声明 `cwd` 与 `prompt-ready`。事件名与必填字段不符合交互 shell 打开前的精确 capability 契约时一律拒绝。
-
-补全候选契约说明：
-
-- `items[].source` 目前包含 `history`、`inshellisense` 与运行时计算来源 `runtime`。
-- `items[].kind` 在原有命令规范/历史分类之外，新增运行时分类（`path`、`secret`）。
-- 运行时分类用于路径候选与交互式密钥填充动作，但仍复用相同的 `completion-response` 外层结构。
-
-当前实现说明：
-
-- 补全消息在 `SshSessionService` 与 `LocalTerminalSessionService` 中处理，输入规范化由 `terminal/shared.ts` 统一，排序引擎由 `terminal/completion/engine.ts` 共享。
-- `remote-enhancement-runtime-status` 与 `remote-shell-event` 仅用于 SSH session，不会出现在 local-terminal session。交互 shell 打开前的 Bootstrap ensure 成功后，运行时以 `pending` 开始；10 秒内到达且匹配的 `integration-ready` 会切换为 `active`。Ensure 失败、`BOOTSTRAP_ENSURE_TIMEOUT`、`HELPER_HANDSHAKE_TIMEOUT` 或 live 契约不匹配都会切换为 `disabled`。Renderer 会把最新运行状态与有界事件历史分别保存，并且只能将其用于诊断，不得据此重建 backend helper 状态。
-- `remote-shell-event` 不得承载密码、secret、完整终端输出、完整命令行、line-buffer 内容或任意大数据。Helper 的动态 cwd/command 字段在 OSC JSON envelope 内使用规范 Base64，解码并校验后才会转发。Backend 将解码后的 OSC payload 限制在 8 KiB，剥离 Cosmosh OSC，并原样流式透传非 Cosmosh OSC。
-- Renderer 会把完整 server message union 路由到来源 pane 的 runtime/reducer。补全响应、密码提示、状态、telemetry、错误、退出、调试事件、重连与命令 marker 都不得隐式回退到 primary/active pane 状态。
+- 客户端到服务端（`/ws/ssh/{sessionId}` 与 `/ws/local-terminal/{sessionId}`）：`input`、`resize`、`ping`、`close`。
+- 服务端到客户端：`ready`、`output`、包含 CPU/内存/网络指标的 `telemetry`、`pong`、`error`、`exit`。
+- `terminal/shared.ts` 统一规范化入站消息；`SshSessionService` 与 `LocalTerminalSessionService` 会把每个负载路由到拥有对应 socket 与 xterm runtime 的分屏。
 
 ### 3.5 Main 持有的活动连接契约
 

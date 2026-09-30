@@ -45,11 +45,7 @@ The glossary matrix lives only on this English source page. Localized documentat
 | SSH Keychain | SSH 钥匙链 | SSH Keychain |
 | Port Forwarding | 端口转发 | Port Forwarding |
 | Port Forwarding Rule | 端口转发规则 | Port Forwarding Rule |
-| Remote Enhancements | 远端增强 | Remote Enhancements |
-| Remote Enhancement Helper | 远端增强帮助程序 | remote enhancement helper |
-| Command Timeline | 命令时间线 | Command Timeline |
 | Orbit Bar | Orbit Bar | Orbit Bar |
-| Terminal Auto Complete | 终端自动补全 | Terminal Auto Complete |
 | Safe Paste | 安全粘贴 | Safe Paste |
 | Terminal Web Links | 终端网页链接 | Terminal Web Links |
 | Terminal Inline Images | 终端内联图片 | Terminal Inline Images |

@@ -6,7 +6,6 @@ import classNames from 'classnames';
 import { CaseSensitive, Regex } from 'lucide-react';
 import React from 'react';
 
-import { TerminalAutocompleteMenu } from '../components/terminal/terminal-autocomplete-menu';
 import { TerminalSelectionBar } from '../components/terminal/terminal-selection-bar';
 import { TerminalTextDropZone } from '../components/terminal/terminal-text-drop-zone';
 import {
@@ -21,17 +20,14 @@ import {
 } from '../components/ui/dialog';
 import { useDialogExitSnapshot } from '../components/ui/dialog-lifecycle';
 import { type SearchReplaceFilterOption, SearchReplacePanel } from '../components/ui/search-replace-panel';
-import { useDateTimeFormatter } from '../lib/date-time-format';
 import { t } from '../lib/i18n';
 import { useSettingsValues } from '../lib/settings-store';
 import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
 import type { SshConnectionIntent, TabIconColorKey, TabIconKey } from '../types/tabs';
-import { RemoteEnhancementsDebugPanel } from './ssh/RemoteEnhancementsDebugPanel';
 import { INTERNAL_TERMINAL_TEXT_DRAG_MIME, type TerminalSelectionSettings } from './ssh/ssh-types';
 import {
   createTerminalPasteWarningRequest,
-  flattenCommandForTerminalInput,
   parseOptionalNumberSetting,
   resolveSearchUrl,
   resolveSftpDirectoryPathFromSelection,
@@ -42,7 +38,6 @@ import {
 import { SSHSidebar } from './ssh/SSHSidebar';
 import { SSHTerminalPaneLayout } from './ssh/SSHTerminalPaneLayout';
 import type { TerminalInlineImageSettings, TerminalWebLinksPlatform } from './ssh/terminal-addons';
-import { COMMAND_TIMELINE_SCROLLBAR_WIDTH_PX } from './ssh/terminal-command-timeline-state';
 import { type TerminalSearchDirection, useSshCore } from './ssh/use-ssh-core';
 import { useTerminalClipboardProvider } from './ssh/use-terminal-clipboard-provider';
 
@@ -135,23 +130,12 @@ const SSH: React.FC<SSHProps> = ({
   onTabVisualChange,
 }) => {
   const { error: notifyError, info: notifyInfo, success: notifySuccess, warning: notifyWarning } = useToast();
-  const { formatTime } = useDateTimeFormatter();
   const settingsValues = useSettingsValues();
 
   // Derive terminal-relevant settings from the centralized store.
   const sshMaxRows = settingsValues.sshMaxRows;
   const sshConnectionTimeoutSec = settingsValues.sshConnectionTimeoutSec;
   const terminalTextDropMode = settingsValues.terminalTextDropMode;
-  const terminalAutoCompleteEnabled = settingsValues.terminalAutoCompleteEnabled;
-  const terminalAutoCompleteHistoryEnabled = settingsValues.terminalAutoCompleteHistoryEnabled;
-  const terminalAutoCompleteBuiltInCommandsEnabled = settingsValues.terminalAutoCompleteBuiltInCommandsEnabled;
-  const terminalAutoCompletePathEnabled = settingsValues.terminalAutoCompletePathEnabled;
-  const terminalAutoCompletePasswordEnabled = settingsValues.terminalAutoCompletePasswordEnabled;
-  const terminalAutoCompleteAcceptKeys = settingsValues.terminalAutoCompleteAcceptKeys;
-  const terminalAutoCompleteMinChars = settingsValues.terminalAutoCompleteMinChars;
-  const terminalAutoCompleteMaxItems = settingsValues.terminalAutoCompleteMaxItems;
-  const terminalAutoCompleteFuzzyMatch = settingsValues.terminalAutoCompleteFuzzyMatch;
-  const terminalAutoCompletePromptRegex = settingsValues.terminalAutoCompletePromptRegex;
   const terminalBracketedPasteEnabled = settingsValues.terminalBracketedPasteEnabled;
   const terminalCopyOnSelectionEnabled = settingsValues.terminalCopyOnSelectionEnabled;
   const terminalRightClickAction = settingsValues.terminalRightClickAction;
@@ -184,10 +168,8 @@ const SSH: React.FC<SSHProps> = ({
   const terminalHardwareAccelerationEnabled = settingsValues.terminalHardwareAccelerationEnabled;
   const terminalInlineImagesEnabled = settingsValues.terminalInlineImagesEnabled;
   const terminalInlineImageOptions = settingsValues.terminalInlineImageOptions;
-  const terminalCommandTimelineEnabled = settingsValues.terminalCommandTimelineEnabled;
   const terminalWebLinksEnabled = settingsValues.terminalWebLinksEnabled;
   const terminalWebLinksRequireModifierKey = settingsValues.terminalWebLinksRequireModifierKey;
-  const remoteEnhancementsDebugEnabled = settingsValues.remoteEnhancementsDebugEnabled;
   const terminalWebLinksSettings = React.useMemo(
     () => ({
       enabled: terminalWebLinksEnabled,
@@ -243,9 +225,6 @@ const SSH: React.FC<SSHProps> = ({
       macOptionClickForcesSelection: terminalForceSelectionModifier === 'alt',
       macOptionIsMeta: terminalForceSelectionModifier === 'alt' ? false : undefined,
       minimumContrastRatio,
-      overviewRuler: {
-        width: COMMAND_TIMELINE_SCROLLBAR_WIDTH_PX,
-      },
       rightClickSelectsWord: terminalRightClickSelectsWord,
       screenReaderMode: settingsValues.terminalScreenReaderMode,
       scrollback: sshMaxRows,
@@ -375,23 +354,12 @@ const SSH: React.FC<SSHProps> = ({
     onConnectionIntentChange,
     terminalInitOptions,
     sshConnectionTimeoutSec,
-    terminalAutoCompleteEnabled,
-    terminalAutoCompleteHistoryEnabled,
-    terminalAutoCompleteBuiltInCommandsEnabled,
-    terminalAutoCompletePathEnabled,
-    terminalAutoCompletePasswordEnabled,
-    terminalAutoCompleteAcceptKeys,
-    terminalAutoCompleteMinChars,
-    terminalAutoCompleteMaxItems,
-    terminalAutoCompleteFuzzyMatch,
-    terminalAutoCompletePromptRegex,
     terminalBracketedPasteEnabled,
     characterWidthCompatibilityModeEnabled,
     terminalClipboardProvider,
     terminalHardwareAccelerationEnabled,
     terminalInlineImageSettings,
     terminalWebLinksSettings,
-    terminalCommandTimelineEnabled,
     terminalSelectionBarEnabled: terminalSelectionSettings.enabled,
     sshReconnectOnFocus,
     onTabTitleChange,
@@ -408,18 +376,11 @@ const SSH: React.FC<SSHProps> = ({
       connectionState,
       paneConnectionStates,
       telemetryState,
-      remoteBootstrapStatus,
-      remoteEnhancementRuntimeStatus,
-      remoteEnhancementsDebugEvents,
-      trustedCwd,
-      commandTimelineModels,
       hostFingerprintPrompt,
       canSplitTerminal,
       selectionAnchor,
       selectionBarPosition,
       dismissedSelectionText,
-      autocompleteItems,
-      autocompleteAnchor,
     },
     actions: {
       activatePane,
@@ -428,31 +389,26 @@ const SSH: React.FC<SSHProps> = ({
       retryPaneConnection,
       sendInput,
       pasteInput,
-      deleteHistoryCommand,
       selectAll,
       getSelectionText,
       getSelectionHtml,
       focusActiveTerminal,
       clearTerminalScreen,
-      scrollToPaneCommand,
       findActiveTerminalText,
       clearActiveTerminalSearch,
       setPaneContainerElement,
       setPrimaryPaneContainer,
       resolveHostFingerprintPrompt,
       dismissSelectionBar,
-      acceptAutocompleteAtIndex,
     },
-    refs: { wrapperRef, terminalContainerRef, selectionBarRef, autocompleteMenuRef },
+    refs: { wrapperRef, terminalContainerRef, selectionBarRef },
   } = sshCore;
-  const terminalPaneIdsRef = React.useRef<string[]>(terminalPaneIds);
   const dispatchedStartupCommandIntentIdRef = React.useRef<string | null>(null);
   const [terminalSearchOpen, setTerminalSearchOpen] = React.useState<boolean>(false);
   const [terminalSearchQuery, setTerminalSearchQuery] = React.useState<string>('');
   const [terminalSearchCaseSensitive, setTerminalSearchCaseSensitive] = React.useState<boolean>(false);
   const [terminalSearchRegex, setTerminalSearchRegex] = React.useState<boolean>(false);
   const terminalSearchInputRef = React.useRef<HTMLInputElement | null>(null);
-  const [remoteEnhancementsDebugPanelOpen, setRemoteEnhancementsDebugPanelOpen] = React.useState<boolean>(false);
   const [terminalPasteWarningRequest, setTerminalPasteWarningRequest] =
     React.useState<TerminalPasteWarningRequest | null>(null);
   const [exitHostFingerprintPrompt, clearExitHostFingerprintPrompt] = useDialogExitSnapshot(hostFingerprintPrompt);
@@ -504,19 +460,6 @@ const SSH: React.FC<SSHProps> = ({
   }, [connectionState, focusActiveTerminal, isActive]);
 
   React.useEffect(() => {
-    terminalPaneIdsRef.current = terminalPaneIds;
-  }, [terminalPaneIds]);
-
-  React.useEffect(() => {
-    const isRemoteSshSession = connectionIntent.lastResolvedSnapshot?.type === 'ssh-server';
-    if (remoteEnhancementsDebugEnabled && isRemoteSshSession) {
-      return;
-    }
-
-    setRemoteEnhancementsDebugPanelOpen(false);
-  }, [connectionIntent.lastResolvedSnapshot, remoteEnhancementsDebugEnabled]);
-
-  React.useEffect(() => {
     const startupCommand = connectionIntent.startupCommand?.trim();
     if (
       connectionState !== 'connected' ||
@@ -538,40 +481,6 @@ const SSH: React.FC<SSHProps> = ({
       window.cancelAnimationFrame(dispatchFrame);
     };
   }, [connectionIntent.intentId, connectionIntent.startupCommand, connectionState, focusActiveTerminal, sendInput]);
-
-  /**
-   * Suspends for one short async interval used by pane/socket polling loops.
-   *
-   * @param milliseconds Delay duration in milliseconds.
-   * @returns Promise resolved after the requested delay.
-   */
-  const delay = React.useCallback((milliseconds: number): Promise<void> => {
-    return new Promise((resolve) => {
-      window.setTimeout(resolve, milliseconds);
-    });
-  }, []);
-
-  /**
-   * Waits until split-pane state includes the newly created pane id.
-   *
-   * @param expectedPaneCount Pane count expected after split.
-   * @returns Newest pane id when available, otherwise `null` on timeout.
-   */
-  const waitForNewestPaneId = React.useCallback(
-    async (expectedPaneCount: number): Promise<string | null> => {
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        const currentPaneIds = terminalPaneIdsRef.current;
-        if (currentPaneIds.length >= expectedPaneCount) {
-          return currentPaneIds[currentPaneIds.length - 1] ?? null;
-        }
-
-        await delay(50);
-      }
-
-      return null;
-    },
-    [delay],
-  );
 
   // ---------------------------------------------------------------------------
   // Shared terminal action helpers — used by both the Orbit Bar and the context
@@ -714,7 +623,7 @@ const SSH: React.FC<SSHProps> = ({
    */
   const openSelectionDirectoryInSftp = React.useCallback(
     (selectionText: string): void => {
-      const directoryPath = resolveSftpDirectoryPathFromSelection(selectionText, trustedCwd);
+      const directoryPath = resolveSftpDirectoryPathFromSelection(selectionText);
       const serverSnapshot = connectionIntent.lastResolvedSnapshot;
 
       if (!directoryPath || serverSnapshot?.type !== 'ssh-server' || !onOpenDirectoryInSFTP) {
@@ -725,7 +634,7 @@ const SSH: React.FC<SSHProps> = ({
       onOpenDirectoryInSFTP(serverSnapshot.serverId, serverSnapshot.serverName, directoryPath);
       dismissSelectionBar();
     },
-    [connectionIntent.lastResolvedSnapshot, dismissSelectionBar, notifyWarning, onOpenDirectoryInSFTP, trustedCwd],
+    [connectionIntent.lastResolvedSnapshot, dismissSelectionBar, notifyWarning, onOpenDirectoryInSFTP],
   );
 
   // ---------------------------------------------------------------------------
@@ -1128,126 +1037,6 @@ const SSH: React.FC<SSHProps> = ({
     };
   }, []);
 
-  const handleDeleteRecentCommand = React.useCallback(
-    (command: string) => {
-      deleteHistoryCommand(command);
-    },
-    [deleteHistoryCommand],
-  );
-
-  /**
-   * Converts sidebar and timeline command actions into terminal input payloads.
-   *
-   * Retained timeline commands can span rendered lines; embedded newlines are
-   * flattened so the insert path never auto-submits through the PTY.
-   *
-   * @param command Raw command text selected from history or the timeline.
-   * @param shouldRun Whether command should auto-submit with Enter.
-   * @returns Input payload written to terminal websocket.
-   */
-  const buildRecentCommandPayload = React.useCallback((command: string, shouldRun: boolean): string => {
-    const flattenedCommand = flattenCommandForTerminalInput(command);
-    return shouldRun ? `${flattenedCommand}\r` : flattenedCommand;
-  }, []);
-
-  /**
-   * Sends a history command to one pane and focuses that pane terminal.
-   *
-   * @param command Command text selected in history panel.
-   * @param paneId Target pane id.
-   * @param shouldRun Whether command should auto-submit with Enter.
-   * @returns `true` when command payload is sent to an open socket.
-   */
-  const dispatchRecentCommandToPane = React.useCallback(
-    (command: string, paneId: string, shouldRun: boolean): boolean => {
-      activatePane(paneId);
-      const didSend = sendInput(buildRecentCommandPayload(command, shouldRun));
-      focusActiveTerminal();
-      return didSend;
-    },
-    [activatePane, buildRecentCommandPayload, focusActiveTerminal, sendInput],
-  );
-
-  /**
-   * Splits one pane and retries command dispatch to the new pane until ready.
-   *
-   * @param command Command text selected in history panel.
-   * @param shouldRun Whether command should auto-submit with Enter.
-   * @returns Nothing.
-   */
-  const splitTerminalAndDispatchRecentCommand = React.useCallback(
-    (command: string, shouldRun: boolean): void => {
-      if (!canSplitTerminal) {
-        return;
-      }
-
-      const expectedPaneCount = terminalPaneIdsRef.current.length + 1;
-      splitPane();
-
-      void (async () => {
-        const newestPaneId = await waitForNewestPaneId(expectedPaneCount);
-        if (!newestPaneId) {
-          notifyWarning(t(shouldRun ? 'ssh.historySplitTerminalAndRunFailed' : 'ssh.historySplitTerminalAndAddFailed'));
-          return;
-        }
-
-        for (let attempt = 0; attempt < 30; attempt += 1) {
-          const didSend = dispatchRecentCommandToPane(command, newestPaneId, shouldRun);
-          if (didSend) {
-            return;
-          }
-
-          await delay(75);
-        }
-
-        notifyWarning(t(shouldRun ? 'ssh.historySplitTerminalAndRunFailed' : 'ssh.historySplitTerminalAndAddFailed'));
-      })();
-    },
-    [canSplitTerminal, delay, dispatchRecentCommandToPane, notifyWarning, splitPane, waitForNewestPaneId],
-  );
-
-  const handleInsertRecentCommand = React.useCallback(
-    (command: string) => {
-      dispatchRecentCommandToPane(command, activePaneId, false);
-    },
-    [activePaneId, dispatchRecentCommandToPane],
-  );
-
-  const handleInsertRecentCommandToPane = React.useCallback(
-    (command: string, paneId: string) => {
-      dispatchRecentCommandToPane(command, paneId, false);
-    },
-    [dispatchRecentCommandToPane],
-  );
-
-  const handleRunRecentCommand = React.useCallback(
-    (command: string) => {
-      dispatchRecentCommandToPane(command, activePaneId, true);
-    },
-    [activePaneId, dispatchRecentCommandToPane],
-  );
-
-  const handleRunRecentCommandToPane = React.useCallback(
-    (command: string, paneId: string) => {
-      dispatchRecentCommandToPane(command, paneId, true);
-    },
-    [dispatchRecentCommandToPane],
-  );
-
-  const handleSplitTerminalAndInsertRecentCommand = React.useCallback(
-    (command: string) => {
-      splitTerminalAndDispatchRecentCommand(command, false);
-    },
-    [splitTerminalAndDispatchRecentCommand],
-  );
-
-  const handleSplitTerminalAndRunRecentCommand = React.useCallback(
-    (command: string) => {
-      splitTerminalAndDispatchRecentCommand(command, true);
-    },
-    [splitTerminalAndDispatchRecentCommand],
-  );
-
   const handleSelectionBarDragStart = React.useCallback(
     (event: React.DragEvent<HTMLButtonElement>) => {
       if (!selectionAnchor?.selectionText) {
@@ -1350,14 +1139,6 @@ const SSH: React.FC<SSHProps> = ({
     [terminalSearchCaseSensitive, terminalSearchRegex],
   );
 
-  const handleToggleRemoteEnhancementsDebugPanel = React.useCallback(
-    (paneId: string) => {
-      activatePane(paneId);
-      setRemoteEnhancementsDebugPanelOpen((previous) => !previous);
-    },
-    [activatePane],
-  );
-
   const handleTerminalTextDrop = React.useCallback(
     (droppedText: string) => {
       void confirmAndPasteText(droppedText);
@@ -1367,16 +1148,11 @@ const SSH: React.FC<SSHProps> = ({
 
   const selectionText = selectionAnchor?.selectionText ?? '';
   const selectionLink = resolveSelectionLink(selectionText);
-  const selectedSftpDirectoryPath = resolveSftpDirectoryPathFromSelection(selectionText, trustedCwd);
+  const selectedSftpDirectoryPath = resolveSftpDirectoryPathFromSelection(selectionText);
   const canOpenSelectionDirectoryInSftp =
     Boolean(selectedSftpDirectoryPath) &&
     connectionIntent.lastResolvedSnapshot?.type === 'ssh-server' &&
     Boolean(onOpenDirectoryInSFTP);
-  const canShowRemoteEnhancementsDebug =
-    remoteEnhancementsDebugEnabled && connectionIntent.lastResolvedSnapshot?.type === 'ssh-server';
-  const remoteEnhancementsDebugContextMenuLabel = remoteEnhancementsDebugPanelOpen
-    ? t('ssh.contextMenuCloseRemoteEnhancementsDebug')
-    : t('ssh.contextMenuOpenRemoteEnhancementsDebug');
   const selectionBarSearchLabel = selectionLink ? t('ssh.selectionBarOpenLink') : t('ssh.selectionBarSearch');
   const contextMenuSearchLabel = selectionLink ? t('ssh.contextMenuOpenLink') : t('ssh.contextMenuSearchOnline');
 
@@ -1427,17 +1203,12 @@ const SSH: React.FC<SSHProps> = ({
           findShortcutLabel={terminalFindShortcutLabel}
           clearTerminalShortcutLabel={terminalClearShortcutLabel}
           rightClickAction={terminalRightClickAction}
-          remoteEnhancementsDebugLabel={
-            canShowRemoteEnhancementsDebug ? remoteEnhancementsDebugContextMenuLabel : undefined
-          }
           searchOnlineLabel={contextMenuSearchLabel}
           openDirectoryInSftpLabel={t('ssh.contextMenuOpenDirectoryInSftp')}
           canOpenDirectoryInSftp={canOpenSelectionDirectoryInSftp}
-          commandTimelineModels={commandTimelineModels}
           paneConnectionStates={paneConnectionStates}
           setPaneContainerElement={setPaneContainerElement}
           setPrimaryPaneContainer={setPrimaryPaneContainer}
-          onPaneActivate={activatePane}
           onRetryPane={retryPaneConnection}
           onCopy={(paneId) => {
             activatePane(paneId);
@@ -1471,18 +1242,6 @@ const SSH: React.FC<SSHProps> = ({
             activatePane(paneId);
             handleContextMenuClearTerminal();
           }}
-          onCopyCommand={(paneId, command) => {
-            activatePane(paneId);
-            void copyTextToClipboard(command);
-          }}
-          onFocusPane={(paneId) => {
-            activatePane(paneId);
-            focusActiveTerminal();
-          }}
-          onInsertCommand={(paneId, command) => {
-            dispatchRecentCommandToPane(command, paneId, false);
-          }}
-          onSelectCommand={scrollToPaneCommand}
           onSplitPane={(paneId) => {
             activatePane(paneId);
             splitPane();
@@ -1491,37 +1250,8 @@ const SSH: React.FC<SSHProps> = ({
             activatePane(paneId);
             closePane(paneId);
           }}
-          onToggleRemoteEnhancementsDebug={
-            canShowRemoteEnhancementsDebug ? handleToggleRemoteEnhancementsDebugPanel : undefined
-          }
         />
-
-        {remoteEnhancementsDebugPanelOpen ? (
-          <RemoteEnhancementsDebugPanel
-            latestStatus={remoteBootstrapStatus}
-            runtimeStatus={remoteEnhancementRuntimeStatus}
-            events={remoteEnhancementsDebugEvents}
-            formatTime={formatTime}
-            onClose={() => setRemoteEnhancementsDebugPanelOpen(false)}
-          />
-        ) : null}
       </div>
-
-      <TerminalAutocompleteMenu
-        ref={autocompleteMenuRef}
-        open={
-          connectionState === 'connected' &&
-          terminalAutoCompleteEnabled &&
-          autocompleteItems.length > 0 &&
-          autocompleteAnchor !== null
-        }
-        anchorTop={autocompleteAnchor?.top ?? 0}
-        anchorLeft={autocompleteAnchor?.left ?? 0}
-        panelWidth={autocompleteAnchor?.panelWidth ?? 340}
-        renderAbove={autocompleteAnchor?.renderAbove ?? false}
-        items={autocompleteItems}
-        onItemSelect={acceptAutocompleteAtIndex}
-      />
 
       {connectionState === 'connected' && terminalSearchOpen ? (
         <div className="pointer-events-auto fixed left-1/2 top-[50px] z-40 -translate-x-1/2">
@@ -1608,19 +1338,7 @@ const SSH: React.FC<SSHProps> = ({
         />
       ) : null}
 
-      <SSHSidebar
-        telemetryState={telemetryState}
-        terminalPaneIds={terminalPaneIds}
-        activePaneId={activePaneId}
-        canSplitTerminal={canSplitTerminal}
-        onInsertRecentCommand={handleInsertRecentCommand}
-        onInsertRecentCommandToPane={handleInsertRecentCommandToPane}
-        onSplitTerminalAndInsertRecentCommand={handleSplitTerminalAndInsertRecentCommand}
-        onRunRecentCommand={handleRunRecentCommand}
-        onRunRecentCommandToPane={handleRunRecentCommandToPane}
-        onSplitTerminalAndRunRecentCommand={handleSplitTerminalAndRunRecentCommand}
-        onDeleteRecentCommand={handleDeleteRecentCommand}
-      />
+      <SSHSidebar telemetryState={telemetryState} />
 
       <Dialog
         open={hostFingerprintPrompt !== null}

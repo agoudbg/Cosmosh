@@ -10,17 +10,14 @@ type JsonTranslationTree = {
 };
 
 const backendEn = require('@cosmosh/i18n/locales/en/backend.json') as JsonTranslationTree;
-const backendInshellisenseEn = require('@cosmosh/i18n/locales/en/backend-inshellisense.json') as JsonTranslationTree;
 const backendZhCN = require('@cosmosh/i18n/locales/zh-CN/backend.json') as JsonTranslationTree;
-const backendInshellisenseZhCN =
-  require('@cosmosh/i18n/locales/zh-CN/backend-inshellisense.json') as JsonTranslationTree;
 
 const backendMessages = i18nRuntime.createMessages({
   en: {
-    backend: i18nRuntime.mergeTranslationTrees(backendEn, backendInshellisenseEn),
+    backend: backendEn,
   },
   'zh-CN': {
-    backend: i18nRuntime.mergeTranslationTrees(backendZhCN, backendInshellisenseZhCN),
+    backend: backendZhCN,
   },
 });
 
@@ -29,9 +26,7 @@ type BackendCreateI18nOptions = Omit<CreateI18nOptions, 'resources' | 'scope'>;
 type BackendEnableI18nDevHotReloadOptions = Omit<
   EnableI18nDevHotReloadOptions,
   'resources' | 'scopes' | 'additionalScopeLocaleFiles'
-> & {
-  additionalScopeLocaleFiles?: string[];
-};
+>;
 
 export const createI18n = ({ locale, fallbackLocale, onMissingKey }: BackendCreateI18nOptions): I18nInstance => {
   return i18nRuntime.createI18n({
@@ -46,18 +41,12 @@ export const createI18n = ({ locale, fallbackLocale, onMissingKey }: BackendCrea
 export const enableI18nDevHotReload = ({
   localeRootDir,
   debounceMs,
-  additionalScopeLocaleFiles,
 }: BackendEnableI18nDevHotReloadOptions): Promise<() => void> => {
-  const extensionFiles = Array.from(new Set(['backend-inshellisense.json', ...(additionalScopeLocaleFiles ?? [])]));
-
   return i18nRuntime.enableI18nDevHotReload({
     localeRootDir,
     debounceMs,
     resources: backendMessages,
     scopes: ['backend'],
-    additionalScopeLocaleFiles: {
-      backend: extensionFiles,
-    },
   });
 };
 

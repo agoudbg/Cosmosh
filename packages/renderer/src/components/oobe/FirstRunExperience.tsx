@@ -40,10 +40,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/
 
 type OobeStep = 'welcome' | 'personalize' | 'ready';
 type OobeLocale = SettingsValues['language'];
-type OobeDraftSettings = Pick<
-  SettingsValues,
-  'language' | 'remoteEnhancementsEnabled' | 'terminalAutoCompleteEnabled' | 'terminalSelectionBarEnabled' | 'theme'
->;
+type OobeDraftSettings = Pick<SettingsValues, 'language' | 'terminalSelectionBarEnabled' | 'theme'>;
 
 type LanguageMenuProps = {
   iconOnly?: boolean;
@@ -122,8 +119,6 @@ const RESOURCE_CARDS: readonly ResourceCard[] = [
 const selectOobeDraftSettings = (values: SettingsValues): OobeDraftSettings => ({
   language: values.language,
   theme: values.theme,
-  remoteEnhancementsEnabled: values.remoteEnhancementsEnabled,
-  terminalAutoCompleteEnabled: values.terminalAutoCompleteEnabled,
   terminalSelectionBarEnabled: values.terminalSelectionBarEnabled,
 });
 
@@ -536,22 +531,8 @@ const FirstRunExperience: React.FC = () => {
                                 onLocaleChange={(nextLocale) => updateDraft('language', nextLocale)}
                               />
                             </div>
-                            <SwitchSetting
-                              htmlFor="oobe-remote-enhancements"
-                              label={translate('settings.items.remoteEnhancementsEnabled.title')}
-                              description={translate('settings.items.remoteEnhancementsEnabled.description')}
-                              checked={draft.remoteEnhancementsEnabled}
-                              onCheckedChange={(checked) => updateDraft('remoteEnhancementsEnabled', checked)}
-                            />
                           </div>
                           <div>
-                            <SwitchSetting
-                              htmlFor="oobe-terminal-auto-complete"
-                              label={translate('settings.items.terminalAutoCompleteEnabled.title')}
-                              description={translate('settings.items.terminalAutoCompleteEnabled.description')}
-                              checked={draft.terminalAutoCompleteEnabled}
-                              onCheckedChange={(checked) => updateDraft('terminalAutoCompleteEnabled', checked)}
-                            />
                             <SwitchSetting
                               htmlFor="oobe-orbit-bar"
                               label={translate('settings.items.terminalSelectionBarEnabled.title')}

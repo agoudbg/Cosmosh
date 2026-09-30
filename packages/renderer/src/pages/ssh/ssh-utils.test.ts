@@ -6,14 +6,10 @@ import type { SerializeAddon } from '@xterm/addon-serialize';
 import type { Terminal } from '@xterm/xterm';
 
 import {
-  calibrateAutocompleteCommandPrefix,
   containsTerminalControlContent,
   createTerminalPasteWarningRequest,
-  flattenCommandForTerminalInput,
   reconcileSecondaryPaneRuntimes,
   resetTerminalForNewPtySession,
-  resolveAutocompleteCommandPrefix,
-  resolvePromptCommandStartOffset,
   resolveSftpDirectoryPathFromSelection,
   resolveTerminalPaneCloseTransition,
   shouldReconnectTerminalPaneOnActivation,
@@ -61,22 +57,15 @@ test('selection directory resolver accepts explicit remote paths', () => {
   assert.equal(resolveSftpDirectoryPathFromSelection('/'), '/');
   assert.equal(resolveSftpDirectoryPathFromSelection('/var/www/'), '/var/www');
   assert.equal(resolveSftpDirectoryPathFromSelection("'~/projects/site'"), '~/projects/site');
-  assert.equal(resolveSftpDirectoryPathFromSelection('./logs,'), './logs');
   assert.equal(resolveSftpDirectoryPathFromSelection('file:///opt/app/current'), '/opt/app/current');
   assert.equal(resolveSftpDirectoryPathFromSelection('file:///tmp/%broken'), '/tmp/%broken');
 });
 
 test('selection directory resolver rejects ambiguous or unsafe values', () => {
   assert.equal(resolveSftpDirectoryPathFromSelection('var/www'), null);
+  assert.equal(resolveSftpDirectoryPathFromSelection('./logs,'), null);
   assert.equal(resolveSftpDirectoryPathFromSelection('https://example.com/path'), null);
   assert.equal(resolveSftpDirectoryPathFromSelection(''), null);
-});
-
-test('selection directory resolver resolves dot-relative paths from trusted pane cwd', () => {
-  assert.equal(resolveSftpDirectoryPathFromSelection('./logs', '/srv/app'), '/srv/app/logs');
-  assert.equal(resolveSftpDirectoryPathFromSelection('../shared/cache', '/srv/app/current'), '/srv/app/shared/cache');
-  assert.equal(resolveSftpDirectoryPathFromSelection('../../../../etc', '/srv/app'), '/etc');
-  assert.equal(resolveSftpDirectoryPathFromSelection('relative/path', '/srv/app'), null);
 });
 
 test('pane close transition promotes a surviving pane without changing its id', () => {
@@ -410,95 +399,4 @@ test('paste warning request returns null when no enabled reason matches', () => 
     }),
     null,
   );
-});
-
-test('prompt boundary skips virtual environment decoration only with shell prompt context', () => {
-  const renderedInput = '(base) xyz10@DESKTOP:~$ sudo ss -tlnp | grep :22';
-  const commandStartOffset = resolvePromptCommandStartOffset(renderedInput);
-
-  assert.equal(renderedInput.slice(commandStartOffset), 'sudo ss -tlnp | grep :22');
-  assert.equal(resolvePromptCommandStartOffset('(base) echo value'), 0);
-});
-
-test('prompt boundary strips through trailing status glyphs of glyph-led prompts', () => {
-  const renderedInput = '➜  myrepo git:(main) ✗ ls -la';
-  assert.equal(renderedInput.slice(resolvePromptCommandStartOffset(renderedInput)), 'ls -la');
-
-  const promptOnly = '➜  myrepo git:(main) ✗';
-  assert.equal(resolvePromptCommandStartOffset(promptOnly), promptOnly.length);
-});
-
-test('prompt boundary stops at shell operators inside command text', () => {
-  const compound = 'user@host:~$ (cd /tmp && make)';
-  assert.equal(compound.slice(resolvePromptCommandStartOffset(compound)), '(cd /tmp && make)');
-
-  const redirect = '$ sort > out.txt';
-  assert.equal(redirect.slice(resolvePromptCommandStartOffset(redirect)), 'sort > out.txt');
-});
-
-test('prompt boundary ignores ascii symbolic arguments', () => {
-  const line = '$ ls -- *';
-  assert.equal(line.slice(resolvePromptCommandStartOffset(line)), 'ls -- *');
-});
-
-test('autocomplete command prefix uses local shadow for normal typing', () => {
-  assert.equal(resolveAutocompleteCommandPrefix('ec', 'echo'), 'echo');
-});
-
-test('autocomplete command prefix preserves recalled history command context', () => {
-  assert.equal(
-    resolveAutocompleteCommandPrefix('echo 1ec', 'ec', {
-      localPrefixNeedsRenderedContext: true,
-    }),
-    'echo 1ec',
-  );
-});
-
-test('autocomplete command prefix merges local suffix before terminal echo catches up', () => {
-  assert.equal(
-    resolveAutocompleteCommandPrefix('echo 1e', 'ec', {
-      localPrefixNeedsRenderedContext: true,
-    }),
-    'echo 1ec',
-  );
-});
-
-test('autocomplete command prefix uses trusted line-state cursor only when lengths agree', () => {
-  assert.equal(
-    calibrateAutocompleteCommandPrefix('git status --short', {
-      lineLength: 18,
-      cursorIndex: 10,
-    }),
-    'git status',
-  );
-  assert.equal(
-    calibrateAutocompleteCommandPrefix('git status --short', {
-      lineLength: 99,
-      cursorIndex: 3,
-    }),
-    'git status --short',
-  );
-});
-
-test('flatten keeps single-line commands untouched', () => {
-  assert.equal(flattenCommandForTerminalInput('git status --short'), 'git status --short');
-});
-
-test('flatten joins retained continuation lines without submitting newlines', () => {
-  assert.equal(flattenCommandForTerminalInput('cat <<EOF\n> line1\n> EOF'), 'cat <<EOF line1 EOF');
-  assert.equal(flattenCommandForTerminalInput('echo start\r\n> --flag'), 'echo start --flag');
-});
-
-test('flatten strips zsh-style named continuation prompts on follow-up lines', () => {
-  assert.equal(flattenCommandForTerminalInput("echo 'a\nquote> b'"), "echo 'a b'");
-  assert.equal(flattenCommandForTerminalInput('ls |\npipe> wc -l'), 'ls | wc -l');
-});
-
-test('flatten preserves first-line content that resembles a continuation prompt', () => {
-  assert.equal(flattenCommandForTerminalInput('sort > out.txt'), 'sort > out.txt');
-  assert.equal(flattenCommandForTerminalInput('a\nb > c'), 'a b > c');
-});
-
-test('flatten drops blank continuation lines', () => {
-  assert.equal(flattenCommandForTerminalInput('one\n\n> two\n   \n> three'), 'one two three');
 });

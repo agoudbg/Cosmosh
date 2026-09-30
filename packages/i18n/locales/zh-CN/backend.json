@@ -139,7 +139,6 @@
       "profileIdRequired": "必须提供终端配置 ID。",
       "proxyModeEnum": "代理模式无效。",
       "proxyUrlInvalid": "代理 URL 必须使用 http、https 或 socks5，且不能包含路径、查询参数或片段。",
-      "remoteEnhancementsEnabledType": "远端增强设置无效。",
       "requestBodyMustBeObject": "请求体必须是 JSON 对象。",
       "rowsRange": "行数必须是 10 到 200 之间的整数。",
       "serverIdRequired": "必须提供服务器 ID。",

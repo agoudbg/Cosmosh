@@ -509,14 +509,6 @@
         "description": "仅设置本地终端程序访问本地剪贴板的权限。",
         "title": "允许本地终端访问本地剪贴板"
       },
-      "remoteEnhancementsDebugEnabled": {
-        "description": "在 SSH 终端菜单中显示当前分屏的引导安装与 Shell 集成诊断信息。",
-        "title": "远端增强调试"
-      },
-      "remoteEnhancementsEnabled": {
-        "description": "允许 Cosmosh 为 SSH 会话安装远端增强帮助程序来增强终端功能。如果关闭远端增强，部分终端功能可能降级或无法使用。",
-        "title": "远端增强"
-      },
       "serverProxyMode": {
         "description": "设置 SSH、SFTP 和端口转发的默认代理策略。",
         "title": "服务器代理"
@@ -606,47 +598,6 @@
         "description": "按住 Alt（在 macOS 上使用 Option）并点击时，将光标移动到点击位置。",
         "title": "按住 Alt/Option 并点击来移动光标"
       },
-      "terminalAutoCompleteAcceptKeys": {
-        "description": "设置用于应用当前高亮自动补全候选的按键。",
-        "title": "自动补全应用快捷键"
-      },
-      "terminalAutoCompleteBuiltInCommandsEnabled": {
-        "description": "在自动补全面板中包含内置命令与选项建议。",
-        "title": "自动补全内置命令建议"
-      },
-      "terminalAutoCompleteEnabled": {
-        "description": "在终端输入时启用命令自动补全建议。",
-        "title": "终端自动补全"
-      },
-      "terminalAutoCompleteFuzzyMatch": {
-        "description": "除前缀匹配外，额外启用模糊匹配。",
-        "title": "自动补全模糊匹配"
-      },
-      "terminalAutoCompleteHistoryEnabled": {
-        "description": "在自动补全面板中包含历史命令建议。",
-        "title": "自动补全历史建议"
-      },
-      "terminalAutoCompleteMaxItems": {
-        "description": "自动补全面板中最多显示的建议数量。",
-        "title": "自动补全建议上限"
-      },
-      "terminalAutoCompleteMinChars": {
-        "description": "触发自动补全前所需的最少输入字符数。",
-        "title": "自动补全触发长度"
-      },
-      "terminalAutoCompletePasswordEnabled": {
-        "description": "检测到安全提示时，在自动补全面板中包含密码填充建议。",
-        "title": "自动补全密码建议"
-      },
-      "terminalAutoCompletePathEnabled": {
-        "description": "在自动补全面板中包含文件与目录路径建议。",
-        "title": "自动补全路径建议"
-      },
-      "terminalAutoCompletePromptRegex": {
-        "description": "使用正则表达式自定义命令文本前的提示符解析方式。留空来使用默认规则。",
-        "placeholder": "^.*[#$%>]\\s+",
-        "title": "自定义自动补全提示符解析"
-      },
       "terminalBracketedPasteEnabled": {
         "description": "包装粘贴内容为安全粘贴格式来避免内容粘贴后被立即执行。",
         "title": "安全粘贴"
@@ -654,10 +605,6 @@
       "terminalCharacterWidthCompatibilityModeEnabled": {
         "description": "使用 Unicode 11 字符宽度表来改善 CJK 与 emoji 内容的对齐。遇到终端界面错位时可尝试关闭此项并重新连接以使用传统字符宽度模式。",
         "title": "字符宽度兼容模式"
-      },
-      "terminalCommandTimelineEnabled": {
-        "description": "在终端右侧显示最近命令列表。需要启用远端增强。",
-        "title": "命令时间线"
       },
       "terminalContextLaunchBehavior": {
         "description": "设置通过“在 Cosmosh 中打开终端”或从上下文启动时如何打开终端。",
@@ -901,11 +848,6 @@
         "mostRecentlyUsed": "最近使用顺序",
         "tabOrder": "标签栏顺序"
       },
-      "terminalAutoCompleteAcceptKeys": {
-        "enter": "Enter",
-        "tab": "Tab",
-        "tabEnter": "Tab/Enter"
-      },
       "terminalClipboardAccess": {
         "askAlways": "始终询问",
         "off": "关闭",
@@ -967,7 +909,6 @@
       "advancedStyle": "高级样式",
       "advancedTerminal": "高级终端配置",
       "appearance": "外观",
-      "autoComplete": "自动补全",
       "behavior": "行为",
       "connection": "连接",
       "editorDefaults": "默认值",
@@ -1394,39 +1335,20 @@
     "authTypeKey": "私钥",
     "authTypePassword": "密码",
     "authTypePlaceholder": "选择认证方式",
-    "bootstrapPhases": {
-      "download": "下载",
-      "install": "安装",
-      "manifest": "清单",
-      "probe": "探测",
-      "verify": "校验"
-    },
-    "bootstrapStates": {
-      "failed": "失败",
-      "ok": "就绪",
-      "skipped": "已是最新",
-      "started": "运行中"
-    },
     "columnAuth": "认证",
     "columnFolder": "文件夹",
     "columnHost": "主机",
     "columnName": "名称",
     "columnPort": "端口",
     "columnUser": "用户名",
-    "commandTimelineCopyCommand": "复制命令",
-    "commandTimelineInsertCommand": "插入到终端",
-    "commandTimelineJumpToCommand": "跳转到命令：{command}",
-    "commandTimelineLabel": "最近命令",
     "connecting": "连接中...",
     "contextMenuClearTerminal": "清屏",
-    "contextMenuCloseRemoteEnhancementsDebug": "关闭远端增强调试",
     "contextMenuCloseTerminal": "关闭终端",
     "contextMenuCopy": "复制",
     "contextMenuCopyAsHtml": "复制为 HTML",
     "contextMenuFind": "查找...",
     "contextMenuOpenDirectoryInSftp": "在 SFTP 中打开目录",
     "contextMenuOpenLink": "打开链接",
-    "contextMenuOpenRemoteEnhancementsDebug": "打开远端增强调试",
     "contextMenuPaste": "粘贴",
     "contextMenuSearchOnline": "联网搜索",
     "contextMenuSelectAll": "全选",
@@ -1441,18 +1363,6 @@
     "emptyTags": "暂无已添加的标签",
     "enableSshCompression": "SSH 传输压缩",
     "enableSshCompressionTooltip": "启用后，Cosmosh 会请求服务器压缩 SSH 传输数据。除非连接带宽受限，否则建议保持默认关闭。",
-    "historyAddToCurrentTerminal": "添加到当前终端",
-    "historyAddToTerminalMenu": "添加到终端...",
-    "historyCommandsEmpty": "暂无最近命令",
-    "historyCommandsTitle": "命令",
-    "historyDeleteLabel": "从历史记录中删除命令",
-    "historyRunInCurrentTerminal": "在当前终端中运行",
-    "historyRunInTerminalMenu": "在...运行",
-    "historySplitTerminalAndAdd": "拆分终端并添加",
-    "historySplitTerminalAndAddFailed": "拆分终端成功，但命令插入失败。",
-    "historySplitTerminalAndRun": "拆分终端并运行",
-    "historySplitTerminalAndRunFailed": "拆分终端成功，但命令执行失败。",
-    "historyTerminalLabel": "终端 {index}",
     "hostFingerprintDialogAlgorithm": "算法",
     "hostFingerprintDialogCancel": "取消",
     "hostFingerprintDialogDescription": "当前远程主机指纹未受信任。若要继续连接，请先信任远程主机指纹。",
@@ -1506,37 +1416,6 @@
     "proxyUrlHint": "支持 HTTP、HTTPS CONNECT 和 SOCKS5 代理 URL，也支持在 URL 中携带凭据。",
     "proxyUrlLabel": "自定义代理 URL",
     "proxyUrlPlaceholder": "socks5://user:password@127.0.0.1:1080",
-    "remoteEnhancementRuntimeStates": {
-      "active": "已启用",
-      "disabled": "已停用",
-      "pending": "等待握手"
-    },
-    "remoteEnhancements": "远端增强",
-    "remoteEnhancementsDebug": {
-      "capabilities": "能力",
-      "close": "关闭远端增强调试",
-      "code": "代码",
-      "emptyEvents": "本次会话尝试还没有收到远端增强事件。",
-      "emptyValue": "-",
-      "events": "事件",
-      "helperVersion": "帮助程序版本",
-      "latestPhase": "Bootstrap 阶段",
-      "latestState": "Bootstrap 状态",
-      "message": "消息",
-      "protocolVersion": "协议版本",
-      "runtimeState": "运行状态",
-      "title": "远端增强调试",
-      "version": "版本"
-    },
-    "remoteEnhancementsTooltip": "启用后，如果全局远端增强已开启，连接该服务器时会检查并准备 Cosmosh 远端增强帮助程序。",
-    "remoteShellEvents": {
-      "command-end": "命令结束",
-      "command-start": "命令开始",
-      "cwd": "当前目录",
-      "foreground-command": "前台命令",
-      "integration-ready": "集成就绪",
-      "prompt-ready": "提示符就绪"
-    },
     "removeTagLabel": "移除“{tagName}”",
     "retry": "重试",
     "saveChanges": "保存修改",
@@ -1549,7 +1428,6 @@
     "sectionProxy": "代理",
     "sectionSecurity": "安全",
     "sectionSettings": "分类",
-    "sectionTerminalEnhancements": "终端增强",
     "sectionTransport": "传输",
     "selectionBarAskAiComingSoon": "问 AI 功能即将上线。",
     "selectionBarAskAiLabel": "问 AI",

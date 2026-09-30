@@ -2640,7 +2640,6 @@ components:
         - authType
         - strictHostKey
         - enableSshCompression
-        - remoteEnhancementsEnabled
         - disableCharacterWidthCompatibilityMode
         - terminalClipboardAccess
         - proxyMode
@@ -2674,8 +2673,6 @@ components:
         strictHostKey:
           type: boolean
         enableSshCompression:
-          type: boolean
-        remoteEnhancementsEnabled:
           type: boolean
         disableCharacterWidthCompatibilityMode:
           type: boolean
@@ -2748,8 +2745,6 @@ components:
         strictHostKey:
           type: boolean
         enableSshCompression:
-          type: boolean
-        remoteEnhancementsEnabled:
           type: boolean
         disableCharacterWidthCompatibilityMode:
           type: boolean
@@ -2865,8 +2860,6 @@ components:
         strictHostKey:
           type: boolean
         enableSshCompression:
-          type: boolean
-        remoteEnhancementsEnabled:
           type: boolean
         systemProxyRules:
           type: string

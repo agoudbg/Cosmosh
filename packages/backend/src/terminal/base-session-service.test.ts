@@ -156,7 +156,6 @@ const createMockSession = (sessionId: string): MockSession => {
     socket: null,
     disposed: false,
     telemetryInterval: null,
-    historySyncTimeout: null,
     sent: [],
   };
 };

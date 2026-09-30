@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { access, readFile, stat, writeFile } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -11,24 +11,10 @@ import { type RawData } from 'ws';
 
 import { createI18n, type Locale } from '../i18n-bridge.js';
 import { BaseTerminalSessionService, type TerminalManagedSessionBase } from '../terminal/base-session-service.js';
-import { localizeTerminalCompletionItems, resolveTerminalCompletions } from '../terminal/completion/engine.js';
-import { createLocalPathProvider } from '../terminal/completion/path-providers.js';
-import {
-  type CompletionPromptState,
-  updateLocalCompletionCwd,
-  updatePromptStateFromInput,
-  updatePromptStateFromOutput,
-} from '../terminal/completion/runtime-state.js';
 import {
   clampTerminalSize,
-  computeHistorySyncDelayMs,
-  mergeTerminalRecentCommands,
   normalizeTerminalClientMessage,
-  parseTerminalHistoryOutput,
-  TERMINAL_HISTORY_MAX_ENTRIES,
   TERMINAL_TELEMETRY_INTERVAL_MS,
-  type TerminalClientInboundMessage,
-  updateInteractiveCompletionState,
 } from '../terminal/shared.js';
 
 const execFileAsync = promisify(execFile);
@@ -37,18 +23,6 @@ const LOCAL_PROFILE_CACHE_TTL_MS = 60_000;
 
 let windowsProfilesCache: { expiresAt: number; profiles: LocalTerminalProfile[] } | null = null;
 let unixProfilesCache: { expiresAt: number; profiles: LocalTerminalProfile[] } | null = null;
-
-const resolveCompletionTokenizerMode = (profileId: string): 'posix' | 'powershell' | 'cmd' => {
-  if (profileId === 'pwsh' || profileId === 'windows-powershell') {
-    return 'powershell';
-  }
-
-  if (profileId === 'cmd') {
-    return 'cmd';
-  }
-
-  return 'posix';
-};
 
 /**
  * Describes an available local shell profile that can be launched as PTY session.
@@ -92,15 +66,6 @@ type LocalLiveSession = TerminalManagedSessionBase & {
   profileId: string;
   pty: IPty;
   telemetryInterval: NodeJS.Timeout | null;
-  historySyncTimeout: NodeJS.Timeout | null;
-  historySyncInFlight: boolean;
-  historySyncPending: boolean;
-  lastHistorySyncStartedAtMs: number;
-  recentCommands: string[];
-  completionLineBuffer: string;
-  completionRecentCommands: string[];
-  completionWorkingDirectory: string;
-  completionPromptState: CompletionPromptState;
 };
 
 /**
@@ -263,7 +228,7 @@ const resolveUnixProfiles = async (): Promise<LocalTerminalProfile[]> => {
  *
  * Layering note:
  * - BaseTerminalSessionService handles generic socket lifecycle.
- * - This class owns host-local responsibilities (profile discovery, cwd resolution, history file edits).
+ * - This class owns host-local responsibilities (profile discovery and launch cwd resolution).
  */
 export class LocalTerminalSessionService extends BaseTerminalSessionService<LocalLiveSession, ServerOutboundMessage> {
   constructor(options: { host: string; port: number }) {
@@ -333,26 +298,12 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       pendingOutputDropCount: 0,
       attachTimeout,
       telemetryInterval: null,
-      historySyncTimeout: null,
-      historySyncInFlight: false,
-      historySyncPending: false,
-      lastHistorySyncStartedAtMs: 0,
-      recentCommands: [],
-      completionLineBuffer: '',
-      completionRecentCommands: [],
-      completionWorkingDirectory: workingDirectory,
-      completionPromptState: {
-        outputTail: '',
-        promptDetectedAtMs: 0,
-        shouldSuggestSecret: false,
-      },
       t: i18n.t,
       socket: null,
       disposed: false,
     };
 
     pty.onData((data) => {
-      session.completionPromptState = updatePromptStateFromOutput(session.completionPromptState, data, Date.now());
       this.sendServerMessage(session, { type: 'output', data });
     });
 
@@ -398,23 +349,6 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
     }
 
     if (message.type === 'input') {
-      const interactiveState = {
-        lineBuffer: session.completionLineBuffer,
-        recentCommands: session.completionRecentCommands,
-      };
-      updateInteractiveCompletionState(interactiveState, message.data, {
-        maxEntries: TERMINAL_HISTORY_MAX_ENTRIES,
-        onCommandSubmitted: (command) => {
-          session.completionWorkingDirectory = updateLocalCompletionCwd(session.completionWorkingDirectory, command);
-        },
-      });
-      session.completionLineBuffer = interactiveState.lineBuffer;
-      session.completionRecentCommands = interactiveState.recentCommands;
-      session.completionPromptState = updatePromptStateFromInput(session.completionPromptState, message.data);
-
-      if (/\r|\n/.test(message.data)) {
-        this.scheduleHistorySync(session.sessionId);
-      }
       session.pty.write(message.data);
       return;
     }
@@ -431,70 +365,7 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       return;
     }
 
-    if (message.type === 'history-delete') {
-      const command = message.command.trim();
-      if (!command) {
-        return;
-      }
-
-      void this.deleteLocalHistoryEntry(session, command);
-      return;
-    }
-
-    if (message.type === 'completion-request') {
-      void this.handleCompletionRequest(session, message);
-      return;
-    }
-
     this.disposeSession(session.sessionId, 'ws.clientRequestedClose');
-  }
-
-  /**
-   * Resolves and returns localized completion items for one renderer request.
-   * Keeps async filesystem scans out of the websocket message switch body.
-   */
-  private async handleCompletionRequest(
-    session: LocalLiveSession,
-    message: Extract<TerminalClientInboundMessage, { type: 'completion-request' }>,
-  ): Promise<void> {
-    const hintedCwd = message.workingDirectoryHint?.trim() ?? '';
-    const completionCwd = hintedCwd.startsWith('/')
-      ? hintedCwd
-      : hintedCwd === '~'
-        ? process.env.HOME || session.completionWorkingDirectory
-        : hintedCwd.startsWith('~/')
-          ? `${process.env.HOME || session.completionWorkingDirectory}${hintedCwd.slice(1)}`
-          : session.completionWorkingDirectory;
-
-    const completionResult = await resolveTerminalCompletions(
-      {
-        linePrefix: message.linePrefix,
-        cursorIndex: message.cursorIndex,
-        limit: message.limit,
-        fuzzyMatch: message.fuzzyMatch,
-        includeHistory: message.includeHistory,
-        includeBuiltInCommands: message.includeBuiltInCommands,
-        includePathSuggestions: message.includePathSuggestions,
-        includePasswordSuggestions: message.includePasswordSuggestions,
-        trigger: message.trigger,
-      },
-      {
-        recentCommands: session.completionRecentCommands,
-        tokenizerMode: resolveCompletionTokenizerMode(session.profileId),
-        pathProvider: createLocalPathProvider(completionCwd),
-        promptState: {
-          shouldSuggestSecret: session.completionPromptState.shouldSuggestSecret,
-          secretValue: null,
-        },
-      },
-    );
-
-    this.sendServerMessage(session, {
-      type: 'completion-response',
-      requestId: message.requestId,
-      replacePrefixLength: completionResult.replacePrefixLength,
-      items: localizeTerminalCompletionItems(completionResult.items, (key) => session.t(key)),
-    });
   }
 
   protected disposeSession(
@@ -529,7 +400,6 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
     }, TERMINAL_TELEMETRY_INTERVAL_MS);
 
     this.sendTelemetry(sessionId);
-    this.scheduleHistorySync(sessionId, { immediate: true });
   }
 
   private sendTelemetry(sessionId: string): void {
@@ -545,149 +415,6 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
       memoryTotalBytes: null,
       networkRxBytesPerSec: null,
       networkTxBytesPerSec: null,
-      recentCommands: [...session.recentCommands],
     });
-  }
-
-  private scheduleHistorySync(sessionId: string, options?: { immediate?: boolean }): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.disposed) {
-      return;
-    }
-
-    if (session.historySyncTimeout) {
-      clearTimeout(session.historySyncTimeout);
-      session.historySyncTimeout = null;
-    }
-
-    const now = Date.now();
-    // Debounce avoids refresh per keystroke, while throttle avoids repeated filesystem scans.
-    const delayMs = computeHistorySyncDelayMs(session.lastHistorySyncStartedAtMs, now, options);
-
-    session.historySyncTimeout = setTimeout(() => {
-      session.historySyncTimeout = null;
-      void this.syncLocalHistory(sessionId);
-    }, delayMs);
-  }
-
-  private async syncLocalHistory(sessionId: string): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.disposed) {
-      return;
-    }
-
-    if (session.historySyncInFlight) {
-      session.historySyncPending = true;
-      return;
-    }
-
-    session.historySyncInFlight = true;
-    session.lastHistorySyncStartedAtMs = Date.now();
-
-    try {
-      session.recentCommands = await this.readLocalHistory(session);
-      session.completionRecentCommands = mergeTerminalRecentCommands(
-        session.recentCommands,
-        session.completionRecentCommands,
-      );
-      this.sendTelemetry(sessionId);
-    } finally {
-      session.historySyncInFlight = false;
-
-      if (session.historySyncPending) {
-        session.historySyncPending = false;
-        this.scheduleHistorySync(sessionId);
-      }
-    }
-  }
-
-  private async readLocalHistory(session: LocalLiveSession): Promise<string[]> {
-    const candidateFiles = this.resolveLocalHistoryFiles(session.profileId);
-    const chunks: string[] = [];
-
-    for (const filePath of candidateFiles) {
-      if (!filePath) {
-        continue;
-      }
-
-      try {
-        const content = await readFile(filePath, 'utf8');
-        chunks.push(content);
-      } catch {
-        // Ignore missing or inaccessible history files.
-      }
-    }
-
-    if (chunks.length === 0) {
-      return [];
-    }
-
-    return this.parseHistoryOutput(chunks.join('\n'));
-  }
-
-  private resolveLocalHistoryFiles(profileId: string): string[] {
-    const homeDirectory = os.homedir();
-    const appData = process.env.APPDATA || '';
-    const candidates = new Set<string>();
-
-    candidates.add(path.join(homeDirectory, '.bash_history'));
-    candidates.add(path.join(homeDirectory, '.zsh_history'));
-    candidates.add(path.join(homeDirectory, '.ash_history'));
-    candidates.add(path.join(homeDirectory, '.sh_history'));
-    candidates.add(path.join(homeDirectory, '.mksh_history'));
-    candidates.add(path.join(homeDirectory, '.ksh_history'));
-    candidates.add(path.join(homeDirectory, '.local', 'share', 'fish', 'fish_history'));
-
-    if (profileId === 'pwsh' || profileId === 'windows-powershell') {
-      candidates.add(path.join(appData, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt'));
-    }
-
-    return [...candidates];
-  }
-
-  private parseHistoryOutput(output: string): string[] {
-    return parseTerminalHistoryOutput(output);
-  }
-
-  private async deleteLocalHistoryEntry(session: LocalLiveSession, command: string): Promise<void> {
-    const candidateFiles = this.resolveLocalHistoryFiles(session.profileId);
-    await Promise.all(candidateFiles.map(async (filePath) => this.deleteFromHistoryFile(filePath, command)));
-
-    session.recentCommands = session.recentCommands.filter((entry) => entry !== command);
-    session.completionRecentCommands = session.completionRecentCommands.filter((entry) => entry !== command);
-    this.sendTelemetry(session.sessionId);
-    this.scheduleHistorySync(session.sessionId, { immediate: true });
-  }
-
-  private async deleteFromHistoryFile(filePath: string, command: string): Promise<void> {
-    if (!filePath) {
-      return;
-    }
-
-    try {
-      const original = await readFile(filePath, 'utf8');
-      const lines = original.split(/\r?\n/);
-      const keptLines = lines.filter((line) => {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          return true;
-        }
-
-        if (trimmed === command) {
-          return false;
-        }
-
-        const zshExtendedMatch = /^:\s*\d+:\d+;(.*)$/.exec(trimmed);
-        if (zshExtendedMatch) {
-          return (zshExtendedMatch[1]?.trim() ?? '') !== command;
-        }
-
-        return true;
-      });
-
-      await writeFile(filePath, keptLines.join('\n'), 'utf8');
-    } catch {
-      // Ignore files that cannot be edited on current platform/profile.
-    }
   }
 }

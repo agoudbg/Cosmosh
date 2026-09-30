@@ -7,21 +7,15 @@
 | 通道 | 触发方式 | 资产可变性 | 目标受众 |
 | --- | --- | --- | --- |
 | Pull request 与普通分支 CI | Push 或 pull request | 短期 Actions artifacts | 维护者与评审者 |
-| `remote-bootstrap-dev` | Push 到 `main` | 按设计原位替换 | 滚动开发构建 |
-| `remote-bootstrap-branch-*` | 匹配分支 push 或显式 dispatch | 按设计原位替换 | 分支端到端测试 |
 | 版本化发布 | Push `v*` tag | 仅 draft 阶段可变；发布后不可变 | 公开用户 |
-
-滚动 remote-bootstrap 通道不是发布归档。其 tag 与资产按设计移动，使开发构建可以跟随最新兼容 helper。版本化发布安装包始终嵌入精确的 `releases/download/<tag>/cosmosh-remote-bootstrap-manifest.json` URL，绝不能回退到滚动通道。
 
 ## 正式发布流程
 
 ```mermaid
 flowchart LR
-  T["已评审的 v* tag"] --> RB[构建 remote bootstrap]
-  T --> APP[构建 Windows Linux macOS]
+  T["已评审的 v* tag"] --> APP[构建 Windows Linux macOS]
   APP --> WIN[审计或强制 Authenticode]
-  RB --> STAGE[短期 Actions artifacts]
-  WIN --> STAGE
+  WIN --> STAGE[短期 Actions artifacts]
   STAGE --> INV[校验完整资产清单]
   INV --> HASH[生成 SHA256SUMS]
   HASH --> ATT[创建 GitHub provenance attestation]
@@ -66,7 +60,7 @@ Attestation 只能证明某个摘要由哪个 GitHub workflow 生成。它不会
 以下设置不存储在 workflow YAML 中，必须在首次公开发布前通过 GitHub 配置：
 
 1. 启用 immutable releases，使 release 发布后锁定资产及关联 tag。
-2. 为 `v*` 添加 tag ruleset，禁止更新和删除 tag。不要将该规则应用到 `remote-bootstrap-dev` 或 `remote-bootstrap-branch-*`。
+2. 为 `v*` 添加 tag ruleset，禁止更新和删除 tag。
 3. 为 `release` environment 配置适当的维护者审批人。若所选供应商需要 workflow 凭据，再添加独立的受保护 Windows 签名 environment。
 4. 保持 workflow token 默认只读，只在单个任务级别授予写权限。
 5. 对更新 Action 固定 commit SHA 的 Dependabot pull request 保持人工评审。

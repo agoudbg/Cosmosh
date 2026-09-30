@@ -6,11 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 export const CHECKSUM_FILENAME = 'SHA256SUMS';
 
-const REQUIRED_EXACT_ASSETS = [
-  'cosmosh-remote-bootstrap-linux-amd64',
-  'cosmosh-remote-bootstrap-linux-arm64',
-  'cosmosh-remote-bootstrap-manifest.json',
-];
+const REQUIRED_EXACT_ASSETS = [];
 
 const REQUIRED_RELEASE_EXTENSIONS = [
   ['Windows installer', '.exe'],

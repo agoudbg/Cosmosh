@@ -66,7 +66,6 @@ export const openTerminalSessionSocket = async (
     connectTimeoutSec,
     strictHostKey: target.server.strictHostKey,
     enableSshCompression: target.server.enableSshCompression,
-    remoteEnhancementsEnabled: target.server.remoteEnhancementsEnabled,
     systemProxyRules,
   });
 
@@ -97,7 +96,6 @@ export const openTerminalSessionSocket = async (
       connectTimeoutSec,
       strictHostKey: target.server.strictHostKey,
       enableSshCompression: target.server.enableSshCompression,
-      remoteEnhancementsEnabled: target.server.remoteEnhancementsEnabled,
       systemProxyRules,
     });
   }

@@ -13,9 +13,6 @@ const COMPLETE_ASSET_NAMES = [
   'Cosmosh-0.1.0.deb',
   'Cosmosh-0.1.0-mac.zip',
   'Cosmosh Setup 0.1.0.exe',
-  'cosmosh-remote-bootstrap-linux-amd64',
-  'cosmosh-remote-bootstrap-linux-arm64',
-  'cosmosh-remote-bootstrap-manifest.json',
 ];
 
 test('validates and sorts a complete release inventory', () => {

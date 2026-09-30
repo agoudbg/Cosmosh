@@ -358,7 +358,6 @@ export const parseCreateServerRequest = (payload: unknown): ValidationResult<Api
   const privateKeyPassphrase = normalizeOptionalString(payload.privateKeyPassphrase);
   const strictHostKey = normalizeOptionalBoolean(payload.strictHostKey);
   const enableSshCompression = normalizeOptionalBoolean(payload.enableSshCompression);
-  const remoteEnhancementsEnabled = normalizeOptionalBoolean(payload.remoteEnhancementsEnabled);
   const disableCharacterWidthCompatibilityMode = normalizeOptionalBoolean(
     payload.disableCharacterWidthCompatibilityMode,
   );
@@ -379,15 +378,6 @@ export const parseCreateServerRequest = (payload: unknown): ValidationResult<Api
       error: buildValidationError(
         'errors.validation.enableSshCompressionType',
         'enableSshCompression must be a boolean value.',
-      ),
-    };
-  }
-
-  if (payload.remoteEnhancementsEnabled !== undefined && remoteEnhancementsEnabled === undefined) {
-    return {
-      error: buildValidationError(
-        'errors.validation.remoteEnhancementsEnabledType',
-        'remoteEnhancementsEnabled must be a boolean value.',
       ),
     };
   }
@@ -457,7 +447,6 @@ export const parseCreateServerRequest = (payload: unknown): ValidationResult<Api
       privateKeyPassphrase,
       strictHostKey: strictHostKey ?? true,
       enableSshCompression: enableSshCompression ?? false,
-      remoteEnhancementsEnabled: remoteEnhancementsEnabled ?? true,
       disableCharacterWidthCompatibilityMode: disableCharacterWidthCompatibilityMode ?? false,
       terminalClipboardAccess: terminalClipboardAccess ?? DEFAULT_TERMINAL_CLIPBOARD_ACCESS,
       proxyMode: proxyConfiguration.value.proxyMode,
@@ -529,7 +518,6 @@ export const parseUpdateServerRequest = (payload: unknown): ValidationResult<Api
   const privateKeyPassphrase = normalizeOptionalString(payload.privateKeyPassphrase);
   const strictHostKey = normalizeOptionalBoolean(payload.strictHostKey);
   const enableSshCompression = normalizeOptionalBoolean(payload.enableSshCompression);
-  const remoteEnhancementsEnabled = normalizeOptionalBoolean(payload.remoteEnhancementsEnabled);
   const disableCharacterWidthCompatibilityMode = normalizeOptionalBoolean(
     payload.disableCharacterWidthCompatibilityMode,
   );
@@ -550,15 +538,6 @@ export const parseUpdateServerRequest = (payload: unknown): ValidationResult<Api
       error: buildValidationError(
         'errors.validation.enableSshCompressionType',
         'enableSshCompression must be a boolean value.',
-      ),
-    };
-  }
-
-  if (payload.remoteEnhancementsEnabled !== undefined && remoteEnhancementsEnabled === undefined) {
-    return {
-      error: buildValidationError(
-        'errors.validation.remoteEnhancementsEnabledType',
-        'remoteEnhancementsEnabled must be a boolean value.',
       ),
     };
   }
@@ -627,7 +606,6 @@ export const parseUpdateServerRequest = (payload: unknown): ValidationResult<Api
       privateKeyPassphrase,
       strictHostKey,
       enableSshCompression,
-      remoteEnhancementsEnabled,
       disableCharacterWidthCompatibilityMode,
       terminalClipboardAccess,
       proxyMode: proxyConfiguration.value.proxyMode,
@@ -665,7 +643,6 @@ export const parseCreateSessionRequest = (payload: unknown): ValidationResult<Ap
     typeof payload.connectTimeoutSec === 'number' ? payload.connectTimeoutSec : Number(payload.connectTimeoutSec ?? 45);
   const strictHostKey = normalizeOptionalBoolean(payload.strictHostKey);
   const enableSshCompression = normalizeOptionalBoolean(payload.enableSshCompression);
-  const remoteEnhancementsEnabled = normalizeOptionalBoolean(payload.remoteEnhancementsEnabled);
   const systemProxyRules = normalizeOptionalSystemProxyRules(payload.systemProxyRules);
 
   if (payload.strictHostKey !== undefined && strictHostKey === undefined) {
@@ -679,15 +656,6 @@ export const parseCreateSessionRequest = (payload: unknown): ValidationResult<Ap
       error: buildValidationError(
         'errors.validation.enableSshCompressionType',
         'enableSshCompression must be a boolean value.',
-      ),
-    };
-  }
-
-  if (payload.remoteEnhancementsEnabled !== undefined && remoteEnhancementsEnabled === undefined) {
-    return {
-      error: buildValidationError(
-        'errors.validation.remoteEnhancementsEnabledType',
-        'remoteEnhancementsEnabled must be a boolean value.',
       ),
     };
   }
@@ -737,7 +705,6 @@ export const parseCreateSessionRequest = (payload: unknown): ValidationResult<Ap
       connectTimeoutSec,
       strictHostKey,
       enableSshCompression,
-      remoteEnhancementsEnabled,
       systemProxyRules,
     },
   };

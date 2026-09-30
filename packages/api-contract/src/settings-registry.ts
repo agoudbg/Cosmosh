@@ -81,7 +81,6 @@ export interface SettingsValues {
   terminalHardwareAccelerationEnabled: boolean;
   terminalInlineImagesEnabled: boolean;
   terminalInlineImageOptions: TerminalInlineImageOptions;
-  terminalCommandTimelineEnabled: boolean;
   terminalDrawBoldTextInBrightColors: boolean;
   terminalScrollSensitivity: string;
   terminalFastScrollSensitivity: string;
@@ -90,8 +89,6 @@ export interface SettingsValues {
   terminalScrollOnUserInput: boolean;
   terminalSmoothScrollDuration: number;
   terminalTabStopWidth: number;
-  remoteEnhancementsEnabled: boolean;
-  remoteEnhancementsDebugEnabled: boolean;
   devToolsEnabled: boolean;
   userMenuDebugEntryEnabled: boolean;
   autoSaveEnabled: boolean;
@@ -116,16 +113,6 @@ export interface SettingsValues {
   defaultLocalTerminalProfile: string;
   terminalSelectionSearchEngine: 'google' | 'bing' | 'duckduckgo' | 'baidu' | 'custom';
   terminalSelectionSearchUrlTemplate: string;
-  terminalAutoCompleteEnabled: boolean;
-  terminalAutoCompleteHistoryEnabled: boolean;
-  terminalAutoCompleteBuiltInCommandsEnabled: boolean;
-  terminalAutoCompletePathEnabled: boolean;
-  terminalAutoCompletePasswordEnabled: boolean;
-  terminalAutoCompleteAcceptKeys: 'tab' | 'enter' | 'tabEnter';
-  terminalAutoCompleteMinChars: number;
-  terminalAutoCompleteMaxItems: number;
-  terminalAutoCompleteFuzzyMatch: boolean;
-  terminalAutoCompletePromptRegex: string;
   sshReconnectOnFocus: boolean;
   sftpReconnectMode: 'passive' | 'active' | 'off';
   sftpDeleteConfirmationMode: 'always' | 'batch' | 'shortcut' | 'off';
@@ -187,7 +174,6 @@ export const SETTINGS_CATEGORIES = {
       },
       search: { labelI18nKey: 'settings.sections.search' },
       runtime: { labelI18nKey: 'settings.sections.runtime' },
-      autoComplete: { labelI18nKey: 'settings.sections.autoComplete' },
       advancedTerminal: { labelI18nKey: 'settings.sections.advancedTerminal' },
     },
   },
@@ -1010,39 +996,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     options: [{ value: 'true' }, { value: 'false' }],
   },
   {
-    key: 'remoteEnhancementsEnabled',
-    valueType: 'boolean',
-    defaultValue: true,
-    nameI18nKey: 'settings.items.remoteEnhancementsEnabled.title',
-    descriptionI18nKey: 'settings.items.remoteEnhancementsEnabled.description',
-    category: SETTINGS_CATEGORIES.advanced,
-    section: SETTINGS_CATEGORIES.advanced.sections.runtime,
-    control: 'switch',
-    path: 'advanced.runtime.remoteEnhancements.enabled',
-    commandActionId: 'settings.advanced.runtime.remoteEnhancements.enabled.toggle',
-    searchTerms: [
-      'remote enhancements',
-      'remote bootstrap',
-      'bootstrap',
-      'os detection',
-      'sftp enhancement',
-      'command completion',
-    ],
-  },
-  {
-    key: 'remoteEnhancementsDebugEnabled',
-    valueType: 'boolean',
-    defaultValue: false,
-    nameI18nKey: 'settings.items.remoteEnhancementsDebugEnabled.title',
-    descriptionI18nKey: 'settings.items.remoteEnhancementsDebugEnabled.description',
-    category: SETTINGS_CATEGORIES.advanced,
-    section: SETTINGS_CATEGORIES.advanced.sections.runtime,
-    control: 'switch',
-    path: 'advanced.runtime.remoteEnhancements.debugEnabled',
-    commandActionId: 'settings.advanced.runtime.remoteEnhancements.debugEnabled.toggle',
-    searchTerms: ['remote enhancements debug', 'helper events', 'bootstrap diagnostics', 'shell integration debug'],
-  },
-  {
     key: 'devToolsEnabled',
     valueType: 'boolean',
     defaultValue: false,
@@ -1256,19 +1209,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     searchTerms: ['terminal', 'unicode 11', 'character width', 'width compatibility', 'alignment'],
   },
   {
-    key: 'terminalCommandTimelineEnabled',
-    valueType: 'boolean',
-    defaultValue: true,
-    nameI18nKey: 'settings.items.terminalCommandTimelineEnabled.title',
-    descriptionI18nKey: 'settings.items.terminalCommandTimelineEnabled.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.runtime,
-    control: 'switch',
-    path: 'terminal.runtime.commandTimeline.enabled',
-    commandActionId: 'settings.terminal.runtime.commandTimeline.enabled.toggle',
-    searchTerms: ['terminal', 'command timeline', 'recent commands', 'command history', 'remote enhancements'],
-  },
-  {
     key: 'terminalWebLinksEnabled',
     valueType: 'boolean',
     defaultValue: true,
@@ -1409,146 +1349,6 @@ export const SETTINGS_REGISTRY: ReadonlyArray<SettingDefinition> = [
     commandActionId: 'settings.ssh.searchUrlTemplate.set',
     searchTerms: ['search url', 'template', '%s', 'browser'],
     maxLength: 1000,
-  },
-  {
-    key: 'terminalAutoCompleteEnabled',
-    valueType: 'boolean',
-    defaultValue: true,
-    nameI18nKey: 'settings.items.terminalAutoCompleteEnabled.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompleteEnabled.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'switch',
-    path: 'terminal.runtime.autoComplete.enabled',
-    commandActionId: 'settings.terminal.runtime.autoComplete.enabled.toggle',
-    searchTerms: ['terminal', 'autocomplete', 'auto complete', 'command suggestions'],
-  },
-  {
-    key: 'terminalAutoCompleteHistoryEnabled',
-    valueType: 'boolean',
-    defaultValue: true,
-    nameI18nKey: 'settings.items.terminalAutoCompleteHistoryEnabled.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompleteHistoryEnabled.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'switch',
-    path: 'terminal.runtime.autoComplete.history.enabled',
-    commandActionId: 'settings.terminal.runtime.autoComplete.history.enabled.toggle',
-    searchTerms: ['terminal', 'autocomplete', 'history', 'recent commands'],
-  },
-  {
-    key: 'terminalAutoCompleteBuiltInCommandsEnabled',
-    valueType: 'boolean',
-    defaultValue: true,
-    nameI18nKey: 'settings.items.terminalAutoCompleteBuiltInCommandsEnabled.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompleteBuiltInCommandsEnabled.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'switch',
-    path: 'terminal.runtime.autoComplete.builtinCommands.enabled',
-    commandActionId: 'settings.terminal.runtime.autoComplete.builtinCommands.enabled.toggle',
-    searchTerms: ['terminal', 'autocomplete', 'builtin commands', 'command spec'],
-  },
-  {
-    key: 'terminalAutoCompletePathEnabled',
-    valueType: 'boolean',
-    defaultValue: true,
-    nameI18nKey: 'settings.items.terminalAutoCompletePathEnabled.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompletePathEnabled.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'switch',
-    path: 'terminal.runtime.autoComplete.path.enabled',
-    commandActionId: 'settings.terminal.runtime.autoComplete.path.enabled.toggle',
-    searchTerms: ['terminal', 'autocomplete', 'path', 'directory', 'file'],
-  },
-  {
-    key: 'terminalAutoCompletePasswordEnabled',
-    valueType: 'boolean',
-    defaultValue: true,
-    nameI18nKey: 'settings.items.terminalAutoCompletePasswordEnabled.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompletePasswordEnabled.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'switch',
-    path: 'terminal.runtime.autoComplete.password.enabled',
-    commandActionId: 'settings.terminal.runtime.autoComplete.password.enabled.toggle',
-    searchTerms: ['terminal', 'autocomplete', 'password', 'secret fill'],
-  },
-  {
-    key: 'terminalAutoCompleteAcceptKeys',
-    valueType: 'string',
-    defaultValue: 'tab',
-    nameI18nKey: 'settings.items.terminalAutoCompleteAcceptKeys.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompleteAcceptKeys.description',
-    optionI18nNamespace: 'terminalAutoCompleteAcceptKeys',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'select',
-    path: 'terminal.runtime.autoComplete.acceptKeys',
-    commandActionId: 'settings.terminal.runtime.autoComplete.acceptKeys.set',
-    searchTerms: ['terminal', 'autocomplete', 'accept', 'shortcut', 'tab', 'enter'],
-    options: [{ value: 'tab' }, { value: 'enter' }, { value: 'tabEnter' }],
-  },
-  {
-    key: 'terminalAutoCompleteMinChars',
-    valueType: 'number',
-    defaultValue: 1,
-    nameI18nKey: 'settings.items.terminalAutoCompleteMinChars.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompleteMinChars.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'input',
-    path: 'terminal.runtime.autoComplete.minChars',
-    commandActionId: 'settings.terminal.runtime.autoComplete.minChars.set',
-    searchTerms: ['terminal', 'autocomplete', 'minimum chars', 'trigger'],
-    inputMode: 'numeric',
-    min: 1,
-    max: 8,
-  },
-  {
-    key: 'terminalAutoCompleteMaxItems',
-    valueType: 'number',
-    defaultValue: 8,
-    nameI18nKey: 'settings.items.terminalAutoCompleteMaxItems.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompleteMaxItems.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'input',
-    path: 'terminal.runtime.autoComplete.maxItems',
-    commandActionId: 'settings.terminal.runtime.autoComplete.maxItems.set',
-    searchTerms: ['terminal', 'autocomplete', 'max items', 'suggestions limit'],
-    inputMode: 'numeric',
-    min: 3,
-    max: 20,
-  },
-  {
-    key: 'terminalAutoCompleteFuzzyMatch',
-    valueType: 'boolean',
-    defaultValue: true,
-    nameI18nKey: 'settings.items.terminalAutoCompleteFuzzyMatch.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompleteFuzzyMatch.description',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'switch',
-    path: 'terminal.advanced.autoComplete.fuzzyMatch',
-    commandActionId: 'settings.terminal.advanced.autoComplete.fuzzyMatch.toggle',
-    searchTerms: ['terminal', 'autocomplete', 'fuzzy', 'fuzzy match'],
-  },
-  {
-    key: 'terminalAutoCompletePromptRegex',
-    valueType: 'string',
-    defaultValue: '',
-    nameI18nKey: 'settings.items.terminalAutoCompletePromptRegex.title',
-    descriptionI18nKey: 'settings.items.terminalAutoCompletePromptRegex.description',
-    placeholderI18nKey: 'settings.items.terminalAutoCompletePromptRegex.placeholder',
-    category: SETTINGS_CATEGORIES.terminal,
-    section: SETTINGS_CATEGORIES.terminal.sections.autoComplete,
-    control: 'input',
-    path: 'terminal.runtime.autoComplete.promptRegex',
-    commandActionId: 'settings.terminal.runtime.autoComplete.promptRegex.set',
-    searchTerms: ['terminal', 'autocomplete', 'prompt', 'regex', 'prompt parser'],
-    maxLength: 300,
   },
   {
     key: 'terminalDrawBoldTextInBrightColors',

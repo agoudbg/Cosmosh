@@ -107,9 +107,6 @@ const WINDOWS_TITLE_BAR_OVERLAY_HEIGHT = 50;
 const DOCUMENTATION_URL = 'https://github.com/agoudbg/cosmosh/tree/main/docs';
 const GITHUB_REPOSITORY_URL = 'https://github.com/agoudbg/cosmosh';
 const SFTP_PROPERTIES_WINDOW_ROUTE_PARAM = 'sftp-entry-properties';
-const PACKAGED_REMOTE_BOOTSTRAP_MANIFEST_RESOURCE = path.join('remote-bootstrap', 'manifest-url.json');
-const DEVELOPMENT_REMOTE_BOOTSTRAP_MANIFEST_URL =
-  'https://github.com/agoudbg/Cosmosh/releases/download/remote-bootstrap-dev/cosmosh-remote-bootstrap-manifest.json';
 
 type TrustedRendererWindowOpenTarget = {
   origin: string;
@@ -983,50 +980,6 @@ const resolveBackendHealthCheckTimeoutMs = (isDev: boolean): number => {
 };
 
 /**
- * Reads the packaged remote bootstrap manifest URL written by CI packaging.
- *
- * Environment variables intentionally remain the first-class override, so this
- * fallback only activates for packaged artifacts that carry the resource.
- *
- * @returns Manifest URL or undefined when no packaged URL is present.
- */
-const readPackagedRemoteBootstrapManifestUrl = async (): Promise<string | undefined> => {
-  if (!app.isPackaged) {
-    return undefined;
-  }
-
-  const resourcePath = path.join(process.resourcesPath, PACKAGED_REMOTE_BOOTSTRAP_MANIFEST_RESOURCE);
-  let raw: string;
-  try {
-    raw = await fs.readFile(resourcePath, 'utf8');
-  } catch (error: unknown) {
-    const code = typeof error === 'object' && error && 'code' in error ? error.code : undefined;
-    if (code !== 'ENOENT') {
-      console.warn('[backend:init] Unable to read packaged remote bootstrap manifest URL resource.', error);
-    }
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as { manifestUrl?: unknown };
-    if (typeof parsed.manifestUrl !== 'string' || parsed.manifestUrl.trim().length === 0) {
-      return undefined;
-    }
-
-    const manifestUrl = parsed.manifestUrl.trim();
-    if (new URL(manifestUrl).protocol !== 'https:') {
-      console.warn('[backend:init] Ignoring packaged remote bootstrap manifest URL because it is not HTTPS.');
-      return undefined;
-    }
-
-    return manifestUrl;
-  } catch (error: unknown) {
-    console.warn('[backend:init] Ignoring invalid packaged remote bootstrap manifest URL resource.', error);
-    return undefined;
-  }
-};
-
-/**
  * Starts backend runtime and blocks until health check becomes available.
  */
 const startBackendService = async (): Promise<void> => {
@@ -1050,7 +1003,6 @@ const startBackendService = async (): Promise<void> => {
     ]);
     const sftpTemporaryRoot = await resolveSftpTemporaryRootPath();
     const isDev = !app.isPackaged;
-    const packagedRemoteBootstrapManifestUrl = await readPackagedRemoteBootstrapManifestUrl();
     const workspaceRoot = resolveWorkspaceRoot();
     const packagedBackendEntryPath = path.join(
       process.resourcesPath,
@@ -1073,11 +1025,6 @@ const startBackendService = async (): Promise<void> => {
       [SFTP_TEMP_ROOT_ENV_NAME]: sftpTemporaryRoot,
       DATABASE_URL: databaseUrl,
     };
-
-    if (!backendEnv.COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL) {
-      backendEnv.COSMOSH_REMOTE_BOOTSTRAP_MANIFEST_URL =
-        packagedRemoteBootstrapManifestUrl ?? (isDev ? DEVELOPMENT_REMOTE_BOOTSTRAP_MANIFEST_URL : undefined);
-    }
 
     let command: string;
     let args: string[];

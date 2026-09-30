@@ -7,7 +7,7 @@ Cosmosh implements a tab-scoped SFTP file-system workbench.
 Implemented in v1:
 
 - Home server context menu and file action can open an SFTP tab.
-- SSH terminal Orbit Bar/context-menu selections can open a new SFTP tab for the same server. Absolute/home/file URLs remain explicit; `./` and `../` are resolved only from the source pane's trusted Remote Enhancements cwd, while bare relative paths remain rejected.
+- SSH terminal Orbit Bar/context-menu selections can open a new SFTP tab for the same server. Only explicit absolute, home-relative, and file URL paths are accepted; relative paths remain rejected.
 - Each SFTP tab creates a backend SFTP session and owns that session lifecycle.
 - Directory listing supports breadcrumb path navigation with editable text fallback, persistent text-address display mode, back/forward history, parent navigation, refresh, current-directory filtering, configurable metadata columns, header sorting, header drag-reorder, loading, empty, expired-session, and operation-failed states.
 - The directory tree and center file list preserve their complete logical collections while virtual scrolling mounts only the viewport, a small overscan window, and interaction-owned pinned rows.

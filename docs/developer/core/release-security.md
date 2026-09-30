@@ -7,21 +7,15 @@ This document defines the trust boundary for Cosmosh CI artifacts and public rel
 | Channel | Trigger | Asset mutability | Intended audience |
 | --- | --- | --- | --- |
 | Pull request and ordinary branch CI | Push or pull request | Short-lived Actions artifacts | Maintainers and reviewers |
-| `remote-bootstrap-dev` | Push to `main` | Intentionally replaced in place | Rolling development builds |
-| `remote-bootstrap-branch-*` | Matching branch push or explicit dispatch | Intentionally replaced in place | End-to-end branch testing |
 | Versioned release | Push of a `v*` tag | Mutable only while draft; immutable after publication | Public users |
-
-The rolling remote-bootstrap channels are not release archives. Their tags and assets move by design so development builds can follow the latest compatible helper. A packaged versioned release always embeds the exact `releases/download/<tag>/cosmosh-remote-bootstrap-manifest.json` URL and must never fall back to a rolling channel.
 
 ## Formal Release Flow
 
 ```mermaid
 flowchart LR
-  T["Reviewed v* tag"] --> RB[Build remote bootstrap]
-  T --> APP[Build Windows Linux macOS]
+  T["Reviewed v* tag"] --> APP[Build Windows Linux macOS]
   APP --> WIN[Audit or enforce Authenticode]
-  RB --> STAGE[Short-lived Actions artifacts]
-  WIN --> STAGE
+  WIN --> STAGE[Short-lived Actions artifacts]
   STAGE --> INV[Validate complete inventory]
   INV --> HASH[Generate SHA256SUMS]
   HASH --> ATT[Create GitHub provenance attestation]
@@ -66,7 +60,7 @@ An attestation proves which GitHub workflow produced a digest. It does not appro
 The following settings are not stored in workflow YAML and must be configured on GitHub before the first public release:
 
 1. Enable immutable releases so publication locks the release assets and associated tag.
-2. Add a tag ruleset for `v*` that blocks tag updates and deletion. Do not apply it to `remote-bootstrap-dev` or `remote-bootstrap-branch-*`.
+2. Add a tag ruleset for `v*` that blocks tag updates and deletion.
 3. Protect the `release` environment with the appropriate maintainer reviewers. Add a separate protected Windows signing environment when the selected provider requires workflow credentials.
 4. Keep default workflow token permissions read-only. Grant write permissions only at the job level.
 5. Require review for Dependabot pull requests that update pinned Action commit SHAs.

@@ -45,11 +45,10 @@ export const resolveTerminalWebSocketSessionId = (pathname: string, pathPrefix: 
 };
 
 /**
- * Extended session shape for services that maintain telemetry/history timers.
+ * Extended session shape for services that maintain telemetry timers.
  */
 export type TerminalManagedSessionBase = TerminalLiveSessionBase & {
   telemetryInterval: NodeJS.Timeout | null;
-  historySyncTimeout: NodeJS.Timeout | null;
 };
 
 type DisposeReasonParams = Record<string, string | number | boolean>;
@@ -298,11 +297,6 @@ export abstract class BaseTerminalSessionService<
     if (session.telemetryInterval) {
       clearInterval(session.telemetryInterval);
       session.telemetryInterval = null;
-    }
-
-    if (session.historySyncTimeout) {
-      clearTimeout(session.historySyncTimeout);
-      session.historySyncTimeout = null;
     }
 
     options.beforeExit?.(session, reason);

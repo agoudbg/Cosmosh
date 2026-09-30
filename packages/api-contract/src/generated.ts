@@ -991,7 +991,6 @@ export interface components {
       authType: components['schemas']['SshAuthType'];
       strictHostKey: boolean;
       enableSshCompression: boolean;
-      remoteEnhancementsEnabled: boolean;
       disableCharacterWidthCompatibilityMode: boolean;
       terminalClipboardAccess: components['schemas']['TerminalClipboardAccess'];
       proxyMode: components['schemas']['SshServerProxyMode'];
@@ -1022,7 +1021,6 @@ export interface components {
       authType?: components['schemas']['SshAuthType'];
       strictHostKey?: boolean;
       enableSshCompression?: boolean;
-      remoteEnhancementsEnabled?: boolean;
       disableCharacterWidthCompatibilityMode?: boolean;
       terminalClipboardAccess?: components['schemas']['TerminalClipboardAccess'];
       proxyMode?: components['schemas']['SshServerProxyMode'];
@@ -1067,7 +1065,6 @@ export interface components {
       connectTimeoutSec: number;
       strictHostKey?: boolean;
       enableSshCompression?: boolean;
-      remoteEnhancementsEnabled?: boolean;
       systemProxyRules?: string;
     };
     /** @enum {string} */

@@ -39,13 +39,6 @@
       "filter": [
         "**/*"
       ]
-    },
-    {
-      "from": "resources/remote-bootstrap",
-      "to": "remote-bootstrap",
-      "filter": [
-        "**/*"
-      ]
     }
   ],
   "mac": {

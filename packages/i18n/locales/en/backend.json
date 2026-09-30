@@ -139,7 +139,6 @@
       "profileIdRequired": "Profile ID is required.",
       "proxyModeEnum": "Proxy mode is invalid.",
       "proxyUrlInvalid": "Proxy URL must use http, https, or socks5 without a path, query, or fragment.",
-      "remoteEnhancementsEnabledType": "Remote enhancements setting is invalid.",
       "requestBodyMustBeObject": "Request body must be a JSON object.",
       "rowsRange": "Row count must be an integer between 10 and 200.",
       "serverIdRequired": "Server ID is required.",

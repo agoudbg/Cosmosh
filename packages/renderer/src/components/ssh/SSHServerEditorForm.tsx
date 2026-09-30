@@ -53,7 +53,6 @@ type ServerEditorFormState = {
   tagIds: string[];
   strictHostKey: boolean;
   enableSshCompression: boolean;
-  remoteEnhancementsEnabled: boolean;
   disableCharacterWidthCompatibilityMode: boolean;
   terminalClipboardAccess: TerminalClipboardAccess;
   proxyMode: SshServerProxyMode;
@@ -428,24 +427,6 @@ const SSHServerEditorForm: React.FC<SSHServerEditorFormProps> = ({
                   </section>
 
                   <section className={activeCategoryId === 'enhancements' ? 'grid gap-8' : 'hidden'}>
-                    <div className="grid gap-3">
-                      <FormSectionHeading>{t('ssh.sectionTerminalEnhancements')}</FormSectionHeading>
-                      <div className="flex items-center gap-2.5 px-2.5">
-                        <Switch
-                          id="ssh-editor-remote-enhancements"
-                          checked={formState.remoteEnhancementsEnabled}
-                          onCheckedChange={(checkedState) => onChangeForm('remoteEnhancementsEnabled', checkedState)}
-                        />
-                        <LabelWithTooltip
-                          htmlFor="ssh-editor-remote-enhancements"
-                          tooltip={t('ssh.remoteEnhancementsTooltip')}
-                          labelClassName={formStyles.inlineLabel}
-                        >
-                          {t('ssh.remoteEnhancements')}
-                        </LabelWithTooltip>
-                      </div>
-                    </div>
-
                     <div className="grid gap-3">
                       <FormSectionHeading>{t('ssh.sectionClipboardPermissions')}</FormSectionHeading>
                       <FormField>

@@ -75,17 +75,6 @@ type SettingsFormState = {
   [K in keyof AppSettingsValues]: SettingsFormValue;
 };
 
-const AUTOCOMPLETE_DEPENDENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>([
-  'terminalAutoCompleteHistoryEnabled',
-  'terminalAutoCompleteBuiltInCommandsEnabled',
-  'terminalAutoCompletePathEnabled',
-  'terminalAutoCompletePasswordEnabled',
-  'terminalAutoCompleteMinChars',
-  'terminalAutoCompleteMaxItems',
-  'terminalAutoCompleteFuzzyMatch',
-  'terminalAutoCompletePromptRegex',
-]);
-
 const FALLBACK_TIME_ZONE_OPTIONS = [
   'UTC',
   'Africa/Cairo',
@@ -675,13 +664,8 @@ const Settings: React.FC<SettingsProps> = ({ initialCategoryId, initialSearchQue
 
   const renderedSettings = React.useMemo(() => {
     const candidate = isSearchMode ? visibleSettings : categorySettings;
-    const isTerminalAutocompleteEnabled = formState.terminalAutoCompleteEnabled === true;
 
     return candidate.filter((item) => {
-      if (AUTOCOMPLETE_DEPENDENT_KEYS.has(item.key) && !isTerminalAutocompleteEnabled) {
-        return false;
-      }
-
       if (item.key === 'terminalSelectionSearchUrlTemplate') {
         return formState.terminalSelectionSearchEngine === 'custom';
       }
@@ -698,7 +682,6 @@ const Settings: React.FC<SettingsProps> = ({ initialCategoryId, initialSearchQue
     });
   }, [
     categorySettings,
-    formState.terminalAutoCompleteEnabled,
     formState.terminalInlineImagesEnabled,
     formState.terminalSelectionSearchEngine,
     formState.serverProxyMode,

@@ -8,7 +8,6 @@ import { closeLocalTerminalSession, closeSshSession } from '../../lib/backend';
 import { t } from '../../lib/i18n';
 import { resolveConnectMode, withResolvedSnapshot } from '../../lib/ssh-connection-intent';
 import type { SshConnectionIntent, TabIconColorKey, TabIconKey } from '../../types/tabs';
-import { clearTerminalCommandMarkers } from './ssh-command-markers';
 import { openTerminalSessionSocket } from './ssh-session-connectors';
 import {
   resolveTerminalTargetFromIntent,
@@ -66,8 +65,6 @@ type UseSshPrimarySessionParams = {
   setPaneTransportState: (paneId: string, state: 'connecting' | 'connected' | 'failed', error?: string) => void;
   setSessionTargetReady: (ready: boolean) => void;
   handlePaneServerMessage: (paneId: string, terminal: Terminal, payload: ServerInboundMessage) => void;
-  recordPaneInputCommandMarker: (paneId: string, inputData: string) => void;
-  refreshCommandTimeline: () => void;
   requestHostFingerprintTrust: (prompt: {
     serverId: string;
     host: string;
@@ -79,9 +76,6 @@ type UseSshPrimarySessionParams = {
   refreshSelectionAnchor: () => string | null;
   onTerminalSelectionChange: (selectionText: string) => void;
   clearSelectionOverlay: () => void;
-  applyAutocompleteInputData: (paneId: string, data: string) => { shouldRequest: boolean; shouldClose: boolean };
-  closeAutocompleteRef: React.RefObject<() => void>;
-  handleAutocompleteTerminalKeyDownRef: React.RefObject<(event: KeyboardEvent) => void>;
   notifyHardwareAccelerationContextLoss: () => void;
 };
 
@@ -125,16 +119,11 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     setPaneTransportState,
     setSessionTargetReady,
     handlePaneServerMessage,
-    recordPaneInputCommandMarker,
-    refreshCommandTimeline,
     requestHostFingerprintTrust,
     setActivePane,
     refreshSelectionAnchor,
     onTerminalSelectionChange,
     clearSelectionOverlay,
-    applyAutocompleteInputData,
-    closeAutocompleteRef,
-    handleAutocompleteTerminalKeyDownRef,
     notifyHardwareAccelerationContextLoss,
   } = params;
 
@@ -265,27 +254,10 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
       socket: null,
       sessionId: null,
       sessionType: null,
-      pendingCommandMarkers: [],
-      commandMarkers: [],
-      refreshCommandTimeline,
       reconnect: () => undefined,
       dispose: () => undefined,
     };
     paneRuntimeMapRef.current.set(paneId, paneRuntime);
-    refreshCommandTimeline();
-
-    /**
-     * Refreshes declarative timeline geometry only while this pane owns markers.
-     *
-     * @returns Nothing.
-     */
-    const refreshRuntimeCommandTimeline = (): void => {
-      if (paneRuntime.pendingCommandMarkers.length === 0 && paneRuntime.commandMarkers.length === 0) {
-        return;
-      }
-
-      refreshCommandTimeline();
-    };
 
     const isStaleAttempt = (attemptId: number): boolean => {
       return disposed || attemptId !== connectAttemptId;
@@ -591,12 +563,6 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
         return;
       }
 
-      recordPaneInputCommandMarker(paneId, data);
-      const autocompleteInputState = applyAutocompleteInputData(paneId, data);
-      if (autocompleteInputState.shouldClose) {
-        closeAutocompleteRef.current();
-      }
-
       if (socket) {
         sendClientMessage(socket, {
           type: 'input',
@@ -604,10 +570,6 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
         });
       }
     });
-    const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {
-      handleAutocompleteTerminalKeyDownRef.current(event);
-    };
-    containerElement.addEventListener('keydown', handleAutocompleteKeyDown, true);
     const disposeSelectionChange = terminal.onSelectionChange(() => {
       const selectionText = refreshSelectionAnchor();
       if (selectionText) {
@@ -616,7 +578,6 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     });
     const disposeSelectionScroll = terminal.onScroll(() => {
       refreshSelectionAnchor();
-      refreshRuntimeCommandTimeline();
     });
     const disposeSelectionRender = terminal.onRender(() => {
       if (!terminal.hasSelection()) {
@@ -625,11 +586,6 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
 
       refreshSelectionAnchor();
     });
-    const disposeCommandTimelineWrite = terminal.onWriteParsed(refreshRuntimeCommandTimeline);
-    const disposeCommandTimelineBuffer = terminal.buffer.onBufferChange(() => {
-      refreshRuntimeCommandTimeline();
-    });
-    const disposeCommandTimelineResize = terminal.onResize(refreshRuntimeCommandTimeline);
     const handleWindowResize = (): void => {
       refreshSelectionAnchor();
     };
@@ -690,20 +646,14 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
       paneRuntime.sessionId = null;
       paneRuntime.sessionType = null;
       paneRuntime.reconnect = () => undefined;
-      clearTerminalCommandMarkers(paneRuntime);
-      paneRuntime.refreshCommandTimeline = () => undefined;
       selectionPointerClientXRef.current = null;
       clearSelectionOverlay();
       disposeTerminalInput.dispose();
       disposeSelectionChange.dispose();
       disposeSelectionScroll.dispose();
       disposeSelectionRender.dispose();
-      disposeCommandTimelineWrite.dispose();
-      disposeCommandTimelineBuffer.dispose();
-      disposeCommandTimelineResize.dispose();
       containerElement.removeEventListener('pointerup', trackPointerPosition);
       containerElement.removeEventListener('mouseup', trackPointerPosition);
-      containerElement.removeEventListener('keydown', handleAutocompleteKeyDown, true);
       window.removeEventListener('resize', handleWindowResize);
       disposeResize();
       terminal.dispose();
@@ -713,12 +663,9 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     return disposeRuntime;
   }, [
     activePaneIdRef,
-    applyAutocompleteInputData,
     characterWidthCompatibilityModeEnabledRef,
     clearSelectionOverlay,
-    closeAutocompleteRef,
     handlePaneServerMessage,
-    handleAutocompleteTerminalKeyDownRef,
     hardwareAccelerationStateRef,
     openExternalLinkRef,
     notifyHardwareAccelerationContextLoss,
@@ -731,8 +678,6 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
     primarySerializeAddonRef,
     primaryWebglAddonRuntimeRef,
     paneRuntimeMapRef,
-    recordPaneInputCommandMarker,
-    refreshCommandTimeline,
     refreshSelectionAnchor,
     resetPaneState,
     requestHostFingerprintTrust,

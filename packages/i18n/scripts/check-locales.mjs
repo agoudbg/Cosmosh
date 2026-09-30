@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const localesDir = path.resolve(__dirname, '../locales');
-const skippedScopeFiles = new Set(['backend-inshellisense']);
 
 const flattenKeys = (target, parent = '') => {
   if (!target || typeof target !== 'object') {
@@ -62,10 +61,6 @@ const errors = [];
 
 for (const [localeName, scopedMessages] of Object.entries(locales)) {
   for (const scopeName of Object.keys(baseScopes)) {
-    if (skippedScopeFiles.has(scopeName)) {
-      continue;
-    }
-
     const baseKeys = new Set(flattenKeys(baseScopes[scopeName]));
     const currentKeys = new Set(flattenKeys(scopedMessages?.[scopeName] ?? {}));
 

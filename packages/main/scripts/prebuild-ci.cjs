@@ -70,7 +70,6 @@ const steps = [
   mainNodeScript('Sync Prisma client runtime', 'sync-prisma-client.cjs'),
   mainNodeScript('Sync backend runtime', 'sync-backend-runtime.cjs'),
   mainNodeScript('Generate installer strings', 'generate-installer-strings.mjs'),
-  mainNodeScript('Write remote bootstrap manifest URL resource', 'write-remote-bootstrap-manifest-url.cjs'),
   mainNodeScript('Compile macOS Open With helper', 'compile-macos-open-with-helper.mjs'),
   pnpmStep('Sync renderer theme', ['--filter', '@cosmosh/renderer', 'run', 'theme:sync']),
   nodeCliStep('Type-check renderer', rendererPackageRoot, ['node_modules', 'typescript', 'bin', 'tsc'], [

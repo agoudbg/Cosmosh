@@ -13,7 +13,6 @@ test('server transport booleans validate and flow through payload parsing', () =
     password: 'secret',
     strictHostKey: false,
     enableSshCompression: true,
-    remoteEnhancementsEnabled: false,
     disableCharacterWidthCompatibilityMode: true,
     terminalClipboardAccess: 'writeAskRead',
     proxyMode: 'custom',
@@ -22,7 +21,6 @@ test('server transport booleans validate and flow through payload parsing', () =
 
   assert.equal(createServer.value?.strictHostKey, false);
   assert.equal(createServer.value?.enableSshCompression, true);
-  assert.equal(createServer.value?.remoteEnhancementsEnabled, false);
   assert.equal(createServer.value?.disableCharacterWidthCompatibilityMode, true);
   assert.equal(createServer.value?.terminalClipboardAccess, 'writeAskRead');
   assert.equal(createServer.value?.proxyMode, 'custom');
@@ -37,14 +35,12 @@ test('server transport booleans validate and flow through payload parsing', () =
     password: 'secret',
     strictHostKey: true,
     enableSshCompression: false,
-    remoteEnhancementsEnabled: true,
     disableCharacterWidthCompatibilityMode: false,
     terminalClipboardAccess: 'askAlways',
   });
 
   assert.equal(updateServer.value?.strictHostKey, true);
   assert.equal(updateServer.value?.enableSshCompression, false);
-  assert.equal(updateServer.value?.remoteEnhancementsEnabled, true);
   assert.equal(updateServer.value?.disableCharacterWidthCompatibilityMode, false);
   assert.equal(updateServer.value?.terminalClipboardAccess, 'askAlways');
 
@@ -54,13 +50,11 @@ test('server transport booleans validate and flow through payload parsing', () =
     rows: 30,
     strictHostKey: false,
     enableSshCompression: true,
-    remoteEnhancementsEnabled: false,
     systemProxyRules: 'PROXY 127.0.0.1:8080; DIRECT',
   });
 
   assert.equal(createSession.value?.strictHostKey, false);
   assert.equal(createSession.value?.enableSshCompression, true);
-  assert.equal(createSession.value?.remoteEnhancementsEnabled, false);
   assert.equal(createSession.value?.systemProxyRules, 'PROXY 127.0.0.1:8080; DIRECT');
 });
 
@@ -88,19 +82,6 @@ test('server character width compatibility opt-out defaults to disabled', () => 
   });
 
   assert.equal(parsed.value?.disableCharacterWidthCompatibilityMode, false);
-});
-
-test('server remote enhancements default to enabled', () => {
-  const parsed = parseCreateServerRequest({
-    name: 'Server',
-    host: '10.0.0.1',
-    port: 22,
-    username: 'root',
-    authType: 'password',
-    password: 'secret',
-  });
-
-  assert.equal(parsed.value?.remoteEnhancementsEnabled, true);
 });
 
 test('server updates may retain existing inline credentials', () => {
@@ -154,21 +135,6 @@ test('enableSshCompression rejects non-boolean payload values', () => {
     authType: 'password',
     password: 'secret',
     enableSshCompression: 'true',
-  });
-
-  assert.equal(parsed.value, undefined);
-  assert.ok(parsed.error);
-});
-
-test('remoteEnhancementsEnabled rejects non-boolean payload values', () => {
-  const parsed = parseCreateServerRequest({
-    name: 'Server',
-    host: '10.0.0.1',
-    port: 22,
-    username: 'root',
-    authType: 'password',
-    password: 'secret',
-    remoteEnhancementsEnabled: 'false',
   });
 
   assert.equal(parsed.value, undefined);

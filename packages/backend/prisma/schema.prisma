@@ -67,7 +67,6 @@ model SshServer {
   username         String
   strictHostKey    Boolean         @default(true)
   enableSshCompression Boolean      @default(false)
-  remoteEnhancementsEnabled Boolean @default(true)
   disableCharacterWidthCompatibilityMode Boolean @default(false)
   terminalClipboardAccess String    @default("off")
   proxyMode        SshServerProxyMode @default(default)

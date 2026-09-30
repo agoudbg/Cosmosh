@@ -1,44 +1,11 @@
 import type { ServerInboundMessage, SshTelemetryState } from './ssh-types';
 import { DEFAULT_TELEMETRY_STATE } from './ssh-types';
 
-const REMOTE_ENHANCEMENTS_DEBUG_EVENT_MAX_COUNT = 200;
-const COMMAND_TIMELINE_MAX_COUNT = 200;
-
-/** Trusted shell line metadata that can calibrate renderer-side completion state. */
-export type SshPaneLineState = {
-  lineLength: number;
-  cursorIndex: number;
-  promptGeneration: number;
-};
-
-/** One structured command lifecycle retained for diagnostics and navigation. */
-export type SshPaneCommandLifecycle = {
-  commandId: string;
-  command: string;
-  startedAt: number;
-  endedAt: number | null;
-  durationMs: number | null;
-  exitCode: number | null;
-};
-
-/** Declarative state owned by one terminal pane. */
+/** Declarative transport and telemetry state owned by one terminal pane. */
 export type SshPaneState = {
   connectionState: 'connecting' | 'connected' | 'failed';
   connectionError: string;
   telemetryState: SshTelemetryState;
-  remoteBootstrapStatus: Extract<ServerInboundMessage, { type: 'bootstrap-status' }> | null;
-  remoteEnhancementRuntimeStatus: Extract<ServerInboundMessage, { type: 'remote-enhancement-runtime-status' }> | null;
-  remoteEnhancementsDebugEvents: Array<{
-    receivedAt: number;
-    payload: Extract<
-      ServerInboundMessage,
-      { type: 'bootstrap-status' | 'remote-enhancement-runtime-status' | 'remote-shell-event' }
-    >;
-  }>;
-  trustedCwd: string | null;
-  promptGeneration: number | null;
-  lineState: SshPaneLineState | null;
-  commandTimeline: SshPaneCommandLifecycle[];
 };
 
 /** Pane-indexed declarative SSH runtime state. */
@@ -65,21 +32,11 @@ export type SshPaneStateAction =
 export const createSshPaneState = (): SshPaneState => ({
   connectionState: 'connecting',
   connectionError: '',
-  telemetryState: {
-    ...DEFAULT_TELEMETRY_STATE,
-    recentCommands: [],
-  },
-  remoteBootstrapStatus: null,
-  remoteEnhancementRuntimeStatus: null,
-  remoteEnhancementsDebugEvents: [],
-  trustedCwd: null,
-  promptGeneration: null,
-  lineState: null,
-  commandTimeline: [],
+  telemetryState: { ...DEFAULT_TELEMETRY_STATE },
 });
 
 /**
- * Reduces pane-scoped transport and server events without terminal side effects.
+ * Reduces pane-scoped transport and telemetry events without terminal side effects.
  *
  * @param state Current pane-indexed state.
  * @param action Pane lifecycle or inbound-message action.
@@ -130,19 +87,18 @@ export const reduceSshPaneState = (state: SshPaneStateMap, action: SshPaneStateA
 
   return {
     ...state,
-    [action.paneId]: reduceServerMessage(paneState, action.payload, action.receivedAt),
+    [action.paneId]: reduceServerMessage(paneState, action.payload),
   };
 };
 
 /**
- * Applies one backend message to a single pane state.
+ * Applies one backend transport or telemetry message to a single pane.
  *
  * @param state Current state for the source pane.
  * @param payload Validated Backend-to-Renderer terminal message.
- * @param receivedAt Local receipt timestamp used for bounded diagnostics.
  * @returns Updated pane state.
  */
-const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage, receivedAt: number): SshPaneState => {
+const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage): SshPaneState => {
   if (payload.type === 'ready') {
     return {
       ...state,
@@ -176,187 +132,9 @@ const reduceServerMessage = (state: SshPaneState, payload: ServerInboundMessage,
         memoryTotalBytes: payload.memoryTotalBytes,
         networkRxBytesPerSec: payload.networkRxBytesPerSec,
         networkTxBytesPerSec: payload.networkTxBytesPerSec,
-        recentCommands: payload.recentCommands,
       },
     };
   }
 
-  if (payload.type === 'history') {
-    return {
-      ...state,
-      telemetryState: {
-        ...state.telemetryState,
-        recentCommands: payload.recentCommands,
-      },
-    };
-  }
-
-  if (payload.type === 'bootstrap-status') {
-    return {
-      ...state,
-      remoteBootstrapStatus: payload,
-      remoteEnhancementsDebugEvents: appendDebugEvent(state, payload, receivedAt),
-    };
-  }
-
-  if (payload.type === 'remote-enhancement-runtime-status') {
-    return {
-      ...state,
-      remoteEnhancementRuntimeStatus: payload,
-      remoteEnhancementsDebugEvents: appendDebugEvent(state, payload, receivedAt),
-      ...(payload.state === 'active'
-        ? {}
-        : {
-            trustedCwd: null,
-            promptGeneration: null,
-            lineState: null,
-          }),
-    };
-  }
-
-  if (payload.type !== 'remote-shell-event') {
-    return state;
-  }
-
-  const nextState: SshPaneState = {
-    ...state,
-    remoteEnhancementsDebugEvents: appendDebugEvent(state, payload, receivedAt),
-  };
-
-  if (payload.event === 'cwd') {
-    return {
-      ...nextState,
-      trustedCwd: payload.cwd,
-    };
-  }
-
-  if (payload.event === 'prompt-ready') {
-    return {
-      ...nextState,
-      promptGeneration: payload.promptGeneration ?? nextState.promptGeneration,
-      lineState: null,
-    };
-  }
-
-  if (payload.event === 'line-state') {
-    if (nextState.promptGeneration !== null && payload.promptGeneration !== nextState.promptGeneration) {
-      return nextState;
-    }
-
-    return {
-      ...nextState,
-      promptGeneration: payload.promptGeneration,
-      lineState: {
-        lineLength: payload.lineLength,
-        cursorIndex: payload.cursorIndex,
-        promptGeneration: payload.promptGeneration,
-      },
-    };
-  }
-
-  if (payload.event === 'command-start') {
-    return {
-      ...nextState,
-      lineState: null,
-      commandTimeline: appendCommandStart(nextState.commandTimeline, payload, receivedAt),
-    };
-  }
-
-  if (payload.event === 'command-end') {
-    return {
-      ...nextState,
-      commandTimeline: applyCommandEnd(nextState.commandTimeline, payload, receivedAt),
-    };
-  }
-
-  return nextState;
-};
-
-/**
- * Appends a bounded diagnostic event to one pane.
- *
- * @param state Current pane state.
- * @param payload Debuggable remote enhancement payload.
- * @param receivedAt Local receipt timestamp.
- * @returns Bounded debug event collection.
- */
-const appendDebugEvent = (
-  state: SshPaneState,
-  payload: SshPaneState['remoteEnhancementsDebugEvents'][number]['payload'],
-  receivedAt: number,
-): SshPaneState['remoteEnhancementsDebugEvents'] => [
-  ...state.remoteEnhancementsDebugEvents.slice(-(REMOTE_ENHANCEMENTS_DEBUG_EVENT_MAX_COUNT - 1)),
-  { receivedAt, payload },
-];
-
-/**
- * Adds a command start once while bounding the retained timeline.
- *
- * @param timeline Existing command lifecycle collection.
- * @param payload Structured command-start event.
- * @param receivedAt Local receipt timestamp.
- * @returns Updated bounded command timeline.
- */
-const appendCommandStart = (
-  timeline: SshPaneCommandLifecycle[],
-  payload: Extract<ServerInboundMessage, { type: 'remote-shell-event'; event: 'command-start' }>,
-  receivedAt: number,
-): SshPaneCommandLifecycle[] => {
-  const existingIndex = timeline.findIndex((entry) => entry.commandId === payload.commandId);
-  if (existingIndex >= 0) {
-    return timeline;
-  }
-
-  return [
-    ...timeline.slice(-(COMMAND_TIMELINE_MAX_COUNT - 1)),
-    {
-      commandId: payload.commandId,
-      command: payload.command,
-      startedAt: receivedAt,
-      endedAt: null,
-      durationMs: null,
-      exitCode: null,
-    },
-  ];
-};
-
-/**
- * Completes the matching command lifecycle, retaining an orphan end event when start was missed.
- *
- * @param timeline Existing command lifecycle collection.
- * @param payload Structured command-end event.
- * @param receivedAt Local receipt timestamp.
- * @returns Updated bounded command timeline.
- */
-const applyCommandEnd = (
-  timeline: SshPaneCommandLifecycle[],
-  payload: Extract<ServerInboundMessage, { type: 'remote-shell-event'; event: 'command-end' }>,
-  receivedAt: number,
-): SshPaneCommandLifecycle[] => {
-  const existingIndex = timeline.findIndex((entry) => entry.commandId === payload.commandId);
-  if (existingIndex < 0) {
-    return [
-      ...timeline.slice(-(COMMAND_TIMELINE_MAX_COUNT - 1)),
-      {
-        commandId: payload.commandId,
-        command: payload.command,
-        startedAt: Math.max(0, receivedAt - payload.durationMs),
-        endedAt: receivedAt,
-        durationMs: payload.durationMs,
-        exitCode: payload.exitCode,
-      },
-    ];
-  }
-
-  return timeline.map((entry, index) =>
-    index === existingIndex
-      ? {
-          ...entry,
-          command: payload.command,
-          endedAt: receivedAt,
-          durationMs: payload.durationMs,
-          exitCode: payload.exitCode,
-        }
-      : entry,
-  );
+  return state;
 };

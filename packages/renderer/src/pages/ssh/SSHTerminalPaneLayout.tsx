@@ -7,12 +7,9 @@ import { TerminalContextMenu } from '../../components/terminal/terminal-context-
 import { Button } from '../../components/ui/button';
 import { Menubar } from '../../components/ui/menubar';
 import { t } from '../../lib/i18n';
-import type { SshPaneConnectionSnapshot, TerminalCommandTimelineModel } from './ssh-types';
-import { TerminalCommandTimeline } from './TerminalCommandTimeline';
+import type { SshPaneConnectionSnapshot } from './ssh-types';
 
 type PaneActionHandler = (paneId: string) => void;
-type PaneCommandActionHandler = (paneId: string, command: string) => void;
-type PaneCommandSelectionHandler = (paneId: string, commandId: string) => void;
 
 type SSHTerminalPaneLayoutProps = {
   terminalPaneIds: string[];
@@ -26,13 +23,10 @@ type SSHTerminalPaneLayoutProps = {
   findShortcutLabel: string;
   clearTerminalShortcutLabel: string;
   rightClickAction: TerminalRightClickAction;
-  remoteEnhancementsDebugLabel?: string;
   canOpenDirectoryInSftp: boolean;
-  commandTimelineModels: Record<string, TerminalCommandTimelineModel>;
   paneConnectionStates: Record<string, SshPaneConnectionSnapshot>;
   setPaneContainerElement: (paneId: string, element: HTMLDivElement | null) => void;
   setPrimaryPaneContainer: (element: HTMLDivElement | null) => void;
-  onPaneActivate: PaneActionHandler;
   onRetryPane: PaneActionHandler;
   onCopy: PaneActionHandler;
   onCopyAsHtml: PaneActionHandler;
@@ -42,13 +36,8 @@ type SSHTerminalPaneLayoutProps = {
   onFind: PaneActionHandler;
   onSelectAll: PaneActionHandler;
   onClearTerminal: PaneActionHandler;
-  onCopyCommand: PaneCommandActionHandler;
-  onFocusPane: PaneActionHandler;
-  onInsertCommand: PaneCommandActionHandler;
-  onSelectCommand: PaneCommandSelectionHandler;
   onSplitPane: PaneActionHandler;
   onClosePane: PaneActionHandler;
-  onToggleRemoteEnhancementsDebug?: PaneActionHandler;
 };
 
 /**
@@ -69,13 +58,10 @@ type SSHTerminalPaneLayoutProps = {
  * @param props.findShortcutLabel Platform-resolved find shortcut label.
  * @param props.clearTerminalShortcutLabel Platform-resolved clear-screen shortcut label.
  * @param props.rightClickAction Configured action for terminal right-click gestures.
- * @param props.remoteEnhancementsDebugLabel Optional label for the Remote Enhancements debug panel action.
  * @param props.canOpenDirectoryInSftp Whether selected text can open an SFTP directory.
- * @param props.commandTimelineModels Pane-indexed trusted command timeline models.
  * @param props.paneConnectionStates Pane-indexed transport snapshots driving pane-scoped overlays.
  * @param props.setPaneContainerElement Ref callback for pane containers.
  * @param props.setPrimaryPaneContainer Ref callback for primary pane container.
- * @param props.onPaneActivate Callback that activates a pane.
  * @param props.onRetryPane Callback that reconnects one failed pane.
  * @param props.onCopy Callback that copies selection from pane.
  * @param props.onCopyAsHtml Callback that copies selection HTML from pane.
@@ -85,13 +71,8 @@ type SSHTerminalPaneLayoutProps = {
  * @param props.onFind Callback for find action.
  * @param props.onSelectAll Callback for select-all action.
  * @param props.onClearTerminal Callback for clear-screen action.
- * @param props.onCopyCommand Callback for copying one retained command.
- * @param props.onFocusPane Callback for restoring focus to one pane's xterm.
- * @param props.onInsertCommand Callback for inserting one retained command without submitting it.
- * @param props.onSelectCommand Callback for direct command-marker selection.
  * @param props.onSplitPane Callback for split action.
  * @param props.onClosePane Callback for close-pane action.
- * @param props.onToggleRemoteEnhancementsDebug Optional callback for the Remote Enhancements debug panel toggle.
  * @returns Pane layout JSX subtree.
  */
 export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
@@ -106,13 +87,10 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   findShortcutLabel,
   clearTerminalShortcutLabel,
   rightClickAction,
-  remoteEnhancementsDebugLabel,
   canOpenDirectoryInSftp,
-  commandTimelineModels,
   paneConnectionStates,
   setPaneContainerElement,
   setPrimaryPaneContainer,
-  onPaneActivate,
   onRetryPane,
   onCopy,
   onCopyAsHtml,
@@ -122,16 +100,10 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   onFind,
   onSelectAll,
   onClearTerminal,
-  onCopyCommand,
-  onFocusPane,
-  onInsertCommand,
-  onSelectCommand,
   onSplitPane,
   onClosePane,
-  onToggleRemoteEnhancementsDebug,
 }) => {
   const renderTerminalPane = (paneId: string, isPrimaryPane: boolean): React.ReactNode => {
-    const commandTimelineModel = commandTimelineModels[paneId];
     const paneConnection: SshPaneConnectionSnapshot = paneConnectionStates[paneId] ?? {
       connectionState: 'connecting',
       connectionError: '',
@@ -156,7 +128,6 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
           clearTerminalShortcutLabel={clearTerminalShortcutLabel}
           splitTerminalLabel={t('ssh.contextMenuSplitTerminal')}
           closeTerminalLabel={t('ssh.contextMenuCloseTerminal')}
-          remoteEnhancementsDebugLabel={remoteEnhancementsDebugLabel}
           canSplitTerminal={canSplitTerminal}
           canCloseTerminal={terminalPaneIds.length > 1}
           canOpenDirectoryInSftp={activePaneId === paneId && canOpenDirectoryInSftp}
@@ -171,29 +142,16 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
           onClearTerminal={() => onClearTerminal(paneId)}
           onSplitTerminal={() => onSplitPane(paneId)}
           onCloseTerminal={() => onClosePane(paneId)}
-          onToggleRemoteEnhancementsDebug={
-            onToggleRemoteEnhancementsDebug ? () => onToggleRemoteEnhancementsDebug(paneId) : undefined
-          }
         >
-          <TerminalCommandTimeline
-            model={commandTimelineModel}
-            isConnected={paneIsConnected}
-            onActivate={() => onPaneActivate(paneId)}
-            onCopyCommand={(command) => onCopyCommand(paneId, command)}
-            onFocusTerminal={() => onFocusPane(paneId)}
-            onInsertCommand={(command) => onInsertCommand(paneId, command)}
-            onSelectCommand={(commandId) => onSelectCommand(paneId, commandId)}
-          >
-            <div
-              ref={(element) => {
-                setPaneContainerElement(paneId, element);
-                if (isPrimaryPane) {
-                  setPrimaryPaneContainer(element);
-                }
-              }}
-              className="h-full min-w-0 flex-1 py-2 pl-2"
-            />
-          </TerminalCommandTimeline>
+          <div
+            ref={(element) => {
+              setPaneContainerElement(paneId, element);
+              if (isPrimaryPane) {
+                setPrimaryPaneContainer(element);
+              }
+            }}
+            className="h-full min-w-0 flex-1 py-2 pl-2"
+          />
         </TerminalContextMenu>
         {!paneIsConnected ? (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-ssh-card-bg-terminal px-4">

@@ -509,14 +509,6 @@
         "description": "Set clipboard access for local terminal programs only.",
         "title": "Allow Local Terminal Clipboard Access"
       },
-      "remoteEnhancementsDebugEnabled": {
-        "description": "Show pane-specific bootstrap and shell integration diagnostics in SSH terminal menus.",
-        "title": "Remote Enhancements Debug"
-      },
-      "remoteEnhancementsEnabled": {
-        "description": "Allow Cosmosh to install remote enhancement helpers for SSH sessions. Turning this off may degrade or disable some terminal features.",
-        "title": "Remote Enhancements"
-      },
       "serverProxyMode": {
         "description": "Set the default proxy policy for SSH, SFTP, and port forwarding.",
         "title": "Server Proxy"
@@ -606,47 +598,6 @@
         "description": "Hold Alt (Option on macOS) and click to move the cursor to that position.",
         "title": "Hold Alt/Option and Click to Move Cursor"
       },
-      "terminalAutoCompleteAcceptKeys": {
-        "description": "Set which key applies the highlighted auto-complete suggestion.",
-        "title": "Auto Complete Apply Shortcut"
-      },
-      "terminalAutoCompleteBuiltInCommandsEnabled": {
-        "description": "Include built-in command and option suggestions from command specs.",
-        "title": "Auto Complete Built-in Command Suggestions"
-      },
-      "terminalAutoCompleteEnabled": {
-        "description": "Enable terminal command auto-complete suggestions while typing.",
-        "title": "Terminal Auto Complete"
-      },
-      "terminalAutoCompleteFuzzyMatch": {
-        "description": "Allow fuzzy matching in addition to strict prefix matching.",
-        "title": "Auto Complete Fuzzy Match"
-      },
-      "terminalAutoCompleteHistoryEnabled": {
-        "description": "Include command history suggestions in the auto-complete menu.",
-        "title": "Auto Complete History Suggestions"
-      },
-      "terminalAutoCompleteMaxItems": {
-        "description": "Maximum number of suggestions shown in the auto-complete menu.",
-        "title": "Auto Complete Suggestion Limit"
-      },
-      "terminalAutoCompleteMinChars": {
-        "description": "Minimum number of typed characters before auto-complete is triggered.",
-        "title": "Auto Complete Trigger Length"
-      },
-      "terminalAutoCompletePasswordEnabled": {
-        "description": "Include interactive password fill suggestions when secure prompts are detected.",
-        "title": "Auto Complete Password Suggestions"
-      },
-      "terminalAutoCompletePathEnabled": {
-        "description": "Include file and directory path suggestions in the auto-complete menu.",
-        "title": "Auto Complete Path Suggestions"
-      },
-      "terminalAutoCompletePromptRegex": {
-        "description": "Use a regular expression to customize prompt parsing before command text. Leave empty to use the default rules.",
-        "placeholder": "^.*[#$%>]\\s+",
-        "title": "Customize Auto Complete Prompt Parsing"
-      },
       "terminalBracketedPasteEnabled": {
         "description": "Wrap pasted text in safe paste markers to prevent immediate execution.",
         "title": "Safe Paste"
@@ -654,10 +605,6 @@
       "terminalCharacterWidthCompatibilityModeEnabled": {
         "description": "Use Unicode 11 width tables to improve CJK and emoji alignment. If terminal output looks misaligned, try disabling this and reconnecting to use legacy width mode.",
         "title": "Character Width Compatibility Mode"
-      },
-      "terminalCommandTimelineEnabled": {
-        "description": "Show a list of recent commands on the right side of the terminal. Requires Remote Enhancements.",
-        "title": "Command Timeline"
       },
       "terminalContextLaunchBehavior": {
         "description": "Set how terminals open from context launch or 'Open terminal in Cosmosh'.",
@@ -901,11 +848,6 @@
         "mostRecentlyUsed": "Most Recently Used",
         "tabOrder": "Tab Strip Order"
       },
-      "terminalAutoCompleteAcceptKeys": {
-        "enter": "Enter",
-        "tab": "Tab",
-        "tabEnter": "Tab/Enter"
-      },
       "terminalClipboardAccess": {
         "askAlways": "Always ask",
         "off": "Off",
@@ -967,7 +909,6 @@
       "advancedStyle": "Advanced Style",
       "advancedTerminal": "Advanced Terminal",
       "appearance": "Appearance",
-      "autoComplete": "Auto Complete",
       "behavior": "Behavior",
       "connection": "Connection",
       "editorDefaults": "Defaults",
@@ -1394,39 +1335,20 @@
     "authTypeKey": "Private Key",
     "authTypePassword": "Password",
     "authTypePlaceholder": "Select auth type",
-    "bootstrapPhases": {
-      "download": "Download",
-      "install": "Install",
-      "manifest": "Manifest",
-      "probe": "Probe",
-      "verify": "Verify"
-    },
-    "bootstrapStates": {
-      "failed": "Failed",
-      "ok": "Ready",
-      "skipped": "Current",
-      "started": "Running"
-    },
     "columnAuth": "Auth",
     "columnFolder": "Folder",
     "columnHost": "Host",
     "columnName": "Name",
     "columnPort": "Port",
     "columnUser": "Username",
-    "commandTimelineCopyCommand": "Copy Command",
-    "commandTimelineInsertCommand": "Insert into Terminal",
-    "commandTimelineJumpToCommand": "Jump to command: {command}",
-    "commandTimelineLabel": "Recent commands",
     "connecting": "Connecting...",
     "contextMenuClearTerminal": "Clear Terminal",
-    "contextMenuCloseRemoteEnhancementsDebug": "Close Remote Enhancements Debug",
     "contextMenuCloseTerminal": "Close Terminal",
     "contextMenuCopy": "Copy",
     "contextMenuCopyAsHtml": "Copy as HTML",
     "contextMenuFind": "Find...",
     "contextMenuOpenDirectoryInSftp": "Open Directory in SFTP",
     "contextMenuOpenLink": "Open Link",
-    "contextMenuOpenRemoteEnhancementsDebug": "Open Remote Enhancements Debug",
     "contextMenuPaste": "Paste",
     "contextMenuSearchOnline": "Search Online",
     "contextMenuSelectAll": "Select All",
@@ -1441,18 +1363,6 @@
     "emptyTags": "No added tags",
     "enableSshCompression": "SSH Transport Compression",
     "enableSshCompressionTooltip": "When enabled, Cosmosh asks the server to compress SSH transport data. Keep it off by default unless the connection is bandwidth-constrained.",
-    "historyAddToCurrentTerminal": "Add to current terminal",
-    "historyAddToTerminalMenu": "Add to terminal...",
-    "historyCommandsEmpty": "No recent commands",
-    "historyCommandsTitle": "Commands",
-    "historyDeleteLabel": "Delete command from history",
-    "historyRunInCurrentTerminal": "Run in current terminal",
-    "historyRunInTerminalMenu": "Run in...",
-    "historySplitTerminalAndAdd": "Split terminal and add",
-    "historySplitTerminalAndAddFailed": "Split terminal succeeded, but command insertion failed.",
-    "historySplitTerminalAndRun": "Split terminal and run",
-    "historySplitTerminalAndRunFailed": "Split terminal succeeded, but command execution failed.",
-    "historyTerminalLabel": "Terminal {index}",
     "hostFingerprintDialogAlgorithm": "Algorithm",
     "hostFingerprintDialogCancel": "Cancel",
     "hostFingerprintDialogDescription": "The current remote host fingerprint is not trusted. Trust the remote host fingerprint before continuing.",
@@ -1506,37 +1416,6 @@
     "proxyUrlHint": "Supports HTTP, HTTPS CONNECT, and SOCKS5 proxy URLs, including URL credentials.",
     "proxyUrlLabel": "Custom Proxy URL",
     "proxyUrlPlaceholder": "socks5://user:password@127.0.0.1:1080",
-    "remoteEnhancementRuntimeStates": {
-      "active": "Active",
-      "disabled": "Disabled",
-      "pending": "Pending"
-    },
-    "remoteEnhancements": "Remote Enhancements",
-    "remoteEnhancementsDebug": {
-      "capabilities": "Capabilities",
-      "close": "Close Remote Enhancements Debug",
-      "code": "Code",
-      "emptyEvents": "No remote enhancement events have been received in this session attempt.",
-      "emptyValue": "-",
-      "events": "Events",
-      "helperVersion": "Helper Version",
-      "latestPhase": "Bootstrap Phase",
-      "latestState": "Bootstrap State",
-      "message": "Message",
-      "protocolVersion": "Protocol Version",
-      "runtimeState": "Runtime State",
-      "title": "Remote Enhancements Debug",
-      "version": "Version"
-    },
-    "remoteEnhancementsTooltip": "When enabled, this server can ensure the Cosmosh remote enhancement helper during connection if global Remote Enhancements is enabled.",
-    "remoteShellEvents": {
-      "command-end": "Command End",
-      "command-start": "Command Start",
-      "cwd": "CWD",
-      "foreground-command": "Foreground Command",
-      "integration-ready": "Integration Ready",
-      "prompt-ready": "Prompt Ready"
-    },
     "removeTagLabel": "Remove \"{tagName}\"",
     "retry": "Retry",
     "saveChanges": "Save Changes",
@@ -1549,7 +1428,6 @@
     "sectionProxy": "Proxy",
     "sectionSecurity": "Security",
     "sectionSettings": "Classification",
-    "sectionTerminalEnhancements": "Terminal Enhancements",
     "sectionTransport": "Transport",
     "selectionBarAskAiComingSoon": "Ask AI is coming soon.",
     "selectionBarAskAiLabel": "Ask AI",
