@@ -26,6 +26,7 @@ import {
   type WebContents,
 } from 'electron';
 
+import { openLegalDocument } from '../legal-documents';
 import type { DatabaseSecurityInfo } from '../security/database-encryption';
 import type { SftpDownloadTargetAuthorizationRegistry } from './sftp-download-target-authorizations';
 import { openWithDialogWindows, resolveMacOsOpenWithHelperInvocation } from './sftp-open-with-runtime';
@@ -946,6 +947,10 @@ export const registerAppUtilityIpcHandlers = (options: RegisterAppUtilityIpcHand
     } catch {
       return false;
     }
+  });
+
+  ipcMain.handle('app:open-license-document', async (_event, documentId?: unknown): Promise<boolean> => {
+    return openLegalDocument(documentId);
   });
 
   ipcMain.handle('app:set-windows-system-menu-symbol-color', (_event, symbolColor: string): boolean => {

@@ -9,6 +9,10 @@ export const APP_MENU_ACTIONS = [
 
 export type AppMenuAction = (typeof APP_MENU_ACTIONS)[number];
 
+export const LEGAL_DOCUMENT_IDS = ['project', 'chromium', 'third-party'] as const;
+
+export type LegalDocumentId = (typeof LEGAL_DOCUMENT_IDS)[number];
+
 /**
  * Main-to-renderer request to display the guarded window close confirmation.
  */
@@ -34,6 +38,7 @@ export type SystemProxyResolveResult = {
 };
 
 const APP_MENU_ACTION_SET: ReadonlySet<string> = new Set(APP_MENU_ACTIONS);
+const LEGAL_DOCUMENT_ID_SET: ReadonlySet<string> = new Set(LEGAL_DOCUMENT_IDS);
 
 /**
  * Checks whether an IPC payload is a supported app menu action.
@@ -43,6 +48,16 @@ const APP_MENU_ACTION_SET: ReadonlySet<string> = new Set(APP_MENU_ACTIONS);
  */
 export const isAppMenuAction = (value: unknown): value is AppMenuAction => {
   return typeof value === 'string' && APP_MENU_ACTION_SET.has(value);
+};
+
+/**
+ * Checks whether an unknown renderer payload identifies a supported legal document.
+ *
+ * @param value Unknown IPC payload.
+ * @returns True when the payload matches a supported legal document identifier.
+ */
+export const isLegalDocumentId = (value: unknown): value is LegalDocumentId => {
+  return typeof value === 'string' && LEGAL_DOCUMENT_ID_SET.has(value);
 };
 
 export type SftpOpenWithApplication = {

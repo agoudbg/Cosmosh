@@ -2,11 +2,12 @@ export type { components, operations, paths } from './generated';
 export { createApiError, createApiSuccess } from './envelope';
 export { appendApiQueryParams, replaceApiPathToken, resolveApiPath } from './http';
 export type { ApiPathParams, ApiQueryParams } from './http';
-export { APP_MENU_ACTIONS, isAppMenuAction } from './ipc';
+export { APP_MENU_ACTIONS, isAppMenuAction, isLegalDocumentId, LEGAL_DOCUMENT_IDS } from './ipc';
 export type {
   AppCloseConfirmationRequest,
   AppCloseConfirmationResponse,
   AppMenuAction,
+  LegalDocumentId,
   BackendRequestTrace,
   BackendRequestTraceBody,
   BackendRequestTraceBodyKind,

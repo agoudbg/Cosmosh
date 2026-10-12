@@ -1,4 +1,5 @@
-import { Info } from 'lucide-react';
+import type { LegalDocumentId } from '@cosmosh/api-contract';
+import { Archive, BookOpen, FileText, Info } from 'lucide-react';
 import React from 'react';
 
 import { useDateTimeFormatter } from '../../lib/date-time-format';
@@ -13,6 +14,13 @@ import {
   DialogSecondaryButton,
   DialogTitle,
 } from '../ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 
 export type AppVersionInfo = {
   appName: string;
@@ -90,6 +98,20 @@ const SettingsAboutSection: React.FC<SettingsAboutSectionProps> = ({ appVersionI
     });
   }, [onOpenFailed, technicalInfoText]);
 
+  const handleOpenLegalDocument = React.useCallback(
+    async (documentId: LegalDocumentId): Promise<void> => {
+      try {
+        const opened = await window.electron?.openLegalDocument?.(documentId);
+        if (!opened) {
+          onOpenFailed('settings.about.openLicenseFailed');
+        }
+      } catch {
+        onOpenFailed('settings.about.openLicenseFailed');
+      }
+    },
+    [onOpenFailed],
+  );
+
   return (
     <div className="grid gap-4 pb-4">
       <section className="mx-auto grid w-full max-w-[600px] gap-3">
@@ -123,7 +145,44 @@ const SettingsAboutSection: React.FC<SettingsAboutSectionProps> = ({ appVersionI
         <div className="grid gap-2 px-2.5 pt-5">
           <div className="flex items-center justify-between py-1 text-sm">
             <span className="text-home-text-subtle">{t('settings.about.openSourceLicense')}</span>
-            <span className="text-home-text select-text">GPL-3.0-only</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t('settings.about.viewAction')}
+                  className="text-home-text select-text underline hover:text-home-text-subtle"
+                >
+                  {t('settings.about.viewAction')}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent horizontalAlign="right">
+                <DropdownMenuLabel>{t('settings.about.openSourceLicense')}</DropdownMenuLabel>
+                <DropdownMenuItem
+                  icon={FileText}
+                  onSelect={() => {
+                    void handleOpenLegalDocument('project');
+                  }}
+                >
+                  {t('settings.about.projectLicense')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  icon={Archive}
+                  onSelect={() => {
+                    void handleOpenLegalDocument('chromium');
+                  }}
+                >
+                  {t('settings.about.chromiumLicense')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  icon={BookOpen}
+                  onSelect={() => {
+                    void handleOpenLegalDocument('third-party');
+                  }}
+                >
+                  {t('settings.about.thirdPartyLicenses')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <div className="flex items-center justify-between py-1 text-sm">
             <span className="text-home-text-subtle">{t('settings.about.github')}</span>

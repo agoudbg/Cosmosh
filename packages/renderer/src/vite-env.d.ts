@@ -84,6 +84,7 @@ import type {
   AppCloseConfirmationResponse,
   AppMenuAction,
   BackendRequestTrace,
+  LegalDocumentId,
   SftpOpenWithApplication,
   SftpTemporaryFileWatchChange,
   SftpUploadFileSelection,
@@ -161,6 +162,7 @@ declare global {
       restartBackendRuntime: () => Promise<boolean>;
       showInFileManager: (targetPath?: string) => Promise<boolean>;
       openExternalUrl: (targetUrl: string) => Promise<boolean>;
+      openLegalDocument: (documentId: LegalDocumentId) => Promise<boolean>;
       setWindowsSystemMenuSymbolColor: (symbolColor: string) => Promise<boolean>;
       showSaveFileDialog: (defaultPath?: string) => Promise<{ canceled: boolean; filePath?: string }>;
       importPrivateKeyFromFile: () => Promise<{

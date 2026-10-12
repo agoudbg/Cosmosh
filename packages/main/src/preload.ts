@@ -86,6 +86,7 @@ import type {
   AppCloseConfirmationResponse,
   AppMenuAction,
   BackendRequestTrace,
+  LegalDocumentId,
   SftpDroppedUploadLocalEntry,
   SftpOpenWithApplication,
   SftpTemporaryFileWatchChange,
@@ -495,6 +496,9 @@ contextBridge.exposeInMainWorld('electron', {
   },
   openExternalUrl: (targetUrl: string) => {
     return invokeIpc<boolean>('app:open-external-url', targetUrl);
+  },
+  openLegalDocument: (documentId: LegalDocumentId) => {
+    return invokeIpc<boolean>('app:open-license-document', documentId);
   },
   setWindowsSystemMenuSymbolColor: (symbolColor: string) => {
     return invokeIpc<boolean>('app:set-windows-system-menu-symbol-color', symbolColor);
