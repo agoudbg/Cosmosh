@@ -46,7 +46,7 @@ jobs:
         with:
           go-version-file: packages/remote-bootstrap/go.mod
           cache: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: "22"
       - name: Test remote bootstrap package
@@ -57,7 +57,7 @@ jobs:
           COSMOSH_REMOTE_BOOTSTRAP_RELEASE_TAG: ${{ github.ref_name }}
         run: node scripts/build-remote-bootstrap-release.mjs
       - name: Stage remote bootstrap release assets
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-remote-bootstrap
           compression-level: 0
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: "22"
       - name: Setup pnpm
@@ -116,7 +116,7 @@ jobs:
           -ExpectedPublisher "$env:COSMOSH_WINDOWS_EXPECTED_PUBLISHER"
       - name: Stage Windows release assets
         if: matrix.platform == 'windows'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-windows
           compression-level: 0
@@ -125,7 +125,7 @@ jobs:
           path: packages/main/release/*.exe
       - name: Stage Linux release assets
         if: matrix.platform == 'linux'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-linux
           compression-level: 0
@@ -136,7 +136,7 @@ jobs:
             packages/main/release/*.deb
       - name: Stage macOS release assets
         if: matrix.platform == 'macos'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-macos
           compression-level: 0
@@ -156,11 +156,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: "22"
       - name: Download staged release assets
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: release-*
           path: release-assets
@@ -169,7 +169,7 @@ jobs:
       - name: Validate inventory and generate SHA256SUMS
         run: node scripts/prepare-release-assets.mjs release-assets
       - name: Stage assembled release bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-bundle
           compression-level: 0
@@ -187,7 +187,7 @@ jobs:
       id-token: write
     steps:
       - name: Download assembled release bundle
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: release-bundle
           path: release-assets
@@ -208,7 +208,7 @@ jobs:
       COSMOSH_WINDOWS_SIGNING_POLICY: ${{ needs.resolve-release-policy.outputs.windows-signing-policy }}
     steps:
       - name: Download assembled release bundle
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: release-bundle
           path: release-assets
