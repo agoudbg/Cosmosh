@@ -2,6 +2,7 @@
   "appId": "com.cosmosh.app",
   "productName": "Cosmosh",
   "compression": "maximum",
+  "afterPack": "./scripts/archive-chromium-license.cjs",
   "directories": {
     "buildResources": "resources",
     "output": "release"

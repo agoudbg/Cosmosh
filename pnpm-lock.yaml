@@ -236,6 +236,9 @@ importers:
       globals:
         specifier: ^17.12.0
         version: 17.12.0
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       node-gyp:
         specifier: ^13.0.2
         version: 13.0.2
