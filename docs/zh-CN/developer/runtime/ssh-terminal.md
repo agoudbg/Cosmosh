@@ -195,11 +195,19 @@ Locale 行为：
   - 面板内容区使用最大高度与纵向滚动（`max-h`）保证长候选列表可完整访问，
   - 长命令与说明文本使用截断，避免横向溢出。
 
+- 主窗格和附加窗格均订阅 xterm 的 `onData` 与 `onBinary`，并随窗格运行时一起释放这两个监听器。传统鼠标报告使用二进制输入，保留原始字节，且不更新命令标记、自动补全、提示状态、工作目录或历史记录。既有文本输入行为保持不变，本地 PTY 的输出编码独立于此次新增的输入传输字段。
+
 ```mermaid
 flowchart LR
-  XT[xterm.js onData] --> MSG[input JSON]
+  XT[xterm.js onData] --> MSG[未指定编码的 input JSON]
+  BIN[xterm.js onBinary] --> BMSG[指定 binary 编码的 input JSON]
   MSG --> WS[WebSocket]
-  WS --> SSH[ssh2 shell stream.write]
+  BMSG --> WS
+  WS --> DECODE[校验文本或单字节字符串]
+  DECODE --> TEXT[文本与命令状态更新]
+  DECODE --> BYTES[保留原始字节的 Buffer]
+  TEXT --> SSH[ssh2 stream.write 或本地 PTY write]
+  BYTES --> SSH
   SSH --> OUT[shell stdout/stderr]
   OUT --> WS2[WebSocket output event]
   WS2 --> XT2[xterm.write]

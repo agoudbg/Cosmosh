@@ -173,6 +173,7 @@ SFTP batch payload 由 OpenAPI 生成，并由 renderer、main IPC proxy 与 bac
 
 - 客户端到服务端（`/ws/ssh/{sessionId}` 与 `/ws/local-terminal/{sessionId}`）：
   - `input`、`resize`、`ping`、`close`、`history-delete`
+  - `input` 包含字符串 `data` 和可选的 `encoding: 'binary'`。未指定编码时保留既有文本行为，因此兼容已有文本客户端。二进制数据仅允许 U+0000 至 U+00FF 码元，后端将对应字节作为 Buffer 写入 SSH 或本地 PTY，不更新命令状态。未知编码、null 编码及包含非单字节字符的二进制字符串会被判定为无效消息。既有 WebSocket 身份验证和消息大小限制继续生效。
   - `completion-request`，包含 `requestId`、`linePrefix`、`cursorIndex`、可选 `workingDirectoryHint`、可选 `limit`、可选 `fuzzyMatch`、可选来源过滤字段（`includeHistory`、`includeBuiltInCommands`、`includePathSuggestions`、`includePasswordSuggestions`）、`trigger`（`typing` 或 `manual`）
 - 服务端到客户端：
   - `ready`、`output`、`telemetry`、`history`、`pong`、`error`、`exit`

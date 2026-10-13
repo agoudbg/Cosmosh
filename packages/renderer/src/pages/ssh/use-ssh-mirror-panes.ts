@@ -255,6 +255,27 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
         }
       });
 
+      /**
+       * Forwards byte-oriented mouse reports without treating them as command input.
+       *
+       * @param data Byte-valued string emitted by xterm's binary input event.
+       * @returns Nothing.
+       */
+      const disposeTerminalBinaryInput = terminal.onBinary((data) => {
+        if (disposed) {
+          return;
+        }
+
+        if (activePaneIdRef.current !== paneId) {
+          setActivePane(paneId);
+        }
+
+        const socket = runtime.socket;
+        if (socket) {
+          sendClientMessage(socket, { type: 'input', data, encoding: 'binary' });
+        }
+      });
+
       const disposeSelectionChange = terminal.onSelectionChange(() => {
         if (activePaneIdRef.current === paneId) {
           const selectionText = refreshSelectionAnchor();
@@ -514,6 +535,7 @@ export const useSshMirrorPanes = (params: UseSshMirrorPanesParams): void => {
           paneRuntimeMapRef.current.delete(paneId);
         }
         disposeTerminalInput.dispose();
+        disposeTerminalBinaryInput.dispose();
         disposeSelectionChange.dispose();
         disposeSelectionScroll.dispose();
         disposeSelectionRender.dispose();

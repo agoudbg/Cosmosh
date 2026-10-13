@@ -69,6 +69,7 @@ Development and packaging intentionally use different native targets. The Main a
 - Uses `window.electron` bridge only (no direct Node API usage).
 - Creates SSH/local terminal sessions and SFTP browser/download/file-operation sessions through backend APIs.
 - Connects terminal data channels through WebSocket and renders with `xterm.js`.
+- Routes xterm `onData` as existing text input and `onBinary` as byte-valued input on the same authenticated terminal WebSocket. Backend validates binary code units and writes a Buffer to the SSH or local PTY transport, preserving mouse-report bytes without command bookkeeping or changes to PTY output encoding.
 - Non-home renderer pages, including SSH and the CodeMirror-backed settings editor, are lazy-loaded to keep heavyweight assets out of the default startup path.
 - Renderer bootstrap hydrates settings from local cache first, then refreshes canonical values from backend in background.
 - Development StrictMode is opt-in via `VITE_ENABLE_STRICT_MODE=true` to reduce duplicate effect execution during local performance profiling.

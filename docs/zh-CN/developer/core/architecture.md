@@ -69,6 +69,7 @@ flowchart LR
 - 仅通过 `window.electron` bridge 访问能力（不直接使用 Node API）。
 - 通过后端 API 创建 SSH/本地终端会话与 SFTP 浏览、下载、文件操作会话。
 - 通过 WebSocket 建立终端数据通道，并由 `xterm.js` 渲染。
+- 在同一条经过身份验证的终端 WebSocket 上，将 xterm 的 `onData` 作为既有文本输入发送，将 `onBinary` 作为单字节输入发送。后端校验二进制码元后，通过 Buffer 写入 SSH 或本地 PTY 传输，保留鼠标报告字节，同时不更新命令状态，也不改变 PTY 输出编码。
 - 非 Home 的渲染页（包括 SSH 与基于 CodeMirror 的设置编辑器）采用懒加载，避免重型资源进入默认启动路径。
 - Renderer 启动优先从本地缓存水合设置，再在后台向 backend 拉取权威值并同步覆盖。
 - 开发态 StrictMode 改为通过 `VITE_ENABLE_STRICT_MODE=true` 显式开启，降低本地性能排查时重复 effect 执行带来的干扰。

@@ -1420,6 +1420,12 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     }
 
     if (message.type === 'input') {
+      if (message.encoding === 'binary') {
+        // Mouse reports contain byte-valued code units, not shell command text.
+        session.stream.write(Buffer.from(message.data, 'latin1'));
+        return;
+      }
+
       const interactiveState = {
         lineBuffer: session.completionLineBuffer,
         recentCommands: session.completionRecentCommands,

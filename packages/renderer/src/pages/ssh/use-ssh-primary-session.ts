@@ -604,6 +604,25 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
         });
       }
     });
+    /**
+     * Forwards byte-oriented mouse reports without treating them as command input.
+     *
+     * @param data Byte-valued string emitted by xterm's binary input event.
+     * @returns Nothing.
+     */
+    const disposeTerminalBinaryInput = terminal.onBinary((data) => {
+      if (disposed) {
+        return;
+      }
+
+      if (activePaneIdRef.current !== paneId) {
+        setActivePane(paneId);
+      }
+
+      if (socket) {
+        sendClientMessage(socket, { type: 'input', data, encoding: 'binary' });
+      }
+    });
     const handleAutocompleteKeyDown = (event: KeyboardEvent): void => {
       handleAutocompleteTerminalKeyDownRef.current(event);
     };
@@ -695,6 +714,7 @@ export const useSshPrimarySession = (params: UseSshPrimarySessionParams): void =
       selectionPointerClientXRef.current = null;
       clearSelectionOverlay();
       disposeTerminalInput.dispose();
+      disposeTerminalBinaryInput.dispose();
       disposeSelectionChange.dispose();
       disposeSelectionScroll.dispose();
       disposeSelectionRender.dispose();

@@ -398,6 +398,12 @@ export class LocalTerminalSessionService extends BaseTerminalSessionService<Loca
     }
 
     if (message.type === 'input') {
+      if (message.encoding === 'binary') {
+        // Preserve the input bytes without changing the PTY's output encoding.
+        session.pty.write(Buffer.from(message.data, 'latin1'));
+        return;
+      }
+
       const interactiveState = {
         lineBuffer: session.completionLineBuffer,
         recentCommands: session.completionRecentCommands,

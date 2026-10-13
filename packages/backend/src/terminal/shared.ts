@@ -35,7 +35,21 @@ export const normalizeTerminalClientMessage = (payload: RawData): TerminalClient
     const parsed = JSON.parse(text) as Record<string, unknown>;
 
     if (parsed.type === 'input' && typeof parsed.data === 'string') {
-      return { type: 'input', data: parsed.data };
+      if (parsed.encoding === undefined) {
+        return { type: 'input', data: parsed.data };
+      }
+
+      if (parsed.encoding !== 'binary') {
+        return null;
+      }
+
+      for (let index = 0; index < parsed.data.length; index += 1) {
+        if (parsed.data.charCodeAt(index) > 0xff) {
+          return null;
+        }
+      }
+
+      return { type: 'input', data: parsed.data, encoding: 'binary' };
     }
 
     if (parsed.type === 'resize' && typeof parsed.cols === 'number' && typeof parsed.rows === 'number') {

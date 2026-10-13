@@ -173,6 +173,7 @@ Although terminal stream messages are not Electron IPC channels, they are part o
 
 - Client to server (`/ws/ssh/{sessionId}` and `/ws/local-terminal/{sessionId}`):
   - `input`, `resize`, `ping`, `close`, `history-delete`
+  - `input` carries string `data` and optional `encoding: 'binary'`. Omitted encoding preserves the existing text behavior, so existing text clients remain compatible. Binary data must contain only code units U+0000 through U+00FF; backend writes the corresponding bytes as a Buffer to SSH or local PTY without command bookkeeping. Unknown or null encodings and non-byte binary strings are rejected as invalid messages. The existing authenticated WebSocket and message-size limit still apply.
   - `completion-request` with `requestId`, `linePrefix`, `cursorIndex`, optional `workingDirectoryHint`, optional `limit`, optional `fuzzyMatch`, optional source filters (`includeHistory`, `includeBuiltInCommands`, `includePathSuggestions`, `includePasswordSuggestions`), and `trigger` (`typing` or `manual`)
 - Server to client:
   - `ready`, `output`, `telemetry`, `history`, `pong`, `error`, `exit`

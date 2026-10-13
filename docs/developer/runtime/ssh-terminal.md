@@ -195,11 +195,19 @@ Locale behavior:
   - panel body uses max height + vertical scroll (`max-h`) to keep large candidate sets fully reachable,
   - long labels/details are truncated to avoid horizontal overflow.
 
+- Both primary and secondary panes subscribe to xterm `onData` and `onBinary` and dispose both listeners with the pane runtime. Legacy mouse reports use binary input; their byte values are preserved and do not update command markers, autocomplete, prompt state, cwd, or history. Existing text input remains unchanged. Local PTY output encoding is independent of this input-only transport field.
+
 ```mermaid
 flowchart LR
-  XT[xterm.js onData] --> MSG[input JSON]
+  XT[xterm.js onData] --> MSG[input JSON without encoding]
+  BIN[xterm.js onBinary] --> BMSG[input JSON with binary encoding]
   MSG --> WS[WebSocket]
-  WS --> SSH[ssh2 shell stream.write]
+  BMSG --> WS
+  WS --> DECODE[Validate text or byte-valued string]
+  DECODE --> TEXT[Text with command bookkeeping]
+  DECODE --> BYTES[Buffer with original bytes]
+  TEXT --> SSH[ssh2 stream.write or local PTY write]
+  BYTES --> SSH
   SSH --> OUT[shell stdout/stderr]
   OUT --> WS2[WebSocket output event]
   WS2 --> XT2[xterm.write]

@@ -108,9 +108,13 @@ export type TerminalCompletionItem = {
   score: number;
 };
 
-/** Renderer-to-Backend messages supported by interactive terminal sessions. */
+/**
+ * Renderer-to-Backend messages supported by interactive terminal sessions.
+ * Input without an encoding is text. Binary input uses one code unit per byte
+ * (U+0000 through U+00FF) and bypasses command and completion bookkeeping.
+ */
 export type TerminalClientMessage =
-  | { type: 'input'; data: string }
+  | { type: 'input'; data: string; encoding?: 'binary' }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'close' }
   | { type: 'ping' }
