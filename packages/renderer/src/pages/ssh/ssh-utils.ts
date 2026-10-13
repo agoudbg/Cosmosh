@@ -51,6 +51,33 @@ export type TerminalPasteSafetySettings = {
   warnOnControlCharactersPaste: boolean;
 };
 
+/**
+ * Captures native clipboard events before xterm can forward unconfirmed input.
+ *
+ * Attach only to the xterm host so other editable controls retain browser paste.
+ * Programmatic terminal.paste() does not emit a DOM event, so accepted payloads
+ * can use that API without re-entering confirmation or sending duplicate input.
+ *
+ * @param event Native or React clipboard event from the terminal host.
+ * @param requestPaste Shared application paste-confirmation entry point.
+ * @returns Nothing.
+ */
+export const captureTerminalPaste = (
+  event: {
+    clipboardData: Pick<DataTransfer, 'getData'> | null;
+    preventDefault: () => void;
+    stopPropagation: () => void;
+  },
+  requestPaste: (text: string) => void,
+): void => {
+  event.preventDefault();
+  event.stopPropagation();
+  const text = event.clipboardData?.getData('text/plain');
+  if (text) {
+    requestPaste(text);
+  }
+};
+
 export type TerminalPaneActivationReconnectInput = {
   owner: 'primary' | 'secondary';
   connectionState: 'connecting' | 'connected' | 'failed';

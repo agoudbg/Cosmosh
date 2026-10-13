@@ -7,6 +7,7 @@ import type { Terminal } from '@xterm/xterm';
 
 import {
   calibrateAutocompleteCommandPrefix,
+  captureTerminalPaste,
   containsTerminalControlContent,
   createTerminalPasteWarningRequest,
   flattenCommandForTerminalInput,
@@ -56,6 +57,47 @@ const DEFAULT_PASTE_WARNING_SETTINGS = {
   largePasteWarningThreshold: 8,
   warnOnControlCharactersPaste: true,
 };
+
+test('native paste is canceled before unchanged clipboard text reaches confirmation', () => {
+  const calls: string[] = [];
+  const text = 'echo one\r\necho two\x1b[D';
+  captureTerminalPaste(
+    {
+      clipboardData: { getData: (format: string) => (format === 'text/plain' ? text : '') },
+      preventDefault: () => calls.push('preventDefault'),
+      stopPropagation: () => calls.push('stopPropagation'),
+    },
+    (payload) => {
+      assert.equal(payload, text);
+      calls.push('confirm');
+      assert.deepEqual(createTerminalPasteWarningRequest(payload, DEFAULT_PASTE_WARNING_SETTINGS)?.reasons, [
+        'multiLine',
+        'largeText',
+        'controlCharacters',
+      ]);
+    },
+  );
+  assert.deepEqual(calls, ['preventDefault', 'stopPropagation', 'confirm']);
+});
+
+test('empty and unavailable native clipboard data cannot fall through to xterm', () => {
+  for (const clipboardData of [null, { getData: () => '' }]) {
+    let canceled = 0;
+    captureTerminalPaste(
+      {
+        clipboardData,
+        preventDefault: () => {
+          canceled += 1;
+        },
+        stopPropagation: () => {
+          canceled += 1;
+        },
+      },
+      () => assert.fail('Empty clipboard must not request insertion'),
+    );
+    assert.equal(canceled, 2);
+  }
+});
 
 test('selection directory resolver accepts explicit remote paths', () => {
   assert.equal(resolveSftpDirectoryPathFromSelection('/'), '/');

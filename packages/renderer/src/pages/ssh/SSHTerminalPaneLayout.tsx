@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/button';
 import { Menubar } from '../../components/ui/menubar';
 import { t } from '../../lib/i18n';
 import type { SshPaneConnectionSnapshot, TerminalCommandTimelineModel } from './ssh-types';
+import { captureTerminalPaste } from './ssh-utils';
 import { TerminalCommandTimeline } from './TerminalCommandTimeline';
 
 type PaneActionHandler = (paneId: string) => void;
@@ -37,6 +38,7 @@ type SSHTerminalPaneLayoutProps = {
   onCopy: PaneActionHandler;
   onCopyAsHtml: PaneActionHandler;
   onPaste: PaneActionHandler;
+  onPasteText: PaneCommandActionHandler;
   onSearchOnline: PaneActionHandler;
   onOpenDirectoryInSftp: PaneActionHandler;
   onFind: PaneActionHandler;
@@ -80,6 +82,7 @@ type SSHTerminalPaneLayoutProps = {
  * @param props.onCopy Callback that copies selection from pane.
  * @param props.onCopyAsHtml Callback that copies selection HTML from pane.
  * @param props.onPaste Callback that pastes text into pane.
+ * @param props.onPasteText Callback that confirms native clipboard text before insertion.
  * @param props.onSearchOnline Callback that searches selected text.
  * @param props.onOpenDirectoryInSftp Callback that opens selected directory text in SFTP.
  * @param props.onFind Callback for find action.
@@ -117,6 +120,7 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
   onCopy,
   onCopyAsHtml,
   onPaste,
+  onPasteText,
   onSearchOnline,
   onOpenDirectoryInSftp,
   onFind,
@@ -192,6 +196,9 @@ export const SSHTerminalPaneLayout: React.FC<SSHTerminalPaneLayoutProps> = ({
                 }
               }}
               className="h-full min-w-0 flex-1 py-2 pl-2"
+              onPasteCapture={(event) => {
+                captureTerminalPaste(event, (text) => onPasteText(paneId, text));
+              }}
             />
           </TerminalCommandTimeline>
         </TerminalContextMenu>

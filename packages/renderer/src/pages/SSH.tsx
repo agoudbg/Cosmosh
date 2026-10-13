@@ -1451,6 +1451,10 @@ const SSH: React.FC<SSHProps> = ({
             activatePane(paneId);
             handleContextMenuPaste();
           }}
+          onPasteText={(paneId, text) => {
+            activatePane(paneId);
+            void confirmAndPasteText(text);
+          }}
           onSearchOnline={(paneId) => {
             activatePane(paneId);
             handleContextMenuSearchOnline();

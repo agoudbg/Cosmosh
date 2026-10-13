@@ -313,6 +313,8 @@ Notes:
 
 ## 6.2 Split-Pane Terminal Interaction Model
 
+- Every xterm host captures native DOM `paste` before xterm consumes it and routes clipboard text through the same per-paste confirmation used by context menus, text drops, and selection insertion. This covers native shortcuts and system edit-menu paste in primary and secondary panes. Cancellation sends no terminal input; accepted text is delivered once through the existing paste path. Clipboard events outside xterm retain their normal behavior.
+
 - Renderer supports a constrained split progression in `SSH.tsx`:
   1. single pane,
   2. two side-by-side panes,
