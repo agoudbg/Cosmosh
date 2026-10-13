@@ -20,6 +20,7 @@ const thirdPartyEntryPackages = [
   'better-sqlite3-multiple-ciphers',
 ];
 const workspaceRuntimePackages = ['backend', 'api-contract', 'i18n'];
+const preservedRuntimeNodeModulesEntries = new Set(['.prisma', '@prisma']);
 const builtInModuleNames = new Set([...builtinModules, ...builtinModules.map((moduleName) => `node:${moduleName}`)]);
 
 /**
@@ -106,6 +107,9 @@ const excludedDirectoryNames = new Set([
   'doc',
   'example',
   'examples',
+  'fixtures',
+  'spec',
+  'specs',
   'test',
   'tests',
 ]);
@@ -135,6 +139,15 @@ const excludedFileExtensions = new Set([
   '.yaml',
   '.yml',
 ]);
+const runtimeTestFilePattern = /\.(?:test|spec)\.(?:cjs|mjs|js|jsx)$/i;
+
+/**
+ * Identifies compiled test modules that must stay out of packaged runtime dependencies.
+ *
+ * @param {string} fileName File name to inspect.
+ * @returns {boolean} True when the file follows a compiled test-module naming convention.
+ */
+const isRuntimeTestArtifact = (fileName) => runtimeTestFilePattern.test(fileName);
 
 /**
  * Filters out development-only files to keep packaged runtime minimal and predictable.
@@ -160,6 +173,7 @@ const shouldIncludeThirdPartyPath = (packageName, sourcePath, sourcePackageRoot)
   const lowerFileName = fileName.toLowerCase();
 
   if (
+    isRuntimeTestArtifact(lowerFileName) ||
     excludedFileExtensions.has(path.extname(lowerFileName)) ||
     lowerFileName.endsWith('.d.ts') ||
     lowerFileName.endsWith('.d.mts') ||
@@ -381,6 +395,22 @@ const minifyJsonFilesInDirectory = async (directoryPath) => {
 };
 
 /**
+ * Removes stale top-level runtime entries while preserving Prisma assets synced earlier in prebuild.
+ *
+ * @returns {Promise<void>} Resolves after obsolete runtime entries are removed.
+ */
+const clearStaleRuntimeNodeModules = async () => {
+  await fs.mkdir(runtimeNodeModulesRoot, { recursive: true });
+  const entries = await fs.readdir(runtimeNodeModulesRoot, { withFileTypes: true });
+
+  await Promise.all(
+    entries
+      .filter((entry) => !preservedRuntimeNodeModulesEntries.has(entry.name))
+      .map((entry) => fs.rm(path.join(runtimeNodeModulesRoot, entry.name), { recursive: true, force: true })),
+  );
+};
+
+/**
  * Starts recursion from a curated list of backend entry dependencies.
  */
 const syncThirdPartyDependencies = async () => {
@@ -449,8 +479,18 @@ const syncWorkspaceRuntimePackages = async () => {
       force: true,
       filter: (sourcePath) => {
         const lowerName = path.basename(sourcePath).toLowerCase();
+        const lowerRelativePath = normalizeRelativePath(sourcePath, sourceDistDir).toLowerCase();
 
-        if (lowerName.endsWith('.map') || lowerName.endsWith('.d.ts') || lowerName.endsWith('.d.mts')) {
+        if (lowerRelativePath && hasExcludedPathSegment(lowerRelativePath, excludedDirectoryNames)) {
+          return false;
+        }
+
+        if (
+          isRuntimeTestArtifact(lowerName) ||
+          lowerName.endsWith('.map') ||
+          lowerName.endsWith('.d.ts') ||
+          lowerName.endsWith('.d.mts')
+        ) {
           return false;
         }
 
@@ -478,8 +518,18 @@ const syncWorkspaceRuntimePackages = async () => {
         force: true,
         filter: (sourcePath) => {
           const lowerName = path.basename(sourcePath).toLowerCase();
+          const lowerRelativePath = normalizeRelativePath(sourcePath, sourcePrismaDir).toLowerCase();
 
-          if (lowerName.endsWith('.map') || lowerName.endsWith('.d.ts') || lowerName.endsWith('.d.mts')) {
+          if (lowerRelativePath && hasExcludedPathSegment(lowerRelativePath, excludedDirectoryNames)) {
+            return false;
+          }
+
+          if (
+            isRuntimeTestArtifact(lowerName) ||
+            lowerName.endsWith('.map') ||
+            lowerName.endsWith('.d.ts') ||
+            lowerName.endsWith('.d.mts')
+          ) {
             return false;
           }
 
@@ -496,7 +546,7 @@ const syncWorkspaceRuntimePackages = async () => {
  * Main orchestration entrypoint for runtime dependency sync.
  */
 const syncBackendRuntime = async () => {
-  await fs.mkdir(runtimeNodeModulesRoot, { recursive: true });
+  await clearStaleRuntimeNodeModules();
   await syncThirdPartyDependencies();
   await syncWorkspaceRuntimePackages();
   await validateBackendRuntimeDependencies();

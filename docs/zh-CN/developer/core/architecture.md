@@ -25,6 +25,8 @@ flowchart LR
 
 ### Main 进程 (`packages/main/src/index.ts`)
 
+- Runtime 同步会先保留 Prisma 资源并清理不再使用的顶层 runtime 目录，再移除 source map、声明文件、编译后的测试模块，以及 test/spec/fixture 目录，避免过期或开发专用产物进入打包后的 backend resource，同时保留生产模块和导出的运行时资源。
+
 - 应用启动阶段并行拉起 BrowserWindow 与 backend 预热流程。
 - 维护单例的后端启动中的 Promise，避免并发触发重复拉起。
 - Main 到 backend 的代理请求会在转发前确保 backend 已就绪。
