@@ -19,6 +19,7 @@ import {
   resolvePromptWorkingDirectoryHint,
   resolveTerminalCurrentLinePrefix,
   sendClientMessage,
+  shouldHandleTerminalAutocompleteKeyEvent,
 } from './ssh-utils';
 
 type UseSshAutocompleteParams = {
@@ -590,7 +591,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       const acceptsByEnter =
         terminalAutoCompleteAcceptKeys === 'enter' || terminalAutoCompleteAcceptKeys === 'tabEnter';
 
-      if (event.isComposing || event.key === 'Process') {
+      if (!shouldHandleTerminalAutocompleteKeyEvent(event, terminalAutoCompleteEnabled)) {
         return;
       }
 
@@ -650,6 +651,7 @@ export const useSshAutocomplete = (params: UseSshAutocompleteParams): UseSshAuto
       isAlternateScreenBufferActive,
       scheduleAutocompleteRequest,
       terminalAutoCompleteAcceptKeys,
+      terminalAutoCompleteEnabled,
       terminalRef,
     ],
   );

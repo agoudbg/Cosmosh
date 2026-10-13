@@ -17,6 +17,7 @@ import {
   resolvePromptCommandStartOffset,
   resolveSftpDirectoryPathFromSelection,
   resolveTerminalPaneCloseTransition,
+  shouldHandleTerminalAutocompleteKeyEvent,
   shouldReconnectTerminalPaneOnActivation,
 } from './ssh-utils';
 
@@ -97,6 +98,35 @@ test('empty and unavailable native clipboard data cannot fall through to xterm',
     );
     assert.equal(canceled, 2);
   }
+});
+
+test('autocomplete keyboard gate restores terminal keys when disabled and preserves plain keys when enabled', () => {
+  for (const key of ['Tab', 'Enter', 'ArrowUp', 'ArrowDown', 'Escape', 'a', 'Backspace']) {
+    const event = { key, isComposing: false, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
+    assert.equal(shouldHandleTerminalAutocompleteKeyEvent(event, false), false, `${key} must reach the terminal`);
+    assert.equal(shouldHandleTerminalAutocompleteKeyEvent(event, true), true, `${key} may use configured actions`);
+  }
+});
+
+test('autocomplete keyboard gate preserves modified terminal keys and input-method composition', () => {
+  for (const key of ['Tab', 'Enter', 'ArrowUp', 'ArrowDown', 'Escape']) {
+    const event = { key, isComposing: false, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
+    for (const modifier of ['ctrlKey', 'shiftKey', 'altKey', 'metaKey'] as const) {
+      assert.equal(
+        shouldHandleTerminalAutocompleteKeyEvent({ ...event, [modifier]: true }, true),
+        false,
+        `${modifier}+${key} must reach the terminal`,
+      );
+    }
+    assert.equal(shouldHandleTerminalAutocompleteKeyEvent({ ...event, isComposing: true }, true), false);
+  }
+  assert.equal(
+    shouldHandleTerminalAutocompleteKeyEvent(
+      { key: 'Process', isComposing: false, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false },
+      true,
+    ),
+    false,
+  );
 });
 
 test('selection directory resolver accepts explicit remote paths', () => {

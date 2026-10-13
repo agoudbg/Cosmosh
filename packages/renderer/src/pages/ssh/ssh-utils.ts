@@ -804,6 +804,28 @@ const resolveRenderedLocalPrefixOverlap = (renderedCommandPrefix: string, localC
 };
 
 /**
+ * Determines whether autocomplete may handle an unmodified terminal key event.
+ *
+ * @param event Keyboard state received from the terminal container.
+ * @param enabled Whether terminal autocomplete is currently enabled.
+ * @returns Whether autocomplete may inspect the key for its configured actions.
+ */
+export const shouldHandleTerminalAutocompleteKeyEvent = (
+  event: Pick<KeyboardEvent, 'key' | 'isComposing' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>,
+  enabled: boolean,
+): boolean => {
+  return (
+    enabled &&
+    !event.isComposing &&
+    event.key !== 'Process' &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.metaKey
+  );
+};
+
+/**
  * Resolves the command prefix used for completion requests from rendered xterm
  * state and local input shadow state.
  *

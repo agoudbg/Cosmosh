@@ -182,6 +182,7 @@ Locale 行为：
 - 当在非根 token 位置接受 history 候选时，后端返回“从当前 token 到命令末尾”的后缀插入文本（而非仅单个 token），以便一次接受即可补完整段历史命令续写。
 - `completion-response` 返回基础 `replacePrefixLength` 与候选项（`label`、`insertText`、可选候选级 `replacePrefixLength`、`detail`、`source`、`kind`、`score`）。
 - `detail` 会在后端会话服务发送响应前完成本地化，回退顺序为：翻译后的 `detailI18nKey` → 本地化来源标签（`历史记录` / `命令规范` / 运行时标签，如 `目录`、`文件`、`填充密码`）。
+- 渲染层仅在自动补全启用且未按住 Ctrl、Shift、Alt 或 Meta 修饰键时处理补全快捷键。关闭自动补全、使用组合键、输入法组合输入及备用屏幕应用时，均保留 xterm 的按键处理。
 - 候选可见时的键盘规则：
   - `ArrowUp/ArrowDown` 切换当前候选，并由补全导航独占消费，
   - 候选应用快捷键可在设置中通过 `terminalAutoCompleteAcceptKeys` 配置为 `Tab`（默认/当前方案）、`Enter` 或两者皆可，

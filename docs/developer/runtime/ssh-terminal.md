@@ -182,6 +182,7 @@ Locale behavior:
 - For history candidates accepted at non-root token positions, backend returns the command suffix from current token to end (not only one token), so selection can complete the full historical command continuation in one accept action.
 - `completion-response` contains base `replacePrefixLength` plus items (`label`, `insertText`, optional item `replacePrefixLength`, `detail`, `source`, `kind`, `score`).
 - Completion `detail` is localized in backend session services before response emission, with fallback chain: translated `detailI18nKey` → localized source label (`History` / `Command spec` / runtime labels such as `Directory`, `File`, `Fill password`).
+- Renderer keyboard policy applies only while autocomplete is enabled and no Ctrl, Shift, Alt, or Meta modifier is held. Disabled autocomplete, modified keys, input-method composition, and alternate-screen applications retain xterm handling.
 - Renderer keyboard policy when suggestions are visible:
   - `ArrowUp/ArrowDown` changes active suggestion and is consumed by completion navigation,
   - suggestion apply shortcut is configurable via Settings (`terminalAutoCompleteAcceptKeys`): `Tab` (default/current), `Enter`, or both,
