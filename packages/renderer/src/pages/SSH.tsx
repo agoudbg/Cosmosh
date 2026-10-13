@@ -385,7 +385,6 @@ const SSH: React.FC<SSHProps> = ({
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
     terminalAutoCompletePromptRegex,
-    terminalBracketedPasteEnabled,
     characterWidthCompatibilityModeEnabled,
     terminalClipboardProvider,
     terminalHardwareAccelerationEnabled,

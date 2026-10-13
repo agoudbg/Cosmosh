@@ -10,6 +10,7 @@ import {
   captureTerminalPaste,
   containsTerminalControlContent,
   createTerminalPasteWarningRequest,
+  dispatchTerminalInput,
   flattenCommandForTerminalInput,
   reconcileSecondaryPaneRuntimes,
   resetTerminalForNewPtySession,
@@ -97,6 +98,58 @@ test('empty and unavailable native clipboard data cannot fall through to xterm',
       () => assert.fail('Empty clipboard must not request insertion'),
     );
     assert.equal(canceled, 2);
+  }
+});
+
+test('application input reaches real xterm onData exactly once without clipboard normalization', () => {
+  const terminal = new XtermTerminal();
+  const received: string[] = [];
+  const subscription = terminal.onData((data) => received.push(data));
+  const payloads = ['\x03', 'cd /tmp', '报告-😀', '\x7f', 'echo startup\r', '\x0c', 'one\r\ntwo'];
+  try {
+    for (const payload of payloads) {
+      assert.equal(dispatchTerminalInput(terminal, { readyState: WebSocket.OPEN }, payload, 'input'), true);
+    }
+    assert.deepEqual(received, payloads);
+  } finally {
+    subscription.dispose();
+    terminal.dispose();
+  }
+});
+
+test('confirmed paste uses xterm paste semantics regardless of bracketed paste preference', () => {
+  const received: string[] = [];
+  const text = 'one\r\ntwo\x1b[D';
+  for (const ignoreBracketedPasteMode of [true, false]) {
+    const terminal = {
+      options: { ignoreBracketedPasteMode },
+      input: () => assert.fail('Paste must not bypass xterm clipboard normalization'),
+      paste: (data: string) => received.push(data),
+    };
+    assert.equal(dispatchTerminalInput(terminal, { readyState: WebSocket.OPEN }, text, 'paste'), true);
+  }
+  assert.deepEqual(received, [text, text]);
+});
+
+test('application input and paste reject unavailable or disabled targets before emitting data', () => {
+  const terminal = {
+    options: { disableStdin: false },
+    input: () => assert.fail('Unavailable input must not reach xterm'),
+    paste: () => assert.fail('Unavailable paste must not reach xterm'),
+  };
+  const openSocket = { readyState: WebSocket.OPEN };
+  for (const kind of ['input', 'paste'] as const) {
+    for (const socket of [
+      null,
+      ...[WebSocket.CONNECTING, WebSocket.CLOSING, WebSocket.CLOSED].map((readyState) => ({ readyState })),
+    ]) {
+      assert.equal(dispatchTerminalInput(terminal, socket, 'text', kind), false);
+    }
+    assert.equal(dispatchTerminalInput(null, openSocket, 'text', kind), false);
+    assert.equal(dispatchTerminalInput(terminal, openSocket, '', kind), false);
+    terminal.options.disableStdin = true;
+    assert.equal(dispatchTerminalInput(terminal, openSocket, 'text', kind), false);
+    terminal.options.disableStdin = false;
   }
 });
 

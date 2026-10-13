@@ -78,6 +78,36 @@ export const captureTerminalPaste = (
   }
 };
 
+/**
+ * Routes application input through xterm's normal input event pipeline.
+ *
+ * Both paths emit onData so pane bookkeeping and transport delivery happen once.
+ * Paste normalization and bracket framing remain owned by xterm's options/modes.
+ *
+ * @param terminal Destination terminal, if it is available.
+ * @param socket Destination transport whose readiness gates input.
+ * @param data Unchanged application input or confirmed paste text.
+ * @param kind Whether to preserve raw input or apply clipboard paste semantics.
+ * @returns Whether xterm accepted the payload into its input pipeline.
+ */
+export const dispatchTerminalInput = (
+  terminal: Pick<Terminal, 'input' | 'paste' | 'options'> | null,
+  socket: Pick<WebSocket, 'readyState'> | null,
+  data: string,
+  kind: 'input' | 'paste',
+): boolean => {
+  if (!data || !terminal || terminal.options.disableStdin || socket?.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+
+  if (kind === 'paste') {
+    terminal.paste(data);
+  } else {
+    terminal.input(data, true);
+  }
+  return true;
+};
+
 export type TerminalPaneActivationReconnectInput = {
   owner: 'primary' | 'secondary';
   connectionState: 'connecting' | 'connected' | 'failed';

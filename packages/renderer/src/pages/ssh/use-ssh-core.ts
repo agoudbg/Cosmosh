@@ -38,6 +38,7 @@ import {
 } from './ssh-types';
 import {
   compilePromptPrefixRegex,
+  dispatchTerminalInput,
   resolveTerminalPaneCloseTransition,
   SECRET_PROMPT_PATTERN,
   sendClientMessage,
@@ -209,7 +210,6 @@ export type UseSshCoreParams = {
   terminalAutoCompleteMaxItems: number;
   terminalAutoCompleteFuzzyMatch: boolean;
   terminalAutoCompletePromptRegex: string;
-  terminalBracketedPasteEnabled: boolean;
   characterWidthCompatibilityModeEnabled: boolean;
   terminalClipboardProvider: TerminalClipboardProvider;
   terminalHardwareAccelerationEnabled: boolean;
@@ -463,7 +463,6 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
     terminalAutoCompleteMaxItems,
     terminalAutoCompleteFuzzyMatch,
     terminalAutoCompletePromptRegex,
-    terminalBracketedPasteEnabled,
     characterWidthCompatibilityModeEnabled,
     terminalClipboardProvider,
     terminalHardwareAccelerationEnabled,
@@ -1320,57 +1319,29 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   );
 
   /**
-   * Sends input bytes to active pane websocket.
+   * Routes application input through the active pane's shared onData pipeline.
    *
    * @param data Raw input payload.
-   * @returns `true` when input is sent to an open socket, otherwise `false`.
+   * @returns `true` when input is accepted by an enabled, connected terminal.
    */
   const sendInput = React.useCallback(
     (data: string): boolean => {
-      const socket = socketRef.current;
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        return false;
-      }
-
-      sendClientMessage(socket, {
-        type: 'input',
-        data,
-      });
-      recordPaneInputCommandMarker(activePaneIdRef.current, data);
-
-      return true;
+      return dispatchTerminalInput(terminalRef.current, socketRef.current, data, 'input');
     },
-    [activePaneIdRef, recordPaneInputCommandMarker, socketRef],
+    [socketRef, terminalRef],
   );
 
   /**
-   * Routes pasted payload through xterm paste semantics when enabled.
+   * Routes confirmed paste through xterm normalization and the shared onData pipeline.
    *
    * @param text Clipboard or dropped text payload.
    * @returns `true` when payload is delivered, otherwise `false`.
    */
   const pasteInput = React.useCallback(
     (text: string): boolean => {
-      if (!text) {
-        return false;
-      }
-
-      const socket = socketRef.current;
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        return false;
-      }
-
-      if (terminalBracketedPasteEnabled) {
-        const terminal = terminalRef.current;
-        if (terminal) {
-          terminal.paste(text);
-          return true;
-        }
-      }
-
-      return sendInput(text);
+      return dispatchTerminalInput(terminalRef.current, socketRef.current, text, 'paste');
     },
-    [sendInput, socketRef, terminalBracketedPasteEnabled, terminalRef],
+    [socketRef, terminalRef],
   );
 
   /**

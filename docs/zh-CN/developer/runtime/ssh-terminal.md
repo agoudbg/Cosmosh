@@ -292,7 +292,8 @@ flowchart LR
   - 控制字符粘贴检测会检查混入的 ESC、BEL、ANSI 控制序列，以及除 Tab/换行形式以外的 C0/C1 控制字节。警告确认仅作用于单次粘贴；允许一次粘贴不会关闭后续警告。
   - 字符宽度兼容模式由设置项 `terminalCharacterWidthCompatibilityModeEnabled` 推导；开启时，renderer 会加载 `@xterm/addon-unicode11`，并让新建终端实例切换到 Unicode 11 字符宽度表。
   - Unicode 宽度切换依赖 xterm 的 proposed `unicode` namespace，因此 renderer 创建的 SSH/本地终端实例会在加载 `@xterm/addon-unicode11` 前设置 `allowProposedApi: true`。
-  - 开启后，右键粘贴、拖拽文本插入、选区工具栏插入会统一走 xterm `terminal.paste(...)`，从而让 shell 侧 bracketed paste 机制避免多行内容被立即执行。
+  - 所有通过确认的粘贴入口均使用 xterm `terminal.paste(...)`，统一换行规范化和 `onData` 输入处理。该设置通过 `ignoreBracketedPasteMode` 控制包围序列，关闭后仍会更新输入状态。该设置与 shell 侧 bracketed paste mode 同时启用时，xterm 会为粘贴文本添加包围序列。
+  - 历史命令插入、历史命令执行、启动命令及应用发出的控制输入使用 `terminal.input(data, true)`，与键盘输入共用 `onData`，让补全前缀跟踪、命令标记和 socket 发送各执行一次。连接不可用或终端禁止输入时，应用输入会在更新状态前被拒绝。
   - `terminalCopyOnSelectionEnabled` 默认关闭。开启后，xterm selection-change 事件会通过 `navigator.clipboard` 将非空终端选区写入系统剪贴板；纯空白选区会被忽略。
   - `terminalRightClickSelectsWord` 直接映射到 xterm `rightClickSelectsWord`，默认关闭。
   - `terminalForceSelectionModifier` 默认值为 `off`。`alt` 会映射为 xterm `macOptionClickForcesSelection=true`，并在该终端实例中关闭 `macOptionIsMeta`，避免 macOS Option 键冲突。`shift` 与 `ctrl` 会作为设置值持久化，供后续平台特定选择处理使用；当前 xterm 原生生效路径仅为 macOS Option-click。
