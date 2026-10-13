@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { resolveTerminalCompletions } from './engine.js';
+import { createRemotePathProvider } from './path-providers.js';
 import type { TerminalPathCompletionContext, TerminalPathEntry } from './types.js';
 
 /**
@@ -126,5 +127,72 @@ test('typing path completion can use a remote-specific provider budget', async (
   assert.deepEqual(
     result.items.map((item) => item.label),
     ['config.json'],
+  );
+});
+
+test('path completion rejects C0, DEL, and C1 controls without changing safe Unicode paths', async () => {
+  const controlCodePoints = [
+    ...Array.from({ length: 32 }, (_, index) => index),
+    ...Array.from({ length: 33 }, (_, index) => 0x7f + index),
+  ];
+  const safePath = 'folder/报告-😀.txt';
+
+  for (const codePoint of controlCodePoints) {
+    const result = await runPathCompletion({ linePrefix: 'cat ', cursorIndex: 4 }, async () => [
+      { name: `folder/${String.fromCodePoint(codePoint)}file.txt`, kind: 'file' },
+      { name: safePath, kind: 'file' },
+    ]);
+
+    assert.deepEqual(
+      result.items.map((item) => ({ label: item.label, insertText: item.insertText })),
+      [{ label: safePath, insertText: safePath }],
+      `Control U+${codePoint.toString(16).padStart(4, '0')} must not reach terminal input`,
+    );
+  }
+});
+
+test('remote filenames cannot inject input controls or become separate completion entries', async () => {
+  const provider = createRemotePathProvider({
+    resolveCwd: async () => '/tmp',
+    executeCommand: async () =>
+      'F\tplain.txt\0F\treport\nF\taliased.txt\0F\treport\rprintf SAFE_PROBE\r.txt\0D\tsafe-dir\0',
+  });
+
+  const result = await runPathCompletion({ linePrefix: 'cat ', cursorIndex: 4, trigger: 'typing' }, provider);
+
+  assert.deepEqual(
+    result.items.map((item) => item.insertText),
+    ['safe-dir/', 'plain.txt'],
+  );
+});
+
+test('path control filtering preserves explicit password submission', async () => {
+  const result = await resolveTerminalCompletions(
+    {
+      linePrefix: 'cat ',
+      cursorIndex: 4,
+      trigger: 'manual',
+      includeHistory: false,
+      includeBuiltInCommands: false,
+      includePathSuggestions: true,
+      includePasswordSuggestions: true,
+    },
+    {
+      recentCommands: [],
+      tokenizerMode: 'posix',
+      pathProvider: async () => [
+        { name: 'unsafe\rfile', kind: 'file' },
+        { name: 'safe.txt', kind: 'file' },
+      ],
+      promptState: { shouldSuggestSecret: true, secretValue: 'test-password' },
+    },
+  );
+
+  assert.deepEqual(
+    result.items.map((item) => ({ kind: item.kind, insertText: item.insertText })),
+    [
+      { kind: 'secret', insertText: 'test-password\n' },
+      { kind: 'path', insertText: 'safe.txt' },
+    ],
   );
 });

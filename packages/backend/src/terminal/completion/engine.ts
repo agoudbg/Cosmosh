@@ -782,7 +782,28 @@ const resolvePathCompletionContext = (
 };
 
 /**
+ * Detects terminal input controls that must never be inserted as filesystem paths.
+ *
+ * @param value Complete provider path, including any typed directory prefix.
+ * @returns Whether the path contains a C0, DEL, or C1 control character.
+ */
+const hasTerminalInputControls = (value: string): boolean => {
+  for (const character of value) {
+    const codePoint = character.charCodeAt(0);
+    if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/**
  * Builds runtime path completion items from filesystem provider entries.
+ *
+ * @param entries Raw path candidates from a local or remote filesystem provider.
+ * @param context Current path query and directory filtering requirements.
+ * @returns Ranked candidates whose paths cannot submit terminal control input.
  */
 const collectPathItems = (
   entries: TerminalPathEntry[],
@@ -792,7 +813,8 @@ const collectPathItems = (
   const items: TerminalCompletionItem[] = [];
 
   entries.forEach((entry, index) => {
-    if (!entry.name.trim()) {
+    // Reject the entire path rather than silently changing its filesystem identity.
+    if (!entry.name.trim() || hasTerminalInputControls(entry.name)) {
       return;
     }
 

@@ -239,23 +239,20 @@ export const createRemotePathProvider = (options: {
     }
 
     const escapedDirectory = escapeSingleQuotedForSh(lookup.lookupDirectory);
-    const command = `sh -lc 'set +e; dir='"'"'${escapedDirectory}'"'"'; count=0; for p in "$dir"/* "$dir"/.*; do [ -e "$p" ] || continue; name=\${p##*/}; [ "$name" = "." ] && continue; [ "$name" = ".." ] && continue; if [ -d "$p" ]; then printf "D\t%s\n" "$name"; else printf "F\t%s\n" "$name"; fi; count=$((count+1)); if [ "$count" -ge ${MAX_REMOTE_SCAN_ENTRIES} ]; then break; fi; done'`;
+    const command = `sh -lc 'set +e; dir='"'"'${escapedDirectory}'"'"'; count=0; for p in "$dir"/* "$dir"/.*; do [ -e "$p" ] || continue; name=\${p##*/}; [ "$name" = "." ] && continue; [ "$name" = ".." ] && continue; if [ -d "$p" ]; then printf "D\\t%s\\000" "$name"; else printf "F\\t%s\\000" "$name"; fi; count=$((count+1)); if [ "$count" -ge ${MAX_REMOTE_SCAN_ENTRIES} ]; then break; fi; done'`;
 
     try {
       const output = await options.executeCommand(command);
+      // NUL cannot occur in a filename. Preserve all other characters so the
+      // completion engine can reject unsafe paths without inventing aliases.
       const mappedEntries: TerminalPathEntry[] = output
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 2 && line.includes('\t'))
-        .map((line) => {
-          const [type, ...parts] = line.split('\t');
-          const name = parts.join('\t').trim();
-          return {
-            name,
-            kind: type === 'D' ? 'directory' : 'file',
-          } as TerminalPathEntry;
-        })
-        .filter((entry) => entry.name.length > 0);
+        .split('\0')
+        .slice(0, -1)
+        .filter((record) => record.length > 2 && (record.startsWith('D\t') || record.startsWith('F\t')))
+        .map((record) => ({
+          name: record.slice(2),
+          kind: record[0] === 'D' ? 'directory' : 'file',
+        }));
 
       return rankPathEntries(mappedEntries, lookup, context);
     } catch {

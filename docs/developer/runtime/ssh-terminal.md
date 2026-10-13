@@ -169,6 +169,8 @@ Locale behavior:
   - typing-trigger requests apply a short path-provider timeout budget so command/history/spec candidates are not blocked by slow filesystem probes; manual `Tab` trigger still uses full provider results,
   - SSH path completion uses a larger typing budget than local terminals because remote exec latency is network-bound; this keeps overseas/high-latency servers from returning empty runtime path suggestions merely because the first directory scan exceeded a local-filesystem budget,
   - remote SSH path scans use POSIX parameter expansion (`${p##*/}`) instead of GNU-specific `basename --`, so path completion remains portable across GNU/Linux, BSD/macOS, and BusyBox environments,
+  - remote scans delimit complete filename records with NUL and preserve filename whitespace; embedded newlines cannot create extra candidates, and malformed or unterminated records are ignored,
+  - the completion engine rejects complete local and remote path candidates containing C0, DEL, or C1 control characters instead of stripping characters into a different filename; this prevents path insertion from submitting commands or terminal controls while preserving explicit password-fill submission,
   - typing-trigger history scoring is bounded to a recent history window to keep completion latency stable when shell history snapshots are large,
   - when current token starts with `-`, option/value suggestions keep priority and path provider is gated off for that token.
 - Interactive secret prompt detection is output-driven:
