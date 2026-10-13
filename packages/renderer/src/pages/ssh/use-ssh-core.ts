@@ -32,13 +32,16 @@ import {
   type SshTelemetryState,
   type TerminalAutocompleteAnchor,
   type TerminalCommandTimelineModel,
+  type TerminalInputTarget,
   type TerminalPaneRuntime,
   type TerminalSelectionAnchor,
   type TerminalSelectionBarPosition,
 } from './ssh-types';
 import {
+  captureTerminalInputTarget,
   compilePromptPrefixRegex,
   dispatchTerminalInput,
+  isTerminalInputTargetCurrent,
   resolveTerminalPaneCloseTransition,
   SECRET_PROMPT_PATTERN,
   sendClientMessage,
@@ -289,12 +292,19 @@ export type SshCoreActions = {
    */
   sendInput: (data: string) => boolean;
   /**
-   * Pastes text into active pane input path.
+   * Captures the active pane session before asynchronous paste work.
+   *
+   * @returns Current destination identity, or null if it cannot accept input.
+   */
+  capturePasteTarget: () => TerminalInputTarget | null;
+  /**
+   * Pastes text into the originally captured pane session.
    *
    * @param text Clipboard or dropped text payload.
+   * @param target Destination captured before reading or confirming the payload.
    * @returns `true` when payload is delivered, otherwise `false`.
    */
-  pasteInput: (text: string) => boolean;
+  pasteInput: (text: string, target: TerminalInputTarget | null) => boolean;
   /**
    * Sends command-history deletion request for current active session.
    *
@@ -1332,16 +1342,31 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
   );
 
   /**
-   * Routes confirmed paste through xterm normalization and the shared onData pipeline.
+   * Captures active resources without allowing later focus changes to redirect a paste.
+   *
+   * @returns Current destination identity, or null if it cannot accept input.
+   */
+  const capturePasteTarget = React.useCallback((): TerminalInputTarget | null => {
+    const paneId = activePaneIdRef.current;
+    return captureTerminalInputTarget(paneId, paneRuntimeMapRef.current.get(paneId));
+  }, [activePaneIdRef, paneRuntimeMapRef]);
+
+  /**
+   * Routes confirmed paste only while its original terminal session still exists.
    *
    * @param text Clipboard or dropped text payload.
+   * @param target Identity captured before asynchronous clipboard/confirmation work.
    * @returns `true` when payload is delivered, otherwise `false`.
    */
   const pasteInput = React.useCallback(
-    (text: string): boolean => {
-      return dispatchTerminalInput(terminalRef.current, socketRef.current, text, 'paste');
+    (text: string, target: TerminalInputTarget | null): boolean => {
+      const runtime = target ? paneRuntimeMapRef.current.get(target.paneId) : undefined;
+      if (!isTerminalInputTargetCurrent(target, runtime)) {
+        return false;
+      }
+      return dispatchTerminalInput(target.terminal, target.socket, text, 'paste');
     },
-    [socketRef, terminalRef],
+    [paneRuntimeMapRef],
   );
 
   /**
@@ -1567,6 +1592,7 @@ export const useSshCore = (params: UseSshCoreParams): UseSshCoreResult => {
       closePane,
       retryPaneConnection,
       sendInput,
+      capturePasteTarget,
       pasteInput,
       deleteHistoryCommand,
       selectAll,

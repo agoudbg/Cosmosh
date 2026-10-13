@@ -7,11 +7,13 @@ import type { Terminal } from '@xterm/xterm';
 
 import {
   calibrateAutocompleteCommandPrefix,
+  captureTerminalInputTarget,
   captureTerminalPaste,
   containsTerminalControlContent,
   createTerminalPasteWarningRequest,
   dispatchTerminalInput,
   flattenCommandForTerminalInput,
+  isTerminalInputTargetCurrent,
   reconcileSecondaryPaneRuntimes,
   resetTerminalForNewPtySession,
   resolveAutocompleteCommandPrefix,
@@ -150,6 +152,55 @@ test('application input and paste reject unavailable or disabled targets before 
     terminal.options.disableStdin = true;
     assert.equal(dispatchTerminalInput(terminal, openSocket, 'text', kind), false);
     terminal.options.disableStdin = false;
+  }
+});
+
+test('paste target snapshots cannot follow a pane into a replacement terminal or session', () => {
+  const terminal = new XtermTerminal();
+  const replacementTerminal = new XtermTerminal();
+  const socketState = { readyState: WebSocket.OPEN as number };
+  const runtime = { terminal, socket: socketState as WebSocket, sessionId: 'session-a' };
+  try {
+    const target = captureTerminalInputTarget('pane-1', runtime);
+    assert.ok(target);
+    assert.equal(target.paneId, 'pane-1');
+    assert.equal(isTerminalInputTargetCurrent(target, runtime), true);
+    assert.equal(isTerminalInputTargetCurrent(target, undefined), false);
+    assert.equal(isTerminalInputTargetCurrent(null, runtime), false);
+    assert.equal(isTerminalInputTargetCurrent(target, { ...runtime, terminal: replacementTerminal }), false);
+    assert.equal(
+      isTerminalInputTargetCurrent(target, { ...runtime, socket: { readyState: WebSocket.OPEN } as WebSocket }),
+      false,
+    );
+    runtime.sessionId = 'session-b';
+    assert.equal(target.sessionId, 'session-a');
+    assert.equal(isTerminalInputTargetCurrent(target, runtime), false);
+    runtime.sessionId = 'session-a';
+    socketState.readyState = WebSocket.CLOSED;
+    assert.equal(isTerminalInputTargetCurrent(target, runtime), false);
+    socketState.readyState = WebSocket.OPEN;
+    terminal.options.disableStdin = true;
+    assert.equal(isTerminalInputTargetCurrent(target, runtime), false);
+  } finally {
+    terminal.dispose();
+    replacementTerminal.dispose();
+  }
+});
+
+test('paste capture rejects missing, disconnected, or disabled destinations', () => {
+  const terminal = new XtermTerminal();
+  const runtime = { terminal, socket: { readyState: WebSocket.OPEN } as WebSocket, sessionId: 'session-a' };
+  try {
+    assert.equal(captureTerminalInputTarget('pane-1', undefined), null);
+    assert.equal(captureTerminalInputTarget('pane-1', { ...runtime, socket: null }), null);
+    assert.equal(captureTerminalInputTarget('pane-1', { ...runtime, sessionId: null }), null);
+    for (const readyState of [WebSocket.CONNECTING, WebSocket.CLOSING, WebSocket.CLOSED]) {
+      assert.equal(captureTerminalInputTarget('pane-1', { ...runtime, socket: { readyState } as WebSocket }), null);
+    }
+    terminal.options.disableStdin = true;
+    assert.equal(captureTerminalInputTarget('pane-1', runtime), null);
+  } finally {
+    terminal.dispose();
   }
 });
 

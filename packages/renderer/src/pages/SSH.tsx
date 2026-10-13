@@ -28,7 +28,11 @@ import { useToast } from '../lib/toast-context';
 import { useTerminalTextDropZone } from '../lib/use-terminal-text-drop-zone';
 import type { SshConnectionIntent, TabIconColorKey, TabIconKey } from '../types/tabs';
 import { RemoteEnhancementsDebugPanel } from './ssh/RemoteEnhancementsDebugPanel';
-import { INTERNAL_TERMINAL_TEXT_DRAG_MIME, type TerminalSelectionSettings } from './ssh/ssh-types';
+import {
+  INTERNAL_TERMINAL_TEXT_DRAG_MIME,
+  type TerminalInputTarget,
+  type TerminalSelectionSettings,
+} from './ssh/ssh-types';
 import {
   createTerminalPasteWarningRequest,
   flattenCommandForTerminalInput,
@@ -426,6 +430,7 @@ const SSH: React.FC<SSHProps> = ({
       closePane,
       retryPaneConnection,
       sendInput,
+      capturePasteTarget,
       pasteInput,
       deleteHistoryCommand,
       selectAll,
@@ -657,11 +662,12 @@ const SSH: React.FC<SSHProps> = ({
    * Confirms dangerous paste payloads, then routes accepted text to the terminal.
    *
    * @param text Text from clipboard, selection insertion, or drag/drop.
+   * @param target Original destination, captured synchronously by default.
    * @returns Whether the payload was pasted.
    */
   const confirmAndPasteText = React.useCallback(
-    async (text: string): Promise<boolean> => {
-      if (!text) {
+    async (text: string, target: TerminalInputTarget | null = capturePasteTarget()): Promise<boolean> => {
+      if (!text || !target) {
         return false;
       }
 
@@ -674,14 +680,14 @@ const SSH: React.FC<SSHProps> = ({
         }
       }
 
-      const didPaste = pasteInput(text);
+      const didPaste = pasteInput(text, target);
       if (didPaste) {
         focusActiveTerminal();
       }
 
       return didPaste;
     },
-    [focusActiveTerminal, pasteInput, requestPasteWarningConfirmation, terminalPasteSafetySettings],
+    [capturePasteTarget, focusActiveTerminal, pasteInput, requestPasteWarningConfirmation, terminalPasteSafetySettings],
   );
 
   const openSearchForText = React.useCallback(
@@ -805,17 +811,21 @@ const SSH: React.FC<SSHProps> = ({
   }, [copyHtmlToClipboard, getSelectionHtml, getSelectionText]);
 
   const handleContextMenuPaste = React.useCallback(() => {
+    const target = capturePasteTarget();
+    if (!target) {
+      return;
+    }
     void navigator.clipboard
       .readText()
       .then((text) => {
         if (text) {
-          void confirmAndPasteText(text);
+          void confirmAndPasteText(text, target);
         }
       })
-      .catch(() => {
-        // Clipboard read permission denied or unavailable; silently ignore.
+      .catch((error: unknown) => {
+        console.warn('[ssh][paste] Failed to read clipboard text.', error);
       });
-  }, [confirmAndPasteText]);
+  }, [capturePasteTarget, confirmAndPasteText]);
 
   const handleContextMenuSearchOnline = React.useCallback(() => {
     const selectionText = getSelectionText();

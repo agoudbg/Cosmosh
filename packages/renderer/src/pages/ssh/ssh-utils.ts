@@ -1,7 +1,12 @@
 import type { SerializeAddon } from '@xterm/addon-serialize';
 import type { ITerminalOptions, Terminal } from '@xterm/xterm';
 
-import type { ClientOutboundMessage, TerminalPaneRuntime, TerminalSelectionSettings } from './ssh-types';
+import type {
+  ClientOutboundMessage,
+  TerminalInputTarget,
+  TerminalPaneRuntime,
+  TerminalSelectionSettings,
+} from './ssh-types';
 
 const SEARCH_URL_BY_ENGINE: Partial<Record<TerminalSelectionSettings['searchEngine'], string>> = {
   google: 'https://www.google.com/search?q=',
@@ -106,6 +111,50 @@ export const dispatchTerminalInput = (
     terminal.input(data, true);
   }
   return true;
+};
+
+/**
+ * Captures a connected pane's identity before any asynchronous paste work.
+ *
+ * @param paneId Logical destination pane.
+ * @param runtime Current resources owned by that pane.
+ * @returns An identity snapshot, or null when input cannot currently be accepted.
+ */
+export const captureTerminalInputTarget = (
+  paneId: string,
+  runtime: Pick<TerminalPaneRuntime, 'terminal' | 'socket' | 'sessionId'> | undefined,
+): TerminalInputTarget | null => {
+  if (
+    !runtime?.socket ||
+    !runtime.sessionId ||
+    runtime.socket.readyState !== WebSocket.OPEN ||
+    runtime.terminal.options.disableStdin
+  ) {
+    return null;
+  }
+  return { paneId, terminal: runtime.terminal, socket: runtime.socket, sessionId: runtime.sessionId };
+};
+
+/**
+ * Rejects delayed input after its destination was closed, replaced, or reconnected.
+ *
+ * @param target Identity captured when the paste operation began.
+ * @param runtime Resources currently registered for the captured pane id.
+ * @returns Whether the exact original terminal session still accepts input.
+ */
+export const isTerminalInputTargetCurrent = (
+  target: TerminalInputTarget | null,
+  runtime: Pick<TerminalPaneRuntime, 'terminal' | 'socket' | 'sessionId'> | undefined,
+): target is TerminalInputTarget => {
+  return Boolean(
+    target &&
+    runtime &&
+    runtime.terminal === target.terminal &&
+    runtime.socket === target.socket &&
+    runtime.sessionId === target.sessionId &&
+    target.socket.readyState === WebSocket.OPEN &&
+    !target.terminal.options.disableStdin,
+  );
 };
 
 export type TerminalPaneActivationReconnectInput = {

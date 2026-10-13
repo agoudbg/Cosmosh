@@ -217,6 +217,17 @@ export type TerminalPaneRuntime = {
   dispose: () => void;
 };
 
+/**
+ * Immutable destination identity captured before clipboard reads or paste confirmation.
+ * A replacement terminal, transport, or PTY session invalidates pending input.
+ */
+export type TerminalInputTarget = {
+  readonly paneId: string;
+  readonly terminal: Terminal;
+  readonly socket: WebSocket;
+  readonly sessionId: string;
+};
+
 /** Internal DnD mime marker for terminal-originated text payloads. */
 export const INTERNAL_TERMINAL_TEXT_DRAG_MIME = 'application/x-cosmosh-terminal-text';
 /** Estimated width used when clamping autocomplete popup placement. */

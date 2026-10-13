@@ -317,6 +317,8 @@ Notes:
 
 ## 6.2 Split-Pane Terminal Interaction Model
 
+- Paste operations capture their pane, xterm instance, WebSocket, and backend session before awaiting clipboard access or confirmation. Changing the active pane does not redirect pending text. Closing the pane, replacing its terminal, or reconnecting its session invalidates the pending paste; it is canceled without input or automatic reconnection. A missing original target never falls back to the current pane.
+
 - Every xterm host captures native DOM `paste` before xterm consumes it and routes clipboard text through the same per-paste confirmation used by context menus, text drops, and selection insertion. This covers native shortcuts and system edit-menu paste in primary and secondary panes. Cancellation sends no terminal input; accepted text is delivered once through the existing paste path. Clipboard events outside xterm retain their normal behavior.
 
 - Renderer supports a constrained split progression in `SSH.tsx`:
