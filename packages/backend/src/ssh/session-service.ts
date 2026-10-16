@@ -57,6 +57,7 @@ import {
 import { executeBoundedSshCommand } from './exec.js';
 import type { SshProxyMetadata } from './proxy.js';
 import { RemoteShellEventOscParser, type RemoteShellEventStreamFrame } from './remote-shell-events.js';
+import { type ParsedRemoteTelemetry, parseTelemetryOutput, TELEMETRY_COMMAND } from './telemetry.js';
 
 type GetDbClient = () => PrismaClient;
 
@@ -187,17 +188,6 @@ type SshLiveSession = TerminalManagedSessionBase & {
   remoteEnhancementsHandshakeTimeout: NodeJS.Timeout | null;
 };
 
-type ParsedRemoteTelemetry = {
-  cpuUsagePercent: number;
-  memoryUsedBytes: number;
-  memoryTotalBytes: number;
-  networkRxBytesTotal: number;
-  networkTxBytesTotal: number;
-};
-
-// Leading whitespace intentionally avoids writing this command into shell history on most shells.
-const TELEMETRY_COMMAND =
-  ' sh -lc \'cpu=$(top -bn1 | awk -F"[, ]+" "/Cpu\\(s\\)|%Cpu\\(s\\)/ {for(i=1;i<=NF;i++){if($i==\\"id\\"){print 100-$(i-1); exit}}}"); if [ -z "$cpu" ]; then cpu=$(awk "/^cpu /{idle=$5;total=0;for(i=2;i<=NF;i++){total+=$i} if(total>0){print (total-idle)*100/total}else{print 0}}" /proc/stat); fi; mem=$(free -b | awk "/^Mem:/ {print \\$3 \\" \\" \\$2}"); net=$(awk "NR>2 {rx+=\\$2;tx+=\\$10} END {print rx \\" \\" tx}" /proc/net/dev); printf "%s\\n%s\\n%s\\n" "${cpu:-0}" "${mem:-0 0}" "${net:-0 0}"\'';
 const REMOTE_HISTORY_FETCH_COMMAND =
   ' sh -lc \'set +e; if command -v history >/dev/null 2>&1; then history 2>/dev/null; fi; for file in "$HISTFILE" "$HOME/.bash_history" "$HOME/.zsh_history" "$HOME/.ash_history" "$HOME/.sh_history" "$HOME/.mksh_history" "$HOME/.ksh_history" "$HOME/.local/share/fish/fish_history" "$HOME/.python_history" "$HOME/.sqlite_history" "$HOME/.mysql_history" "$HOME/.lesshst"; do if [ -n "$file" ] && [ -f "$file" ]; then cat "$file" 2>/dev/null; fi; done; if command -v pwsh >/dev/null 2>&1; then pwsh -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi; if command -v powershell >/dev/null 2>&1; then powershell -NoLogo -NoProfile -Command "if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { $path=(Get-PSReadLineOption).HistorySavePath; if ($path -and (Test-Path $path)) { Get-Content -Path $path -ErrorAction SilentlyContinue } }" 2>/dev/null; fi\'';
 // LC_ALL is intentionally omitted so remote time, sorting, and numeric locale categories remain user-controlled.
@@ -1839,7 +1829,7 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
       return null;
     }
 
-    return this.parseTelemetryOutput(stdout);
+    return parseTelemetryOutput(stdout);
   }
 
   private async readRemoteHistory(session: SshLiveSession): Promise<string[] | null> {
@@ -1912,44 +1902,6 @@ export class SshSessionService extends BaseTerminalSessionService<SshLiveSession
     },
   ): Promise<string | null> {
     return await executeBoundedSshCommand(session.client, command, options);
-  }
-
-  private parseTelemetryOutput(output: string): ParsedRemoteTelemetry | null {
-    const lines = output
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-
-    if (lines.length < 3) {
-      return null;
-    }
-
-    const cpuUsagePercent = Number.parseFloat(lines[0] ?? '0');
-    const [memoryUsedRaw, memoryTotalRaw] = (lines[1] ?? '').split(/\s+/);
-    const [networkRxRaw, networkTxRaw] = (lines[2] ?? '').split(/\s+/);
-
-    const memoryUsedBytes = Number.parseInt(memoryUsedRaw ?? '0', 10);
-    const memoryTotalBytes = Number.parseInt(memoryTotalRaw ?? '0', 10);
-    const networkRxBytesTotal = Number.parseInt(networkRxRaw ?? '0', 10);
-    const networkTxBytesTotal = Number.parseInt(networkTxRaw ?? '0', 10);
-
-    if (
-      !Number.isFinite(cpuUsagePercent) ||
-      !Number.isFinite(memoryUsedBytes) ||
-      !Number.isFinite(memoryTotalBytes) ||
-      !Number.isFinite(networkRxBytesTotal) ||
-      !Number.isFinite(networkTxBytesTotal)
-    ) {
-      return null;
-    }
-
-    return {
-      cpuUsagePercent: Math.max(0, Math.min(100, cpuUsagePercent)),
-      memoryUsedBytes: Math.max(0, memoryUsedBytes),
-      memoryTotalBytes: Math.max(0, memoryTotalBytes),
-      networkRxBytesTotal: Math.max(0, networkRxBytesTotal),
-      networkTxBytesTotal: Math.max(0, networkTxBytesTotal),
-    };
   }
 
   /**

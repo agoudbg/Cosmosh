@@ -213,6 +213,13 @@ flowchart LR
   WS2 --> XT2[xterm.write]
 ```
 
+### 3.3 Telemetry Sampling
+
+- Backend runs a bounded remote `sh -lc` probe immediately after session creation and every 5 seconds afterward. The probe returns CPU percentage, memory used/total bytes, and cumulative network receive/transmit counters as three lines.
+- CPU sampling first reads the idle field from `top -bn1`. When `top -bn1` is unavailable or its output cannot be parsed, it falls back to `/proc/stat`. The backend clamps CPU and counter values to non-negative ranges before sending them to the renderer.
+- The probe escapes `awk` field references through the enclosing shell command. This keeps `$i`, `$5`, and `$(i-1)` available to `awk` instead of allowing the remote shell to expand them first.
+- When the probe cannot produce a valid three-line result, the backend sends `null` telemetry values and the renderer displays `N/A`.
+
 ## 4. Host Verification & Trust Flow
 
 - SSH connect uses `hostHash: 'sha256'` and `hostVerifier`.

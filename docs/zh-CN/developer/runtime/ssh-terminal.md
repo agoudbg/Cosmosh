@@ -213,6 +213,13 @@ flowchart LR
   WS2 --> XT2[xterm.write]
 ```
 
+### 3.3 Telemetry 采样
+
+- Backend 在会话创建后立即执行一次有边界的远程 `sh -lc` 采样命令，此后每 5 秒执行一次。命令按三行返回 CPU 百分比、已用/总内存字节数，以及累计网络接收/发送字节数。
+- CPU 采样先读取 `top -bn1` 的空闲字段。`top -bn1` 不可用或输出无法解析时回退到 `/proc/stat`。Backend 在发送到 renderer 前会将 CPU 和计数值限制为非负范围。
+- 采样命令经过外层 shell 传递给 `awk` 时，会转义字段引用。这样 `$i`、`$5` 和 `$(i-1)` 会由 `awk` 解释，不会先被远程 shell 展开。
+- 采样命令无法生成有效的三行结果时，Backend 发送 `null` telemetry 值，renderer 显示 `N/A`。
+
 ## 4. 主机校验与信任流程
 
 - SSH 连接使用 `hostHash: 'sha256'` 与 `hostVerifier`。
